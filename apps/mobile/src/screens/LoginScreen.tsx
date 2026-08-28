@@ -1,0 +1,226 @@
+import { useState, type ReactElement } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+
+import { useAuth } from '../hooks/useAuth';
+import { colors, radius, spacing, typography } from '../theme';
+
+/**
+ * Вход в приложение.
+ *
+ * Логин — рабочий номер телефона в любом виде: сервер приводит его к
+ * единому формату, поэтому `+998 90 123 45 67` и `901234567` — одна и та же
+ * учётная запись.
+ *
+ * Сообщение об ошибке приходит с сервера и одинаково для неверного пароля
+ * и несуществующего номера: по разнице ответов иначе можно было бы
+ * перебрать список сотрудников.
+ */
+export function LoginScreen(): ReactElement {
+  const { signIn, signInError, isSigningIn } = useAuth();
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+
+  const canSubmit = phone.trim().length > 0 && password.length > 0 && !isSigningIn;
+
+  const handleSubmit = (): void => {
+    if (!canSubmit) return;
+    // Ошибку показывает `signInError` из состояния мутации — здесь
+    // достаточно не дать необработанному промису уронить приложение.
+    signIn(phone.trim(), password).catch(() => undefined);
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.brand}>
+          <View style={styles.logo}>
+            <Text style={styles.logoText}>DH</Text>
+          </View>
+          <Text style={styles.brandName}>DESIGN HOUSE</Text>
+          <Text style={styles.brandTagline}>шторы премиум класса</Text>
+        </View>
+
+        <View style={styles.form}>
+          <Text style={styles.formTitle}>Вход для сотрудников</Text>
+
+          <Text style={styles.label}>Номер телефона</Text>
+          <TextInput
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="+998 90 123 45 67"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            style={styles.input}
+            editable={!isSigningIn}
+          />
+
+          <Text style={[styles.label, styles.labelSpacing]}>Пароль</Text>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry
+            autoComplete="current-password"
+            textContentType="password"
+            style={styles.input}
+            editable={!isSigningIn}
+            onSubmitEditing={handleSubmit}
+            returnKeyType="go"
+          />
+
+          {signInError !== null && (
+            <View style={styles.error} accessibilityRole="alert">
+              <Text style={styles.errorText}>{signInError}</Text>
+            </View>
+          )}
+
+          <Pressable
+            onPress={handleSubmit}
+            disabled={!canSubmit}
+            style={({ pressed }) => [
+              styles.button,
+              !canSubmit ? styles.buttonDisabled : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+            accessibilityRole="button"
+          >
+            {isSigningIn ? (
+              <ActivityIndicator color={colors.headerText} />
+            ) : (
+              <Text style={styles.buttonText}>Войти</Text>
+            )}
+          </Pressable>
+
+          <Text style={styles.hint}>
+            Забыли пароль? Сбросить его может только директор.
+          </Text>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.header,
+  },
+  scroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  brand: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  logo: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoText: {
+    color: colors.headerText,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  brandName: {
+    color: colors.headerText,
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 3,
+    marginTop: spacing.md,
+  },
+  brandTagline: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  form: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+  formTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+    marginBottom: spacing.lg,
+  },
+  label: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  labelSpacing: {
+    marginTop: spacing.lg,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: 15,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
+  },
+  error: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+  },
+  button: {
+    marginTop: spacing.xl,
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.md + 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonPressed: {
+    opacity: 0.85,
+  },
+  buttonText: {
+    color: colors.headerText,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  hint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+  },
+});

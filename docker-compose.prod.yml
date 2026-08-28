@@ -1,0 +1,105 @@
+# Развёртывание на одном сервере.
+#
+#   cp .env.production.example .env.production
+#   # заполнить домен, пароли и секрет
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Четыре сервиса: база, API, панель и обратный прокси с автоматическим HTTPS.
+# Наружу торчит ТОЛЬКО прокси — ни база, ни приложения своих портов на хост
+# не публикуют, иначе их можно было бы дёрнуть в обход TLS.
+#
+# Рассчитано на мастерскую с двумя десятками сотрудников: один сервер,
+# без кластера и балансировки. Для такого масштаба это не упрощение, а
+# соразмерность — ограничитель попыток входа, например, хранит счётчики
+# в памяти процесса и при двух экземплярах считал бы порознь.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?нужен POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нужен POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-curtain_crm}
+      LANG: ru_RU.utf8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-curtain_crm}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # Именно `service_healthy`: без этого API стартует раньше, чем СУБД
+        # примет первое подключение, и падает на разборе конфигурации.
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-curtain_crm}
+      JWT_SECRET: ${JWT_SECRET:?нужен JWT_SECRET, минимум 32 символа}
+      ACCESS_TOKEN_TTL_MINUTES: ${ACCESS_TOKEN_TTL_MINUTES:-15}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      # Панель и API живут на одном домене за прокси, поэтому CORS в проде
+      # фактически не задействован — список оставлен на случай, если панель
+      # когда-нибудь переедет на отдельный поддомен.
+      CORS_ORIGINS: https://${DOMAIN:?нужен DOMAIN}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-disk}
+      STORAGE_DISK_PATH: /app/storage
+      STORAGE_PUBLIC_BASE_URL: https://${DOMAIN}/files
+      # За прокси адрес клиента приходит заголовком, и ограничитель обращений
+      # должен считать по нему, а не по адресу самого прокси — иначе весь
+      # трафик выглядит как один клиент.
+      TRUST_PROXY_HEADERS: 'true'
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-15}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+    volumes:
+      # Том обязателен при STORAGE_DRIVER=disk: без него фотографии заказов
+      # и голосовые комментарии исчезнут при первом же пересоздании контейнера,
+      # а в базе останутся ключи на несуществующие файлы.
+      - storage:/app/storage
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN}
+      # Caddy сам получает и продлевает сертификат Let's Encrypt; адрес нужен
+      # для писем об истечении.
+      ACME_EMAIL: ${ACME_EMAIL:?нужен ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Сертификаты переживают пересоздание контейнера: без тома Let's Encrypt
+      # быстро упрётся в ограничение на число выпусков.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  pgdata:
+  storage:
+  caddy-data:
+  caddy-config:

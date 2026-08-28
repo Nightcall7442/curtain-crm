@@ -1,0 +1,136 @@
+# Проверки на каждый push и pull request.
+#
+# Разделено на две работы намеренно. `checks` не нужна база и он занимает
+# полторы минуты — это быстрый ответ автору правки. `integration` поднимает
+# настоящий PostgreSQL и гоняет по нему смоук: генерируемые колонки,
+# check-констрейнты, частичные индексы и `SELECT ... FOR UPDATE` в переходах
+# статуса нельзя проверить ничем, кроме живой базы. Юнит-тесты их не видят.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Новый push в ту же ветку отменяет предыдущий прогон: очередь из пяти
+# прогонов одной ветки никому не нужна.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Секрет проверок, а не продакшена: схема требует минимум 32 символа.
+  JWT_SECRET: ci-only-secret-not-used-anywhere-else-32
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.4'
+
+jobs:
+  checks:
+    name: Типы, стиль, тесты, сборка
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Типы
+        run: pnpm typecheck
+
+      - name: Стиль
+        run: pnpm lint
+
+      - name: Юнит-тесты
+        run: pnpm test
+
+      # Драйвер хранилища проверяется против локального S3-совместимого
+      # сервера, который скрипт поднимает сам. Бакета и ключей не требует.
+      - name: S3-драйвер
+        run: pnpm --filter @curtain-crm/api s3:check
+
+      - name: Сборка веб-панели
+        run: pnpm --filter @curtain-crm/web build
+
+  integration:
+    name: Смоук на живой базе
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: curtain
+          POSTGRES_PASSWORD: curtain
+          POSTGRES_DB: curtain_crm
+        ports: ['5432:5432']
+        # Без проверки готовности шаги начнутся раньше, чем СУБД примет
+        # первое подключение, и упадут на пустом месте.
+        options: >-
+          --health-cmd "pg_isready -U curtain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://curtain:curtain@localhost:5432/curtain_crm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Миграции применяются к пустой базе — заодно проверяется, что они
+      # накатываются с нуля, а не только поверх уже развёрнутой схемы.
+      - name: Миграции
+        run: pnpm db:migrate
+
+      - name: Смоук
+        run: pnpm --filter @curtain-crm/api smoke
+
+  mobile:
+    name: Сборка мобильного бандла
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Ни typecheck, ни ESLint не видят проблем разрешения модулей: Metro
+      # резолвит по своим правилам. Приложение однажды уже не собиралось из-за
+      # ненайденного `@babel/runtime`, и заметить это можно было только сборкой.
+      - name: Бандл
+        run: pnpm --filter @curtain-crm/mobile exec expo export --platform android --output-dir dist
+
+      - name: Проверка совместимости зависимостей с Expo SDK
+        run: pnpm --filter @curtain-crm/mobile exec expo-doctor
+        # Доктор ругается на `expo-av` как unmaintained: в SDK 52 он рабочий,
+        # замена появится при переходе на SDK 53. Прогон информативный.
+        continue-on-error: true

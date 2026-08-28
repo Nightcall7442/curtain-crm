@@ -1,0 +1,262 @@
+'use client';
+
+import {
+  Role,
+  ROLE_LABELS_RU,
+  ROLES,
+} from '@curtain-crm/shared';
+import { KeyRound, Pencil, ShieldCheck, UserMinus, UserPlus } from 'lucide-react';
+import { useState, type ReactElement } from 'react';
+
+import { useAuth } from '@/components/providers/AuthProvider';
+import { Badge } from '@/components/ui/Badge';
+import {
+  Button,
+  Field,
+  FormError,
+  Input,
+  Modal,
+} from '@/components/ui/Form';
+import { trpc } from '@/lib/trpc';
+import { cn } from '@/lib/utils';
+
+/**
+ * Действия над сотрудником: роли, приём и увольнение, сброс пароля.
+ *
+ * Все три процедуры объявлены как `ceoProcedure` — ролями управляет только
+ * директор. Кнопки скрываются от остальных, но решает, как всегда, сервер.
+ *
+ * Система защищена от самоблокировки: снять последнюю роль, уволить
+ * последнего директора или деактивировать себя нельзя — сервер вернёт
+ * понятную ошибку, и она показывается здесь как есть.
+ */
+export function EmployeeActions({
+  employee,
+  onEdit,
+}: {
+  readonly employee: {
+    readonly id: number;
+    readonly fullName: string;
+    readonly isActive: boolean;
+    readonly roles: readonly Role[];
+  };
+  readonly onEdit: () => void;
+}): ReactElement {
+  const { hasRole, user } = useAuth();
+  const isCeo = hasRole(Role.CEO);
+
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+
+  const utils = trpc.useUtils();
+  const refresh = async (): Promise<void> => {
+    await Promise.all([utils.users.list.invalidate(), utils.users.stats.invalidate()]);
+  };
+
+  const grant = trpc.users.grantRole.useMutation({ onSuccess: refresh });
+  const revoke = trpc.users.revokeRole.useMutation({ onSuccess: refresh });
+  const setActive = trpc.users.setActive.useMutation({ onSuccess: refresh });
+  const resetPassword = trpc.users.resetPassword.useMutation({
+    onSuccess() {
+      setPasswordOpen(false);
+      setNewPassword('');
+    },
+  });
+
+  const isSelf = user?.id === employee.id;
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <IconButton label="Изменить данные" onClick={onEdit}>
+        <Pencil className="h-3.5 w-3.5" />
+      </IconButton>
+
+      {isCeo && (
+        <>
+          <IconButton
+            label="Роли"
+            onClick={() => {
+              setRolesOpen(true);
+            }}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+          </IconButton>
+
+          <IconButton
+            label="Сбросить пароль"
+            onClick={() => {
+              setPasswordOpen(true);
+            }}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+          </IconButton>
+
+          <IconButton
+            label={employee.isActive ? 'Уволить' : 'Восстановить'}
+            disabled={setActive.isPending || (isSelf && employee.isActive)}
+            tone={employee.isActive ? 'danger' : 'positive'}
+            onClick={() => {
+              setActive.mutate({ id: employee.id, isActive: !employee.isActive });
+            }}
+          >
+            {employee.isActive ? (
+              <UserMinus className="h-3.5 w-3.5" />
+            ) : (
+              <UserPlus className="h-3.5 w-3.5" />
+            )}
+          </IconButton>
+        </>
+      )}
+
+      {setActive.error !== null && (
+        <span className="max-w-[240px] truncate text-[10.5px] text-danger" title={setActive.error.message}>
+          {setActive.error.message}
+        </span>
+      )}
+
+      {/* --- Роли --------------------------------------------------------- */}
+      <Modal
+        open={rolesOpen}
+        title={`Роли: ${employee.fullName}`}
+        onClose={() => {
+          setRolesOpen(false);
+        }}
+        footer={
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setRolesOpen(false);
+            }}
+          >
+            Закрыть
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[12px] text-secondary">
+            Роли складываются: сотрудник с ролями «мастер» и «швея» получает
+            права обеих. Изменения применяются сразу и попадают в журнал.
+          </p>
+
+          <FormError message={grant.error?.message ?? revoke.error?.message ?? null} />
+
+          <ul className="space-y-1.5">
+            {ROLES.map((role) => {
+              const active = employee.roles.includes(role);
+              const busy = grant.isPending || revoke.isPending;
+
+              return (
+                <li
+                  key={role}
+                  className="flex items-center gap-3 rounded border border-subtle bg-base/40 px-3 py-2"
+                >
+                  <span className="flex-1 text-[12.5px] text-primary">
+                    {ROLE_LABELS_RU[role]}
+                  </span>
+
+                  {active && <Badge tone="positive">выдана</Badge>}
+
+                  <Button
+                    variant={active ? 'danger' : 'secondary'}
+                    disabled={busy}
+                    onClick={() => {
+                      if (active) revoke.mutate({ id: employee.id, role });
+                      else grant.mutate({ id: employee.id, role });
+                    }}
+                  >
+                    {active ? 'Отозвать' : 'Выдать'}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </Modal>
+
+      {/* --- Сброс пароля -------------------------------------------------- */}
+      <Modal
+        open={passwordOpen}
+        title={`Сброс пароля: ${employee.fullName}`}
+        onClose={() => {
+          setPasswordOpen(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPasswordOpen(false);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              loading={resetPassword.isPending}
+              disabled={newPassword.length < 8}
+              onClick={() => {
+                resetPassword.mutate({ id: employee.id, newPassword });
+              }}
+            >
+              Сбросить
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormError message={resetPassword.error?.message ?? null} />
+
+          <p className="text-[12px] text-secondary">
+            Текущий пароль знать не нужно. Все сессии сотрудника будут
+            завершены — на телефоне ему придётся войти заново.
+          </p>
+
+          <Field label="Новый пароль" required hint="Минимум 8 символов">
+            <Input
+              type="text"
+              value={newPassword}
+              onChange={(event) => {
+                setNewPassword(event.target.value);
+              }}
+              placeholder="Передайте сотруднику лично"
+            />
+          </Field>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function IconButton({
+  children,
+  label,
+  onClick,
+  disabled = false,
+  tone = 'neutral',
+}: {
+  readonly children: ReactElement;
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly disabled?: boolean;
+  readonly tone?: 'neutral' | 'danger' | 'positive';
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'grid h-7 w-7 place-items-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-30',
+        tone === 'danger'
+          ? 'text-muted hover:bg-danger/10 hover:text-danger'
+          : tone === 'positive'
+            ? 'text-muted hover:bg-positive/10 hover:text-positive'
+            : 'text-muted hover:bg-raised hover:text-primary',
+      )}
+    >
+      {children}
+    </button>
+  );
+}

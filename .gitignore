@@ -1,0 +1,51 @@
+# Зависимости
+node_modules/
+.pnpm-store/
+
+# Сборка
+dist/
+build/
+.next/
+out/
+.expo/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Переменные окружения (в репозиторий попадают только *.example)
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Локальное файловое хранилище (disk-драйвер storage.service)
+storage/
+uploads/
+
+# Логи
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# Редакторы / ОС
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Тесты
+coverage/
+
+# Резервные копии
+backups/
+
+# Окружение Claude Code.
+# В репозиторий попадают только агенты-аудиторы из .claude/agents — они
+# написаны под этот проект и упомянуты в плане работ. Остальное — вендорные
+# скиллы (13 МБ) и локальные разрешения с путями конкретной машины.
+.claude/skills/
+.claude/commands/
+.claude/settings.local.json

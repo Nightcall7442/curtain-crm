@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "Design House",
+    "slug": "curtain-crm-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "designhouse",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#14504A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "uz.designhouse.crm",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Геолокация нужна, чтобы отметить начало и конец смены рядом с цехом.",
+        "NSCameraUsageDescription": "Камера нужна для фотофиксации этапов заказа.",
+        "NSPhotoLibraryUsageDescription": "Доступ к галерее нужен, чтобы приложить фото по заказу.",
+        "NSMicrophoneUsageDescription": "Микрофон нужен для голосовых комментариев к заказу."
+      }
+    },
+    "android": {
+      "package": "uz.designhouse.crm",
+      "adaptiveIcon": {
+        "backgroundColor": "#14504A"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Геолокация нужна, чтобы отметить начало и конец смены рядом с цехом."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Доступ к галерее нужен, чтобы приложить фото по заказу.",
+          "cameraPermission": "Камера нужна для фотофиксации этапов заказа."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Микрофон нужен для голосовых комментариев к заказу."
+        }
+      ]
+    ],
+    "extra": {
+      "apiUrl": null
+    }
+  }
+}

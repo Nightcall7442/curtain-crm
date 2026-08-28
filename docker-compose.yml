@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: curtain-crm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-curtain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-curtain}
+      POSTGRES_DB: ${POSTGRES_DB:-curtain_crm}
+      # Локаль для корректной сортировки кириллицы
+      LANG: ru_RU.utf8
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - curtain-crm-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-curtain} -d ${POSTGRES_DB:-curtain_crm}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  curtain-crm-pgdata:

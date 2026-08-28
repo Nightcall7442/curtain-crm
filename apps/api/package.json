@@ -1,0 +1,50 @@
+{
+  "name": "@curtain-crm/api",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./router": "./src/routers/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit && echo \"API запускается через tsx, отдельная сборка не требуется\"",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "smoke": "tsx src/scripts/smoke.ts",
+    "demo": "tsx src/scripts/demo.ts",
+    "gc": "tsx src/scripts/storage-gc.ts",
+    "s3:check": "tsx src/scripts/s3-check.ts",
+    "backup": "tsx src/scripts/backup.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1120.0",
+    "@aws-sdk/s3-request-presigner": "^3.1120.0",
+    "@curtain-crm/db": "workspace:*",
+    "@curtain-crm/shared": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "@trpc/server": "^11.0.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6",
+    "postgres": "^3.4.5",
+    "superjson": "^2.2.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@curtain-crm/config": "workspace:*",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.18.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

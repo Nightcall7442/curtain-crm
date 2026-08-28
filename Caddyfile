@@ -1,0 +1,51 @@
+# Обратный прокси и HTTPS.
+#
+# Caddy сам получает сертификат Let's Encrypt при первом запуске и продлевает
+# его дальше — отдельного certbot и заданий в cron не нужно. Условие одно:
+# домен из DOMAIN должен указывать A-записью на этот сервер, а порты 80 и 443
+# должны быть открыты.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# API и раздача файлов — на бэкенд. Порядок важен: эти два правила должны
+	# стоять ДО общего, иначе запросы уйдут в панель и вернут её 404.
+	handle /trpc/* {
+		reverse_proxy api:3000
+	}
+
+	# Файлы хранилища при STORAGE_DRIVER=disk. Токен здесь не проверяется —
+	# `<img src>` и `<audio src>` не шлют заголовок Authorization; вместо этого
+	# адрес подписан и живёт час, а подпись проверяет сам API.
+	handle /files/* {
+		reverse_proxy api:3000
+	}
+
+	handle /health {
+		reverse_proxy api:3000
+	}
+
+	# Всё остальное — веб-панель.
+	handle {
+		reverse_proxy web:3001
+	}
+
+	header {
+		# HSTS: браузер запомнит, что сюда ходят только по HTTPS.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		# Уборка: версия сервера наружу не нужна.
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

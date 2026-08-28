@@ -1,0 +1,63 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "allowJs": true,
+    "incremental": true,
+
+    /**
+     * Приложение не публикует типы, поэтому декларации не нужны.
+     *
+     * С `declaration: true` компилятор дополнительно требует, чтобы КАЖДЫЙ
+     * выводимый тип можно было назвать по имени в будущем `.d.ts`. Клиент
+     * tRPC выводится из `AppRouter`, а тот ссылается на внутренние типы
+     * `apps/api` через симлинки pnpm — получается TS2742 «inferred type
+     * cannot be named». Отключение флага снимает требование, которое здесь
+     * ничего не защищает: `.d.ts` для страниц Next никто не потребляет.
+     */
+    "declaration": false,
+    "declarationMap": false,
+
+    /**
+     * `strict` и `noUncheckedIndexedAccess` включены (требование к качеству
+     * кода), а `exactOptionalPropertyTypes` здесь выключен намеренно.
+     *
+     * Причина — типы сторонних библиотек на границе UI. `next/link` объявляет
+     * `onClick: MouseEventHandler` без `| undefined`, а `fetch` в
+     * `@trpc/client` — `signal?: AbortSignal | undefined` против
+     * DOM-овского `signal?: AbortSignal | null`. В рантайме они
+     * взаимозаменяемы, но при включённом флаге каждое такое место требует
+     * приведения через `as`. Один отключённый флаг честнее россыпи `as`:
+     * `as` гасит проверку типа целиком, флаг — только одно её измерение.
+     *
+     * В `packages/*` и `apps/api`, где мы владеем всеми типами, флаг включён.
+     */
+    "exactOptionalPropertyTypes": false,
+    "plugins": [{ "name": "next" }],
+
+    /**
+     * `react` и `react-dom` жёстко привязаны к копии типов ЭТОГО приложения.
+     *
+     * Без этого сборка ломается так: мобильное приложение требует
+     * `@types/react@18` (React Native 0.76), и эта копия оказывается в общем
+     * сторе pnpm. Типы `styled-jsx`, вшитые в Next 15, импортируют `react`
+     * и резолвят его именно в 18-ю копию — из-за чего глобальный неймспейс
+     * `JSX` объявляется по React 18, а код приложения использует React 19.
+     * Итог — десятки ошибок вида «ReactNode is not assignable to
+     * React.ReactNode», в которых обе стороны называются одинаково.
+     *
+     * Правило ниже заставляет ВСЕ импорты `react` в этом проекте (включая
+     * импорты изнутри зависимостей) указывать на одну копию типов.
+     */
+    "paths": {
+      "@/*": ["./src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next"]
+}
