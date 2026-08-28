@@ -49,3 +49,8 @@ backups/
 .claude/skills/
 .claude/commands/
 .claude/settings.local.json
+
+# Снимки базы. Демо-данные воспроизводятся `pnpm db:seed` и `pnpm demo`,
+# а резервные копии делает `pnpm --filter @curtain-crm/api backup`.
+# Снимок в репозитории устаревает молча и расходится с обоими способами.
+*_dump.sql
