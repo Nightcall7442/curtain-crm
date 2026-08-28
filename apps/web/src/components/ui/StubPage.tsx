@@ -23,7 +23,7 @@ export function StubPage({
       <section className="max-w-lg rounded-panel border border-subtle bg-panel p-8 text-center shadow-panel">
         <span
           aria-hidden
-          className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-gold-dim/50 text-gold-dim"
+          className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-accent-muted/50 text-accent-muted"
         >
           <Construction className="h-5 w-5" />
         </span>
@@ -39,7 +39,7 @@ export function StubPage({
             <ul className="mt-2 space-y-1 text-left text-[12.5px] text-secondary">
               {requires.map((item) => (
                 <li key={item} className="flex gap-2">
-                  <span aria-hidden className="text-gold-dim">
+                  <span aria-hidden className="text-accent-muted">
                     •
                   </span>
                   {item}

@@ -21,6 +21,7 @@ import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
+import { formatNumber } from '@/lib/utils';
 
 /**
  * Главная панель руководства.
@@ -177,7 +178,7 @@ export function ManagementDashboard(): ReactElement {
                       // и нигде не фиксируется.
                       {
                         label: 'Объём в работе',
-                        value: `${workshops.data.sewing.pendingAreaM2.toString()} м²`,
+                        value: `${formatNumber(workshops.data.sewing.pendingAreaM2)} м²`,
                       },
                       {
                         label: 'Сшито сегодня',
@@ -317,7 +318,7 @@ export function ManagementDashboard(): ReactElement {
                             value:
                               performers.data.master.avgMeasurementDays === null
                                 ? '—'
-                                : `${performers.data.master.avgMeasurementDays.toString()} дн`,
+                                : `${formatNumber(performers.data.master.avgMeasurementDays)} дн`,
                           },
                           {
                             label: 'Без переделок',
@@ -335,7 +336,7 @@ export function ManagementDashboard(): ReactElement {
                       : [
                           {
                             label: 'Сшито',
-                            value: `${performers.data.sewer.areaM2.toString()} м²`,
+                            value: `${formatNumber(performers.data.sewer.areaM2)} м²`,
                           },
                           { label: 'Заказы', value: performers.data.sewer.ordersCount.toString() },
                           {
@@ -480,7 +481,7 @@ export function ManagementDashboard(): ReactElement {
               key: 'place',
               header: 'Место',
               align: 'center',
-              render: (row) => <span className="text-gold-soft">{row.place}</span>,
+              render: (row) => <span className="text-accent">{row.place}</span>,
             },
             {
               key: 'name',

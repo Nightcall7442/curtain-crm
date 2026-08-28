@@ -65,14 +65,14 @@ export function KpiCard({
               <Text
                 style={[
                   styles.percent,
-                  { color: percent >= 100 ? colors.accent : colors.warning },
+                  { color: percent >= 100 ? colors.positive : colors.warning },
                 ]}
               >
                 {`${percent.toFixed(0)}%`}
               </Text>
               <Progress
                 percent={percent}
-                color={percent >= 100 ? colors.accent : colors.warning}
+                color={percent >= 100 ? colors.positive : colors.warning}
               />
             </View>
           )}

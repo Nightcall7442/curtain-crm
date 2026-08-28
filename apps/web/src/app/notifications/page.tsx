@@ -59,7 +59,7 @@ export default function NotificationsPage(): ReactElement {
                   setUnreadOnly(event.target.checked);
                   setPage(1);
                 }}
-                className="accent-[rgb(var(--gold))]"
+                className="accent-[rgb(var(--accent))]"
               />
               Только непрочитанные
             </label>
@@ -96,7 +96,7 @@ export default function NotificationsPage(): ReactElement {
                   'rounded border p-3 transition-colors',
                   item.isRead
                     ? 'border-subtle bg-base/30'
-                    : 'border-gold-dim/40 bg-gold/5',
+                    : 'border-accent-muted/40 bg-accent/5',
                 )}
               >
                 <div className="flex items-start gap-2">
@@ -112,7 +112,7 @@ export default function NotificationsPage(): ReactElement {
                     {item.relatedOrderId !== null && (
                       <Link
                         href={`/orders/${item.relatedOrderId.toString()}`}
-                        className="text-[11.5px] text-gold-soft hover:underline"
+                        className="text-[11.5px] text-accent hover:underline"
                       >
                         К заказу
                       </Link>

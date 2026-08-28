@@ -17,15 +17,20 @@ import { cn } from '@/lib/utils';
  * должен различать «Выполнен» и «Отменён» без опоры на оттенок.
  */
 
-type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'gold';
+type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'accent';
 
+/**
+ * Тона на светлом фоне держатся на слабой заливке и чуть более заметной
+ * рамке: сплошной цвет в списке из двадцати строк начинает кричать, а рамка
+ * сохраняет форму метки даже там, где заливка почти сливается с карточкой.
+ */
 const TONE_CLASSES: Readonly<Record<Tone, string>> = {
-  neutral: 'border-strong/60 bg-raised text-secondary',
-  positive: 'border-positive/30 bg-positive/10 text-positive',
-  warning: 'border-warning/30 bg-warning/10 text-warning',
-  danger: 'border-danger/30 bg-danger/10 text-danger',
-  info: 'border-info/30 bg-info/10 text-info',
-  gold: 'border-gold/30 bg-gold/10 text-gold-soft',
+  neutral: 'border-strong bg-raised text-secondary',
+  positive: 'border-positive/25 bg-positive/[0.08] text-positive',
+  warning: 'border-warning/25 bg-warning/[0.09] text-warning',
+  danger: 'border-danger/25 bg-danger/[0.07] text-danger',
+  info: 'border-info/25 bg-info/[0.07] text-info',
+  accent: 'border-accent/25 bg-accent/[0.07] text-accent',
 };
 
 export function Badge({
@@ -40,7 +45,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[11px] font-medium leading-4',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-[11px] font-medium leading-4',
         TONE_CLASSES[tone],
         className,
       )}
@@ -58,14 +63,14 @@ const ORDER_STATUS_TONE: Readonly<Record<OrderStatus, Tone>> = {
   measurement_assigned: 'info',
   measurement_done: 'info',
   pending_sewing_assignment: 'warning',
-  sewing_in_progress: 'gold',
-  sewing_done: 'gold',
+  sewing_in_progress: 'accent',
+  sewing_done: 'accent',
   pending_qc: 'warning',
   qc_failed: 'danger',
   qc_passed: 'positive',
   pending_installation_assignment: 'warning',
   installation_assigned: 'info',
-  installation_in_progress: 'gold',
+  installation_in_progress: 'accent',
   installation_done: 'positive',
   completed: 'positive',
   cancelled: 'neutral',

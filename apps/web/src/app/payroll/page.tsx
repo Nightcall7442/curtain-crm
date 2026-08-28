@@ -20,6 +20,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { trpc } from '@/lib/trpc';
+import { formatPercent } from '@/lib/utils';
 
 /**
  * Зарплаты: расчёт, утверждение и выплата.
@@ -94,7 +95,7 @@ export default function PayrollPage(): ReactElement {
                   setMonth(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Месяц"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
               >
                 {MONTH_NAMES.map((name, index) => (
                   <option key={name} value={index + 1}>
@@ -109,7 +110,7 @@ export default function PayrollPage(): ReactElement {
                   setYear(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Год"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
               >
                 {[now.getFullYear() - 1, now.getFullYear()].map((value) => (
                   <option key={value} value={value}>
@@ -124,7 +125,7 @@ export default function PayrollPage(): ReactElement {
                 onClick={() => {
                   calculate.mutate(period);
                 }}
-                className="flex items-center gap-1.5 rounded bg-gold px-3 py-1.5 text-[12px] font-medium text-base disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-[12px] font-medium text-base disabled:opacity-50"
               >
                 <Calculator className="h-3.5 w-3.5" aria-hidden />
                 Рассчитать
@@ -232,7 +233,7 @@ export default function PayrollPage(): ReactElement {
                       onClick={() => {
                         markPaid.mutate({ id: row.id });
                       }}
-                      className="rounded border border-gold/40 px-2 py-1 text-[11.5px] text-gold-soft hover:bg-gold/10 disabled:opacity-50"
+                      className="rounded border border-accent/40 px-2 py-1 text-[11.5px] text-accent hover:bg-accent/10 disabled:opacity-50"
                     >
                       Выплачено
                     </button>
@@ -279,7 +280,7 @@ export default function PayrollPage(): ReactElement {
                   <p className="text-[12.5px] font-medium text-primary">
                     {ROLE_LABELS_RU[scheme.role]}
                   </p>
-                  <p className="mt-0.5 text-[11.5px] text-gold-soft">
+                  <p className="mt-0.5 text-[11.5px] text-accent">
                     {PAYROLL_SCHEME_TYPE_LABELS_RU[scheme.type]}
                   </p>
                   <dl className="mt-2 space-y-0.5 text-[11.5px] text-secondary">
@@ -304,7 +305,7 @@ export default function PayrollPage(): ReactElement {
                     {scheme.commissionPercent !== null && (
                       <div className="flex justify-between gap-2">
                         <dt className="text-muted">Процент</dt>
-                        <dd>{`${Number.parseFloat(scheme.commissionPercent).toFixed(2)}%`}</dd>
+                        <dd>{formatPercent(Number.parseFloat(scheme.commissionPercent), { fractionDigits: 2 })}</dd>
                       </div>
                     )}
                   </dl>
@@ -319,7 +320,7 @@ export default function PayrollPage(): ReactElement {
 }
 
 function PayrollStatusBadge({ status }: { readonly status: PayrollRecordStatus }): ReactElement {
-  const tone = status === 'paid' ? 'positive' : status === 'approved' ? 'gold' : 'neutral';
+  const tone = status === 'paid' ? 'positive' : status === 'approved' ? 'accent' : 'neutral';
   return <Badge tone={tone}>{PAYROLL_RECORD_STATUS_LABELS_RU[status]}</Badge>;
 }
 

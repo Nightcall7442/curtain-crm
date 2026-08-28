@@ -139,7 +139,7 @@ export function Field({
 
 const CONTROL_CLASS =
   'w-full rounded border border-subtle bg-base px-2.5 py-2 text-[13px] text-primary ' +
-  'placeholder:text-muted/70 focus:border-gold-dim focus:outline-none ' +
+  'placeholder:text-muted/70 focus:border-accent-muted focus:outline-none ' +
   'disabled:cursor-not-allowed disabled:opacity-60';
 
 export function Input(
@@ -227,7 +227,7 @@ export function ChipSelect({
             className={cn(
               'rounded border px-2 py-1 text-[11.5px] transition-colors',
               selected
-                ? 'border-gold/50 bg-gold/15 text-gold-soft'
+                ? 'border-accent/50 bg-accent/15 text-accent'
                 : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
             )}
           >
@@ -254,7 +254,7 @@ export function Button({
   readonly loading?: boolean;
 }): ReactElement {
   const variants = {
-    primary: 'bg-gold text-base hover:opacity-90',
+    primary: 'bg-accent text-base hover:opacity-90',
     secondary: 'border border-subtle text-secondary hover:bg-raised hover:text-primary',
     danger: 'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20',
     ghost: 'text-secondary hover:bg-raised hover:text-primary',

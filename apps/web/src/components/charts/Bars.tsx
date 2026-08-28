@@ -35,7 +35,7 @@ export function RankedBars({
         <li key={item.key} className="flex items-center gap-2.5">
           <span
             aria-hidden
-            className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-gold-dim/60 text-[10px] font-semibold text-gold-soft"
+            className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-muted/60 text-[10px] font-semibold text-accent"
           >
             {index + 1}
           </span>
@@ -46,7 +46,7 @@ export function RankedBars({
 
           <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-raised">
             <span
-              className="block h-full rounded-full bg-gold"
+              className="block h-full rounded-full bg-accent"
               style={{ width: max === 0 ? '0%' : `${((item.value / max) * 100).toFixed(1)}%` }}
             />
           </span>
@@ -63,17 +63,17 @@ export function RankedBars({
 /** Полоса прогресса с подписью — «Выполнено KPI», «План на сегодня». */
 export function ProgressBar({
   percent,
-  tone = 'gold',
+  tone = 'accent',
   className,
 }: {
   readonly percent: number;
-  readonly tone?: 'gold' | 'positive' | 'warning' | 'danger' | 'info';
+  readonly tone?: 'accent' | 'positive' | 'warning' | 'danger' | 'info';
   readonly className?: string;
 }): ReactElement {
   const clamped = Math.min(100, Math.max(0, percent));
 
   const toneClass = {
-    gold: 'bg-gold',
+    accent: 'bg-accent',
     positive: 'bg-positive',
     warning: 'bg-warning',
     danger: 'bg-danger',

@@ -61,7 +61,7 @@ export default function ArchivePage(): ReactElement {
                 setPage(1);
               }}
               placeholder="Номер, клиент или телефон"
-              className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-gold-dim focus:outline-none"
+              className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
             />
             <select
               value={status}
@@ -70,7 +70,7 @@ export default function ArchivePage(): ReactElement {
                 setPage(1);
               }}
               aria-label="Статус"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
             >
               <option value="">Выполненные и отменённые</option>
               <option value={OrderStatus.COMPLETED}>Только выполненные</option>
@@ -92,7 +92,7 @@ export default function ArchivePage(): ReactElement {
             render: (row) => (
               <Link
                 href={`/orders/${row.id.toString()}`}
-                className="font-medium text-gold-soft hover:underline"
+                className="font-medium text-accent hover:underline"
               >
                 {row.orderNumber ?? `#${row.id.toString()}`}
               </Link>

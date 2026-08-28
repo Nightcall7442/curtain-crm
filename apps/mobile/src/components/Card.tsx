@@ -68,10 +68,10 @@ export function Pill({
 }): ReactElement {
   const palette = {
     neutral: { bg: colors.surfaceMuted, fg: colors.textSecondary },
-    positive: { bg: colors.accentSoft, fg: colors.accent },
-    warning: { bg: colors.warningSoft, fg: '#B45309' },
+    positive: { bg: colors.positiveSoft, fg: colors.positive },
+    warning: { bg: colors.warningSoft, fg: colors.warning },
     danger: { bg: colors.dangerSoft, fg: colors.danger },
-    info: { bg: colors.infoSoft, fg: '#1D4ED8' },
+    info: { bg: colors.infoSoft, fg: colors.info },
   }[tone];
 
   return (

@@ -424,9 +424,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
+  // Движение вперёд по конвейеру — зелёным: это про «стало лучше»,
+  // а не про фирменный акцент.
   actionForward: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
+    backgroundColor: colors.positiveSoft,
+    borderColor: colors.positive,
   },
   actionRollback: {
     backgroundColor: colors.warningSoft,
@@ -441,10 +443,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionTextForward: {
-    color: colors.accent,
+    color: colors.positive,
   },
   actionTextRollback: {
-    color: '#B45309',
+    color: colors.warning,
   },
   actionTextCancel: {
     color: colors.danger,
@@ -457,7 +459,7 @@ const styles = StyleSheet.create({
   },
   reasonTitle: {
     ...typography.caption,
-    color: '#92400E',
+    color: colors.warning,
     fontWeight: '600',
   },
   reasonInput: {

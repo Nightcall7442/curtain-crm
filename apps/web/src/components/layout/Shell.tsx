@@ -35,7 +35,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
         <div className="flex flex-col items-center gap-3">
           <span
             aria-hidden
-            className="h-8 w-8 animate-spin rounded-full border-2 border-strong border-t-gold"
+            className="h-8 w-8 animate-spin rounded-full border-2 border-strong border-t-accent"
           />
           <span className="text-[13px] text-muted">Загрузка…</span>
         </div>

@@ -37,7 +37,7 @@ import { Button } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDate, initials } from '@/lib/utils';
+import { formatDate, formatPercent, initials } from '@/lib/utils';
 
 /**
  * Ведомость рабочих.
@@ -228,7 +228,7 @@ export default function EmployeesPage(): ReactElement {
                       <span className="text-secondary">{employmentLabel(entry.key)}</span>
                       <span className="text-primary">
                         {entry.count}
-                        <span className="ml-1.5 text-muted">{`${entry.percent.toFixed(1)}%`}</span>
+                        <span className="ml-1.5 text-muted">{formatPercent(entry.percent)}</span>
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-raised">
@@ -318,7 +318,7 @@ export default function EmployeesPage(): ReactElement {
                   setPage(1);
                 }}
                 placeholder="Поиск по имени или телефону"
-                className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-gold-dim focus:outline-none"
+                className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
               />
 
               <FilterSelect
@@ -428,7 +428,7 @@ export default function EmployeesPage(): ReactElement {
               key: 'phone',
               header: 'Телефон',
               render: (row) => (
-                <a href={`tel:${row.phone}`} className="hover:text-gold-soft">
+                <a href={`tel:${row.phone}`} className="hover:text-accent">
                   {formatPhone(row.phone)}
                 </a>
               ),
@@ -468,7 +468,7 @@ export default function EmployeesPage(): ReactElement {
                   <span className="inline-flex w-24 items-center gap-2">
                     <ProgressBar
                       percent={percent}
-                      tone={percent >= 100 ? 'positive' : percent >= 70 ? 'gold' : 'danger'}
+                      tone={percent >= 100 ? 'positive' : percent >= 70 ? 'accent' : 'danger'}
                       className="flex-1"
                     />
                     <span
@@ -606,7 +606,7 @@ export default function EmployeesPage(): ReactElement {
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block text-[12px] text-gold-soft">
+                    <span className="block text-[12px] text-accent">
                       {formatDate(entry.birthDate)}
                     </span>
                     <span className="block text-[11px] text-muted">
@@ -644,7 +644,7 @@ function FilterSelect({
         onChange(event.target.value);
       }}
       aria-label={placeholder}
-      className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+      className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (

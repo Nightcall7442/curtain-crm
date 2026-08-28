@@ -39,13 +39,13 @@ export function DataTable<TRow>({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[12.5px]">
         <thead>
-          <tr className="border-b border-subtle">
+          <tr className="border-b border-subtle bg-raised/45">
             {columns.map((column) => (
               <th
                 key={column.key}
                 scope="col"
                 className={cn(
-                  'whitespace-nowrap px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted',
+                  'whitespace-nowrap px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-muted',
                   column.align === 'right'
                     ? 'text-right'
                     : column.align === 'center'
@@ -64,7 +64,7 @@ export function DataTable<TRow>({
             Array.from({ length: 5 }, (_unused, index) => (
               <tr key={`skeleton-${index.toString()}`} className="border-b border-subtle/60">
                 {columns.map((column) => (
-                  <td key={column.key} className="px-3 py-3">
+                  <td key={column.key} className="px-3.5 py-3">
                     <span className="block h-3 animate-pulse rounded bg-raised/70" />
                   </td>
                 ))}
@@ -86,13 +86,13 @@ export function DataTable<TRow>({
             rows.map((row, index) => (
               <tr
                 key={rowKey(row, index)}
-                className="border-b border-subtle/60 transition-colors last:border-0 hover:bg-raised/40"
+                className="border-b border-subtle/55 transition-colors last:border-0 hover:bg-raised/50"
               >
                 {columns.map((column) => (
                   <td
                     key={column.key}
                     className={cn(
-                      'px-3 py-2.5 text-secondary',
+                      'px-3.5 py-3 text-secondary',
                       column.align === 'right'
                         ? 'text-right'
                         : column.align === 'center'
@@ -167,7 +167,7 @@ export function Pagination({
             className={cn(
               'h-7 min-w-7 rounded px-2 text-[12px] transition-colors',
               value === page
-                ? 'bg-gold/15 text-gold-soft'
+                ? 'bg-accent/15 text-accent'
                 : 'text-secondary hover:bg-raised hover:text-primary',
             )}
           >

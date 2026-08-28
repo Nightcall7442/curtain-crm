@@ -45,14 +45,14 @@ export function Header({
         <Menu className="h-[18px] w-[18px]" />
       </button>
 
-      <h1 className="truncate text-[13px] font-semibold uppercase tracking-[0.16em] text-primary">
+      <h1 className="truncate font-display text-[22px] text-primary">
         {pageTitle(pathname)}
       </h1>
 
       <div className="ml-auto flex items-center gap-2">
         {/* Текущая дата — на макете она в шапке рядом с выбором периода */}
         <span className="hidden items-center gap-2 rounded-md border border-subtle bg-panel px-3 py-1.5 text-[12.5px] text-secondary md:flex">
-          <CalendarDays className="h-4 w-4 text-gold-dim" />
+          <CalendarDays className="h-4 w-4 text-accent-muted" />
           {formatDate(new Date())}
         </span>
 
@@ -77,7 +77,7 @@ export function Header({
         <div className="flex items-center gap-2 rounded-md border border-subtle bg-panel px-2 py-1.5">
           <span
             aria-hidden
-            className="grid h-7 w-7 place-items-center rounded-full bg-raised text-[11px] font-semibold text-gold-soft"
+            className="grid h-7 w-7 place-items-center rounded-full bg-raised text-[11px] font-semibold text-accent"
           >
             {user === null ? '—' : initials(user.fullName)}
           </span>

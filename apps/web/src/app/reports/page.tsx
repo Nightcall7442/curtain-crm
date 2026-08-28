@@ -7,7 +7,7 @@ import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/u
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, formatPercent } from '@/lib/utils';
 
 /**
  * Отчёты: финансовый итог месяца, фонд зарплаты по году и выработка сотрудников.
@@ -53,7 +53,7 @@ export default function ReportsPage(): ReactElement {
                   setMonth(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Месяц"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
               >
                 {MONTH_NAMES.map((name, index) => (
                   <option key={name} value={index + 1}>
@@ -67,7 +67,7 @@ export default function ReportsPage(): ReactElement {
                   setYear(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Год"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
               >
                 {[now.getFullYear() - 1, now.getFullYear()].map((value) => (
                   <option key={value} value={value}>
@@ -112,7 +112,7 @@ export default function ReportsPage(): ReactElement {
               value={
                 finance.data.marginPercent === null
                   ? '—'
-                  : `${finance.data.marginPercent.toFixed(1)}%`
+                  : formatPercent(finance.data.marginPercent)
               }
               caption="Маржа к выручке"
             />

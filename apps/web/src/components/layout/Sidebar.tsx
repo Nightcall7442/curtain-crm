@@ -40,16 +40,16 @@ export function Sidebar({
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-subtle px-4">
         <span
           aria-hidden
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-gold-dim font-serif text-sm font-bold text-gold"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary font-display text-[17px] text-base"
         >
           DH
         </span>
         {!collapsed && (
           <span className="min-w-0">
-            <span className="block truncate text-[13px] font-semibold tracking-[0.18em] text-gold-soft">
-              DESIGN HOUSE
+            <span className="block truncate font-display text-[16px] tracking-[0.01em] text-primary">
+              Design House
             </span>
-            <span className="block truncate text-[10px] tracking-wide text-muted">
+            <span className="block truncate text-[10px] tracking-[0.04em] text-muted">
               шторы премиум класса
             </span>
           </span>
@@ -74,21 +74,21 @@ export function Sidebar({
                   className={cn(
                     'group relative flex items-center gap-3 rounded-md px-3 py-2 text-[13px] transition-colors',
                     active
-                      ? 'bg-raised text-gold-soft'
-                      : 'text-secondary hover:bg-raised/60 hover:text-primary',
+                      ? 'bg-panel text-primary shadow-panel'
+                      : 'text-secondary hover:bg-panel/70 hover:text-primary',
                   )}
                 >
-                  {/* Золотая метка активного пункта — как на макете */}
+                  {/* Глиняная метка активного пункта */}
                   {active && (
                     <span
                       aria-hidden
-                      className="absolute inset-y-1 left-0 w-[3px] rounded-r bg-gold"
+                      className="absolute inset-y-1 left-0 w-[3px] rounded-r bg-accent"
                     />
                   )}
-                  <Icon className={cn('h-[18px] w-[18px] shrink-0', active && 'text-gold')} />
+                  <Icon className={cn('h-[18px] w-[18px] shrink-0', active && 'text-accent')} />
                   {!collapsed && <span className="truncate">{item.label}</span>}
                   {!collapsed && item.stub === true && (
-                    <span className="ml-auto rounded bg-strong/60 px-1.5 py-px text-[9px] uppercase tracking-wide text-muted">
+                    <span className="ml-auto rounded-full border border-subtle px-2 py-px text-[9px] uppercase tracking-[0.08em] text-muted">
                       скоро
                     </span>
                   )}
@@ -108,7 +108,7 @@ export function Sidebar({
                             className={cn(
                               'block rounded px-3 py-1.5 text-[12.5px] transition-colors',
                               childActive
-                                ? 'text-gold-soft'
+                                ? 'text-accent'
                                 : 'text-muted hover:text-primary',
                             )}
                           >

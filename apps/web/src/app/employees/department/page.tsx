@@ -8,6 +8,7 @@ import { departmentColor, departmentLabel } from '@/components/employees/palette
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
+import { formatPercent } from '@/lib/utils';
 
 /**
  * Ведомость по подразделениям.
@@ -120,7 +121,7 @@ export default function DepartmentPage(): ReactElement {
               key: 'share',
               header: 'Доля',
               align: 'right',
-              render: (row) => `${row.percent.toFixed(1)}%`,
+              render: (row) => formatPercent(row.percent),
             },
             {
               key: 'atWork',

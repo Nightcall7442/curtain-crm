@@ -112,7 +112,7 @@ export function EmployeeDashboard(): ReactElement {
         <CardHeader
           title="Мои заказы в работе"
           action={
-            <Link href="/orders" className="text-[12px] text-gold-soft hover:underline">
+            <Link href="/orders" className="text-[12px] text-accent hover:underline">
               Все заказы
             </Link>
           }
@@ -129,7 +129,7 @@ export function EmployeeDashboard(): ReactElement {
               render: (row) => (
                 <Link
                   href={`/orders/${row.id.toString()}`}
-                  className="font-medium text-gold-soft hover:underline"
+                  className="font-medium text-accent hover:underline"
                 >
                   {row.orderNumber ?? `#${row.id.toString()}`}
                 </Link>
@@ -165,7 +165,7 @@ export function EmployeeDashboard(): ReactElement {
           title="Последние уведомления"
           icon={<Bell className="h-4 w-4" />}
           action={
-            <Link href="/notifications" className="text-[12px] text-gold-soft hover:underline">
+            <Link href="/notifications" className="text-[12px] text-accent hover:underline">
               Все уведомления
             </Link>
           }

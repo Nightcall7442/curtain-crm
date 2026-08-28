@@ -2,7 +2,7 @@
 
 import { useId, useState, type ReactElement } from 'react';
 
-import { cn } from '@/lib/utils';
+import { cn, formatPercent } from '@/lib/utils';
 
 /**
  * Кольцевая диаграмма и полукруглый индикатор.
@@ -145,7 +145,7 @@ export function DonutLegend({
           <span className="font-medium text-primary">{segment.value}</span>
           {total > 0 && (
             <span className="w-12 text-right text-muted">
-              {`${(Math.round((segment.value / total) * 1000) / 10).toFixed(1)}%`}
+              {formatPercent(Math.round((segment.value / total) * 1000) / 10)}
             </span>
           )}
         </li>
@@ -164,7 +164,7 @@ export function Gauge({
   percent,
   label,
   size = 160,
-  color = 'rgb(var(--gold))',
+  color = 'rgb(var(--accent))',
 }: {
   readonly percent: number;
   readonly label?: string;

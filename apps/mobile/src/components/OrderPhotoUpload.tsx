@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...typography.caption,
-    color: '#92400E',
+    color: colors.warning,
   },
   actions: {
     flexDirection: 'row',

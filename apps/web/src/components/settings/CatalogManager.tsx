@@ -110,7 +110,7 @@ export function CatalogManager(): ReactElement {
                 className={cn(
                   'flex items-center gap-1 rounded border px-2 py-1 text-[11.5px]',
                   item.isActive
-                    ? 'border-gold/40 bg-gold/10 text-gold-soft'
+                    ? 'border-accent/40 bg-accent/10 text-accent'
                     : 'border-subtle text-muted line-through',
                 )}
               >

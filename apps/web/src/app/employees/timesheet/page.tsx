@@ -64,7 +64,7 @@ export default function TimesheetPage(): ReactElement {
           setPage(1);
         }}
         aria-label="Месяц"
-        className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+        className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
       >
         {MONTH_NAMES.map((name, index) => (
           <option key={name} value={index + 1}>
@@ -80,7 +80,7 @@ export default function TimesheetPage(): ReactElement {
           setPage(1);
         }}
         aria-label="Год"
-        className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+        className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
       >
         {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((value) => (
           <option key={value} value={value}>

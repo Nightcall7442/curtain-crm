@@ -25,6 +25,7 @@ import {
   Textarea,
 } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
+import { formatQuantity } from '@/lib/utils';
 
 /**
  * Создание заказа.
@@ -408,7 +409,7 @@ export function OrderCreateDialog({
                         parsed === null
                           ? 'Ширина × высота в см: 150x200'
                           : parsed.ok
-                            ? `${parsed.value.widthCm.toString()} × ${parsed.value.heightCm.toString()} см · ${parsed.value.areaM2.toString()} м²`
+                            ? `${formatQuantity(parsed.value.widthCm, 1)} × ${formatQuantity(parsed.value.heightCm, 1)} см · ${formatQuantity(parsed.value.areaM2, 2)} м²`
                             : undefined
                       }
                       error={parsed !== null && !parsed.ok ? parsed.message : undefined}

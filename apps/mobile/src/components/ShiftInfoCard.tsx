@@ -67,7 +67,7 @@ export function ShiftInfoCard({
         <View>
           <Row label="Дата" value={dateLabel} />
           <Row label="Начало" value={timeLabel} />
-          <Row label="Идёт" value={duration} valueColor={colors.accent} />
+          <Row label="Идёт" value={duration} valueColor={colors.positive} />
           <Row label="Филиал" value={branchName ?? '—'} />
           {distanceMeters !== null && (
             <Row label="Отметка в" value={`${distanceMeters.toString()} м от цеха`} />

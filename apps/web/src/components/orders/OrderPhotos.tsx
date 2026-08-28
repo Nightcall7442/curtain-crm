@@ -214,7 +214,7 @@ export function OrderPhotos({
                 />
 
                 <div className="p-2">
-                  <p className="text-[11.5px] text-gold-soft">
+                  <p className="text-[11.5px] text-accent">
                     {PHOTO_STAGE_LABELS_RU[photo.stage]}
                   </p>
                   <p className="truncate text-[10.5px] text-muted">{photo.uploadedByName}</p>

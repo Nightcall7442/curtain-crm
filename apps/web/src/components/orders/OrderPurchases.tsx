@@ -14,7 +14,7 @@ import { Card, CardBody, CardHeader, Skeleton } from '@/components/ui/Card';
 import { Button, Field, FormError, Input, Modal, Select } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatPercent, formatQuantity } from '@/lib/utils';
 
 /**
  * Закупки по заказу и его себестоимость.
@@ -108,7 +108,7 @@ export function OrderPurchases({ orderId }: { readonly orderId: number }): React
             {cost.data.marginPercent !== null && (
               <Metric
                 label="Рентабельность"
-                value={`${cost.data.marginPercent.toFixed(1)}%`}
+                value={formatPercent(cost.data.marginPercent)}
               />
             )}
           </dl>
@@ -131,7 +131,7 @@ export function OrderPurchases({ orderId }: { readonly orderId: number }): React
             header: 'Количество',
             align: 'right',
             render: (row) =>
-              `${Number.parseFloat(row.quantity).toString()} ${PURCHASE_UNIT_LABELS_RU[row.unit]}`,
+              `${formatQuantity(Number.parseFloat(row.quantity))} ${PURCHASE_UNIT_LABELS_RU[row.unit]}`,
           },
           {
             key: 'price',

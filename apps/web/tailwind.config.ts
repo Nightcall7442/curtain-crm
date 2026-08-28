@@ -24,10 +24,17 @@ const config: Config = {
         secondary: withAlpha('--text-secondary'),
         muted: withAlpha('--text-muted'),
 
-        gold: {
-          DEFAULT: withAlpha('--gold'),
-          soft: withAlpha('--gold-soft'),
-          dim: withAlpha('--gold-dim'),
+        /**
+         * Акцент назван по роли, а не по цвету.
+         *
+         * Прежнее имя `gold` описывало конкретный оттенок, и после смены
+         * палитры на глиняную оно стало бы врать — а имя, которое врёт,
+         * хуже отсутствующего.
+         */
+        accent: {
+          DEFAULT: withAlpha('--accent'),
+          strong: withAlpha('--accent-strong'),
+          muted: withAlpha('--accent-muted'),
         },
 
         positive: withAlpha('--positive'),
@@ -58,11 +65,16 @@ const config: Config = {
 
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        /** Номера заказов, суммы, часы — там, где колонки цифр должны совпадать. */
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+        /** Фирменные места: экран входа, заголовки разделов. Не для таблиц. */
+        display: ['var(--font-display)', 'Georgia', 'serif'],
       },
 
       boxShadow: {
-        panel: '0 1px 2px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.03)',
-        glow: '0 0 0 1px rgb(var(--gold) / 0.25), 0 0 24px -8px rgb(var(--gold) / 0.4)',
+        /** На светлом фоне тень тёплая и почти незаметная: рамка несёт больше. */
+        panel: '0 1px 2px rgb(26 23 20 / 0.05)',
+        glow: '0 0 0 1px rgb(var(--accent) / 0.3), 0 0 24px -8px rgb(var(--accent) / 0.45)',
       },
 
       borderRadius: {

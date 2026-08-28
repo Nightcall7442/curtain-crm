@@ -143,7 +143,7 @@ export function OrdersView({
                 setPage(1);
               }}
               placeholder="Номер, клиент или телефон"
-              className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-gold-dim focus:outline-none"
+              className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
             />
 
             {lockedStatuses === undefined && (
@@ -154,7 +154,7 @@ export function OrdersView({
                   setPage(1);
                 }}
                 aria-label="Статус или этап заказа"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
               >
                 <option value={SELECT_ALL}>Все статусы</option>
 
@@ -186,7 +186,7 @@ export function OrdersView({
                 setPage(1);
               }}
               aria-label="Приоритет"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
             >
               <option value="">Любой приоритет</option>
               {PRIORITIES.map((value) => (
@@ -233,7 +233,7 @@ export function OrdersView({
             render: (row) => (
               <Link
                 href={`/orders/${row.id.toString()}`}
-                className="font-medium text-gold-soft hover:underline"
+                className="font-mono font-medium text-accent hover:underline"
               >
                 {row.orderNumber ?? `#${row.id.toString()}`}
               </Link>
@@ -245,7 +245,7 @@ export function OrdersView({
             render: (row) => (
               <span className="block">
                 <span className="block text-primary">{row.clientName}</span>
-                <span className="block text-[11px] text-muted">{row.clientPhone}</span>
+                <span className="block font-mono text-[11px] text-muted">{row.clientPhone}</span>
               </span>
             ),
           },
@@ -279,7 +279,7 @@ export function OrdersView({
             header: 'Сумма',
             align: 'right',
             render: (row) => (
-              <span className="text-primary">{formatMoney(parseMoney(row.workPrice))}</span>
+              <span className="font-mono text-primary">{formatMoney(parseMoney(row.workPrice))}</span>
             ),
           },
           {

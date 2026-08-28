@@ -2,6 +2,7 @@
 
 import { useState, type ReactElement } from 'react';
 
+import { AuditDetails } from '@/components/audit/AuditDetails';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -29,6 +30,58 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   payroll_scheme: 'Схема оплаты',
   payroll_record: 'Расчёт зарплаты',
   catalog_item: 'Справочник',
+};
+
+/**
+ * Названия действий.
+ *
+ * Канонический список кодов живёт в `apps/api/src/lib/constants.ts`
+ * (`AUDIT_ACTIONS`), но веб-панель не может его импортировать: `apps/web`
+ * зависит от `apps/api` только по типу `AppRouter`. Дублировать список
+ * значениями в `packages/shared` тоже нечестно — он про устройство сервера,
+ * а не про общий словарь предметной области.
+ *
+ * Поэтому здесь словарь ПЕРЕВОДА, а не список: коды приходят с сервера
+ * (`audit.filters`), а незнакомый код показывается как есть. Новое действие
+ * появится в журнале в тот же день, что и на сервере, — просто по-английски,
+ * пока сюда не допишут строку.
+ */
+const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
+  'user.created': 'Сотрудник создан',
+  'user.updated': 'Сотрудник изменён',
+  'user.deactivated': 'Сотрудник отключён',
+  'user.activated': 'Сотрудник включён',
+  'user.password_reset': 'Пароль сброшен',
+  'user.role_granted': 'Роль выдана',
+  'user.role_revoked': 'Роль снята',
+  'user.branches_changed': 'Филиалы изменены',
+
+  'branch.created': 'Филиал создан',
+  'branch.updated': 'Филиал изменён',
+
+  'shift.adjusted': 'Смена скорректирована',
+  'shift.deleted': 'Смена удалена',
+
+  'order.created': 'Заказ создан',
+  'order.updated': 'Заказ изменён',
+  'order.status_changed': 'Статус изменён',
+  'order.cancelled': 'Заказ отменён',
+  'order.assignee_changed': 'Исполнитель изменён',
+  'order.price_changed': 'Цена изменена',
+
+  'purchase_item.created': 'Товар закупки создан',
+  'purchase_item.price_changed': 'Цена товара изменена',
+  'purchase_item.deactivated': 'Товар отключён',
+  'purchase_item.activated': 'Товар включён',
+
+  'payroll.scheme_changed': 'Схема оплаты изменена',
+  'payroll.calculated': 'Зарплата рассчитана',
+  'payroll.approved': 'Расчёт утверждён',
+  'payroll.paid': 'Зарплата выплачена',
+
+  'catalog.item_created': 'Позиция справочника создана',
+  'catalog.item_updated': 'Позиция справочника изменена',
+  'catalog.item_deactivated': 'Позиция справочника отключена',
 };
 
 export default function AuditPage(): ReactElement {
@@ -71,7 +124,7 @@ export default function AuditPage(): ReactElement {
                 setPage(1);
               }}
               aria-label="Сущность"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
             >
               <option value="">Все сущности</option>
               {(filters.data?.entityTypes ?? []).map((value) => (
@@ -90,12 +143,12 @@ export default function AuditPage(): ReactElement {
                 setPage(1);
               }}
               aria-label="Действие"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-gold-dim focus:outline-none"
+              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
             >
               <option value="">Все действия</option>
               {(filters.data?.actions ?? []).map((value) => (
                 <option key={value} value={value}>
-                  {value}
+                  {ACTION_LABELS_RU[value] ?? value}
                 </option>
               ))}
             </select>
@@ -122,7 +175,13 @@ export default function AuditPage(): ReactElement {
           {
             key: 'action',
             header: 'Действие',
-            render: (row) => <span className="text-gold-soft">{row.action}</span>,
+            // Код действия остаётся в подсказке: по нему ищут в исходниках
+            // и им же фильтруют через API.
+            render: (row) => (
+              <span className="text-primary" title={row.action}>
+                {ACTION_LABELS_RU[row.action] ?? row.action}
+              </span>
+            ),
           },
           {
             key: 'entity',
@@ -135,16 +194,7 @@ export default function AuditPage(): ReactElement {
           {
             key: 'details',
             header: 'Подробности',
-            render: (row) =>
-              row.details === null ? (
-                <span className="text-muted">—</span>
-              ) : (
-                // Детали у каждого действия свои, общей формы у них нет —
-                // показываем как есть, разбирать их будет человек.
-                <span className="block max-w-[36rem] truncate text-[11.5px] text-secondary">
-                  {JSON.stringify(row.details)}
-                </span>
-              ),
+            render: (row) => <AuditDetails details={row.details} />,
           },
           {
             key: 'ip',

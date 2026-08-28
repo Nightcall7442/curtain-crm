@@ -42,7 +42,7 @@ export function CardHeader({
 }): ReactElement {
   return (
     <div className={cn('flex items-center gap-2 border-b border-subtle px-4 py-3', className)}>
-      {icon !== undefined && <span className="text-gold-dim">{icon}</span>}
+      {icon !== undefined && <span className="text-accent-muted">{icon}</span>}
       <h2 className="section-title">{title}</h2>
       {action !== undefined && <div className="ml-auto">{action}</div>}
     </div>

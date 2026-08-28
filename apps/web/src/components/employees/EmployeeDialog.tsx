@@ -307,7 +307,7 @@ export function EmployeeDialog({
                     className={cn(
                       'rounded border px-2.5 py-1 text-[11.5px] transition-colors',
                       selected
-                        ? 'border-gold/50 bg-gold/15 text-gold-soft'
+                        ? 'border-accent/50 bg-accent/15 text-accent'
                         : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
                     )}
                   >
@@ -339,7 +339,7 @@ export function EmployeeDialog({
                   className={cn(
                     'rounded border px-2.5 py-1 text-[11.5px] transition-colors',
                     selected
-                      ? 'border-gold/50 bg-gold/15 text-gold-soft'
+                      ? 'border-accent/50 bg-accent/15 text-accent'
                       : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
                   )}
                 >

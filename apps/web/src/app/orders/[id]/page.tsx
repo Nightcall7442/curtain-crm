@@ -26,7 +26,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { OrderStatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { trpc } from '@/lib/trpc';
-import { formatDate, formatDateTime } from '@/lib/utils';
+import { cn, formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
 
 /**
  * Карточка заказа.
@@ -135,7 +135,7 @@ export default function OrderDetailPage(): ReactElement {
 
             <p className="mt-1 text-[13px] text-secondary">
               {data.clientName}
-              <a href={`tel:${data.clientPhone}`} className="ml-3 inline-flex items-center gap-1 hover:text-gold-soft">
+              <a href={`tel:${data.clientPhone}`} className="ml-3 inline-flex items-center gap-1 hover:text-accent">
                 <Phone className="h-3.5 w-3.5" aria-hidden />
                 {formatPhone(data.clientPhone)}
               </a>
@@ -219,7 +219,7 @@ export default function OrderDetailPage(): ReactElement {
                 }}
                 rows={2}
                 placeholder="Опишите причину — она попадёт в историю заказа и в уведомление участникам"
-                className="mt-2 w-full rounded border border-subtle bg-base px-2.5 py-2 text-[12.5px] text-primary placeholder:text-muted/70 focus:border-gold-dim focus:outline-none"
+                className="mt-2 w-full rounded border border-subtle bg-base px-2.5 py-2 text-[12.5px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
               />
               <div className="mt-2 flex gap-2">
                 <button
@@ -232,7 +232,7 @@ export default function OrderDetailPage(): ReactElement {
                       comment: reason.trim(),
                     });
                   }}
-                  className="rounded bg-gold px-3 py-1.5 text-[12.5px] font-medium text-base disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded bg-accent px-3 py-1.5 text-[12.5px] font-medium text-base disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Подтвердить
                 </button>
@@ -273,7 +273,13 @@ export default function OrderDetailPage(): ReactElement {
         />
       )}
 
-      <section className="grid gap-3 lg:grid-cols-2">
+      {/*
+        Руководителю карточка «Исполнители» не показывается: те же четыре роли
+        строкой выше стоят в «Управлении заказом», уже выпадающими списками.
+        Читать их дважды незачем, а освободившаяся половина уходит позициям
+        заказа — там размеры, материалы и опции, которым тесно в колонке.
+      */}
+      <section className={cn('grid gap-3', !isManagement && 'lg:grid-cols-2')}>
         {/* --- Позиции ------------------------------------------------------ */}
         <Card>
           <CardHeader title="Позиции заказа" />
@@ -294,7 +300,15 @@ export default function OrderDetailPage(): ReactElement {
                       </span>
                     </div>
 
-                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px]">
+                    {/*
+                      `auto-fit`, а не брейкпоинты: ширина карточки зависит
+                      от роли, а не от экрана — руководителю позиции показаны
+                      во всю ширину, сотруднику в половину. Медиазапросы Tailwind
+                      смотрят на окно и в обоих случаях дали бы одно и то же:
+                      либо две колонки на всю ширину с провалом посередине,
+                      либо четыре — с переносом в узкой.
+                    */}
+                    <dl className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-5 gap-y-1.5 text-[11.5px]">
                       {item.widthCm !== null && item.heightCm !== null && (
                         <Detail
                           label="Размеры"
@@ -307,7 +321,7 @@ export default function OrderDetailPage(): ReactElement {
                         />
                       )}
                       {item.areaM2 !== null && (
-                        <Detail label="Площадь" value={`${item.areaM2} м²`} />
+                        <Detail label="Площадь" value={`${formatQuantity(Number.parseFloat(item.areaM2), 2)} м²`} />
                       )}
                       {item.materials.length > 0 && (
                         <Detail label="Материалы" value={item.materials.join(', ')} />
@@ -344,8 +358,8 @@ export default function OrderDetailPage(): ReactElement {
           </CardBody>
         </Card>
 
-        {/* --- Исполнители и себестоимость ---------------------------------- */}
-        <div className="space-y-3">
+        {/* --- Исполнители --------------------------------------------------- */}
+        {!isManagement && (
           <Card>
             <CardHeader title="Исполнители" />
             <CardBody>
@@ -357,8 +371,7 @@ export default function OrderDetailPage(): ReactElement {
               </dl>
             </CardBody>
           </Card>
-
-        </div>
+        )}
       </section>
 
       {/* --- Закупки и фото ------------------------------------------------- */}
@@ -423,13 +436,13 @@ export default function OrderDetailPage(): ReactElement {
                   setComment(event.target.value);
                 }}
                 placeholder="Написать комментарий участникам заказа"
-                className="min-w-0 flex-1 rounded border border-subtle bg-base px-2.5 py-2 text-[12.5px] text-primary placeholder:text-muted/70 focus:border-gold-dim focus:outline-none"
+                className="min-w-0 flex-1 rounded border border-subtle bg-base px-2.5 py-2 text-[12.5px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={addComment.isPending || comment.trim().length === 0}
                 aria-label="Отправить"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded bg-gold text-base disabled:opacity-50"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded bg-accent text-base disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
               </button>
