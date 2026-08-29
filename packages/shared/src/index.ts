@@ -10,6 +10,7 @@
 
 /* Перечисления */
 export * from './enums/role.enum';
+export * from './i18n/locale';
 export * from './enums/orderStatus.enum';
 export * from './enums/orderItemKind.enum';
 export * from './enums/priority.enum';
@@ -19,10 +20,14 @@ export * from './enums/payroll.enum';
 export * from './enums/staff.enum';
 
 /* Константы */
+export * from './constants/calendar';
 export * from './constants/catalog';
+export * from './constants/rating';
 
 /* Утилиты */
+export * from './utils/dates';
 export * from './utils/geolocation';
 export * from './utils/phone';
+export * from './utils/plural';
 export * from './utils/dimensions';
 export * from './utils/money';

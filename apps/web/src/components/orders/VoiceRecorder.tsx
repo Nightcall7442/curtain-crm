@@ -191,7 +191,7 @@ export function VoiceRecorder({ orderId }: { readonly orderId: number }): ReactE
       <div className="flex items-center gap-2">
         {isRecording ? (
           <>
-            <span className="flex items-center gap-1.5 text-[12px] text-danger">
+            <span className="flex items-center gap-1.5 text-footnote text-danger">
               <span className="h-2 w-2 animate-pulse rounded-full bg-danger" aria-hidden />
               {`Идёт запись · ${formatElapsed(elapsed)}`}
             </span>
@@ -199,7 +199,7 @@ export function VoiceRecorder({ orderId }: { readonly orderId: number }): ReactE
             <button
               type="button"
               onClick={stop}
-              className="ml-auto flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-[12px] text-primary transition-colors hover:bg-raised"
+              className="ml-auto flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-footnote text-primary transition-colors hover:bg-raised"
             >
               <Square className="h-3.5 w-3.5" aria-hidden />
               Отправить запись
@@ -221,7 +221,7 @@ export function VoiceRecorder({ orderId }: { readonly orderId: number }): ReactE
             onClick={() => {
               void start();
             }}
-            className="flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-[12px] text-secondary transition-colors hover:bg-raised hover:text-primary disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-footnote text-secondary transition-colors hover:bg-raised hover:text-primary disabled:opacity-50"
           >
             <Mic className="h-3.5 w-3.5" aria-hidden />
             {addVoice.isPending ? 'Отправка…' : 'Записать голосом'}
@@ -229,7 +229,7 @@ export function VoiceRecorder({ orderId }: { readonly orderId: number }): ReactE
         )}
       </div>
 
-      {error !== null && <p className="mt-1.5 text-[11.5px] text-danger">{error}</p>}
+      {error !== null && <p className="mt-1.5 text-footnote text-danger">{error}</p>}
     </div>
   );
 }

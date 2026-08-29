@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import type { Translated } from '../i18n/locale';
+import { PLURAL_MONTHS, PLURAL_YEARS, pluralize } from '../utils/plural';
+
 import { Role, type Role as RoleName } from './role.enum';
 
 /**
@@ -39,15 +42,28 @@ export const Department = {
 
 export const departmentSchema = z.enum(DEPARTMENTS);
 
-export const DEPARTMENT_LABELS_RU: Readonly<Record<Department, string>> = {
-  sewing: 'Швейный цех',
-  installation: 'Установка',
-  cutting: 'Раскрой',
-  sales: 'Продажи',
-  administration: 'Администрация',
-  quality: 'Контроль качества',
-  other: 'Другое',
+export const DEPARTMENT_LABELS: Translated<Department> = {
+  ru: {
+    sewing: 'Швейный цех',
+    installation: 'Установка',
+    cutting: 'Раскрой',
+    sales: 'Продажи',
+    administration: 'Администрация',
+    quality: 'Контроль качества',
+    other: 'Другое',
+  },
+  uz: {
+    sewing: 'Tikuv sexi',
+    installation: "O'rnatish",
+    cutting: 'Bichish',
+    sales: 'Sotuv',
+    administration: 'Ma’muriyat',
+    quality: 'Sifat nazorati',
+    other: 'Boshqa',
+  },
 };
+
+export const DEPARTMENT_LABELS_RU = DEPARTMENT_LABELS.ru;
 
 /**
  * Подразделение по умолчанию для роли.
@@ -84,12 +100,22 @@ export const EmploymentType = {
 
 export const employmentTypeSchema = z.enum(EMPLOYMENT_TYPES);
 
-export const EMPLOYMENT_TYPE_LABELS_RU: Readonly<Record<EmploymentType, string>> = {
-  permanent: 'Постоянный',
-  probation: 'Испытательный срок',
-  temporary: 'Временный',
-  intern: 'Стажёр',
+export const EMPLOYMENT_TYPE_LABELS: Translated<EmploymentType> = {
+  ru: {
+    permanent: 'Постоянный',
+    probation: 'Испытательный срок',
+    temporary: 'Временный',
+    intern: 'Стажёр',
+  },
+  uz: {
+    permanent: 'Doimiy',
+    probation: 'Sinov muddati',
+    temporary: 'Vaqtinchalik',
+    intern: 'Amaliyotchi',
+  },
 };
+
+export const EMPLOYMENT_TYPE_LABELS_RU = EMPLOYMENT_TYPE_LABELS.ru;
 
 /* -------------------------------------------------------------------------- */
 /*                          Присутствие сегодня                               */
@@ -114,11 +140,20 @@ export const PresenceStatus = {
   ABSENT: 'absent',
 } as const satisfies Record<string, PresenceStatus>;
 
-export const PRESENCE_STATUS_LABELS_RU: Readonly<Record<PresenceStatus, string>> = {
-  at_work: 'На работе',
-  finished: 'Смена закрыта',
-  absent: 'Отсутствует',
+export const PRESENCE_STATUS_LABELS: Translated<PresenceStatus> = {
+  ru: {
+    at_work: 'На работе',
+    finished: 'Смена закрыта',
+    absent: 'Отсутствует',
+  },
+  uz: {
+    at_work: 'Ishda',
+    finished: 'Smena yopilgan',
+    absent: 'Yo‘q',
+  },
 };
+
+export const PRESENCE_STATUS_LABELS_RU = PRESENCE_STATUS_LABELS.ru;
 
 /* -------------------------------------------------------------------------- */
 /*                              Табельный номер                               */
@@ -144,19 +179,10 @@ export function formatTenure(hiredAt: Date | string | null, now: Date = new Date
   const years = Math.floor(months / 12);
   const restMonths = months % 12;
 
-  const plural = (value: number, forms: readonly [string, string, string]): string => {
-    const mod100 = value % 100;
-    const mod10 = value % 10;
-    if (mod100 >= 11 && mod100 <= 14) return forms[2];
-    if (mod10 === 1) return forms[0];
-    if (mod10 >= 2 && mod10 <= 4) return forms[1];
-    return forms[2];
-  };
-
   const parts: string[] = [];
-  if (years > 0) parts.push(`${years.toString()} ${plural(years, ['год', 'года', 'лет'])}`);
+  if (years > 0) parts.push(pluralize(years, PLURAL_YEARS));
   if (restMonths > 0) {
-    parts.push(`${restMonths.toString()} ${plural(restMonths, ['месяц', 'месяца', 'месяцев'])}`);
+    parts.push(pluralize(restMonths, PLURAL_MONTHS));
   }
 
   return parts.length === 0 ? 'меньше месяца' : parts.join(' ');

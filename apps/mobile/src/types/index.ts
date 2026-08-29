@@ -12,6 +12,8 @@ export type RootStackParamList = {
   Tabs: undefined;
   OrderDetail: { orderId: number };
   TaskList: undefined;
+  Rating: undefined;
+  OrderCreate: undefined;
 };
 
 export type RootStackScreenProps<TRoute extends keyof RootStackParamList> =

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { Translated } from '../i18n/locale';
+
 /**
  * Приоритет заказа. Перенесён из `curtain-bot` (`class Priority`) без изменений —
  * бизнес-смысл тот же: влияет на сортировку в списках и на подсветку в интерфейсе.
@@ -16,11 +18,20 @@ export const Priority = {
 
 export const prioritySchema = z.enum(PRIORITIES);
 
-export const PRIORITY_LABELS_RU: Readonly<Record<Priority, string>> = {
-  normal: 'Обычный',
-  urgent: 'Срочный',
-  critical: 'Критический',
+export const PRIORITY_LABELS: Translated<Priority> = {
+  ru: {
+    normal: 'Обычный',
+    urgent: 'Срочный',
+    critical: 'Критический',
+  },
+  uz: {
+    normal: 'Oddiy',
+    urgent: 'Shoshilinch',
+    critical: 'Juda muhim',
+  },
 };
+
+export const PRIORITY_LABELS_RU = PRIORITY_LABELS.ru;
 
 /**
  * Вес приоритета для сортировки: чем больше, тем выше заказ в списке.

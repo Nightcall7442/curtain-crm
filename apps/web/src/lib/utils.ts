@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
 
 /**
  * Утилиты представления.
@@ -8,6 +8,40 @@ import { twMerge } from 'tailwind-merge';
  * размеров и подписи статусов живут в `@curtain-crm/shared`, чтобы
  * веб-панель и мобильное приложение показывали одно и то же.
  */
+
+/**
+ * `tailwind-merge`, обученный НАШИМ шкалам.
+ *
+ * Это не тонкая настройка, а обязательное условие. Библиотека со стандартными
+ * настройками знает только кегли Tailwind (`text-sm`, `text-lg`, …). Наши —
+ * `text-caption`, `text-footnote` и прочие — она не узнаёт и относит к
+ * ЦВЕТАМ текста, потому что `text-*` без известного размера для неё цвет.
+ *
+ * Последствие было тихим и разрушительным. Кнопка склеивала классы так:
+ *
+ *     cn('bg-accent text-white', 'h-8 px-2.5 text-footnote')
+ *
+ * — библиотека видела два «цвета» подряд, оставляла последний и ВЫБРАСЫВАЛА
+ * `text-white`. Подпись на залитой акцентом кнопке теряла свой цвет и
+ * наследовала тёмный от ячейки таблицы: тёмно-зелёный текст на зелёном фоне
+ * во всех трёх оформлениях. Ни компилятор, ни линтер такого не видят — класс
+ * в исходнике есть, просто до разметки он не доезжает.
+ *
+ * Поэтому шкалы перечислены явно. Всякий новый токен `fontSize`, `boxShadow`
+ * или `borderRadius` в `tailwind.config.ts` нужно добавить и сюда — иначе он
+ * начнёт молча вытеснять чужие классы своей группы.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        { text: ['overline', 'footnote', 'caption', 'body', 'subhead', 'heading', 'title', 'display'] },
+      ],
+      'shadow': [{ shadow: ['panel', 'raised', 'glow'] }],
+      'rounded': [{ rounded: ['panel', 'tile'] }],
+    },
+  },
+});
 
 /**
  * Склейка классов Tailwind с разрешением конфликтов.

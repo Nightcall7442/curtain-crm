@@ -32,24 +32,24 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'flex h-full flex-col border-r border-subtle bg-sidebar transition-[width] duration-200',
+        'glass-nav glass-edge flex h-full flex-col transition-[width] duration-200',
         collapsed ? 'w-[68px]' : 'w-[228px]',
       )}
     >
       {/* Логотип */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-subtle px-4">
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-white/10 px-4">
         <span
           aria-hidden
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary font-display text-[17px] text-base"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-tile bg-accent-bright font-display text-heading text-on-accent"
         >
           DH
         </span>
         {!collapsed && (
           <span className="min-w-0">
-            <span className="block truncate font-display text-[16px] tracking-[0.01em] text-primary">
+            <span className="block truncate font-display text-subhead tracking-[0.01em] text-nav-text">
               Design House
             </span>
-            <span className="block truncate text-[10px] tracking-[0.04em] text-muted">
+            <span className="block truncate text-overline tracking-[0.04em] text-nav-text/55">
               шторы премиум класса
             </span>
           </span>
@@ -72,23 +72,28 @@ export function Sidebar({
                   title={collapsed ? item.label : undefined}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'group relative flex items-center gap-3 rounded-md px-3 py-2 text-[13px] transition-colors',
+                    'pressable group relative flex items-center gap-3 rounded-tile px-3 py-2 text-caption',
                     active
-                      ? 'bg-panel text-primary shadow-panel'
-                      : 'text-secondary hover:bg-panel/70 hover:text-primary',
+                      ? 'bg-white/12 text-nav-text'
+                      : 'text-nav-text/70 hover:bg-white/[0.07] hover:text-nav-text',
                   )}
                 >
-                  {/* Глиняная метка активного пункта */}
+                  {/* Зелёная метка активного пункта */}
                   {active && (
                     <span
                       aria-hidden
-                      className="absolute inset-y-1 left-0 w-[3px] rounded-r bg-accent"
+                      className="absolute inset-y-1.5 left-0 w-[3px] rounded-r bg-accent-bright"
                     />
                   )}
-                  <Icon className={cn('h-[18px] w-[18px] shrink-0', active && 'text-accent')} />
+                  <Icon
+                    className={cn(
+                      'h-[18px] w-[18px] shrink-0',
+                      active && 'text-accent-bright',
+                    )}
+                  />
                   {!collapsed && <span className="truncate">{item.label}</span>}
                   {!collapsed && item.stub === true && (
-                    <span className="ml-auto rounded-full border border-subtle px-2 py-px text-[9px] uppercase tracking-[0.08em] text-muted">
+                    <span className="ml-auto rounded-full border border-white/20 px-2 py-px text-overline uppercase tracking-[0.08em] text-nav-text/55">
                       скоро
                     </span>
                   )}
@@ -96,7 +101,7 @@ export function Sidebar({
 
                 {/* Вложенные пункты раскрываются только у активного раздела */}
                 {!collapsed && hasChildren && active && (
-                  <ul className="mt-0.5 space-y-0.5 border-l border-subtle pl-3 ml-5">
+                  <ul className="mt-0.5 space-y-0.5 border-l border-white/15 pl-3 ml-5">
                     {item.children?.map((child) => {
                       const childActive = pathname === child.href;
                       return (
@@ -106,10 +111,10 @@ export function Sidebar({
                             onClick={onNavigate}
                             aria-current={childActive ? 'page' : undefined}
                             className={cn(
-                              'block rounded px-3 py-1.5 text-[12.5px] transition-colors',
+                              'block rounded px-3 py-1.5 text-caption transition-colors',
                               childActive
-                                ? 'text-accent'
-                                : 'text-muted hover:text-primary',
+                                ? 'text-accent-bright'
+                                : 'text-nav-text/55 hover:text-nav-text',
                             )}
                           >
                             {child.label}
@@ -126,12 +131,12 @@ export function Sidebar({
       </nav>
 
       {/* Выход */}
-      <div className="shrink-0 border-t border-subtle p-2">
+      <div className="shrink-0 border-t border-white/10 p-2">
         <button
           type="button"
           onClick={logout}
           title={collapsed ? 'Выйти' : undefined}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-[13px] text-secondary transition-colors hover:bg-raised/60 hover:text-danger"
+          className="pressable flex w-full items-center gap-3 rounded-tile px-3 py-2 text-caption text-nav-text/70 hover:bg-white/[0.07] hover:text-nav-text"
         >
           <LogOut className="h-[18px] w-[18px] shrink-0" />
           {!collapsed && <span>Выйти</span>}

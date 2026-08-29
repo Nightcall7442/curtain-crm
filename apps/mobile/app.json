@@ -55,6 +55,10 @@
         }
       ]
     ],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "extra": {
       "apiUrl": null
     }

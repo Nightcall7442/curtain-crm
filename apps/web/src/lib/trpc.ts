@@ -2,6 +2,7 @@
 
 import type { AppRouter } from '@curtain-crm/api';
 import { createTRPCReact } from '@trpc/react-query';
+import type { inferRouterOutputs } from '@trpc/server';
 
 /**
  * Типизированный клиент tRPC для веб-панели.
@@ -72,3 +73,13 @@ export const tokenStorage = {
 
 /** Адрес API. Задаётся `NEXT_PUBLIC_API_URL`. */
 export const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000/trpc';
+
+/**
+ * Типы ответов процедур: `RouterOutputs['rating']['board']`.
+ *
+ * Нужен там, где данные с сервера передаются в компонент пропсом. Ручное
+ * описание такой формы неизбежно разъезжается с бэкендом — причём молча,
+ * потому что структурная типизация принимает объект с лишними полями.
+ * Здесь же переименование поля в процедуре ломает сборку панели.
+ */
+export type RouterOutputs = inferRouterOutputs<AppRouter>;

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 3001",
     "build": "next build",
-    "start": "next start --port 3001",
+    "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
   },
@@ -27,14 +27,14 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@curtain-crm/config": "workspace:*",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.18.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3",
-    "@curtain-crm/config": "workspace:*",
-    "eslint": "^9.18.0"
+    "typescript": "^5.7.3"
   }
 }

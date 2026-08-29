@@ -1,13 +1,15 @@
-import { isActiveStatus } from '@curtain-crm/shared';
+import { isActiveStatus, isOverdueDate, ORDER_INTAKE_ROLES } from '@curtain-crm/shared';
 
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Empty } from '../components/Card';
+import { Empty, ErrorState, Skeleton } from '../components/Card';
+import { Icon } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
+import { useAuth } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Мои заказы.
@@ -27,7 +29,17 @@ const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
 
 export function WorkScreen(): ReactElement {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [filter, setFilter] = useState<Filter>('active');
+
+  /**
+   * Кнопку создания видят только те, кому сервер это разрешает.
+   *
+   * Это удобство, а не защита: `orders.create` — процедура уровня приёмки,
+   * и швея получит отказ, даже если доберётся до экрана в обход интерфейса.
+   * Но показывать кнопку, которая заведомо откажет, незачем.
+   */
+  const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
 
   const query = trpc.orders.list.useQuery({
     page: 1,
@@ -38,8 +50,7 @@ export function WorkScreen(): ReactElement {
   const items = (query.data?.items ?? []).filter((order) => {
     if (filter === 'overdue') {
       return (
-        order.deadline !== null &&
-        new Date(order.deadline) < new Date() &&
+        isOverdueDate(order.deadline) &&
         isActiveStatus(order.status)
       );
     }
@@ -69,6 +80,19 @@ export function WorkScreen(): ReactElement {
         })}
       </View>
 
+      {canCreate && (
+        <Pressable
+          onPress={() => {
+            navigation.navigate('OrderCreate');
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.create, pressed ? styles.createPressed : null]}
+        >
+          <Icon name="assigned" size={18} color={colors.onAccent} />
+          <Text style={styles.createText}>Новый заказ</Text>
+        </Pressable>
+      )}
+
       <FlatList
         data={items}
         keyExtractor={(item) => item.id.toString()}
@@ -78,11 +102,13 @@ export function WorkScreen(): ReactElement {
           void query.refetch();
         }}
         ListEmptyComponent={
-          query.isLoading ? null : (
+          query.isLoading ? (
+            <Skeleton />
+          ) : query.isError ? (
+            <ErrorState />
+          ) : (
             <Empty
-              message={
-                filter === 'overdue' ? 'Просроченных заказов нет' : 'Заказов пока нет'
-              }
+              message={filter === 'overdue' ? 'Просроченных заказов нет' : 'Заказов пока нет'}
               hint="Здесь появляются заказы, в которых вы участвуете"
             />
           )
@@ -118,6 +144,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   filter: {
+    minHeight: 44,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
@@ -125,21 +152,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  /**
+   * Выбранный фильтр — тёмная хвоя, как в макете.
+   *
+   * Не зелёный: зелёным в приложении красятся ДЕЙСТВИЯ, и чип, выглядящий
+   * кнопкой, сотрудник жмёт, ожидая, что что-то произойдёт. Здесь же
+   * происходит только сужение списка.
+   */
   filterActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: colors.header,
+    borderColor: colors.header,
   },
   filterText: {
     ...typography.caption,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
   filterTextActive: {
     color: colors.headerText,
+    fontWeight: '600',
+  },
+  create: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accent,
+  },
+  createPressed: {
+    opacity: opacity.pressed,
+  },
+  createText: {
+    ...typography.body,
+    color: colors.onAccent,
     fontWeight: '600',
   },
   list: {
     padding: spacing.lg,
     paddingTop: spacing.sm,
     flexGrow: 1,
+    paddingBottom: tabBarSpace,
   },
 });

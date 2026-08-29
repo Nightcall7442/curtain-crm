@@ -2,8 +2,11 @@
 
 import { useState, type ReactElement } from 'react';
 
+import { MONTH_NAMES_RU } from '@curtain-crm/shared';
+
 import { LineSeries } from '@/components/charts/LineSeries';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
+import { controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -41,7 +44,7 @@ export default function ReportsPage(): ReactElement {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Card>
         <CardHeader
           title="Период отчёта"
@@ -53,9 +56,9 @@ export default function ReportsPage(): ReactElement {
                   setMonth(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Месяц"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+                className={controlClass('sm', 'w-auto pr-8')}
               >
-                {MONTH_NAMES.map((name, index) => (
+                {MONTH_NAMES_RU.map((name, index) => (
                   <option key={name} value={index + 1}>
                     {name}
                   </option>
@@ -67,7 +70,7 @@ export default function ReportsPage(): ReactElement {
                   setYear(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Год"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+                className={controlClass('sm', 'w-auto pr-8')}
               >
                 {[now.getFullYear() - 1, now.getFullYear()].map((value) => (
                   <option key={value} value={value}>
@@ -80,7 +83,7 @@ export default function ReportsPage(): ReactElement {
         />
       </Card>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {finance.isLoading || finance.data === undefined ? (
           Array.from({ length: 5 }, (_unused, index) => (
             <Skeleton key={index} className="h-[104px]" />
@@ -196,17 +199,3 @@ export default function ReportsPage(): ReactElement {
   );
 }
 
-const MONTH_NAMES = [
-  'Январь',
-  'Февраль',
-  'Март',
-  'Апрель',
-  'Май',
-  'Июнь',
-  'Июль',
-  'Август',
-  'Сентябрь',
-  'Октябрь',
-  'Ноябрь',
-  'Декабрь',
-] as const;

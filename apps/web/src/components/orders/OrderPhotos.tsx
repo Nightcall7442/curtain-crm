@@ -174,7 +174,7 @@ export function OrderPhotos({
 
       <CardBody>
         {willAutoComplete && (
-          <p className="mb-3 rounded border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+          <p className="mb-3 rounded border border-warning/30 bg-warning/10 px-3 py-2 text-footnote text-warning">
             Фото стадии «После установки» автоматически закроет заказ.
             Отменить закрытие сможет только руководство.
           </p>
@@ -183,7 +183,7 @@ export function OrderPhotos({
         <FormError message={localError ?? upload.error?.message ?? null} />
 
         {upload.data?.autoCompleted === true && (
-          <p className="mb-3 rounded border border-positive/30 bg-positive/10 px-3 py-2 text-[12px] text-positive">
+          <p className="mb-3 rounded border border-positive/30 bg-positive/10 px-3 py-2 text-footnote text-positive">
             Заказ закрыт автоматически после загрузки фото.
           </p>
         )}
@@ -214,11 +214,11 @@ export function OrderPhotos({
                 />
 
                 <div className="p-2">
-                  <p className="text-[11.5px] text-accent">
+                  <p className="text-footnote text-accent">
                     {PHOTO_STAGE_LABELS_RU[photo.stage]}
                   </p>
-                  <p className="truncate text-[10.5px] text-muted">{photo.uploadedByName}</p>
-                  <p className="text-[10.5px] text-muted">{formatDateTime(photo.createdAt)}</p>
+                  <p className="truncate text-overline text-muted">{photo.uploadedByName}</p>
+                  <p className="text-overline text-muted">{formatDateTime(photo.createdAt)}</p>
 
                   {(photo.uploadedBy === user?.id || hasAnyRole(roles, MANAGEMENT_ROLES)) && (
                     <button
@@ -227,7 +227,7 @@ export function OrderPhotos({
                       onClick={() => {
                         remove.mutate({ id: photo.id });
                       }}
-                      className="mt-1 flex items-center gap-1 text-[10.5px] text-muted transition-colors hover:text-danger disabled:opacity-40"
+                      className="mt-1 flex items-center gap-1 text-overline text-muted transition-colors hover:text-danger disabled:opacity-40"
                     >
                       <Trash2 className="h-3 w-3" aria-hidden />
                       Удалить

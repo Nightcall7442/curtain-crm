@@ -11,6 +11,7 @@ import { useState, type ReactElement } from 'react';
 
 import { OrderStatusBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
+import { controlClass } from '@/components/ui/Form';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { formatDate } from '@/lib/utils';
@@ -61,7 +62,7 @@ export default function ArchivePage(): ReactElement {
                 setPage(1);
               }}
               placeholder="Номер, клиент или телефон"
-              className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
+              className={controlClass('sm', 'w-56')}
             />
             <select
               value={status}
@@ -70,7 +71,7 @@ export default function ArchivePage(): ReactElement {
                 setPage(1);
               }}
               aria-label="Статус"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+              className={controlClass('sm', 'w-auto pr-8')}
             >
               <option value="">Выполненные и отменённые</option>
               <option value={OrderStatus.COMPLETED}>Только выполненные</option>
@@ -104,7 +105,7 @@ export default function ArchivePage(): ReactElement {
             render: (row) => (
               <span className="block">
                 <span className="block text-primary">{row.clientName}</span>
-                <span className="block text-[11px] text-muted">{row.clientPhone}</span>
+                <span className="block text-overline text-muted">{row.clientPhone}</span>
               </span>
             ),
           },

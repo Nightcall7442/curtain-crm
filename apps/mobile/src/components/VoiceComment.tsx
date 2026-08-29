@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, opacity } from '../theme';
 
 /**
  * Голосовые комментарии к заказу: запись и воспроизведение.
@@ -268,6 +268,7 @@ export function VoiceCommentPlayer({
 
 const styles = StyleSheet.create({
   recordButton: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -282,7 +283,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   pressed: {
-    opacity: 0.6,
+    opacity: opacity.pressed,
   },
   recordingRow: {
     flexDirection: 'row',
@@ -302,6 +303,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   secondaryButton: {
+    minHeight: 44,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
@@ -310,6 +312,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   primaryButton: {
+    minHeight: 44,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
@@ -317,10 +320,11 @@ const styles = StyleSheet.create({
   },
   primaryText: {
     ...typography.caption,
-    color: colors.headerText,
+    color: colors.onAccent,
     fontWeight: '600',
   },
   player: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

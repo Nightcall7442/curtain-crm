@@ -1,5 +1,13 @@
-import { isActiveStatus, ORDER_STATUS_LABELS_RU, ROLE_LABELS_RU } from '@curtain-crm/shared';
+import {
+  formatMonthPeriod,
+  isActiveStatus,
+  LOCALE_INFO,
+  LOCALES,
+  ORDER_STATUS_LABELS,
+  ROLE_LABELS,
+} from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { useMemo, type ReactElement } from 'react';
 import {
@@ -12,14 +20,16 @@ import {
   View,
 } from 'react-native';
 
-import { Card, CardTitle, Empty, Pill } from '../components/Card';
+import { Card, CardTitle, Empty, ListCard, ListRow, Pill, SectionHeader } from '../components/Card';
+import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
 import { ShiftInfoCard } from '../components/ShiftInfoCard';
 import { WeekAttendance, type WeekDay } from '../components/WeekAttendance';
 import { useAuth } from '../hooks/useAuth';
+import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Мой профиль.
@@ -32,6 +42,7 @@ import { colors, radius, spacing, typography } from '../theme';
  * показывается число заказов в работе со ссылкой на вкладку «Работа».
  */
 export function ProfileScreen(): ReactElement {
+  const { locale, setLocale, t } = useLocale();
   const navigation = useNavigation();
   const { user, signOut } = useAuth();
 
@@ -225,10 +236,10 @@ export function ProfileScreen(): ReactElement {
       />
 
       <Card>
-        <CardTitle title="Мои роли" icon="🎖" />
+        <CardTitle title="Мои роли" icon="roles" />
         <View style={styles.roles}>
           {data.roles.map((role) => (
-            <Pill key={role} text={ROLE_LABELS_RU[role]} tone="info" />
+            <Pill key={role} text={t(ROLE_LABELS, role)} tone="info" />
           ))}
         </View>
       </Card>
@@ -237,7 +248,7 @@ export function ProfileScreen(): ReactElement {
 
       <View style={styles.pair}>
         <KpiCard
-          periodLabel={`${MONTH_NAMES[period.month - 1] ?? ''} ${period.year.toString()}`}
+          periodLabel={formatMonthPeriod(period.year, period.month)}
           targetAmount={targetAmount}
           calculatedAmount={currentPayroll?.calculatedAmount ?? null}
           kpiPercent={currentPayroll?.kpiPercent ?? null}
@@ -255,7 +266,7 @@ export function ProfileScreen(): ReactElement {
       </View>
 
       <Card>
-        <CardTitle title="Мои заказы в работе" icon="📋" />
+        <CardTitle title="Мои заказы в работе" icon="orders" />
         {activeOrders.length === 0 ? (
           <Empty message="Активных заказов нет" />
         ) : (
@@ -272,9 +283,9 @@ export function ProfileScreen(): ReactElement {
                   {order.orderNumber ?? `#${order.id.toString()}`}
                 </Text>
                 <Text style={styles.orderStatus} numberOfLines={1}>
-                  {ORDER_STATUS_LABELS_RU[order.status]}
+                  {t(ORDER_STATUS_LABELS, order.status)}
                 </Text>
-                <Text style={styles.chevron}>›</Text>
+                <Icon name="chevron" size={18} color={colors.textMuted} />
               </Pressable>
             ))}
 
@@ -287,15 +298,82 @@ export function ProfileScreen(): ReactElement {
         )}
       </Card>
 
-      <Pressable
-        onPress={() => {
-          void signOut();
-        }}
-        style={({ pressed }) => [styles.signOut, pressed ? styles.pressed : null]}
-        accessibilityRole="button"
-      >
-        <Text style={styles.signOutText}>Выйти из аккаунта</Text>
-      </Pressable>
+      {/*
+        Секция переходов.
+
+        Заголовок стоит НАД карточкой, как в системных настройках, а сама
+        карточка остаётся чистой и начинается сразу со списка.
+
+        Здесь только пункты, за которыми стоит существующий экран. «Документы»
+        и «Настройки» из макета не выведены: строка, открывающая пустоту,
+        раздражает сильнее, чем её отсутствие, — они появятся вместе со
+        своими разделами.
+      */}
+      {/*
+        Язык — отдельной карточкой, а не строкой в списке «Ещё»: варианты
+        видны сразу, без перехода на ещё один экран. Их всего два, и прятать
+        их за строкой значит заставить человека, который не читает по-русски,
+        сначала найти по-русски подписанный пункт меню.
+
+        Названия языков написаны на самих языках по той же причине.
+      */}
+      <SectionHeader title="Til / Язык" />
+      <Card>
+        <View style={styles.localeRow}>
+          {LOCALES.map((value) => {
+            const active = value === locale;
+
+            return (
+              <Pressable
+                key={value}
+                onPress={() => {
+                  setLocale(value);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.localeOption,
+                  active ? styles.localeOptionActive : null,
+                  pressed ? { opacity: opacity.pressed } : null,
+                ]}
+              >
+                <Text style={[styles.localeText, active ? styles.localeTextActive : null]}>
+                  {LOCALE_INFO[value].label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Card>
+
+      <SectionHeader title="Ещё" />
+      <ListCard>
+        <ListRow
+          icon="rating"
+          label="Мой рейтинг и KPI"
+          onPress={() => {
+            navigation.navigate('Rating');
+          }}
+        />
+        <ListRow
+          icon="orders"
+          label="Мои задачи"
+          onPress={() => {
+            navigation.navigate('TaskList');
+          }}
+        />
+        <ListRow
+          icon="logout"
+          label="Выйти из аккаунта"
+          tone="danger"
+          isLast
+          onPress={() => {
+            void signOut();
+          }}
+        />
+      </ListCard>
+
+      <Text style={styles.version}>{`Версия приложения ${appVersion()}`}</Text>
     </ScrollView>
   );
 }
@@ -314,26 +392,23 @@ function weekBoundsOf(now: Date): { readonly monday: Date; readonly nextMonday: 
   return { monday, nextMonday: new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000) };
 }
 
-const MONTH_NAMES = [
-  'Январь',
-  'Февраль',
-  'Март',
-  'Апрель',
-  'Май',
-  'Июнь',
-  'Июль',
-  'Август',
-  'Сентябрь',
-  'Октябрь',
-  'Ноябрь',
-  'Декабрь',
-] as const;
+/**
+ * Версия приложения.
+ *
+ * Берётся из `app.json` через `expoConfig`, а не из константы в коде: две
+ * версии, которые надо помнить обновлять вместе, рано или поздно разъезжаются,
+ * и на экране оказывается не то, что в сборке. Прочерк вместо выдуманного
+ * номера, если конфиг недоступен.
+ */
+function appVersion(): string {
+  return Constants.expoConfig?.version ?? '—';
+}
 
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: tabBarSpace,
   },
   loading: {
     flex: 1,
@@ -346,12 +421,29 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  /**
+   * Зарплата и смена — В СТОЛБИК, а не в ряд.
+   *
+   * В ряду каждой карточке доставалось около 133 px под содержимое, а туда
+   * кладут заголовок с плашкой состояния и сумму вида «2 790 000 сум».
+   * Заголовок разваливался по словам, плашка вылезала за край, а сумма
+   * переносилась посередине числа — в  все пробелы
+   * неразрывные, поэтому строка рвалась по произвольному знаку.
+   */
+  /**
+   * Зарплата и смена — В СТОЛБИК, а не в ряд.
+   *
+   * В ряду каждой карточке доставалось около 133 px под содержимое, а туда
+   * кладут заголовок с плашкой состояния и сумму вида «2 790 000 сум».
+   * Заголовок разваливался по словам, плашка вылезала за белый край, а сумма
+   * переносилась посередине числа: в денежном формате все пробелы
+   * неразрывные, поэтому строка рвалась по произвольному знаку.
+   */
   pair: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'stretch',
+    gap: spacing.lg,
   },
   orderRow: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
@@ -359,7 +451,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   orderNumber: {
     ...typography.value,
@@ -371,26 +463,43 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
   },
-  chevron: {
-    fontSize: 20,
-    color: colors.textMuted,
-  },
   more: {
     ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.md,
   },
-  signOut: {
+  localeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  localeOption: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: spacing.md + 2,
-    alignItems: 'center',
   },
-  signOutText: {
+  /* Выбранный — тёмная хвоя, как у фильтров: акцент означает действие. */
+  localeOptionActive: {
+    backgroundColor: colors.header,
+    borderColor: colors.header,
+  },
+  localeText: {
     ...typography.body,
-    color: colors.danger,
+    color: colors.textSecondary,
     fontWeight: '500',
+  },
+  localeTextActive: {
+    color: colors.headerText,
+    fontWeight: '600',
+  },
+  version: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
   },
 });

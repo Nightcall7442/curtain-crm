@@ -9,6 +9,8 @@ import { authFetch } from '@/lib/authFetch';
 import { apiUrl, tokenStorage, trpc } from '@/lib/trpc';
 
 import { AuthProvider } from './AuthProvider';
+import { LocaleProvider } from './LocaleProvider';
+import { ToastProvider } from './ToastProvider';
 
 /**
  * Корневые провайдеры панели: React Query, клиент tRPC и текущий сотрудник.
@@ -59,9 +61,19 @@ export function Providers({ children }: { readonly children: ReactNode }): React
   );
 
   return (
+    /*
+      Язык — самый внешний из провайдеров содержимого: он не зависит ни от
+      запросов, ни от того, вошёл ли сотрудник. Экран входа и сообщения об
+      ошибках авторизации тоже должны быть на понятном языке, а в этот
+      момент профиля ещё нет.
+    */
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>{children}</AuthProvider>
+        <LocaleProvider>
+          <ToastProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ToastProvider>
+        </LocaleProvider>
       </QueryClientProvider>
     </trpc.Provider>
   );

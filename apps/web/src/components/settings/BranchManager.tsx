@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, Skeleton } from '@/components/ui/Card';
 import { Button, Field, fieldErrors, FormError, Input, Modal } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
+import { cn } from '@/lib/utils';
 
 /**
  * Филиалы и радиус отметки смены.
@@ -79,16 +80,16 @@ export function BranchManager(): ReactElement {
       <CardHeader
         title="Филиалы и радиус отметки"
         icon={<MapPin className="h-4 w-4" />}
+        level={3}
         action={
-          <Button onClick={openCreate}>
-            <Plus className="h-3.5 w-3.5" aria-hidden />
+          <Button onClick={openCreate} icon={<Plus className="h-3.5 w-3.5" aria-hidden />}>
             Новый филиал
           </Button>
         }
       />
 
       <CardBody>
-        <p className="mb-3 text-[11.5px] text-muted">
+        <p className="mb-3 text-footnote text-muted">
           {`Радиус задаётся для каждого филиала отдельно, от ${MIN_CHECK_IN_RADIUS_METERS.toString()} до ${MAX_CHECK_IN_RADIUS_METERS.toString()} м. ` +
             'Сотрудник вне радиуса не откроет смену — приложение покажет, на сколько метров он промахнулся.'}
         </p>
@@ -98,20 +99,44 @@ export function BranchManager(): ReactElement {
         ) : list.data === undefined || list.data.length === 0 ? (
           <EmptyState message="Филиалы не заведены" />
         ) : (
-          <ul className="grid gap-2 md:grid-cols-2">
+          <ul className="grid gap-3 md:grid-cols-2">
             {list.data.map((branch) => (
-              <li key={branch.id} className="rounded border border-subtle bg-base/40 p-3">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-primary">{branch.name}</p>
-                    <p className="mt-0.5 text-[11.5px] text-muted">
-                      {`${branch.latitude.toFixed(5)}, ${branch.longitude.toFixed(5)} · радиус ${branch.radiusMeters.toString()} м`}
-                    </p>
-                    {branch.address !== null && (
-                      <p className="mt-0.5 truncate text-[11.5px] text-secondary">
-                        {branch.address}
-                      </p>
+              /*
+                Карточка — колонка во всю высоту ячейки сетки, а ряд кнопок
+                прижат снизу (`mt-auto`). Без этого филиал без адреса выходил
+                ниже соседа: две карточки в ряду стояли с разным «дном», и
+                пустота под короткой была первым, что бросалось в глаза.
+              */
+              <li
+                key={branch.id}
+                className={cn(
+                  'flex h-full flex-col rounded-tile border p-4',
+                  branch.isActive ? 'border-subtle bg-base/40' : 'border-subtle/60 bg-base/20',
+                )}
+              >
+                <div className="flex items-start gap-2.5">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'grid h-9 w-9 shrink-0 place-items-center rounded-tile',
+                      branch.isActive ? 'bg-accent-soft text-accent' : 'bg-raised text-muted',
                     )}
+                  >
+                    <MapPin className="h-4 w-4" />
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-subhead font-semibold text-primary">
+                      {branch.name}
+                    </p>
+                    {/*
+                      Адрес показываем всегда, даже когда его нет: строка
+                      «не указан» и объясняет пустоту, и сообщает, что поле
+                      вообще существует и его есть чем заполнить.
+                    */}
+                    <p className="mt-0.5 truncate text-footnote text-muted">
+                      {branch.address ?? 'Адрес не указан'}
+                    </p>
                   </div>
 
                   <Badge tone={branch.isActive ? 'positive' : 'neutral'}>
@@ -119,9 +144,39 @@ export function BranchManager(): ReactElement {
                   </Badge>
                 </div>
 
-                <div className="mt-3 flex gap-2">
+                {/*
+                  Радиус — главное число карточки, ради него сюда и заходят,
+                  поэтому он набран крупно и отдельно. Раньше он стоял третьим
+                  в строке через точку после координат и там терялся.
+                */}
+                <dl className="mt-3.5 grid grid-cols-2 gap-3 border-t border-subtle pt-3">
+                  <div className="min-w-0">
+                    <dt className="text-overline uppercase text-muted">Радиус отметки</dt>
+                    <dd className="mt-0.5 text-heading font-semibold tabular-nums text-primary">
+                      {`${branch.radiusMeters.toString()} м`}
+                    </dd>
+                  </div>
+
+                  <div className="min-w-0">
+                    <dt className="text-overline uppercase text-muted">Координаты</dt>
+                    <dd className="mt-0.5 truncate text-caption tabular-nums text-secondary">
+                      {`${branch.latitude.toFixed(5)}, ${branch.longitude.toFixed(5)}`}
+                    </dd>
+                  </div>
+                </dl>
+
+                {/*
+                  Кнопки мелкие и справа: это правка одной строки списка, а не
+                  главное действие раздела — главное («Новый филиал») стоит в
+                  шапке и залито акцентом. Раньше обе были полного размера, и
+                  красная «Отключить» перетягивала внимание на себя в каждой
+                  карточке.
+                */}
+                <div className="mt-auto flex justify-end gap-2 pt-3.5">
                   <Button
+                    size="sm"
                     variant="secondary"
+                    icon={<Pencil className="h-3.5 w-3.5" aria-hidden />}
                     onClick={() => {
                       setEditingId(branch.id);
                       setName(branch.name);
@@ -132,18 +187,18 @@ export function BranchManager(): ReactElement {
                       setOpen(true);
                     }}
                   >
-                    <Pencil className="h-3.5 w-3.5" aria-hidden />
                     Изменить
                   </Button>
 
                   <Button
+                    size="sm"
                     variant={branch.isActive ? 'danger' : 'secondary'}
                     disabled={setActive.isPending}
+                    icon={<Power className="h-3.5 w-3.5" aria-hidden />}
                     onClick={() => {
                       setActive.mutate({ id: branch.id, isActive: !branch.isActive });
                     }}
                   >
-                    <Power className="h-3.5 w-3.5" aria-hidden />
                     {branch.isActive ? 'Отключить' : 'Включить'}
                   </Button>
                 </div>
@@ -263,7 +318,7 @@ export function BranchManager(): ReactElement {
             </Field>
           </div>
 
-          <p className="text-[11.5px] text-muted">
+          <p className="text-footnote text-muted">
             Координаты можно взять из карт: правый клик по точке цеха → координаты.
             Порядок именно такой — сначала широта, потом долгота.
           </p>

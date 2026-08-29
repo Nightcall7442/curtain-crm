@@ -54,7 +54,7 @@ export function ShiftInfoCard({
     <Card style={styles.card}>
       <CardTitle
         title="Текущая смена"
-        icon="🕘"
+        icon="shift"
         action={
           <Pill
             text={isOpen ? 'Смена открыта' : 'Смена закрыта'}

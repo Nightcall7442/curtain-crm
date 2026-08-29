@@ -134,7 +134,7 @@ export function ShiftAdjustDialog({
           }
         />
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Сотрудник" required error={errors['userId']}>
             <Select
               value={userId}
@@ -207,7 +207,7 @@ export function ShiftAdjustDialog({
           />
         </Field>
 
-        <p className="text-[11.5px] text-muted">
+        <p className="text-footnote text-muted">
           Смена будет помечена как изменённая вручную. Пересчёт часов и
           почасовой зарплаты произойдёт при следующем расчёте периода.
         </p>

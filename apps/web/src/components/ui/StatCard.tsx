@@ -25,6 +25,7 @@ export function StatCard({
   invertDelta = false,
   icon: Icon,
   accent,
+  tone = 'accent',
 }: {
   readonly label: string;
   readonly value: string;
@@ -34,6 +35,8 @@ export function StatCard({
   readonly invertDelta?: boolean;
   readonly icon?: LucideIcon;
   readonly accent?: string;
+  /** Цвет подложки иконки — по смыслу показателя, а не по вкусу. */
+  readonly tone?: StatTone;
 }): ReactElement {
   const hasDelta = deltaPercent !== undefined && deltaPercent !== null;
   const isPositiveChange = hasDelta && (invertDelta ? deltaPercent < 0 : deltaPercent > 0);
@@ -81,14 +84,25 @@ export function StatCard({
         и числа в верхнем ряду дашборда стояли на разной высоте: ряд читался
         как набор разных карточек, а не как одна шкала.
       */}
-      <header className="flex min-h-[2.6em] items-start gap-2 text-[11px]">
+      <header className="flex min-h-[2.6em] items-start gap-2 text-overline">
         <h3 className="section-title min-w-0 flex-1 leading-[1.3]">{label}</h3>
         {Icon !== undefined && (
-          <Icon
-            className="h-4 w-4 shrink-0 text-accent-muted"
-            style={accent === undefined ? undefined : { color: accent }}
+          /*
+            Иконка на цветной подложке, а не серым штрихом на белом.
+            Ряд из шести одинаково бесцветных карточек читается как таблица
+            без данных: глазу не за что зацепиться, и показатели перестают
+            отличаться друг от друга. Подложка мягкая (та же, что у меток
+            состояния), поэтому цвет добавляет ориентир, а не шум.
+          */
+          <span
             aria-hidden
-          />
+            className={cn(
+              'grid h-7 w-7 shrink-0 place-items-center rounded-tile',
+              TONE_CLASS[tone],
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" style={accent === undefined ? undefined : { color: accent }} />
+          </span>
         )}
       </header>
 
@@ -107,7 +121,7 @@ export function StatCard({
           {amount}
         </span>
         {amountUnit !== undefined && (
-          <span className="text-[12px] text-secondary">{amountUnit}</span>
+          <span className="text-footnote text-secondary">{amountUnit}</span>
         )}
       </p>
 
@@ -115,7 +129,7 @@ export function StatCard({
         {hasDelta && (
           <span
             className={cn(
-              'flex shrink-0 items-center gap-0.5 text-[11.5px] font-medium',
+              'flex shrink-0 items-center gap-0.5 text-footnote font-medium',
               isNeutralChange
                 ? 'text-muted'
                 : isPositiveChange
@@ -134,10 +148,27 @@ export function StatCard({
         )}
 
         {caption !== undefined && (
-          <span className="text-[11px] leading-snug text-muted">{caption}</span>
+          <span className="text-overline leading-snug text-muted">{caption}</span>
         )}
       </footer>
 
     </section>
   );
 }
+
+/**
+ * Оттенок подложки иконки.
+ *
+ * Тон называется по СМЫСЛУ показателя, а не по цвету: «деньги», «внимание»,
+ * «люди». Имя `money` переживёт смену палитры, `green` — нет.
+ */
+export type StatTone = 'accent' | 'info' | 'positive' | 'warning' | 'danger' | 'neutral';
+
+const TONE_CLASS: Readonly<Record<StatTone, string>> = {
+  accent: 'bg-accent-soft text-accent',
+  info: 'bg-info/[0.09] text-info',
+  positive: 'bg-positive/[0.09] text-positive',
+  warning: 'bg-warning/[0.10] text-warning',
+  danger: 'bg-danger/[0.08] text-danger',
+  neutral: 'bg-raised text-secondary',
+};

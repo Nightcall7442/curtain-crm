@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { Locale, Translated } from '../i18n/locale';
 import { Role } from './role.enum';
 
 /**
@@ -54,25 +55,56 @@ export const OrderStatus = {
 
 export const orderStatusSchema = z.enum(ORDER_STATUSES);
 
-export const ORDER_STATUS_LABELS_RU: Readonly<Record<OrderStatus, string>> = {
-  new: 'Новый',
-  pending_admin_review: 'Ждёт проверки админа',
-  rejected_to_ceo: 'Отклонён, решение за директором',
-  measurement_assigned: 'Назначен замер',
-  measurement_done: 'Замер выполнен',
-  pending_sewing_assignment: 'Ждёт назначения швеи',
-  sewing_in_progress: 'В пошиве',
-  sewing_done: 'Пошив завершён',
-  pending_qc: 'На контроле качества',
-  qc_failed: 'Брак, возврат на доработку',
-  qc_passed: 'Контроль пройден',
-  pending_installation_assignment: 'Ждёт назначения установщика',
-  installation_assigned: 'Назначен установщик',
-  installation_in_progress: 'Установка идёт',
-  installation_done: 'Установка завершена',
-  completed: 'Выполнен',
-  cancelled: 'Отменён',
+export const ORDER_STATUS_LABELS: Translated<OrderStatus> = {
+  ru: {
+    new: 'Новый',
+    pending_admin_review: 'Ждёт проверки админа',
+    rejected_to_ceo: 'Отклонён, решение за директором',
+    measurement_assigned: 'Назначен замер',
+    measurement_done: 'Замер выполнен',
+    pending_sewing_assignment: 'Ждёт назначения швеи',
+    sewing_in_progress: 'В пошиве',
+    sewing_done: 'Пошив завершён',
+    pending_qc: 'На контроле качества',
+    qc_failed: 'Брак, возврат на доработку',
+    qc_passed: 'Контроль пройден',
+    pending_installation_assignment: 'Ждёт назначения установщика',
+    installation_assigned: 'Назначен установщик',
+    installation_in_progress: 'Установка идёт',
+    installation_done: 'Установка завершена',
+    completed: 'Выполнен',
+    cancelled: 'Отменён',
+  },
+  uz: {
+    new: 'Yangi',
+    pending_admin_review: 'Admin tekshiruvini kutmoqda',
+    rejected_to_ceo: 'Rad etildi, qaror direktorda',
+    measurement_assigned: "O'lchov tayinlandi",
+    measurement_done: "O'lchov bajarildi",
+    pending_sewing_assignment: 'Tikuvchi tayinlanishini kutmoqda',
+    sewing_in_progress: 'Tikilmoqda',
+    sewing_done: 'Tikuv yakunlandi',
+    pending_qc: 'Sifat nazoratida',
+    qc_failed: 'Brak, qayta ishlashga qaytarildi',
+    qc_passed: "Nazoratdan o'tdi",
+    pending_installation_assignment: "O'rnatuvchi tayinlanishini kutmoqda",
+    installation_assigned: "O'rnatuvchi tayinlandi",
+    installation_in_progress: "O'rnatish bormoqda",
+    installation_done: "O'rnatish yakunlandi",
+    completed: 'Bajarildi',
+    cancelled: 'Bekor qilindi',
+  },
 };
+
+/**
+ * Русские подписи отдельной константой.
+ *
+ * Осталась ради мест, где локали ещё нет: сервер пишет русский текст в
+ * историю статусов и в журнал действий — это ЗАПИСИ, а не интерфейс, и
+ * переводить их на язык того, кто нажал кнопку, нельзя: завтра ту же
+ * запись откроет другой человек с другим языком.
+ */
+export const ORDER_STATUS_LABELS_RU = ORDER_STATUS_LABELS.ru;
 
 /* -------------------------------------------------------------------------- */
 /*                                    Фазы                                    */
@@ -90,14 +122,26 @@ export const ORDER_PHASES = [
 
 export type OrderPhase = (typeof ORDER_PHASES)[number];
 
-export const ORDER_PHASE_LABELS_RU: Readonly<Record<OrderPhase, string>> = {
-  intake: 'Приём заказа',
-  measurement: 'Замер',
-  sewing: 'Пошив',
-  qc: 'Контроль качества',
-  installation: 'Установка',
-  closed: 'Закрытые',
+export const ORDER_PHASE_LABELS: Translated<OrderPhase> = {
+  ru: {
+    intake: 'Приём заказа',
+    measurement: 'Замер',
+    sewing: 'Пошив',
+    qc: 'Контроль качества',
+    installation: 'Установка',
+    closed: 'Закрытые',
+  },
+  uz: {
+    intake: 'Buyurtmani qabul qilish',
+    measurement: "O'lchov",
+    sewing: 'Tikuv',
+    qc: 'Sifat nazorati',
+    installation: "O'rnatish",
+    closed: 'Yopilganlar',
+  },
 };
+
+export const ORDER_PHASE_LABELS_RU = ORDER_PHASE_LABELS.ru;
 
 export const ORDER_STATUS_PHASE: Readonly<Record<OrderStatus, OrderPhase>> = {
   new: 'intake',
@@ -159,6 +203,40 @@ export const PRODUCTION_STAGES = [
 }[];
 
 export type ProductionStageKey = (typeof PRODUCTION_STAGES)[number]['key'];
+
+/**
+ * Подписи этапов конвейера.
+ *
+ * Отдельно от `PRODUCTION_STAGES`, потому что поле `label` в самой таблице
+ * задаёт ТИП `ProductionStageKey` через `as const satisfies`. Вложить туда
+ * объект с локалями означало бы усложнить вывод типа ради текста — а текст
+ * к устройству конвейера отношения не имеет.
+ *
+ * Поле `label` в таблице оставлено русским: им пользуются места, где локали
+ * нет (журнал, история). В интерфейсе берут отсюда.
+ */
+export const PRODUCTION_STAGE_LABELS: Translated<ProductionStageKey> = {
+  ru: {
+    new: 'Новые',
+    measurement: 'Замер',
+    cutting: 'Раскрой',
+    sewing: 'Шитьё',
+    qc: 'Контроль качества',
+    ready_for_install: 'Готово к установке',
+    installation: 'Установка',
+    done: 'Завершено',
+  },
+  uz: {
+    new: 'Yangilar',
+    measurement: "O'lchov",
+    cutting: 'Bichish',
+    sewing: 'Tikuv',
+    qc: 'Sifat nazorati',
+    ready_for_install: "O'rnatishga tayyor",
+    installation: "O'rnatish",
+    done: 'Yakunlangan',
+  },
+};
 
 export const PRODUCTION_STAGE_KEYS: readonly ProductionStageKey[] = PRODUCTION_STAGES.map(
   (stage) => stage.key,
@@ -584,6 +662,78 @@ export const ORDER_STATUS_REQUIRED_ASSIGNEE: Readonly<
 };
 
 /* -------------------------------------------------------------------------- */
+/*                          Подписи действий                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Узбекские подписи переходов, по ключу `откуда->куда`.
+ *
+ * Отдельным словарём, а не полем в таблице переходов. Причина в том, что
+ * таблица описывает ПРАВИЛА жизненного цикла — кто, откуда и куда вправе
+ * двигать заказ, — и раздувать каждую из тридцати одной записи объектом
+ * с языками значит утопить правило в тексте. Русская подпись остаётся в
+ * таблице: она же уходит в историю и в журнал действий.
+ *
+ * Отсутствующий ключ означал бы молчаливый откат к русскому, поэтому
+ * полнота словаря проверяется тестом: он перебирает `ORDER_TRANSITIONS`
+ * и требует перевод для каждой пары.
+ */
+const TRANSITION_LABELS_UZ: Readonly<Record<string, string>> = {
+  'new->pending_admin_review': 'Admin tekshiruviga yuborish',
+  'pending_admin_review->measurement_assigned': "O'lchovni tayinlash",
+  'pending_admin_review->pending_sewing_assignment': "O'lchovni o'tkazib, tikuvga berish",
+  'pending_admin_review->rejected_to_ceo': 'Rad etib, direktorga topshirish',
+  'rejected_to_ceo->measurement_assigned': "Tasdiqlab, o'lchovni tayinlash",
+  'rejected_to_ceo->pending_sewing_assignment': "O'lchovsiz tasdiqlash",
+  'rejected_to_ceo->pending_admin_review': 'Adminga qayta ishlashga qaytarish',
+  'measurement_assigned->measurement_done': "O'lchov bajarildi",
+  'measurement_assigned->pending_admin_review': 'Admin tekshiruviga qaytarish',
+  'measurement_done->pending_sewing_assignment': 'Tikuvchi tayinlashga berish',
+  'measurement_done->measurement_assigned': "Qayta o'lchovga qaytarish",
+  'pending_sewing_assignment->sewing_in_progress': 'Tikuvni boshlash',
+  'pending_sewing_assignment->measurement_assigned': "O'lchovga qaytarish",
+  'sewing_in_progress->sewing_done': 'Tikuv yakunlandi',
+  'sewing_in_progress->pending_sewing_assignment': 'Tikuvchini qayta tayinlashga qaytarish',
+  'sewing_done->pending_qc': 'Sifat nazoratiga berish',
+  'sewing_done->sewing_in_progress': 'Tikuvga qaytarish',
+  'pending_qc->qc_passed': "Nazoratdan o'tdi",
+  'pending_qc->qc_failed': 'Brak aniqlandi',
+  'qc_failed->sewing_in_progress': 'Tuzatish uchun tikuvga qaytarish',
+  'qc_failed->measurement_assigned': "Qayta o'lchovga qaytarish",
+  'qc_passed->pending_installation_assignment': "O'rnatuvchi tayinlashga berish",
+  'qc_passed->pending_qc': 'Qayta nazoratga qaytarish',
+  'pending_installation_assignment->installation_assigned': "O'rnatuvchini tayinlash",
+  'pending_installation_assignment->pending_qc': 'Sifat nazoratiga qaytarish',
+  'installation_assigned->installation_in_progress': "O'rnatishni boshlash",
+  'installation_assigned->pending_installation_assignment':
+    "O'rnatuvchini qayta tayinlashga qaytarish",
+  'installation_in_progress->installation_done': "O'rnatish yakunlandi",
+  'installation_in_progress->installation_assigned': "O'rnatish boshiga qaytarish",
+  'installation_done->completed': 'Buyurtmani yopish',
+  'installation_done->installation_in_progress': "O'rnatishni qayta ishlashga qaytarish",
+};
+
+/** Подпись отмены — одна на все статусы, откуда отмена доступна. */
+const CANCEL_LABEL_UZ = 'Buyurtmani bekor qilish';
+
+/**
+ * Подпись действия на языке сотрудника.
+ *
+ * Русская берётся прямо из таблицы, узбекская — из словаря выше. Отмены
+ * порождаются программно для шестнадцати статусов и подписаны одинаково,
+ * поэтому обрабатываются отдельной ветвью, а не шестнадцатью ключами.
+ */
+export function transitionLabel(transition: OrderTransition, locale: Locale): string {
+  if (locale === 'ru') return transition.label;
+
+  if (transition.kind === TransitionKind.CANCEL) return CANCEL_LABEL_UZ;
+
+  return (
+    TRANSITION_LABELS_UZ[transitionKey(transition.from, transition.to)] ?? transition.label
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*                             Публичные функции                              */
 /* -------------------------------------------------------------------------- */
 
@@ -621,6 +771,138 @@ export function availableTransitions(
     transition.roles.some((role) => userRoles.includes(role)),
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*                            Главное действие                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Короткая подпись действия для кнопки в СТРОКЕ списка.
+ *
+ * Ключ — целевой статус, и этого достаточно, потому что подписи отсюда берёт
+ * только `primaryOrderAction`, а она выдаёт действие лишь тогда, когда из
+ * текущего статуса ведёт РОВНО ОДИН прямой переход (см. её комментарий).
+ * Целевые статусы таких переходов попарно различны, так что двусмысленности
+ * не возникает: «Вернуть на замер» и «Назначить замер» ведут в один статус,
+ * но первый — откат, и сюда он не попадает.
+ *
+ * Подписи короче полных из таблицы переходов: в ячейке таблицы «Передать на
+ * назначение швеи» занимает половину ширины строки, а смысл несёт тот же.
+ * Полная подпись остаётся в меню и на карточке заказа, где место есть.
+ */
+const PRIMARY_ACTION_SHORT_LABELS: Readonly<
+  Record<Locale, Readonly<Partial<Record<OrderStatus, string>>>>
+> = {
+  ru: {
+    pending_admin_review: 'На проверку',
+    measurement_done: 'Замер выполнен',
+    pending_sewing_assignment: 'В пошив',
+    sewing_in_progress: 'Начать пошив',
+    sewing_done: 'Пошив готов',
+    pending_qc: 'На контроль',
+    qc_passed: 'Контроль пройден',
+    pending_installation_assignment: 'На установку',
+    installation_assigned: 'Назначить монтаж',
+    installation_in_progress: 'Начать установку',
+    installation_done: 'Установка готова',
+    completed: 'Закрыть заказ',
+  },
+  uz: {
+    pending_admin_review: 'Tekshiruvga',
+    measurement_done: "O'lchov bajarildi",
+    pending_sewing_assignment: 'Tikuvga',
+    sewing_in_progress: 'Tikuvni boshlash',
+    sewing_done: 'Tikuv tayyor',
+    pending_qc: 'Nazoratga',
+    qc_passed: "Nazoratdan o'tdi",
+    pending_installation_assignment: "O'rnatishga",
+    installation_assigned: 'Montajni tayinlash',
+    installation_in_progress: "O'rnatishni boshlash",
+    installation_done: "O'rnatish tayyor",
+    completed: 'Buyurtmani yopish',
+  },
+};
+
+export interface PrimaryOrderAction {
+  readonly transition: OrderTransition;
+  /** Подпись для тесной кнопки в строке списка. */
+  readonly shortLabel: string;
+}
+
+/**
+ * Действие, которое можно вынести отдельной кнопкой прямо в строку списка.
+ *
+ * Выдаётся ТОЛЬКО когда из текущего статуса сотруднику доступен ровно один
+ * прямой переход. Это не осторожность, а суть: там, где прямых переходов два,
+ * между ними стоит решение человека, а не очевидность. Из «Ждёт проверки
+ * админа» ведут «Назначить замер» и «Пропустить замер, передать в пошив» —
+ * пропуск замера меняет судьбу заказа, и продвигать один из вариантов в
+ * кнопку «по умолчанию» значит подталкивать к нему нажатием не глядя.
+ * В таких статусах кнопки нет, есть меню со всеми вариантами полностью.
+ *
+ * Откаты, отклонения и отмены главным действием не становятся никогда: они
+ * живут в меню, где их подпись видна целиком и нажимаются они осознанно.
+ * Единственное исключение по духу — «Обнаружен брак»: это отклонение, и в
+ * кнопку оно не идёт, хотя для контролёра это половина работы.
+ *
+ * Функция чистая и одинаково работает на сервере и в браузере. Панель считает
+ * ею действия для всех строк страницы, не обращаясь к серверу: статус строки
+ * и роли пользователя ей уже известны. Сервер всё равно проверяет переход
+ * заново — здесь решается только то, что рисовать.
+ */
+export function primaryOrderAction(
+  from: OrderStatus,
+  userRoles: readonly Role[],
+  locale: Locale = 'ru',
+): PrimaryOrderAction | null {
+  const forward = availableTransitions(from, userRoles).filter(
+    (transition) => transition.kind === TransitionKind.FORWARD,
+  );
+
+  if (forward.length !== 1) return null;
+
+  const transition = forward[0];
+  if (transition === undefined) return null;
+
+  return {
+    transition,
+    shortLabel:
+      PRIMARY_ACTION_SHORT_LABELS[locale][transition.to] ?? transitionLabel(transition, locale),
+  };
+}
+
+/**
+ * Кого не хватает, чтобы перевести заказ в этот статус.
+ *
+ * `null` — либо исполнитель для статуса не требуется, либо он уже назначен.
+ *
+ * Нужна интерфейсу, чтобы спросить исполнителя ЗАРАНЕЕ, в том же окне, где
+ * подтверждают переход. Без неё выходил самый неприятный сценарий панели:
+ * нажать «Назначить замер», получить от сервера «Сначала назначьте
+ * исполнителя с ролью «Мастер»», уйти в другую карточку, выбрать мастера и
+ * вернуться нажать ту же кнопку второй раз.
+ *
+ * Это подсказка для формы, а не проверка прав: назначение всё равно
+ * выполняет и проверяет сервер.
+ */
+export function missingAssigneeFor(
+  toStatus: OrderStatus,
+  assigned: Readonly<Partial<Record<AssigneeKind, number | null>>>,
+): AssigneeKind | null {
+  const required = ORDER_STATUS_REQUIRED_ASSIGNEE[toStatus];
+  if (required === undefined) return null;
+  return (assigned[required] ?? null) === null ? required : null;
+}
+
+/**
+ * Потолок массовой операции над заказами.
+ *
+ * Массовый переход выполняется последовательно, каждый заказ в своей
+ * транзакции, — значит, время ответа растёт линейно. Полсотни заказов за раз
+ * покрывают дневную выработку приёмки с запасом, а тысяча повесила бы запрос
+ * и заблокировала строки таблицы на минуты.
+ */
+export const MAX_BATCH_ORDERS = 50;
 
 /**
  * Является ли переход откатом на предыдущий этап.

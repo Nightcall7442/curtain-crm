@@ -9,6 +9,7 @@ import { orderPhotosRouter } from './orderPhotos.router';
 import { ordersRouter } from './orders.router';
 import { payrollRouter } from './payroll.router';
 import { purchasesRouter } from './purchases.router';
+import { ratingRouter } from './rating.router';
 import { reportsRouter } from './reports.router';
 import { shiftsRouter } from './shifts.router';
 import { smmRouter } from './smm.router';
@@ -38,6 +39,7 @@ export const appRouter = router({
   payroll: payrollRouter,
   notifications: notificationsRouter,
   reports: reportsRouter,
+  rating: ratingRouter,
   archive: archiveRouter,
   audit: auditRouter,
   smm: smmRouter,

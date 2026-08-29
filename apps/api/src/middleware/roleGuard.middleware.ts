@@ -1,7 +1,7 @@
 import {
   hasAnyRole,
   MANAGEMENT_ROLES,
-  Role,
+  ORDER_INTAKE_ROLES,
   ROLE_LABELS_RU,
   ROLE_MANAGER_ROLES,
   type Role as RoleName,
@@ -59,6 +59,4 @@ export const ceoProcedure = protectedProcedure.use(roleGuard(ROLE_MANAGER_ROLES)
 export const managementProcedure = protectedProcedure.use(roleGuard(MANAGEMENT_ROLES));
 
 /** Процедура для тех, кто заводит заказы: продавец, админ, директор. */
-export const orderIntakeProcedure = protectedProcedure.use(
-  roleGuard([Role.SELLER, Role.ADMIN, Role.CEO]),
-);
+export const orderIntakeProcedure = protectedProcedure.use(roleGuard(ORDER_INTAKE_ROLES));

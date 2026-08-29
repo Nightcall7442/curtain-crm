@@ -1,13 +1,16 @@
+'use client';
+
 import type { ReactElement, ReactNode } from 'react';
 import {
-  ORDER_STATUS_LABELS_RU,
-  PRESENCE_STATUS_LABELS_RU,
-  PRIORITY_LABELS_RU,
+  ORDER_STATUS_LABELS,
+  PRESENCE_STATUS_LABELS,
+  PRIORITY_LABELS,
   type OrderStatus,
   type PresenceStatus,
   type Priority,
 } from '@curtain-crm/shared';
 
+import { useLocale } from '@/components/providers/LocaleProvider';
 import { cn } from '@/lib/utils';
 
 /**
@@ -45,7 +48,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-[11px] font-medium leading-4',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-medium leading-4',
         TONE_CLASSES[tone],
         className,
       )}
@@ -81,7 +84,8 @@ export function OrderStatusBadge({
 }: {
   readonly status: OrderStatus;
 }): ReactElement {
-  return <Badge tone={ORDER_STATUS_TONE[status]}>{ORDER_STATUS_LABELS_RU[status]}</Badge>;
+  const { t } = useLocale();
+  return <Badge tone={ORDER_STATUS_TONE[status]}>{t(ORDER_STATUS_LABELS, status)}</Badge>;
 }
 
 const PRIORITY_TONE: Readonly<Record<Priority, Tone>> = {
@@ -91,7 +95,8 @@ const PRIORITY_TONE: Readonly<Record<Priority, Tone>> = {
 };
 
 export function PriorityBadge({ priority }: { readonly priority: Priority }): ReactElement {
-  return <Badge tone={PRIORITY_TONE[priority]}>{PRIORITY_LABELS_RU[priority]}</Badge>;
+  const { t } = useLocale();
+  return <Badge tone={PRIORITY_TONE[priority]}>{t(PRIORITY_LABELS, priority)}</Badge>;
 }
 
 const PRESENCE_TONE: Readonly<Record<PresenceStatus, Tone>> = {
@@ -105,5 +110,6 @@ export function PresenceBadge({
 }: {
   readonly status: PresenceStatus;
 }): ReactElement {
-  return <Badge tone={PRESENCE_TONE[status]}>{PRESENCE_STATUS_LABELS_RU[status]}</Badge>;
+  const { t } = useLocale();
+  return <Badge tone={PRESENCE_TONE[status]}>{t(PRESENCE_STATUS_LABELS, status)}</Badge>;
 }

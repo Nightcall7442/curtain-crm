@@ -10,12 +10,12 @@ import {
   type PurchaseCategory,
   type PurchaseUnit,
 } from '@curtain-crm/shared';
-import { EyeOff, Eye, Pencil, Plus } from 'lucide-react';
+import { EyeOff, Eye, Package, Pencil, Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { Button, Field, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import { Button, Field, FormError, IconButton, Input, Modal, Select } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 
@@ -67,11 +67,16 @@ export function PurchaseItemManager(): ReactElement {
   const setActive = trpc.purchases.items.setActive.useMutation({ onSuccess: refresh });
 
   return (
-    <Card>
+    // `overflow-hidden` обрезает таблицу по скруглению карточки: без него
+    // последняя строка выходит за угол прямым краем.
+    <Card className="overflow-hidden">
       <CardHeader
         title="Каталог закупочных товаров"
+        icon={<Package className="h-4 w-4" />}
+        level={3}
         action={
           <Button
+            icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
             onClick={() => {
               setEditingId(null);
               setName('');
@@ -81,11 +86,15 @@ export function PurchaseItemManager(): ReactElement {
               setOpen(true);
             }}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
             Добавить товар
           </Button>
         }
       />
+
+      <p className="border-b border-subtle px-4 py-2.5 text-footnote text-muted">
+        Цена здесь — текущая, для новых закупок. Уже проведённые закупки хранят
+        цену на момент покупки и от правок в каталоге не меняются.
+      </p>
 
       <DataTable
         isLoading={list.isLoading}
@@ -96,25 +105,50 @@ export function PurchaseItemManager(): ReactElement {
           {
             key: 'name',
             header: 'Товар',
-            render: (row) => <span className="text-primary">{row.name}</span>,
+            /*
+              Название забирает весь свободный простор, остальные колонки
+              ужимаются по содержимому. Без этого таблица делила ширину
+              поровну, и между «Статусом» и кнопками справа зияла пустота
+              шириной в треть карточки.
+            */
+            className: 'w-full',
+            sortValue: (row) => row.name,
+            render: (row) => <span className="font-medium text-primary">{row.name}</span>,
           },
           {
             key: 'category',
             header: 'Категория',
+            className: 'whitespace-nowrap',
+            sortValue: (row) => PURCHASE_CATEGORY_LABELS_RU[row.category],
             render: (row) => PURCHASE_CATEGORY_LABELS_RU[row.category],
           },
-          { key: 'unit', header: 'Ед.', render: (row) => PURCHASE_UNIT_LABELS_RU[row.unit] },
+          {
+            key: 'unit',
+            header: 'Ед.',
+            className: 'whitespace-nowrap',
+            render: (row) => PURCHASE_UNIT_LABELS_RU[row.unit],
+          },
           {
             key: 'price',
             header: 'Цена',
             align: 'right',
+            className: 'whitespace-nowrap',
+            // Сортируем по числу, а не по «85 000 сум»: иначе 9 000 окажется
+            // после 85 000, как это принято у строк.
+            sortValue: (row) => parseMoney(row.price),
             render: (row) => (
-              <span className="text-primary">{formatMoney(parseMoney(row.price))}</span>
+              <span className="font-medium tabular-nums text-primary">
+                {formatMoney(parseMoney(row.price))}
+              </span>
             ),
           },
           {
             key: 'status',
             header: 'Статус',
+            className: 'whitespace-nowrap',
+            // Выведенные из обращения — наверх по убыванию: именно их ищут,
+            // когда заходят в каталог разбираться.
+            sortValue: (row) => (row.isActive ? 1 : 0),
             render: (row) => (
               <Badge tone={row.isActive ? 'positive' : 'neutral'}>
                 {row.isActive ? 'В обращении' : 'Выведен'}
@@ -125,11 +159,13 @@ export function PurchaseItemManager(): ReactElement {
             key: 'actions',
             header: '',
             align: 'right',
+            className: 'whitespace-nowrap',
             render: (row) => (
               <span className="flex items-center justify-end gap-1">
-                <button
-                  type="button"
-                  aria-label={`Изменить ${row.name}`}
+                <IconButton
+                  size="sm"
+                  label={`Изменить «${row.name}»`}
+                  icon={<Pencil className="h-3.5 w-3.5" />}
                   onClick={() => {
                     setEditingId(row.id);
                     setName(row.name);
@@ -138,22 +174,27 @@ export function PurchaseItemManager(): ReactElement {
                     setCategory(row.category);
                     setOpen(true);
                   }}
-                  className="grid h-7 w-7 place-items-center rounded text-muted transition-colors hover:bg-raised hover:text-primary"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
+                />
 
-                <button
-                  type="button"
-                  aria-label={row.isActive ? `Вывести ${row.name}` : `Вернуть ${row.name}`}
+                <IconButton
+                  size="sm"
+                  label={
+                    row.isActive
+                      ? `Вывести «${row.name}» из обращения`
+                      : `Вернуть «${row.name}» в обращение`
+                  }
                   disabled={setActive.isPending}
+                  icon={
+                    row.isActive ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )
+                  }
                   onClick={() => {
                     setActive.mutate({ id: row.id, isActive: !row.isActive });
                   }}
-                  className="grid h-7 w-7 place-items-center rounded text-muted transition-colors hover:bg-raised hover:text-primary disabled:opacity-40"
-                >
-                  {row.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
+                />
               </span>
             ),
           },
@@ -239,7 +280,7 @@ export function PurchaseItemManager(): ReactElement {
           </div>
 
           {editingId !== null && (
-            <p className="text-[11.5px] text-muted">
+            <p className="text-footnote text-muted">
               Изменение цены не затронет уже проведённые закупки — в них
               сохранена цена на момент покупки.
             </p>

@@ -37,7 +37,7 @@ export function KpiCard({
     <Card style={styles.card}>
       <CardTitle
         title="Зарплата"
-        icon="📈"
+        icon="payroll"
         action={<Text style={styles.period}>{periodLabel}</Text>}
       />
 

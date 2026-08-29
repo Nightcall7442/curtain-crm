@@ -62,13 +62,13 @@ export default function LoginPage(): ReactElement {
         <div className="relative flex items-center gap-3">
           <span
             aria-hidden
-            className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-[19px] text-white"
+            className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-title text-on-accent"
           >
             DH
           </span>
           <span className="flex flex-col">
-            <span className="font-display text-[19px] tracking-[0.01em]">Design House</span>
-            <span className="text-[10.5px] tracking-[0.05em] text-base/55">
+            <span className="font-display text-title tracking-[0.01em]">Design House</span>
+            <span className="text-overline tracking-[0.05em] text-base/55">
               шторы премиум класса
             </span>
           </span>
@@ -79,7 +79,7 @@ export default function LoginPage(): ReactElement {
             Заказ проходит восемь рук.{' '}
             <span className="italic text-accent-muted">Система помнит каждую.</span>
           </p>
-          <p className="max-w-[430px] text-[14px] leading-relaxed text-base/70">
+          <p className="max-w-[430px] text-body leading-relaxed text-base/70">
             Замер, раскрой, пошив, контроль, установка — каждый переход записан: кто, когда
             и почему. Историю не переписать даже директору.
           </p>
@@ -89,8 +89,8 @@ export default function LoginPage(): ReactElement {
           {FACTS.map((fact) => (
             <div key={fact.label} className="flex flex-col gap-1">
               <dt className="sr-only">{fact.label}</dt>
-              <dd className="font-mono text-[23px] font-medium text-accent-muted">{fact.value}</dd>
-              <p aria-hidden className="text-[11px] tracking-[0.04em] text-base/50">
+              <dd className="font-mono text-title font-medium text-accent-muted">{fact.value}</dd>
+              <p aria-hidden className="text-overline tracking-[0.04em] text-base/50">
                 {fact.label}
               </p>
             </div>
@@ -105,23 +105,23 @@ export default function LoginPage(): ReactElement {
           <div className="flex items-center gap-3 lg:hidden">
             <span
               aria-hidden
-              className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-[19px] text-white"
+              className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-title text-on-accent"
             >
               DH
             </span>
-            <span className="font-display text-[19px]">Design House</span>
+            <span className="font-display text-title">Design House</span>
           </div>
 
           <div className="flex flex-col gap-2">
-            <h1 className="font-display text-[34px] leading-[1.15] text-primary">Вход в систему</h1>
-            <p className="text-[13.5px] leading-relaxed text-secondary">
+            <h1 className="font-display text-display leading-[1.15] text-primary">Вход в систему</h1>
+            <p className="text-caption leading-relaxed text-secondary">
               Введите рабочий номер телефона и пароль
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] uppercase tracking-[0.08em] text-muted">
+              <span className="text-overline uppercase tracking-[0.08em] text-muted">
                 Номер телефона
               </span>
               <input
@@ -134,15 +134,15 @@ export default function LoginPage(): ReactElement {
                   setPhone(event.target.value);
                 }}
                 placeholder="+998 90 123 45 67"
-                className="w-full rounded-lg border border-strong bg-panel px-3.5 py-2.5 font-mono text-[14px] text-primary placeholder:text-muted/70 focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-strong bg-panel px-3.5 py-2.5 font-mono text-body text-primary placeholder:text-muted/70 focus:border-accent focus:outline-none"
               />
               {fieldErrors?.['phone']?.[0] !== undefined && (
-                <span className="text-[11.5px] text-danger">{fieldErrors['phone'][0]}</span>
+                <span className="text-footnote text-danger">{fieldErrors['phone'][0]}</span>
               )}
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] uppercase tracking-[0.08em] text-muted">Пароль</span>
+              <span className="text-overline uppercase tracking-[0.08em] text-muted">Пароль</span>
               <input
                 type="password"
                 autoComplete="current-password"
@@ -152,14 +152,14 @@ export default function LoginPage(): ReactElement {
                   setPassword(event.target.value);
                 }}
                 placeholder="••••••••"
-                className="w-full rounded-lg border border-strong bg-panel px-3.5 py-2.5 font-mono text-[14px] tracking-[0.14em] text-primary placeholder:text-muted/70 focus:border-accent focus:outline-none"
+                className="w-full rounded-lg border border-strong bg-panel px-3.5 py-2.5 font-mono text-body tracking-[0.14em] text-primary placeholder:text-muted/70 focus:border-accent focus:outline-none"
               />
             </label>
 
             {loginMutation.error !== null && fieldErrors === null && (
               <p
                 role="alert"
-                className="rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-[12.5px] text-danger"
+                className="rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-caption text-danger"
               >
                 {loginMutation.error.message}
               </p>
@@ -168,7 +168,7 @@ export default function LoginPage(): ReactElement {
             <button
               type="submit"
               disabled={loginMutation.isPending}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-3 text-[14px] font-medium text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-3 text-body font-medium text-on-accent transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loginMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
               Войти
@@ -177,7 +177,7 @@ export default function LoginPage(): ReactElement {
 
           <div className="h-px bg-subtle" />
 
-          <p className="text-[12.5px] leading-relaxed text-muted">
+          <p className="text-caption leading-relaxed text-muted">
             Забыли пароль? Обратитесь к директору — сброс делает только он.
           </p>
         </div>

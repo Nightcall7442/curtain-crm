@@ -43,6 +43,40 @@ const nextConfig: NextConfig = {
       process.env['NEXT_PUBLIC_API_URL'] ??
       (process.env.NODE_ENV === 'production' ? '/trpc' : 'http://localhost:3000/trpc'),
   },
+
+  /**
+   * Проксирование API, когда обратного прокси перед приложениями нет.
+   *
+   * На своём сервере запросы разводит Caddy (см. `Caddyfile`), и эти правила
+   * не нужны — `API_INTERNAL_URL` там не задаётся. На платформах вроде Railway
+   * домен привязывается к ОДНОМУ сервису и маршрутизации по путям нет, поэтому
+   * роль прокси берёт на себя сама панель: браузер и мобильное приложение
+   * ходят на один домен, а `/trpc` и `/files` уезжают во внутренний адрес API.
+   *
+   * Набор путей повторяет `Caddyfile` намеренно: две разные топологии должны
+   * вести себя одинаково, иначе ошибку, воспроизводимую только в проде, будет
+   * не с чем сравнить.
+   *
+   * ВАЖНО: `rewrites()` вычисляется на этапе СБОРКИ — Next записывает готовые
+   * адреса в `routes-manifest.json`, и при старте берёт их оттуда. Значит,
+   * `API_INTERNAL_URL` обязана быть видна во время `next build`, а её смена
+   * требует пересборки панели, а не перезапуска.
+   */
+  async rewrites() {
+    const target = process.env['API_INTERNAL_URL'];
+
+    if (target === undefined || target.length === 0) return [];
+
+    // Хвостовой слэш в переменной сделал бы `//trpc` — адрес, на котором
+    // часть прокси отвечает 404, а часть молча схлопывает. Убираем заранее.
+    const base = target.replace(/\/+$/, '');
+
+    return [
+      { source: '/trpc/:path*', destination: `${base}/trpc/:path*` },
+      { source: '/files/:path*', destination: `${base}/files/:path*` },
+      { source: '/health', destination: `${base}/health` },
+    ];
+  },
 };
 
 export default nextConfig;

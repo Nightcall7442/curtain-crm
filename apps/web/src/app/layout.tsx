@@ -4,6 +4,9 @@ import { IBM_Plex_Mono, IBM_Plex_Sans, Instrument_Serif } from 'next/font/google
 
 import { Shell } from '@/components/layout/Shell';
 import { Providers } from '@/components/providers/Providers';
+import { LOCALE_BOOTSTRAP_SCRIPT } from '@/lib/locale';
+import { SKIN_BOOTSTRAP_SCRIPT } from '@/lib/skin';
+import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/theme';
 
 import '@/styles/globals.css';
 
@@ -72,6 +75,23 @@ export default function RootLayout({
       lang="ru"
       className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable}`}
     >
+      <head>
+        {/*
+          Скин применяется ДО первой отрисовки.
+
+          Скрипт выполняется синхронно, раньше React: иначе панель успевает
+          показаться в палитре по умолчанию и через кадр перекрашивается —
+          при выбранном синем это заметная вспышка зелёного на каждой
+          загрузке страницы.
+
+          `dangerouslySetInnerHTML` здесь — единственный способ вставить
+          синхронный скрипт: содержимое своё, константное, и в него не
+          попадает ничего пользовательского.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: SKIN_BOOTSTRAP_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: LOCALE_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="min-h-screen bg-base font-sans text-primary antialiased">
         <Providers>
           <Shell>{children}</Shell>

@@ -10,7 +10,7 @@ import {
 } from '@/components/employees/ShiftAdjustDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Form';
+import { Button, controlClass } from '@/components/ui/Form';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { formatDateTime, formatDuration } from '@/lib/utils';
@@ -64,7 +64,7 @@ export default function TimesheetPage(): ReactElement {
           setPage(1);
         }}
         aria-label="Месяц"
-        className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+        className={controlClass('sm', 'w-auto pr-8')}
       >
         {MONTH_NAMES.map((name, index) => (
           <option key={name} value={index + 1}>
@@ -80,7 +80,7 @@ export default function TimesheetPage(): ReactElement {
           setPage(1);
         }}
         aria-label="Год"
-        className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+        className={controlClass('sm', 'w-auto pr-8')}
       >
         {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((value) => (
           <option key={value} value={value}>
@@ -92,7 +92,7 @@ export default function TimesheetPage(): ReactElement {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <ShiftAdjustDialog
         open={adjusting !== undefined}
         shift={adjusting ?? null}
@@ -202,7 +202,7 @@ export default function TimesheetPage(): ReactElement {
                   <span className="block">
                     <Badge tone="warning">Изменена вручную</Badge>
                     {row.adjustmentReason !== null && (
-                      <span className="mt-1 block text-[11px] text-muted">
+                      <span className="mt-1 block text-overline text-muted">
                         {row.adjustmentReason}
                       </span>
                     )}

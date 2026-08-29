@@ -5,6 +5,8 @@ import type { ReactElement } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
+import { OrderCreateScreen } from '../screens/OrderCreateScreen';
+import { RatingScreen } from '../screens/RatingScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types';
@@ -51,6 +53,12 @@ export function RootNavigator(): ReactElement {
         options={{ title: 'Заказ' }}
       />
       <Stack.Screen name="TaskList" component={TaskListScreen} options={{ title: 'Мои задачи' }} />
+      <Stack.Screen name="Rating" component={RatingScreen} options={{ title: 'Рейтинг' }} />
+      <Stack.Screen
+        name="OrderCreate"
+        component={OrderCreateScreen}
+        options={{ title: 'Новый заказ' }}
+      />
     </Stack.Navigator>
   );
 }

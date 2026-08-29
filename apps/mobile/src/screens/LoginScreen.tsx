@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, opacity } from '../theme';
 
 /**
  * Вход в приложение.
@@ -104,7 +104,7 @@ export function LoginScreen(): ReactElement {
             accessibilityRole="button"
           >
             {isSigningIn ? (
-              <ActivityIndicator color={colors.headerText} />
+              <ActivityIndicator color={colors.onAccent} />
             ) : (
               <Text style={styles.buttonText}>Войти</Text>
             )}
@@ -207,13 +207,13 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   buttonPressed: {
-    opacity: 0.85,
+    opacity: opacity.pressed,
   },
   buttonText: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontSize: 15,
     fontWeight: '600',
   },

@@ -8,6 +8,8 @@
  * поэтому код не должен сравниваться с этими строками напрямую.
  */
 
+import type { Translated } from '../i18n/locale';
+
 /** Виды справочников характеристик заказа. */
 export const CATALOG_KINDS = [
   'curtain_model',
@@ -33,16 +35,30 @@ export const CatalogKind = {
   ACCESSORY: 'accessory',
 } as const satisfies Record<string, CatalogKind>;
 
-export const CATALOG_KIND_LABELS_RU: Readonly<Record<CatalogKind, string>> = {
-  curtain_model: 'Модель штор',
-  material: 'Материал',
-  material_option: 'Опция материала',
-  color: 'Цвет',
-  cornice: 'Карниз',
-  tulle: 'Тюль',
-  sachak: 'Сачак',
-  accessory: 'Аксессуар',
+export const CATALOG_KIND_LABELS: Translated<CatalogKind> = {
+  ru: {
+    curtain_model: 'Модель штор',
+    material: 'Материал',
+    material_option: 'Опция материала',
+    color: 'Цвет',
+    cornice: 'Карниз',
+    tulle: 'Тюль',
+    sachak: 'Сачак',
+    accessory: 'Аксессуар',
+  },
+  uz: {
+    curtain_model: 'Parda modeli',
+    material: 'Material',
+    material_option: 'Material varianti',
+    color: 'Rang',
+    cornice: 'Karniz',
+    tulle: 'Tyul',
+    sachak: 'Sochoq',
+    accessory: 'Aksessuar',
+  },
 };
+
+export const CATALOG_KIND_LABELS_RU = CATALOG_KIND_LABELS.ru;
 
 /** Начальное наполнение справочников (используется только при сидировании БД). */
 export const DEFAULT_CATALOG_ITEMS: Readonly<Record<CatalogKind, readonly string[]>> = {
@@ -133,10 +149,21 @@ export const PurchaseCategory = {
   OTHER: 'other',
 } as const satisfies Record<string, PurchaseCategory>;
 
-export const PURCHASE_CATEGORY_LABELS_RU: Readonly<Record<PurchaseCategory, string>> = {
-  fabric: 'Ткань',
-  cornice: 'Карнизы',
-  accessory: 'Аксессуары',
-  consumable: 'Расходники',
-  other: 'Прочее',
+export const PURCHASE_CATEGORY_LABELS: Translated<PurchaseCategory> = {
+  ru: {
+    fabric: 'Ткань',
+    cornice: 'Карнизы',
+    accessory: 'Аксессуары',
+    consumable: 'Расходники',
+    other: 'Прочее',
+  },
+  uz: {
+    fabric: 'Mato',
+    cornice: 'Karnizlar',
+    accessory: 'Aksessuarlar',
+    consumable: 'Sarf materiallar',
+    other: 'Boshqa',
+  },
 };
+
+export const PURCHASE_CATEGORY_LABELS_RU = PURCHASE_CATEGORY_LABELS.ru;

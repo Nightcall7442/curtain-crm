@@ -103,12 +103,12 @@ export function OrderManagePanel({
       />
 
       <CardBody>
-        <p className="mb-3 text-[11.5px] text-muted">
+        <p className="mb-3 text-footnote text-muted">
           Назначение вступает в силу сразу. Сотрудник получит уведомление, а
           статус заказа при этом не меняется.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {ASSIGNABLE.map(({ role }) => (
             <AssigneeSelect
               key={role}
@@ -184,13 +184,13 @@ export function OrderManagePanel({
             />
           </Field>
 
-          <p className="text-[12px] text-secondary">
+          <p className="text-footnote text-secondary">
             {`Остаток к оплате: ${formatMoney(
               parseMoney(Number.parseFloat(nextWorkPrice.replace(',', '.')) || 0) -
                 parseMoney(Number.parseFloat(nextDeposit.replace(',', '.')) || 0),
             )}`}
           </p>
-          <p className="text-[11px] text-muted">
+          <p className="text-overline text-muted">
             Остаток считает база, поле в форме — только предпросмотр.
           </p>
         </div>
@@ -229,7 +229,7 @@ export function OrderManagePanel({
         <div className="space-y-3">
           <FormError message={cancel.error?.message ?? null} />
 
-          <p className="text-[12.5px] text-secondary">
+          <p className="text-caption text-secondary">
             Заказ не удаляется: он останется в архиве вместе с причиной и всей
             историей. Отменить отмену нельзя.
           </p>

@@ -43,11 +43,17 @@ RUN pnpm --filter @curtain-crm/web build
 
 USER node
 
+# Порт НЕ передаётся флагом `next start --port`, а берётся из окружения:
+# `next start` читает PORT сам. Платформы вроде Railway или Fly назначают
+# порт своей переменной, и контейнер с зашитым флагом там не получит трафик —
+# балансировщик стучится на назначенный порт, а процесс слушает другой.
 ENV PORT=3001
 EXPOSE 3001
 
+# Проверка тоже идёт по PORT, а не по зашитому числу: иначе на платформе,
+# подменившей порт, healthcheck вечно красный при живом приложении.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3001/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["pnpm", "--filter", "@curtain-crm/web", "start"]

@@ -51,7 +51,7 @@ export default function NotificationsPage(): ReactElement {
         title="Уведомления"
         action={
           <div className="flex items-center gap-2">
-            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-secondary">
+            <label className="flex cursor-pointer items-center gap-1.5 text-footnote text-secondary">
               <input
                 type="checkbox"
                 checked={unreadOnly}
@@ -70,7 +70,7 @@ export default function NotificationsPage(): ReactElement {
               onClick={() => {
                 markAllAsRead.mutate();
               }}
-              className="flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-[12px] text-secondary transition-colors hover:bg-raised hover:text-primary disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-footnote text-secondary transition-colors hover:bg-raised hover:text-primary disabled:opacity-50"
             >
               <CheckCheck className="h-3.5 w-3.5" aria-hidden />
               Прочитать все
@@ -101,9 +101,9 @@ export default function NotificationsPage(): ReactElement {
               >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] font-medium text-primary">{item.title}</p>
-                    <p className="mt-0.5 text-[12px] text-secondary">{item.body}</p>
-                    <p className="mt-1 text-[10.5px] text-muted">
+                    <p className="text-caption font-medium text-primary">{item.title}</p>
+                    <p className="mt-0.5 text-footnote text-secondary">{item.body}</p>
+                    <p className="mt-1 text-overline text-muted">
                       {formatDateTime(item.createdAt)}
                     </p>
                   </div>
@@ -112,7 +112,7 @@ export default function NotificationsPage(): ReactElement {
                     {item.relatedOrderId !== null && (
                       <Link
                         href={`/orders/${item.relatedOrderId.toString()}`}
-                        className="text-[11.5px] text-accent hover:underline"
+                        className="text-footnote text-accent hover:underline"
                       >
                         К заказу
                       </Link>
@@ -123,7 +123,7 @@ export default function NotificationsPage(): ReactElement {
                         onClick={() => {
                           markAsRead.mutate({ id: item.id });
                         }}
-                        className="flex items-center gap-1 text-[11.5px] text-muted hover:text-primary"
+                        className="flex items-center gap-1 text-footnote text-muted hover:text-primary"
                       >
                         <BellOff className="h-3 w-3" aria-hidden />
                         Прочитано

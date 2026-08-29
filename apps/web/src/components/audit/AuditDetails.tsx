@@ -36,7 +36,7 @@ export function AuditDetails({
   }
 
   return (
-    <dl className="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px]">
+    <dl className="flex flex-wrap gap-x-3 gap-y-1 text-footnote">
       {entries.map((entry) => (
         <div key={entry.path} className="flex items-baseline gap-1">
           <dt className="text-muted">{labelFor(entry.path)}</dt>

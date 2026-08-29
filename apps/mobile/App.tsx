@@ -7,7 +7,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
 import { AuthContext, type AuthState, type AuthUser } from './src/hooks/useAuth';
-import { authFetch, setSessionExpiredHandler } from './src/lib/authFetch';
+import { LocaleProvider } from './src/hooks/useLocale';
+import { authFetch, isUnauthorized, setSessionExpiredHandler } from './src/lib/authFetch';
 import { tokenStorage } from './src/lib/storage';
 import { resolveApiUrl, trpc } from './src/lib/trpc';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -52,16 +53,23 @@ export default function App(): ReactElement {
   );
 
   return (
+    /*
+      Язык — выше входа в приложение: экран логина и сообщения об ошибках
+      авторизации тоже должны быть на понятном языке, а профиля в этот
+      момент ещё нет.
+    */
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <AuthGate>
-            <StatusBar style="light" backgroundColor={colors.header} />
-            <NavigationContainer>
-              <RootNavigator />
-            </NavigationContainer>
-          </AuthGate>
-        </SafeAreaProvider>
+        <LocaleProvider>
+          <SafeAreaProvider>
+            <AuthGate>
+              <StatusBar style="light" backgroundColor={colors.header} />
+              <NavigationContainer>
+                <RootNavigator />
+              </NavigationContainer>
+            </AuthGate>
+          </SafeAreaProvider>
+        </LocaleProvider>
       </QueryClientProvider>
     </trpc.Provider>
   );
@@ -111,8 +119,22 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
         // уволенный сотрудник не должен войти по сохранённому токену.
         const profile = await utils.client.auth.me.query();
         if (!cancelled) setUser(profile);
-      } catch {
-        await tokenStorage.clear();
+      } catch (error) {
+        /**
+         * Токены стираются ТОЛЬКО когда сервер прямо сказал «не авторизован».
+         *
+         * Раньше `catch` ловил любую ошибку и чистил хранилище. Под это
+         * попадал обычный обрыв связи: сотрудник открывал приложение в цехе,
+         * где сеть ещё не поднялась, запрос падал — и его выкидывало на экран
+         * входа, причём безвозвратно, потому что refresh-токен уже удалён.
+         *
+         * Сетевая ошибка не говорит ничего о том, жива ли сессия. Экран входа
+         * при обрыве связи сотрудник всё равно увидит — профиль не загрузился,
+         * — но токены останутся на месте, и следующий запуск при живой сети
+         * восстановит сессию сам. Если же сессия действительно отозвана,
+         * сервер ответит 401, и выход произойдёт штатно.
+         */
+        if (isUnauthorized(error)) await tokenStorage.clear();
       } finally {
         if (!cancelled) setIsRestoring(false);
       }

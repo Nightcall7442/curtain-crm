@@ -3,6 +3,7 @@
 import type { ProductionStageKey } from '@curtain-crm/shared';
 import {
   CheckCircle2,
+  ChevronRight,
   ClipboardCheck,
   Drill,
   Ruler,
@@ -13,7 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { ReactElement } from 'react';
+import { Fragment, type ReactElement } from 'react';
 
 /**
  * Виджет «Этапы производства заказов»: восемь плиток конвейера.
@@ -51,30 +52,43 @@ export function ProductionPipeline({
   readonly stages: readonly PipelineStage[];
 }): ReactElement {
   return (
-    // Горизонтальная прокрутка на узких экранах: восемь плиток со стрелками
-    // не поместятся на ноутбуке в цехе, а переносить их по строкам — значит
-    // потерять смысл последовательности.
+    /*
+      Плитки РАСТЯГИВАЮТСЯ на всю ширину карточки.
+
+      Раньше у них была только минимальная ширина и нечем было расти: на
+      широком мониторе восемь плиток оставались по 112 px и жались влево,
+      а треть карточки пустовала. Теперь каждая — равная доля строки
+      (`flex-1`), и ряд заполняет её целиком.
+
+      Минимальная ширина сохранена: на узком экране плитки упираются в неё,
+      строка перестаёт помещаться и включается горизонтальная прокрутка.
+      Переносить этапы по строкам нельзя — это последовательность, и разрыв
+      посередине ломает её чтение.
+
+      Стрелки — прямые дети строки, а не часть плитки: иначе последняя плитка
+      (у которой стрелки нет) оказывалась бы шире остальных на её ширину.
+    */
     <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
       {stages.map((stage, index) => {
         const visuals = STAGE_VISUALS[stage.key];
         const Icon = visuals.icon;
 
         return (
-          <div key={stage.key} className="flex items-center gap-1.5">
+          <Fragment key={stage.key}>
             <Link
               href={`/orders?stage=${stage.key}`}
-              className="group flex min-w-[112px] flex-col items-center gap-1.5 rounded-md border bg-base/40 px-3 py-3 transition-colors hover:bg-raised/50"
+              className="card-link group flex min-w-[112px] flex-1 flex-col items-center gap-1.5 rounded-tile border bg-base/40 px-3 py-3 hover:bg-raised/50"
               style={{ borderColor: `color-mix(in srgb, ${visuals.color} 45%, transparent)` }}
             >
               <span
-                className="text-center text-[9.5px] font-semibold uppercase leading-tight tracking-[0.08em] text-secondary"
+                className="text-center text-overline font-semibold uppercase leading-tight text-secondary"
                 style={{ minHeight: '2.2em' }}
               >
                 {stage.label}
               </span>
               <Icon className="h-5 w-5" style={{ color: visuals.color }} aria-hidden />
               <span
-                className="text-[20px] font-semibold leading-none"
+                className="text-title font-semibold leading-none tabular-nums"
                 style={{ color: visuals.color }}
               >
                 {stage.count}
@@ -82,11 +96,12 @@ export function ProductionPipeline({
             </Link>
 
             {index < stages.length - 1 && (
-              <span aria-hidden className="shrink-0 text-muted">
-                →
-              </span>
+              <ChevronRight
+                aria-hidden
+                className="h-4 w-4 shrink-0 self-center text-muted/70"
+              />
             )}
-          </div>
+          </Fragment>
         );
       })}
     </div>

@@ -35,12 +35,12 @@ export function RankedBars({
         <li key={item.key} className="flex items-center gap-2.5">
           <span
             aria-hidden
-            className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-muted/60 text-[10px] font-semibold text-accent"
+            className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent-muted/60 text-overline font-semibold text-accent"
           >
             {index + 1}
           </span>
 
-          <span className="w-[38%] shrink-0 truncate text-[12px] text-secondary" title={item.label}>
+          <span className="w-[38%] shrink-0 truncate text-footnote text-secondary" title={item.label}>
             {item.label}
           </span>
 
@@ -51,7 +51,7 @@ export function RankedBars({
             />
           </span>
 
-          <span className="w-20 shrink-0 text-right text-[12px] font-medium text-primary">
+          <span className="w-20 shrink-0 text-right text-footnote font-medium text-primary">
             {item.valueLabel ?? item.value}
           </span>
         </li>
@@ -110,13 +110,13 @@ export function ColumnChart({
     <div className={cn('flex h-full items-end gap-2', className)}>
       {items.map((item) => (
         <div key={item.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-          <span className="text-[11px] font-medium text-primary">{item.value}</span>
+          <span className="text-overline font-medium text-primary">{item.value}</span>
           <div
             className="w-full rounded-t bg-stage-measurement/80 transition-[height] duration-300"
             style={{ height: max === 0 ? '2px' : `${Math.max(2, (item.value / max) * 100).toFixed(1)}%` }}
             title={`${item.label}: ${item.value.toString()}`}
           />
-          <span className="truncate text-[10px] text-muted">{item.label}</span>
+          <span className="truncate text-overline text-muted">{item.label}</span>
         </div>
       ))}
     </div>
@@ -197,14 +197,14 @@ export function AttendanceHeatmap({
       <div className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] gap-1">
         <span />
         {WEEKDAY_LABELS.map((label) => (
-          <span key={label} className="text-center text-[10px] text-muted">
+          <span key={label} className="text-center text-overline text-muted">
             {label}
           </span>
         ))}
 
         {weeks.map((weekCells, weekIndex) => (
           <Fragment key={`week-${weekIndex.toString()}`}>
-            <span className="pr-1 text-right text-[10px] leading-6 text-muted">
+            <span className="pr-1 text-right text-overline leading-6 text-muted">
               {`Неделя ${(weekIndex + 1).toString()}`}
             </span>
             {weekCells.map((cell, dayIndex) => {
@@ -230,7 +230,7 @@ export function AttendanceHeatmap({
       </div>
 
       {/* Легенда обязательна: без неё цвет ячейки не значит ничего */}
-      <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-muted">
+      <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-overline text-muted">
         {[
           { className: 'bg-positive/80', label: 'Высокая' },
           { className: 'bg-warning/70', label: 'Средняя' },

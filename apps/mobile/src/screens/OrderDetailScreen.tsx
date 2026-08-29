@@ -1,9 +1,9 @@
 import {
   formatMoney,
   formatPhone,
-  ORDER_STATUS_LABELS_RU,
+  ORDER_STATUS_LABELS,
   parseMoney,
-  ROLE_LABELS_RU,
+  ROLE_LABELS,
   TransitionKind,
   type OrderStatus,
 } from '@curtain-crm/shared';
@@ -22,8 +22,9 @@ import {
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { VoiceCommentPlayer, VoiceRecorderButton } from '../components/VoiceComment';
+import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, opacity } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -37,6 +38,7 @@ export function OrderDetailScreen({
   route,
 }: RootStackScreenProps<'OrderDetail'>): ReactElement {
   const { orderId } = route.params;
+  const { t } = useLocale();
 
   const utils = trpc.useUtils();
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
@@ -98,7 +100,7 @@ export function OrderDetailScreen({
           <Text style={styles.orderNumber}>
             {data.orderNumber ?? `#${data.id.toString()}`}
           </Text>
-          <Pill text={ORDER_STATUS_LABELS_RU[data.status]} tone="info" />
+          <Pill text={t(ORDER_STATUS_LABELS, data.status)} tone="info" />
         </View>
 
         <Text style={styles.client}>{data.clientName}</Text>
@@ -143,7 +145,7 @@ export function OrderDetailScreen({
 
       {/* --- Действия ---------------------------------------------------- */}
       <Card>
-        <CardTitle title="Действия" icon="⚡" />
+        <CardTitle title="Действия" icon="priority" />
 
         {transitions.isLoading ? (
           <ActivityIndicator color={colors.accent} />
@@ -197,7 +199,7 @@ export function OrderDetailScreen({
         {pendingStatus !== null && (
           <View style={styles.reasonBlock}>
             <Text style={styles.reasonTitle}>
-              {`Переход в «${ORDER_STATUS_LABELS_RU[pendingStatus]}» требует причины`}
+              {`Переход в «${t(ORDER_STATUS_LABELS, pendingStatus)}» требует причины`}
             </Text>
             <TextInput
               value={reason}
@@ -248,7 +250,7 @@ export function OrderDetailScreen({
 
       {/* --- Позиции ------------------------------------------------------ */}
       <Card>
-        <CardTitle title="Позиции заказа" icon="🪟" />
+        <CardTitle title="Позиции заказа" icon="window" />
         {data.items.length === 0 ? (
           <Empty message="Позиций нет" />
         ) : (
@@ -259,8 +261,8 @@ export function OrderDetailScreen({
               </Text>
               {item.widthCm !== null && item.heightCm !== null && (
                 <Text style={styles.itemDetail}>
-                  {`Размер: ${item.widthCm} × ${item.heightCm} см`}
-                  {item.areaM2 === null ? '' : ` · ${item.areaM2} м²`}
+                  {`Размер: ${trimNumber(item.widthCm)} × ${trimNumber(item.heightCm)} см`}
+                  {item.areaM2 === null ? '' : ` · ${trimNumber(item.areaM2, 2)} м²`}
                 </Text>
               )}
               {item.materials.length > 0 && (
@@ -283,16 +285,16 @@ export function OrderDetailScreen({
 
       {/* --- Исполнители --------------------------------------------------- */}
       <Card>
-        <CardTitle title="Исполнители" icon="👥" />
-        <Row label={ROLE_LABELS_RU.master} value={data.master?.fullName ?? 'не назначен'} />
-        <Row label={ROLE_LABELS_RU.sewer} value={data.sewer?.fullName ?? 'не назначена'} />
-        <Row label={ROLE_LABELS_RU.qc} value={data.qc?.fullName ?? 'не назначен'} />
-        <Row label={ROLE_LABELS_RU.installer} value={data.installer?.fullName ?? 'не назначен'} />
+        <CardTitle title="Исполнители" icon="people" />
+        <Row label={t(ROLE_LABELS, 'master')} value={data.master?.fullName ?? 'не назначен'} />
+        <Row label={t(ROLE_LABELS, 'sewer')} value={data.sewer?.fullName ?? 'не назначена'} />
+        <Row label={t(ROLE_LABELS, 'qc')} value={data.qc?.fullName ?? 'не назначен'} />
+        <Row label={t(ROLE_LABELS, 'installer')} value={data.installer?.fullName ?? 'не назначен'} />
       </Card>
 
       {/* --- Комментарии ---------------------------------------------------- */}
       <Card>
-        <CardTitle title="Комментарии" icon="💬" />
+        <CardTitle title="Комментарии" icon="comment" />
 
         <View style={styles.commentForm}>
           <TextInput
@@ -359,6 +361,24 @@ export function OrderDetailScreen({
   );
 }
 
+/**
+ * Число из колонки `numeric` без хвостовых нулей.
+ *
+ * Drizzle отдаёт такие колонки строками ровно с той точностью, что указана
+ * в схеме: ширина приходит как `"150.0"`, а площадь — как `"3.9000"`, и на
+ * экране это выглядело «Размер: 150.0 × 260.0 см · 3.9000 м²». Четыре знака
+ * после запятой в площади — ложная точность: столько её никто не мерил.
+ */
+function trimNumber(value: string, maxFractionDigits = 1): string {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return value;
+
+  return new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFractionDigits,
+  }).format(parsed);
+}
+
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
@@ -388,6 +408,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   callButton: {
+    minHeight: 44,
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
     paddingVertical: spacing.sm,
@@ -397,11 +418,11 @@ const styles = StyleSheet.create({
   },
   callText: {
     ...typography.caption,
-    color: colors.accent,
+    color: colors.accentStrong,
     fontWeight: '600',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   details: {
     marginTop: spacing.md,
@@ -418,6 +439,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   action: {
+    minHeight: 44,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.sm,
@@ -480,6 +502,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   confirmButton: {
+    minHeight: 44,
     flex: 1,
     backgroundColor: colors.accent,
     borderRadius: radius.sm,
@@ -487,11 +510,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmText: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontWeight: '600',
     fontSize: 14,
   },
   cancelButton: {
+    minHeight: 44,
     flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
@@ -505,7 +529,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   disabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   error: {
     marginTop: spacing.md,
@@ -563,7 +587,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   sendText: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontSize: 17,
   },
   comment: {

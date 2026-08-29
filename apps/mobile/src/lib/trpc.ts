@@ -1,5 +1,6 @@
 import type { AppRouter } from '@curtain-crm/api';
 import { createTRPCReact } from '@trpc/react-query';
+import type { inferRouterOutputs } from '@trpc/server';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -10,6 +11,16 @@ import { Platform } from 'react-native';
  * и серверные зависимости в бандл Metro не попадают.
  */
 export const trpc = createTRPCReact<AppRouter>();
+
+/**
+ * Типы ответов процедур: `RouterOutputs['rating']['me']`.
+ *
+ * Нужен там, где данные с сервера передаются в компонент пропсом. Вывести
+ * их из `useQuery().data` нельзя — хук перегружен, и в обобщённом виде
+ * возвращает `{}`. Ручное описание формы молча разъезжается с бэкендом,
+ * а здесь переименование поля в процедуре ломает сборку приложения.
+ */
+export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 /**
  * Адрес API.

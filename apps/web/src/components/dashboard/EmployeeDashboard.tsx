@@ -55,7 +55,7 @@ export function EmployeeDashboard(): ReactElement {
   const roles = (user?.roles ?? []).map((role) => ROLE_LABELS_RU[role]).join(', ');
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {/* --- Показатели --------------------------------------------------- */}
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {shift.isLoading ? (
@@ -112,7 +112,7 @@ export function EmployeeDashboard(): ReactElement {
         <CardHeader
           title="Мои заказы в работе"
           action={
-            <Link href="/orders" className="text-[12px] text-accent hover:underline">
+            <Link href="/orders" className="text-footnote text-accent hover:underline">
               Все заказы
             </Link>
           }
@@ -165,7 +165,7 @@ export function EmployeeDashboard(): ReactElement {
           title="Последние уведомления"
           icon={<Bell className="h-4 w-4" />}
           action={
-            <Link href="/notifications" className="text-[12px] text-accent hover:underline">
+            <Link href="/notifications" className="text-footnote text-accent hover:underline">
               Все уведомления
             </Link>
           }
@@ -181,7 +181,7 @@ export function EmployeeDashboard(): ReactElement {
           ) : (
             <ul className="space-y-2.5">
               {feed.data.items.map((item) => (
-                <li key={item.id} className="flex items-start gap-2.5 text-[12.5px]">
+                <li key={item.id} className="flex items-start gap-2.5 text-caption">
                   <span
                     aria-hidden
                     className={
@@ -192,9 +192,9 @@ export function EmployeeDashboard(): ReactElement {
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block text-primary">{item.title}</span>
-                    <span className="block text-[11.5px] text-secondary">{item.body}</span>
+                    <span className="block text-footnote text-secondary">{item.body}</span>
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted">
+                  <span className="shrink-0 text-overline text-muted">
                     {formatDateTime(item.createdAt)}
                   </span>
                 </li>

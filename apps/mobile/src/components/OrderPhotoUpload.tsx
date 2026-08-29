@@ -2,7 +2,7 @@ import {
   AUTO_COMPLETE_PHOTO_STAGE,
   autoCompletesOnInstallPhoto,
   hasAnyRole,
-  PHOTO_STAGE_LABELS_RU,
+  PHOTO_STAGE_LABELS,
   PHOTO_STAGE_UPLOADER_ROLES,
   PHOTO_STAGES,
   type OrderStatus,
@@ -22,8 +22,9 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
+import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, opacity } from '../theme';
 
 import { Card, CardTitle, Empty, Pill } from './Card';
 
@@ -45,6 +46,7 @@ export function OrderPhotoUpload({
   readonly orderId: number;
   readonly orderStatus: OrderStatus;
 }): ReactElement {
+  const { t } = useLocale();
   const { user } = useAuth();
   const roles = user?.roles ?? [];
 
@@ -151,7 +153,7 @@ export function OrderPhotoUpload({
   if (allowedStages.length === 0) {
     return (
       <Card>
-        <CardTitle title="Фотофиксация" icon="📷" />
+        <CardTitle title="Фотофиксация" icon="camera" />
         <Empty
           message="Загружать фото по этому заказу могут другие исполнители"
           hint="Вы можете просматривать уже загруженные снимки"
@@ -162,7 +164,7 @@ export function OrderPhotoUpload({
 
   return (
     <Card>
-      <CardTitle title="Фотофиксация" icon="📷" />
+      <CardTitle title="Фотофиксация" icon="camera" />
 
       <Text style={styles.label}>Стадия</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stages}>
@@ -179,7 +181,7 @@ export function OrderPhotoUpload({
               accessibilityState={{ selected: active }}
             >
               <Text style={[styles.stageText, active ? styles.stageTextActive : null]}>
-                {PHOTO_STAGE_LABELS_RU[value]}
+                {t(PHOTO_STAGE_LABELS, value)}
               </Text>
             </Pressable>
           );
@@ -204,7 +206,7 @@ export function OrderPhotoUpload({
           accessibilityRole="button"
         >
           {upload.isPending ? (
-            <ActivityIndicator color={colors.headerText} />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.actionPrimaryText}>Снять камерой</Text>
           )}
@@ -231,10 +233,10 @@ export function OrderPhotoUpload({
               <Image
                 source={{ uri: photo.url }}
                 style={styles.photo}
-                accessibilityLabel={PHOTO_STAGE_LABELS_RU[photo.stage]}
+                accessibilityLabel={t(PHOTO_STAGE_LABELS, photo.stage)}
               />
               <View style={styles.photoMeta}>
-                <Pill text={PHOTO_STAGE_LABELS_RU[photo.stage]} tone="info" />
+                <Pill text={t(PHOTO_STAGE_LABELS, photo.stage)} tone="info" />
               </View>
             </View>
           ))}
@@ -254,6 +256,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   stage: {
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   stageTextActive: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontWeight: '600',
   },
   warning: {
@@ -305,7 +308,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   actionPrimaryText: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -314,7 +317,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   pressed: {
-    opacity: 0.75,
+    opacity: opacity.pressed,
   },
   gallery: {
     marginTop: spacing.xs,

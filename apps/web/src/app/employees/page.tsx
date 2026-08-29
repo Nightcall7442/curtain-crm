@@ -33,7 +33,7 @@ import {
 } from '@/components/employees/palette';
 import { Badge, PresenceBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Form';
+import { Button, controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -119,7 +119,7 @@ export default function EmployeesPage(): ReactElement {
         attendance.data.days.length;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <EmployeeDialog
         open={editing !== undefined}
         employee={editing ?? null}
@@ -129,7 +129,7 @@ export default function EmployeesPage(): ReactElement {
       />
 
       {/* --- Показатели ---------------------------------------------------- */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         {stats.isLoading || summary === undefined
           ? Array.from({ length: 6 }, (_unused, index) => (
               <Skeleton key={index} className="h-[104px]" />
@@ -177,7 +177,7 @@ export default function EmployeesPage(): ReactElement {
       </section>
 
       {/* --- Разрезы штата -------------------------------------------------- */}
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader title="Сотрудники по подразделениям" />
           <CardBody>
@@ -221,10 +221,10 @@ export default function EmployeesPage(): ReactElement {
             {distributions === undefined ? (
               <Skeleton className="h-40" />
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-4">
                 {distributions.byEmploymentType.map((entry) => (
                   <li key={entry.key}>
-                    <div className="flex items-baseline justify-between text-[12px]">
+                    <div className="flex items-baseline justify-between text-footnote">
                       <span className="text-secondary">{employmentLabel(entry.key)}</span>
                       <span className="text-primary">
                         {entry.count}
@@ -318,7 +318,7 @@ export default function EmployeesPage(): ReactElement {
                   setPage(1);
                 }}
                 placeholder="Поиск по имени или телефону"
-                className="w-56 rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
+                className={controlClass('sm', 'w-56')}
               />
 
               <FilterSelect
@@ -383,7 +383,7 @@ export default function EmployeesPage(): ReactElement {
                   {/* Фото сотрудник загружает сам в мобильном приложении;
                       пока его нет — инициалы, а не пустая рамка. */}
                   {row.avatarUrl === null ? (
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-[11px] text-secondary">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-overline text-secondary">
                       {initials(row.fullName)}
                     </span>
                   ) : (
@@ -398,7 +398,7 @@ export default function EmployeesPage(): ReactElement {
                   )}
                   <span className="block min-w-0">
                     <span className="block truncate text-primary">{row.fullName}</span>
-                    <span className="block text-[11px] text-muted">
+                    <span className="block text-overline text-muted">
                       {row.employeeCode ?? '—'}
                     </span>
                   </span>
@@ -546,7 +546,7 @@ export default function EmployeesPage(): ReactElement {
       </Card>
 
       {/* --- Нижний ряд ------------------------------------------------------ */}
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="Посещаемость (текущий месяц)" />
           <CardBody>
@@ -570,7 +570,7 @@ export default function EmployeesPage(): ReactElement {
             ) : (
               <>
                 <Gauge percent={attendanceRate} label="Средняя посещаемость" />
-                <p className="mt-3 text-center text-[11.5px] leading-relaxed text-muted">
+                <p className="mt-3 text-center text-footnote leading-relaxed text-muted">
                   Считается по фактическим сменам. Показатели качества и
                   своевременности не выводятся: система их не измеряет.
                 </p>
@@ -598,18 +598,18 @@ export default function EmployeesPage(): ReactElement {
                   className="flex items-center gap-3 rounded border border-subtle bg-base/40 px-3 py-2"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] text-primary">
+                    <span className="block truncate text-caption text-primary">
                       {entry.fullName}
                     </span>
-                    <span className="block truncate text-[11px] text-muted">
+                    <span className="block truncate text-overline text-muted">
                       {entry.jobTitle ?? '—'}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block text-[12px] text-accent">
+                    <span className="block text-footnote text-accent">
                       {formatDate(entry.birthDate)}
                     </span>
-                    <span className="block text-[11px] text-muted">
+                    <span className="block text-overline text-muted">
                       {entry.daysUntil === 0
                         ? 'сегодня'
                         : `через ${entry.daysUntil.toString()} дн.`}
@@ -644,7 +644,7 @@ function FilterSelect({
         onChange(event.target.value);
       }}
       aria-label={placeholder}
-      className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+      className={controlClass('sm', 'w-auto pr-8')}
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (

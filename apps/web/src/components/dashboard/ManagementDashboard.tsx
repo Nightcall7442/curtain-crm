@@ -17,6 +17,7 @@ import type { ReactElement } from 'react';
 import { RankedBars } from '@/components/charts/Bars';
 import { LineSeries } from '@/components/charts/LineSeries';
 import { ProductionPipeline } from '@/components/dashboard/ProductionPipeline';
+import { RatingBoardCard } from '@/components/rating/RatingBoardCard';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
@@ -85,9 +86,9 @@ export function ManagementDashboard(): ReactElement {
   });
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {/* --- Показатели -------------------------------------------------- */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         {dashboard.isLoading
           ? Array.from({ length: 6 }, (_unused, index) => (
               <Skeleton key={index} className="h-[104px]" />
@@ -100,6 +101,7 @@ export function ManagementDashboard(): ReactElement {
                   caption={`Вчера: ${data.ordersYesterday.toString()}`}
                   deltaPercent={data.ordersTodayDelta}
                   icon={PackagePlus}
+                  tone="info"
                 />
                 <StatCard
                   label="Заказы за неделю"
@@ -107,6 +109,7 @@ export function ManagementDashboard(): ReactElement {
                   caption={`Прошлая неделя: ${data.ordersPrevWeek.toString()}`}
                   deltaPercent={data.ordersWeekDelta}
                   icon={CalendarRange}
+                  tone="info"
                 />
                 <StatCard
                   label="Заказы за месяц"
@@ -114,12 +117,14 @@ export function ManagementDashboard(): ReactElement {
                   caption={`Прошлый месяц: ${data.ordersPrevMonth.toString()}`}
                   deltaPercent={data.ordersMonthDelta}
                   icon={ShoppingBag}
+                  tone="accent"
                 />
                 <StatCard
                   label="Выполнено за месяц"
                   value={data.completedThisMonth.toString()}
                   caption="Закрытых заказов"
                   icon={TrendingUp}
+                  tone="positive"
                 />
                 <StatCard
                   label="Выручка за месяц"
@@ -127,12 +132,14 @@ export function ManagementDashboard(): ReactElement {
                   caption={`Прошлый месяц: ${data.revenuePrevMonthFormatted}`}
                   deltaPercent={data.revenueMonthDelta}
                   icon={Banknote}
+                  tone="accent"
                 />
                 <StatCard
                   label="Заказы в работе"
                   value={data.activeOrders.toString()}
                   caption={`На смене сейчас: ${data.employeesOnShift.toString()}`}
                   icon={Layers}
+                  tone="warning"
                 />
               </>
             )}
@@ -151,7 +158,7 @@ export function ManagementDashboard(): ReactElement {
       </Card>
 
       {/* --- Цеха и очередь ------------------------------------------------ */}
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader title="Швейный цех" />
           <CardBody className="space-y-2">
@@ -247,7 +254,7 @@ export function ManagementDashboard(): ReactElement {
       </section>
 
       {/* --- Очередь на установку и лучшие сотрудники ----------------------- */}
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader title="Очередь на установку" />
           <CardBody className="space-y-2">
@@ -292,7 +299,7 @@ export function ManagementDashboard(): ReactElement {
             {performers.isLoading ? (
               <Skeleton className="h-24" />
             ) : performers.data === undefined ? null : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <PerformerCard
                   role="Продавец"
                   name={performers.data.seller?.fullName ?? null}
@@ -371,7 +378,7 @@ export function ManagementDashboard(): ReactElement {
       </section>
 
       {/* --- Товары и внимание --------------------------------------------- */}
-      <section className="grid gap-3 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Самые продаваемые модели (месяц)" />
           <CardBody>
@@ -405,7 +412,7 @@ export function ManagementDashboard(): ReactElement {
             ) : (
               <ul className="space-y-2.5">
                 {attention.data.map((entry) => (
-                  <li key={entry.key} className="flex items-center gap-2.5 text-[12.5px]">
+                  <li key={entry.key} className="flex items-center gap-2.5 text-caption">
                     <span
                       aria-hidden
                       className={
@@ -427,7 +434,7 @@ export function ManagementDashboard(): ReactElement {
       </section>
 
       {/* --- Динамика ------------------------------------------------------- */}
-      <section className="grid gap-3 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Динамика заказов" />
           <CardBody>
@@ -467,6 +474,14 @@ export function ManagementDashboard(): ReactElement {
           </CardBody>
         </Card>
       </section>
+
+      {/*
+        --- Сквозной рейтинг ------------------------------------------------
+        Отвечает на вопрос, которого нет ни у «лучших в роли» выше, ни у
+        рейтинга продавцов ниже: кто впереди по мастерской целиком. Балл
+        нормируется внутри роли, поэтому швея и установщик тут сравнимы.
+      */}
+      <RatingBoardCard year={period.year} month={period.month} />
 
       {/* --- Рейтинг продавцов ---------------------------------------------- */}
       <Card>
@@ -526,7 +541,7 @@ function WorkshopFooter({
   if (items.length === 0) return null;
 
   return (
-    <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 border-t border-subtle pt-2 text-[11.5px]">
+    <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 border-t border-subtle pt-2 text-footnote">
       {items.map((item) => (
         <div key={item.label} className="flex items-baseline gap-1.5">
           <dt className="text-muted">{item.label}:</dt>
@@ -558,11 +573,11 @@ function PerformerCard({
       <h4 className="section-title">{role}</h4>
 
       {name === null ? (
-        <p className="mt-2 text-[12px] text-muted">За месяц закрытых заказов нет</p>
+        <p className="mt-2 text-footnote text-muted">За месяц закрытых заказов нет</p>
       ) : (
         <>
-          <p className="mt-1 text-[13px] font-medium text-primary">{name}</p>
-          <dl className="mt-2 space-y-1 text-[11.5px]">
+          <p className="mt-1 text-caption font-medium text-primary">{name}</p>
+          <dl className="mt-2 space-y-1 text-footnote">
             {metrics.map((metric) => (
               <div key={metric.label} className="flex items-baseline justify-between gap-2">
                 <dt className="text-muted">{metric.label}</dt>
@@ -594,7 +609,7 @@ function StageRow({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between rounded px-2 py-1.5 text-[12.5px] transition-colors hover:bg-raised/50"
+      className="flex items-center justify-between rounded px-2 py-1.5 text-caption transition-colors hover:bg-raised/50"
     >
       <span className="text-secondary">{label}</span>
       <span className={`font-semibold ${valueClass}`}>{value}</span>

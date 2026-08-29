@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { Translated } from '../i18n/locale';
 import { Role, ROLES } from './role.enum';
 
 /**
@@ -34,16 +35,30 @@ export const PhotoStage = {
 
 export const photoStageSchema = z.enum(PHOTO_STAGES);
 
-export const PHOTO_STAGE_LABELS_RU: Readonly<Record<PhotoStage, string>> = {
-  measurement: 'Замеры',
-  fabric: 'Ткань',
-  cutting: 'Раскрой',
-  sewing_process: 'Пошив',
-  qc: 'Контроль качества',
-  install_before: 'До установки',
-  install_after: 'После установки',
-  general: 'Общее',
+export const PHOTO_STAGE_LABELS: Translated<PhotoStage> = {
+  ru: {
+    measurement: 'Замеры',
+    fabric: 'Ткань',
+    cutting: 'Раскрой',
+    sewing_process: 'Пошив',
+    qc: 'Контроль качества',
+    install_before: 'До установки',
+    install_after: 'После установки',
+    general: 'Общее',
+  },
+  uz: {
+    measurement: "O'lchovlar",
+    fabric: 'Mato',
+    cutting: 'Bichish',
+    sewing_process: 'Tikuv',
+    qc: 'Sifat nazorati',
+    install_before: "O'rnatishdan oldin",
+    install_after: "O'rnatishdan keyin",
+    general: 'Umumiy',
+  },
 };
+
+export const PHOTO_STAGE_LABELS_RU = PHOTO_STAGE_LABELS.ru;
 
 /**
  * Кто может загружать фото на каждой стадии.

@@ -1,3 +1,5 @@
+import { TRPCClientError } from '@trpc/client';
+
 import { resolveApiUrl } from './trpc';
 import { tokenStorage } from './storage';
 
@@ -88,3 +90,26 @@ export const authFetch: typeof fetch = async (input, init) => {
 
   return fetch(input, { ...init, headers });
 };
+
+/**
+ * Отвечает ли ошибка «сессия недействительна».
+ *
+ * Отличить отказ сервера от сетевого сбоя важнее, чем кажется: обе ситуации
+ * приходят одним исключением, но реакция на них противоположна. На 401 нужно
+ * стереть токены и показать вход, на обрыв связи — не трогать ничего и
+ * попробовать позже.
+ *
+ * Проверяется код из полезной нагрузки tRPC и HTTP-статус, а не текст
+ * сообщения: сообщения переводятся и меняются, коды — нет. У сетевой ошибки
+ * ни того, ни другого нет вовсе, поэтому она честно возвращает `false`.
+ */
+export function isUnauthorized(error: unknown): boolean {
+  if (!(error instanceof TRPCClientError)) return false;
+
+  const data: unknown = error.data;
+  if (typeof data !== 'object' || data === null) return false;
+
+  const { code, httpStatus } = data as { code?: unknown; httpStatus?: unknown };
+
+  return code === 'UNAUTHORIZED' || httpStatus === 401;
+}

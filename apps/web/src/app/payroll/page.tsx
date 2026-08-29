@@ -14,11 +14,12 @@ import { useState, type ReactElement } from 'react';
 
 import { SchemeDialog } from '@/components/payroll/SchemeDialog';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Form';
+import { Button, controlClass } from '@/components/ui/Form';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useToast } from '@/components/providers/ToastProvider';
 import { trpc } from '@/lib/trpc';
 import { formatPercent } from '@/lib/utils';
 
@@ -30,6 +31,8 @@ import { formatPercent } from '@/lib/utils';
  * CEO, и админ получит `FORBIDDEN`, даже если доберётся до кнопки.
  */
 export default function PayrollPage(): ReactElement {
+  const toast = useToast();
+
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -48,9 +51,43 @@ export default function PayrollPage(): ReactElement {
     await utils.payroll.list.invalidate();
   };
 
-  const calculate = trpc.payroll.calculate.useMutation({ onSuccess: invalidate });
-  const approve = trpc.payroll.approve.useMutation({ onSuccess: invalidate });
-  const markPaid = trpc.payroll.markPaid.useMutation({ onSuccess: invalidate });
+  /**
+   * Каждое действие теперь отвечает.
+   *
+   * Раньше расчёт, утверждение и отметка о выплате проходили молча: строка
+   * перерисовывалась, и по ней надо было догадаться, что произошло. При
+   * ошибке не было и этого — сообщение сервера пропадало вовсе, хотя оно
+   * на русском и объясняет причину («расчёт уже утверждён», «нет прав»).
+   */
+  const calculate = trpc.payroll.calculate.useMutation({
+    onSuccess: () => {
+      void invalidate();
+      toast.success('Зарплата рассчитана', 'Проверьте суммы и утвердите расчёт');
+    },
+    onError: (error) => {
+      toast.error('Не удалось рассчитать', error.message);
+    },
+  });
+
+  const approve = trpc.payroll.approve.useMutation({
+    onSuccess: () => {
+      void invalidate();
+      toast.success('Расчёт утверждён');
+    },
+    onError: (error) => {
+      toast.error('Не удалось утвердить', error.message);
+    },
+  });
+
+  const markPaid = trpc.payroll.markPaid.useMutation({
+    onSuccess: () => {
+      void invalidate();
+      toast.success('Отмечено как выплаченное');
+    },
+    onError: (error) => {
+      toast.error('Не удалось отметить выплату', error.message);
+    },
+  });
 
   if (list.isError) {
     return (
@@ -69,7 +106,7 @@ export default function PayrollPage(): ReactElement {
   const totalPaid = list.data === undefined ? 0 : parseMoney(list.data.totalPaid);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <section className="grid gap-3 sm:grid-cols-3">
         <StatCard
           label="Начислено за период"
@@ -95,7 +132,7 @@ export default function PayrollPage(): ReactElement {
                   setMonth(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Месяц"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+                className={controlClass('sm', 'w-auto pr-8')}
               >
                 {MONTH_NAMES.map((name, index) => (
                   <option key={name} value={index + 1}>
@@ -110,7 +147,7 @@ export default function PayrollPage(): ReactElement {
                   setYear(Number.parseInt(event.target.value, 10));
                 }}
                 aria-label="Год"
-                className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+                className={controlClass('sm', 'w-auto pr-8')}
               >
                 {[now.getFullYear() - 1, now.getFullYear()].map((value) => (
                   <option key={value} value={value}>
@@ -119,23 +156,22 @@ export default function PayrollPage(): ReactElement {
                 ))}
               </select>
 
-              <button
-                type="button"
-                disabled={calculate.isPending}
+              <Button
+                size="sm"
+                loading={calculate.isPending}
+                icon={<Calculator className="h-3.5 w-3.5" aria-hidden />}
                 onClick={() => {
                   calculate.mutate(period);
                 }}
-                className="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-[12px] font-medium text-base disabled:opacity-50"
               >
-                <Calculator className="h-3.5 w-3.5" aria-hidden />
                 Рассчитать
-              </button>
+              </Button>
             </div>
           }
         />
 
         {calculate.data !== undefined && (
-          <div className="border-b border-subtle px-4 py-2.5 text-[12px] text-secondary">
+          <div className="border-b border-subtle px-4 py-2.5 text-footnote text-secondary">
             {`Рассчитано: ${calculate.data.calculated.toString()}. ` +
               `Пропущено утверждённых: ${calculate.data.skippedApproved.toString()}.` +
               (calculate.data.failures.length > 0
@@ -145,7 +181,7 @@ export default function PayrollPage(): ReactElement {
         )}
 
         {calculate.error !== null && (
-          <div role="alert" className="border-b border-danger/30 bg-danger/10 px-4 py-2.5 text-[12px] text-danger">
+          <div role="alert" className="border-b border-danger/30 bg-danger/10 px-4 py-2.5 text-footnote text-danger">
             {calculate.error.message}
           </div>
         )}
@@ -218,7 +254,7 @@ export default function PayrollPage(): ReactElement {
                       onClick={() => {
                         approve.mutate({ id: row.id });
                       }}
-                      className="rounded border border-positive/40 px-2 py-1 text-[11.5px] text-positive hover:bg-positive/10 disabled:opacity-50"
+                      className="rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
                     >
                       Утвердить
                     </button>
@@ -233,7 +269,7 @@ export default function PayrollPage(): ReactElement {
                       onClick={() => {
                         markPaid.mutate({ id: row.id });
                       }}
-                      className="rounded border border-accent/40 px-2 py-1 text-[11.5px] text-accent hover:bg-accent/10 disabled:opacity-50"
+                      className="rounded border border-accent/40 px-2 py-1 text-footnote text-accent hover:bg-accent/10 disabled:opacity-50"
                     >
                       Выплачено
                     </button>
@@ -277,13 +313,13 @@ export default function PayrollPage(): ReactElement {
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {(schemes.data ?? []).map((scheme) => (
                 <li key={scheme.id} className="rounded border border-subtle bg-base/40 p-3">
-                  <p className="text-[12.5px] font-medium text-primary">
+                  <p className="text-caption font-medium text-primary">
                     {ROLE_LABELS_RU[scheme.role]}
                   </p>
-                  <p className="mt-0.5 text-[11.5px] text-accent">
+                  <p className="mt-0.5 text-footnote text-accent">
                     {PAYROLL_SCHEME_TYPE_LABELS_RU[scheme.type]}
                   </p>
-                  <dl className="mt-2 space-y-0.5 text-[11.5px] text-secondary">
+                  <dl className="mt-2 space-y-0.5 text-footnote text-secondary">
                     {scheme.baseAmount !== null && (
                       <div className="flex justify-between gap-2">
                         <dt className="text-muted">Оклад</dt>

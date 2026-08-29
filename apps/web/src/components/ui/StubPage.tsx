@@ -28,15 +28,15 @@ export function StubPage({
           <Construction className="h-5 w-5" />
         </span>
 
-        <h2 className="mt-4 text-[15px] font-semibold text-primary">{title}</h2>
-        <p className="mt-2 text-[13px] leading-relaxed text-secondary">{reason}</p>
+        <h2 className="mt-4 text-subhead font-semibold text-primary">{title}</h2>
+        <p className="mt-2 text-caption leading-relaxed text-secondary">{reason}</p>
 
         {requires !== undefined && requires.length > 0 && (
           <>
-            <p className="mt-5 text-[11px] uppercase tracking-[0.12em] text-muted">
+            <p className="mt-5 text-overline uppercase tracking-[0.12em] text-muted">
               Чтобы раздел заработал, нужны
             </p>
-            <ul className="mt-2 space-y-1 text-left text-[12.5px] text-secondary">
+            <ul className="mt-2 space-y-1 text-left text-caption text-secondary">
               {requires.map((item) => (
                 <li key={item} className="flex gap-2">
                   <span aria-hidden className="text-accent-muted">

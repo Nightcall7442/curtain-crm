@@ -2,9 +2,10 @@ import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Pill, Row } from '../components/Card';
+import { ShiftRing } from '../components/ShiftRing';
 import { useLocation } from '../hooks/useLocation';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
 
 /**
  * Отметка начала и конца смены.
@@ -79,7 +80,7 @@ export function CheckInOutScreen(): ReactElement {
       <Card>
         <CardTitle
           title="Смена"
-          icon="🕘"
+          icon="shift"
           action={
             <Pill
               text={shift === null ? 'Не открыта' : 'Открыта'}
@@ -117,6 +118,11 @@ export function CheckInOutScreen(): ReactElement {
         )}
       </Card>
 
+      {/* Счётчик времени смены — центральный элемент экрана в макете */}
+      <Card>
+        <ShiftRing startedAt={startedAt} />
+      </Card>
+
       {(locationError !== null || serverError !== null) && (
         <View style={styles.error} accessibilityRole="alert">
           <Text style={styles.errorText}>{locationError ?? serverError}</Text>
@@ -136,7 +142,7 @@ export function CheckInOutScreen(): ReactElement {
         accessibilityLabel={shift === null ? 'Начать смену' : 'Завершить смену'}
       >
         {isBusy ? (
-          <ActivityIndicator color={colors.headerText} />
+          <ActivityIndicator color={colors.onAccent} />
         ) : (
           <Text style={styles.actionText}>
             {shift === null ? 'Начать смену' : 'Завершить смену'}
@@ -157,6 +163,7 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
+    paddingBottom: tabBarSpace,
   },
   loader: {
     marginVertical: spacing.lg,
@@ -177,7 +184,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   action: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     paddingVertical: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -186,17 +193,24 @@ const styles = StyleSheet.create({
   actionStart: {
     backgroundColor: colors.accent,
   },
+  /**
+   * Завершение смены красится тем же зелёным, что и начало, — как в макете.
+   *
+   * Разными цветами было бы безопаснее, но кнопка тут одна, подпись на ней
+   * явная, а над ней идёт кольцо, по которому видно, что смена идёт. Цветом
+   * различать нечего: перепутать нажатие не с чем.
+   */
   actionEnd: {
-    backgroundColor: colors.header,
+    backgroundColor: colors.accent,
   },
   actionDisabled: {
-    opacity: 0.6,
+    opacity: opacity.pressed,
   },
   actionPressed: {
-    opacity: 0.85,
+    opacity: opacity.pressed,
   },
   actionText: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontSize: 16,
     fontWeight: '600',
   },

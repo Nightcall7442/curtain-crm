@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { Translated } from '../i18n/locale';
+
 /**
  * Роли сотрудников.
  *
@@ -39,16 +41,30 @@ export const Role = {
 export const roleSchema = z.enum(ROLES);
 
 /** Человекочитаемые названия ролей (русский интерфейс). */
-export const ROLE_LABELS_RU: Readonly<Record<Role, string>> = {
-  ceo: 'Директор',
-  admin: 'Администратор',
-  seller: 'Продавец',
-  master: 'Мастер-замерщик',
-  sewer: 'Швея',
-  qc: 'Контроль качества',
-  installer: 'Установщик',
-  smm: 'SMM',
+export const ROLE_LABELS: Translated<Role> = {
+  ru: {
+    ceo: 'Директор',
+    admin: 'Администратор',
+    seller: 'Продавец',
+    master: 'Мастер-замерщик',
+    sewer: 'Швея',
+    qc: 'Контроль качества',
+    installer: 'Установщик',
+    smm: 'SMM',
+  },
+  uz: {
+    ceo: 'Direktor',
+    admin: 'Administrator',
+    seller: 'Sotuvchi',
+    master: "O'lchovchi usta",
+    sewer: 'Tikuvchi',
+    qc: 'Sifat nazorati',
+    installer: "O'rnatuvchi",
+    smm: 'SMM',
+  },
 };
+
+export const ROLE_LABELS_RU = ROLE_LABELS.ru;
 
 /**
  * Роли, которым разрешено управлять ролями других сотрудников.
@@ -74,6 +90,19 @@ export const PRODUCTION_ROLES: readonly Role[] = [
   Role.QC,
   Role.INSTALLER,
 ];
+
+/**
+ * Роли, которым разрешено ЗАВОДИТЬ заказ.
+ *
+ * Продавец принимает заказ у клиента, администратор и директор — заводят
+ * задним числом или за отсутствующего продавца.
+ *
+ * Список общий с сервером намеренно: на нём построена `orderIntakeProcedure`,
+ * и мобильное приложение по нему же решает, показывать ли кнопку «Новый
+ * заказ». Две копии этого перечня разошлись бы при первой правке, и
+ * пользователь увидел бы кнопку, которая заведомо откажет.
+ */
+export const ORDER_INTAKE_ROLES: readonly Role[] = [Role.SELLER, Role.ADMIN, Role.CEO];
 
 /**
  * Роли, которые назначаются на конкретный заказ.

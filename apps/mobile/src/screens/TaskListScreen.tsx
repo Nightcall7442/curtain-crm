@@ -1,16 +1,17 @@
 import {
   availableTransitions,
-  ORDER_STATUS_LABELS_RU,
+  ORDER_STATUS_LABELS,
   TransitionKind,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, type ReactElement } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Empty, Pill } from '../components/Card';
+import { Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { useAuth } from '../hooks/useAuth';
+import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, radius, spacing, typography, opacity } from '../theme';
 
 /**
  * Мои задачи.
@@ -25,6 +26,7 @@ import { cardShadow, colors, radius, spacing, typography } from '../theme';
  * счётчик — тем более.
  */
 export function TaskListScreen(): ReactElement {
+  const { t } = useLocale();
   const navigation = useNavigation();
   const { user } = useAuth();
 
@@ -61,7 +63,11 @@ export function TaskListScreen(): ReactElement {
         )
       }
       ListEmptyComponent={
-        orders.isLoading ? null : (
+        orders.isLoading ? (
+          <Skeleton />
+        ) : orders.isError ? (
+          <ErrorState />
+        ) : (
           <Empty
             message="Задач нет"
             hint="Здесь появляются заказы, по которым вы можете сделать следующий шаг"
@@ -80,7 +86,7 @@ export function TaskListScreen(): ReactElement {
             <Text style={styles.number}>
               {item.order.orderNumber ?? `#${item.order.id.toString()}`}
             </Text>
-            <Pill text={ORDER_STATUS_LABELS_RU[item.order.status]} tone="info" />
+            <Pill text={t(ORDER_STATUS_LABELS, item.order.status)} tone="info" />
           </View>
 
           <Text style={styles.client} numberOfLines={1}>
@@ -113,13 +119,13 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
     ...cardShadow,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   headerRow: {
     flexDirection: 'row',

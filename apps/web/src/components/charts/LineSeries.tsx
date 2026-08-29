@@ -34,7 +34,34 @@ export interface LineSeriesProps {
 
 const VIEW_WIDTH = 460;
 const VIEW_HEIGHT = 180;
-const PADDING = { top: 16, right: 44, bottom: 24, left: 34 };
+
+/**
+ * Кегль подписей внутри SVG — В ЕДИНИЦАХ viewBox, а не в пикселях.
+ *
+ * Здесь нельзя пользоваться типографической шкалой страницы, и это не
+ * стилистическое предпочтение, а разные системы координат. Холст шириной
+ * 460 единиц растягивается на всю карточку — около 1450 px, — то есть всё
+ * внутри увеличивается втрое. Класс `text-overline` (11 px) превращался на
+ * экране в 35 px: подписи оси разносило, а число вида «115 млн» вылезало за
+ * левый край холста и обрезалось до «млн».
+ *
+ * Отсюда же запрет на разрядку из шкалы: 0,08em при таком масштабе добавляет
+ * подписи ещё несколько единиц ширины и добивает то, что не поместилось.
+ *
+ * Значения подобраны под этот холст: при изменении `VIEW_WIDTH` их надо
+ * пересчитывать вместе с ним.
+ */
+const AXIS_FONT_SIZE = 9;
+const VALUE_FONT_SIZE = 10;
+
+/**
+ * Левое поле держит подпись оси.
+ *
+ * Самая широкая подпись — денежная («115 млн»), около 30 единиц при кегле 9.
+ * Поле меньше этого молча обрезает начало числа, и на графике остаётся
+ * хвост единицы измерения.
+ */
+const PADDING = { top: 16, right: 44, bottom: 24, left: 40 };
 
 const PLOT_WIDTH = VIEW_WIDTH - PADDING.left - PADDING.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - PADDING.top - PADDING.bottom;
@@ -108,7 +135,7 @@ export function LineSeries({
   return (
     <div className={cn('w-full', className)}>
       {/* Легенда обязательна: серий две */}
-      <div className="mb-1 flex items-center gap-4 text-[11px]">
+      <div className="mb-1 flex items-center gap-4 text-overline">
         <span className="flex items-center gap-1.5 text-secondary">
           <span aria-hidden className="h-0.5 w-4 rounded bg-series-current" />
           {currentLabel}
@@ -146,7 +173,8 @@ export function LineSeries({
                 x={PADDING.left - 6}
                 y={y + 3}
                 textAnchor="end"
-                className="fill-muted text-[9px]"
+                fontSize={AXIS_FONT_SIZE}
+                className="fill-muted"
               >
                 {formatValue(Math.round(value))}
               </text>
@@ -163,7 +191,8 @@ export function LineSeries({
               x={scale.toX(day)}
               y={VIEW_HEIGHT - 8}
               textAnchor="middle"
-              className="fill-muted text-[9px]"
+              fontSize={AXIS_FONT_SIZE}
+              className="fill-muted"
             >
               {day}
             </text>
@@ -217,7 +246,8 @@ export function LineSeries({
           <text
             x={scale.toX(lastPrevious.x) + 6}
             y={scale.toY(lastPrevious.y) + 3}
-            className="fill-muted text-[10px] font-medium"
+            fontSize={VALUE_FONT_SIZE}
+            className="fill-muted font-medium"
           >
             {formatValue(lastPrevious.y)}
           </text>
@@ -226,7 +256,8 @@ export function LineSeries({
           <text
             x={scale.toX(lastCurrent.x) + 6}
             y={scale.toY(lastCurrent.y) + 3}
-            className="fill-positive text-[10px] font-semibold"
+            fontSize={VALUE_FONT_SIZE}
+            className="fill-positive font-semibold"
           >
             {formatValue(lastCurrent.y)}
           </text>
@@ -283,7 +314,7 @@ export function LineSeries({
           а здесь она не перекрывает данные и доступна с клавиатуры. */}
       <div
         className={cn(
-          'mt-1 flex h-5 items-center gap-3 text-[11px] transition-opacity',
+          'mt-1 flex h-5 items-center gap-3 text-overline transition-opacity',
           hoverX === null ? 'opacity-0' : 'opacity-100',
         )}
         aria-live="polite"

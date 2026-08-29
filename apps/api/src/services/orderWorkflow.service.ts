@@ -180,6 +180,24 @@ export interface ChangeOrderStatusParams {
    * и закрыть её — а закрытие заказа влияет на расчёт зарплаты.
    */
   readonly systemInitiated?: boolean;
+  /**
+   * Исполнитель, назначаемый ВМЕСТЕ с переходом, одной транзакцией.
+   *
+   * Три статуса (`measurement_assigned`, `sewing_in_progress`,
+   * `installation_assigned`) без исполнителя бессмысленны и отклоняются
+   * шагом 5. Раньше это означало обязательные два запроса в правильном
+   * порядке: сначала `orders.assign`, потом `orders.changeStatus`. Между
+   * ними заказ успевал побыть в состоянии «мастер назначен, но статус
+   * прежний», а если второй запрос не доходил — оставался в нём насовсем.
+   *
+   * Роль здесь не передаётся намеренно: её однозначно задаёт целевой статус
+   * (`ORDER_STATUS_REQUIRED_ASSIGNEE`). Лишний параметр можно было бы
+   * прислать не тот, и появилась бы вторая, расходящаяся с таблицей,
+   * трактовка того, кого назначают.
+   *
+   * Назначать вправе только руководство — ровно как в `orders.assign`.
+   */
+  readonly assigneeId?: number | null;
   readonly ipAddress?: string | null;
 }
 
@@ -265,8 +283,46 @@ export async function changeOrderStatus(
   const requiredAssignee = ORDER_STATUS_REQUIRED_ASSIGNEE[toStatus];
   const autoAssign = resolveAutoAssignment(order, actor, toStatus);
 
+  /* 5a. Назначение, присланное вместе с переходом.
+     Выполняется ДО проверки ниже и в той же транзакции, поэтому либо заказ
+     уходит в новый статус с назначенным исполнителем, либо не происходит
+     ничего — промежуточного состояния «назначен, но статус прежний» больше
+     нет. Проверку роли назначаемого, его активность, аудит и уведомление
+     делает `assignExecutor`: второй копии этих правил здесь быть не должно. */
+  const assigneeId = params.assigneeId ?? null;
+
+  if (assigneeId !== null) {
+    if (requiredAssignee === undefined) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message:
+          `Статус «${ORDER_STATUS_LABELS_RU[toStatus]}» не требует исполнителя — ` +
+          'назначьте его отдельно',
+      });
+    }
+
+    // Право назначать — только у руководства, как и в `orders.assign`.
+    // Без этой проверки любой участник заказа, которому переход разрешён,
+    // назначал бы исполнителей в обход `managementProcedure`.
+    if (!isManagement(actor.roles)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Назначать исполнителей вправе только администратор или директор',
+      });
+    }
+
+    await assignExecutor(executor, {
+      orderId: order.id,
+      role: requiredAssignee,
+      assigneeId,
+      actor,
+      ipAddress: params.ipAddress ?? null,
+    });
+  }
+
   if (requiredAssignee !== undefined) {
-    const assigned = assigneeOf(order, requiredAssignee) ?? autoAssign?.userId ?? null;
+    const assigned =
+      assigneeId ?? assigneeOf(order, requiredAssignee) ?? autoAssign?.userId ?? null;
     if (assigned === null) {
       throw new TRPCError({
         code: 'BAD_REQUEST',

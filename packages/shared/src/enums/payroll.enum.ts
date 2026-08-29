@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { Translated } from '../i18n/locale';
+
 /**
  * Типы схем начисления зарплаты.
  *
@@ -27,12 +29,22 @@ export const PayrollSchemeType = {
 
 export const payrollSchemeTypeSchema = z.enum(PAYROLL_SCHEME_TYPES);
 
-export const PAYROLL_SCHEME_TYPE_LABELS_RU: Readonly<Record<PayrollSchemeType, string>> = {
-  fixed: 'Оклад',
-  hourly: 'Почасовая',
-  kpi: 'Оклад + KPI',
-  commission: 'Процент от заказов',
+export const PAYROLL_SCHEME_TYPE_LABELS: Translated<PayrollSchemeType> = {
+  ru: {
+    fixed: 'Оклад',
+    hourly: 'Почасовая',
+    kpi: 'Оклад + KPI',
+    commission: 'Процент от заказов',
+  },
+  uz: {
+    fixed: 'Maosh',
+    hourly: 'Soatbay',
+    kpi: 'Maosh + KPI',
+    commission: 'Buyurtmalardan foiz',
+  },
 };
+
+export const PAYROLL_SCHEME_TYPE_LABELS_RU = PAYROLL_SCHEME_TYPE_LABELS.ru;
 
 /**
  * Поля схемы, обязательные для каждого типа начисления.
@@ -65,11 +77,12 @@ export const PayrollRecordStatus = {
 
 export const payrollRecordStatusSchema = z.enum(PAYROLL_RECORD_STATUSES);
 
-export const PAYROLL_RECORD_STATUS_LABELS_RU: Readonly<Record<PayrollRecordStatus, string>> = {
-  draft: 'Черновик',
-  approved: 'Утверждён',
-  paid: 'Выплачен',
+export const PAYROLL_RECORD_STATUS_LABELS: Translated<PayrollRecordStatus> = {
+  ru: { draft: 'Черновик', approved: 'Утверждён', paid: 'Выплачен' },
+  uz: { draft: 'Qoralama', approved: 'Tasdiqlangan', paid: "To'langan" },
 };
+
+export const PAYROLL_RECORD_STATUS_LABELS_RU = PAYROLL_RECORD_STATUS_LABELS.ru;
 
 /** Допустимые переходы статуса расчёта. Возврат из `paid` запрещён. */
 export const PAYROLL_STATUS_TRANSITIONS: Readonly<
@@ -105,11 +118,9 @@ export const PurchaseUnit = {
 
 export const purchaseUnitSchema = z.enum(PURCHASE_UNITS);
 
-export const PURCHASE_UNIT_LABELS_RU: Readonly<Record<PurchaseUnit, string>> = {
-  m: 'м',
-  m2: 'м²',
-  pcs: 'шт',
-  set: 'компл',
-  kg: 'кг',
-  roll: 'рулон',
+export const PURCHASE_UNIT_LABELS: Translated<PurchaseUnit> = {
+  ru: { m: 'м', m2: 'м²', pcs: 'шт', set: 'компл', kg: 'кг', roll: 'рулон' },
+  uz: { m: 'm', m2: 'm²', pcs: 'dona', set: 'komplekt', kg: 'kg', roll: 'rulon' },
 };
+
+export const PURCHASE_UNIT_LABELS_RU = PURCHASE_UNIT_LABELS.ru;

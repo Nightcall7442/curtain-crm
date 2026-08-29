@@ -12,6 +12,7 @@ import {
   assignableRoleSchema,
   availableTransitions,
   isManagement,
+  MAX_BATCH_ORDERS,
   moneyToDecimalString,
   ORDER_PHASES,
   ORDER_STATUS_PHASE,
@@ -561,6 +562,11 @@ export const ordersRouter = router({
         toStatus: orderStatusSchema,
         /** Причина. Обязательна для откатов, отклонений и отмен. */
         comment: z.string().trim().max(1000).optional(),
+        /**
+         * Исполнитель, назначаемый вместе с переходом.
+         * Роль задаёт целевой статус, поэтому здесь только человек.
+         */
+        assigneeId: idSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) =>
@@ -570,10 +576,81 @@ export const ordersRouter = router({
           toStatus: input.toStatus,
           actor: ctx.user,
           comment: input.comment ?? null,
+          assigneeId: input.assigneeId ?? null,
           ipAddress: ctx.ipAddress,
         }),
       ),
     ),
+
+  /**
+   * Один и тот же переход по нескольким заказам сразу.
+   *
+   * Каждый заказ — В СВОЕЙ транзакции, последовательно. Это принципиально:
+   *
+   *  - Общая транзакция означала бы «всё или ничего»: один заказ, успевший
+   *    уйти вперёд с чужого устройства, отменил бы работу по остальным
+   *    сорока девяти. Для массовой операции это худший исход из возможных.
+   *  - Параллельный запуск (`Promise.all`) взял бы полсотни блокировок строк
+   *    вперемешку и дал бы недетерминированный порядок в отчёте.
+   *
+   * Поэтому ответ — не «успех», а ПОИМЁННЫЙ отчёт: по каждому заказу видно,
+   * прошёл он или нет и почему. Молча проглотить отказ нельзя — человек
+   * должен узнать, что три заказа из десяти остались на месте, сразу, а не
+   * при следующем открытии списка.
+   */
+  changeStatusBatch: protectedProcedure
+    .input(
+      z.object({
+        ids: z.array(idSchema).min(1).max(MAX_BATCH_ORDERS),
+        toStatus: orderStatusSchema,
+        comment: z.string().trim().max(1000).optional(),
+        assigneeId: idSchema.optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const results: {
+        id: number;
+        ok: boolean;
+        message: string | null;
+      }[] = [];
+
+      // Повторы в списке убираем: два одинаковых `id` дали бы «уже находится
+      // в статусе» вторым проходом, и отчёт врал бы про неудачу.
+      for (const id of [...new Set(input.ids)]) {
+        try {
+          await ctx.db.transaction(async (tx) =>
+            changeOrderStatus(tx, {
+              orderId: id,
+              toStatus: input.toStatus,
+              actor: ctx.user,
+              comment: input.comment ?? null,
+              assigneeId: input.assigneeId ?? null,
+              ipAddress: ctx.ipAddress,
+            }),
+          );
+          results.push({ id, ok: true, message: null });
+        } catch (error) {
+          /* Сообщение сервера сохраняем как есть: оно на русском и объясняет
+             причину («Сначала назначьте исполнителя…», «Заказ закрыт»).
+             Заменять его на «не удалось» значит выбросить единственное, что
+             подсказывает человеку, что делать дальше. */
+          results.push({
+            id,
+            ok: false,
+            message:
+              error instanceof TRPCError
+                ? error.message
+                : 'Не удалось изменить статус заказа',
+          });
+        }
+      }
+
+      return {
+        results,
+        succeeded: results.filter((entry) => entry.ok).length,
+        failed: results.filter((entry) => !entry.ok).length,
+      };
+    }),
 
   /**
    * Действия, доступные текущему сотруднику по этому заказу.

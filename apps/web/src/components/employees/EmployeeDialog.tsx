@@ -184,7 +184,7 @@ export function EmployeeDialog({
           }
         />
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="ФИО" required error={errors['fullName']}>
             <Input
               value={fullName}
@@ -305,7 +305,7 @@ export function EmployeeDialog({
                       setRoles((current) => toggle(current, role));
                     }}
                     className={cn(
-                      'rounded border px-2.5 py-1 text-[11.5px] transition-colors',
+                      'rounded border px-2.5 py-1 text-footnote transition-colors',
                       selected
                         ? 'border-accent/50 bg-accent/15 text-accent'
                         : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
@@ -337,7 +337,7 @@ export function EmployeeDialog({
                     setBranchIds((current) => toggle(current, branch.id));
                   }}
                   className={cn(
-                    'rounded border px-2.5 py-1 text-[11.5px] transition-colors',
+                    'rounded border px-2.5 py-1 text-footnote transition-colors',
                     selected
                       ? 'border-accent/50 bg-accent/15 text-accent'
                       : 'border-subtle text-secondary hover:bg-raised hover:text-primary',

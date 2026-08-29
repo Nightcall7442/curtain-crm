@@ -23,8 +23,8 @@ export default function DashboardPage(): ReactElement {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="space-y-6">
+        <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
           {Array.from({ length: 6 }, (_unused, index) => (
             <Skeleton key={index} className="h-[104px]" />
           ))}

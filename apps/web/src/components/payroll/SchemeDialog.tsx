@@ -104,7 +104,7 @@ export function SchemeDialog({
           message={Object.keys(errors).length === 0 ? (upsert.error?.message ?? null) : null}
         />
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Роль" required>
             <Select
               value={role}
@@ -164,7 +164,7 @@ export function SchemeDialog({
           />
         </Field>
 
-        <p className="text-[11.5px] text-muted">
+        <p className="text-footnote text-muted">
           Предыдущая схема этой роли будет деактивирована. Уже утверждённые
           ведомости не изменятся — в них хранится снимок старых параметров.
         </p>

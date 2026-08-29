@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   markGlyph: {
-    color: colors.headerText,
+    color: colors.onAccent,
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 16,

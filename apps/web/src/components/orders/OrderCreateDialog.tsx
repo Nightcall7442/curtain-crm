@@ -201,7 +201,7 @@ export function OrderCreateDialog({
         {/* --- Клиент --------------------------------------------------- */}
         <section>
           <h3 className="section-title mb-2">Клиент</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Имя клиента" required error={errors['clientName']}>
               <Input
                 value={clientName}
@@ -256,7 +256,7 @@ export function OrderCreateDialog({
         {/* --- Условия --------------------------------------------------- */}
         <section>
           <h3 className="section-title mb-2">Условия</h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Филиал" hint="По умолчанию — ваш основной">
               <Select
                 value={branchId}
@@ -335,7 +335,7 @@ export function OrderCreateDialog({
           </div>
 
           {errors['items'] !== undefined && (
-            <p className="mb-2 text-[11px] text-danger">{errors['items']}</p>
+            <p className="mb-2 text-overline text-danger">{errors['items']}</p>
           )}
 
           <div className="space-y-3">
@@ -346,7 +346,7 @@ export function OrderCreateDialog({
               return (
                 <div key={item.id} className="rounded border border-subtle bg-base/40 p-3">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="text-[12px] font-medium text-primary">
+                    <span className="text-footnote font-medium text-primary">
                       {`Позиция ${(index + 1).toString()}`}
                     </span>
                     {items.length > 1 && (
@@ -363,7 +363,7 @@ export function OrderCreateDialog({
                     )}
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Вид">
                       <Select
                         value={item.kind}

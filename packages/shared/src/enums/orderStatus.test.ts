@@ -5,15 +5,24 @@ import {
   canTransition,
   isRollback,
   isTerminalStatus,
+  missingAssigneeFor,
   ORDER_STATUS_LABELS_RU,
   ORDER_STATUS_PHASE,
+  ORDER_STATUS_REQUIRED_ASSIGNEE,
   ORDER_STATUS_STAGE_INDEX,
   ORDER_STATUSES,
   ORDER_TRANSITIONS,
   OrderStatus,
+  primaryOrderAction,
   requiresComment,
+  transitionLabel,
   transitionsFrom,
+  TransitionKind,
+  ORDER_STATUS_LABELS,
+  PRODUCTION_STAGE_KEYS,
+  PRODUCTION_STAGE_LABELS,
 } from './orderStatus.enum';
+import { LOCALES } from '../i18n/locale';
 import { Role, ROLES } from './role.enum';
 
 /**
@@ -195,3 +204,173 @@ describe('права на переходы', () => {
     }
   });
 });
+
+/**
+ * Главное действие выносится кнопкой прямо в строку списка, то есть
+ * нажимается быстро и почти не глядя. Всё, что определяет, ЧТО именно туда
+ * попадёт, проверяется здесь построчно.
+ */
+describe('главное действие по заказу', () => {
+  it('на прямом пути у админа всегда ровно одно действие с короткой подписью', () => {
+    const singleForward = [
+      OrderStatus.NEW,
+      OrderStatus.MEASUREMENT_ASSIGNED,
+      OrderStatus.MEASUREMENT_DONE,
+      OrderStatus.PENDING_SEWING_ASSIGNMENT,
+      OrderStatus.SEWING_IN_PROGRESS,
+      OrderStatus.SEWING_DONE,
+      OrderStatus.PENDING_QC,
+      OrderStatus.QC_PASSED,
+      OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+      OrderStatus.INSTALLATION_ASSIGNED,
+      OrderStatus.INSTALLATION_IN_PROGRESS,
+      OrderStatus.INSTALLATION_DONE,
+    ] as const;
+
+    for (const status of singleForward) {
+      const action = primaryOrderAction(status, [Role.ADMIN]);
+      expect(action, `нет главного действия из «${ORDER_STATUS_LABELS_RU[status]}»`).not.toBeNull();
+      if (action === null) continue;
+
+      expect(action.transition.kind).toBe(TransitionKind.FORWARD);
+      // Короткая подпись обязана быть короче полной — иначе смысла в ней нет.
+      expect(action.shortLabel.length).toBeLessThanOrEqual(action.transition.label.length);
+      expect(action.shortLabel.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('там, где прямых переходов два, кнопки нет — выбор остаётся человеку', () => {
+    // Пропуск замера меняет судьбу заказа: продвигать один из вариантов
+    // в кнопку «по умолчанию» нельзя.
+    expect(primaryOrderAction(OrderStatus.PENDING_ADMIN_REVIEW, [Role.ADMIN])).toBeNull();
+    expect(primaryOrderAction(OrderStatus.REJECTED_TO_CEO, [Role.CEO])).toBeNull();
+  });
+
+  it('откат, отклонение и отмена главным действием не становятся', () => {
+    // Из брака ведут только откаты — значит, кнопки нет вовсе.
+    expect(primaryOrderAction(OrderStatus.QC_FAILED, [Role.QC])).toBeNull();
+
+    // У контролёра из `pending_qc` есть и «Контроль пройден», и «Обнаружен
+    // брак»; в кнопку идёт только первое, потому что второе — отклонение.
+    const qc = primaryOrderAction(OrderStatus.PENDING_QC, [Role.QC]);
+    expect(qc?.transition.to).toBe(OrderStatus.QC_PASSED);
+  });
+
+  it('из конечных статусов и без подходящей роли действия нет', () => {
+    expect(primaryOrderAction(OrderStatus.COMPLETED, [Role.CEO])).toBeNull();
+    expect(primaryOrderAction(OrderStatus.CANCELLED, [Role.CEO])).toBeNull();
+    expect(primaryOrderAction(OrderStatus.SEWING_IN_PROGRESS, [Role.SMM])).toBeNull();
+  });
+
+  it('видит только свои действия: швея не получает кнопку контролёра', () => {
+    expect(primaryOrderAction(OrderStatus.PENDING_QC, [Role.SEWER])).toBeNull();
+    expect(primaryOrderAction(OrderStatus.PENDING_SEWING_ASSIGNMENT, [Role.SEWER])?.transition.to).toBe(
+      OrderStatus.SEWING_IN_PROGRESS,
+    );
+  });
+
+  it('короткие подписи не повторяются: две кнопки с одним текстом неразличимы', () => {
+    const labels = ORDER_STATUSES.map((status) => primaryOrderAction(status, [Role.CEO]))
+      .filter((action): action is NonNullable<typeof action> => action !== null)
+      .map((action) => action.shortLabel);
+
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+/**
+ * Переводы проверяются тестом, а не глазами.
+ *
+ * Узбекские подписи переходов лежат отдельным словарём по ключу
+ * `откуда->куда`, и отсутствующий ключ откатывается к русскому МОЛЧА.
+ * Молчаливый откат — худший вид пропажи: интерфейс выглядит рабочим, просто
+ * половина кнопок вдруг по-русски. Поэтому полнота проверяется перебором.
+ */
+describe('узбекские подписи', () => {
+  it('есть у каждого перехода и не совпадают с русскими', () => {
+    for (const transition of ORDER_TRANSITIONS) {
+      const uz = transitionLabel(transition, 'uz');
+      const ru = transitionLabel(transition, 'ru');
+
+      expect(uz.length, `${transition.from} -> ${transition.to}`).toBeGreaterThan(0);
+      expect(uz, `${transition.from} -> ${transition.to} не переведён`).not.toBe(ru);
+    }
+  });
+
+  it('русская подпись перехода — ровно та, что в таблице', () => {
+    for (const transition of ORDER_TRANSITIONS) {
+      expect(transitionLabel(transition, 'ru')).toBe(transition.label);
+    }
+  });
+
+  it('есть у каждого статуса, фазы и этапа конвейера', () => {
+    for (const locale of LOCALES) {
+      for (const status of ORDER_STATUSES) {
+        expect(ORDER_STATUS_LABELS[locale][status], `${locale}/${status}`).toBeTruthy();
+      }
+      for (const stage of PRODUCTION_STAGE_KEYS) {
+        expect(PRODUCTION_STAGE_LABELS[locale][stage], `${locale}/${stage}`).toBeTruthy();
+      }
+    }
+  });
+
+  it('главное действие подписано коротко на обоих языках', () => {
+    for (const locale of LOCALES) {
+      const action = primaryOrderAction(OrderStatus.PENDING_SEWING_ASSIGNMENT, [Role.SEWER], locale);
+      expect(action).not.toBeNull();
+      if (action === null) continue;
+
+      expect(action.shortLabel.length).toBeGreaterThan(0);
+      expect(action.shortLabel.length).toBeLessThanOrEqual(
+        transitionLabel(action.transition, locale).length,
+      );
+    }
+  });
+
+  it('узбекские подписи набраны латиницей, а не кириллицей', () => {
+    // Заказчик выбрал латиницу. Кириллический символ здесь означал бы, что
+    // перевод забыли и оставили русский текст под видом узбекского.
+    for (const status of ORDER_STATUSES) {
+      expect(ORDER_STATUS_LABELS.uz[status], status).not.toMatch(/[А-Яа-яЁё]/);
+    }
+    for (const transition of ORDER_TRANSITIONS) {
+      expect(transitionLabel(transition, 'uz'), `${transition.from}->${transition.to}`).not.toMatch(
+        /[А-Яа-яЁё]/,
+      );
+    }
+  });
+});
+
+describe('нехватка исполнителя', () => {
+  const nobody = { master: null, sewer: null, qc: null, installer: null };
+
+  it('называет роль, без которой статус недостижим', () => {
+    expect(missingAssigneeFor(OrderStatus.MEASUREMENT_ASSIGNED, nobody)).toBe(Role.MASTER);
+    expect(missingAssigneeFor(OrderStatus.SEWING_IN_PROGRESS, nobody)).toBe(Role.SEWER);
+    expect(missingAssigneeFor(OrderStatus.INSTALLATION_ASSIGNED, nobody)).toBe(Role.INSTALLER);
+  });
+
+  it('молчит, когда исполнитель уже назначен', () => {
+    expect(missingAssigneeFor(OrderStatus.SEWING_IN_PROGRESS, { ...nobody, sewer: 42 })).toBeNull();
+  });
+
+  it('молчит для статусов, которым исполнитель не нужен', () => {
+    expect(missingAssigneeFor(OrderStatus.PENDING_QC, nobody)).toBeNull();
+    expect(missingAssigneeFor(OrderStatus.COMPLETED, nobody)).toBeNull();
+    expect(missingAssigneeFor(OrderStatus.CANCELLED, nobody)).toBeNull();
+  });
+
+  it('покрывает ровно те статусы, что перечислены в таблице требований', () => {
+    for (const status of ORDER_STATUSES) {
+      const required = ORDER_STATUS_REQUIRED_ASSIGNEE[status] ?? null;
+      expect(missingAssigneeFor(status, nobody)).toBe(required);
+    }
+  });
+
+  it('отсутствующее поле читается как «не назначен», а не как «назначен»', () => {
+    // Списку заказов приходит вся строка, но частичный объект допустим типом —
+    // и пустой объект не должен молча означать «всё назначено».
+    expect(missingAssigneeFor(OrderStatus.SEWING_IN_PROGRESS, {})).toBe(Role.SEWER);
+  });
+});
+

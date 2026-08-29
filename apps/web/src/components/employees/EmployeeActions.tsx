@@ -110,7 +110,7 @@ export function EmployeeActions({
       )}
 
       {setActive.error !== null && (
-        <span className="max-w-[240px] truncate text-[10.5px] text-danger" title={setActive.error.message}>
+        <span className="max-w-[240px] truncate text-overline text-danger" title={setActive.error.message}>
           {setActive.error.message}
         </span>
       )}
@@ -134,7 +134,7 @@ export function EmployeeActions({
         }
       >
         <div className="space-y-3">
-          <p className="text-[12px] text-secondary">
+          <p className="text-footnote text-secondary">
             Роли складываются: сотрудник с ролями «мастер» и «швея» получает
             права обеих. Изменения применяются сразу и попадают в журнал.
           </p>
@@ -151,7 +151,7 @@ export function EmployeeActions({
                   key={role}
                   className="flex items-center gap-3 rounded border border-subtle bg-base/40 px-3 py-2"
                 >
-                  <span className="flex-1 text-[12.5px] text-primary">
+                  <span className="flex-1 text-caption text-primary">
                     {ROLE_LABELS_RU[role]}
                   </span>
 
@@ -206,7 +206,7 @@ export function EmployeeActions({
         <div className="space-y-3">
           <FormError message={resetPassword.error?.message ?? null} />
 
-          <p className="text-[12px] text-secondary">
+          <p className="text-footnote text-secondary">
             Текущий пароль знать не нужно. Все сессии сотрудника будут
             завершены — на телефоне ему придётся войти заново.
           </p>

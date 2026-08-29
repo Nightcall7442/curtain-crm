@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { Translated } from '../i18n/locale';
+
 /**
  * Вид позиции заказа.
  *
@@ -23,11 +25,12 @@ export const OrderItemKind = {
 
 export const orderItemKindSchema = z.enum(ORDER_ITEM_KINDS);
 
-export const ORDER_ITEM_KIND_LABELS_RU: Readonly<Record<OrderItemKind, string>> = {
-  window: 'Окно',
-  door: 'Дверь',
-  other: 'Прочее',
+export const ORDER_ITEM_KIND_LABELS: Translated<OrderItemKind> = {
+  ru: { window: 'Окно', door: 'Дверь', other: 'Прочее' },
+  uz: { window: 'Deraza', door: 'Eshik', other: 'Boshqa' },
 };
+
+export const ORDER_ITEM_KIND_LABELS_RU = ORDER_ITEM_KIND_LABELS.ru;
 
 export function isOrderItemKind(value: unknown): value is OrderItemKind {
   return typeof value === 'string' && (ORDER_ITEM_KINDS as readonly string[]).includes(value);

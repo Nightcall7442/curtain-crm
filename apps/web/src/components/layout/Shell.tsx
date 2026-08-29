@@ -37,7 +37,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
             aria-hidden
             className="h-8 w-8 animate-spin rounded-full border-2 border-strong border-t-accent"
           />
-          <span className="text-[13px] text-muted">Загрузка…</span>
+          <span className="text-caption text-muted">Загрузка…</span>
         </div>
       </div>
     );
@@ -47,13 +47,43 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
     <div className="flex h-screen overflow-hidden bg-base">
       <Sidebar collapsed={collapsed} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/*
+        Прокручивается вся колонка целиком, а не только `main`.
+        Иначе шапка оказывается СОСЕДОМ области прокрутки, под ней ничего не
+        проезжает, и стекло размывает пустой фон — то есть выглядит просто
+        мутным прямоугольником. Стекло имеет смысл только над движущимся
+        содержимым.
+      */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <Header
           onToggleSidebar={() => {
             setCollapsed((value) => !value);
           }}
         />
-        <main className="flex-1 overflow-y-auto p-4">{children}</main>
+        {/*
+          Ключ по адресу перезапускает анимацию на каждом переходе: без него
+          содержимое проявляется один раз за загрузку панели, и переключение
+          разделов снова выглядит мгновенной подменой без обратной связи.
+        */}
+        {/*
+          ВЕРТИКАЛЬНЫЙ РИТМ СТРАНИЦЫ ЗАДАЁТСЯ ЗДЕСЬ, а не каждой страницей.
+
+          До этого каждая страница решала сама, и решала по-разному:
+          `space-y-2` в уведомлениях, `space-y-4` в большинстве, `space-y-8`
+          в настройках, а половина разделов не задавала ничего вовсе. При
+          переходе между разделами карточки заметно «прыгали».
+
+          `space-y-6` — расстояние между верхнеуровневыми блоками страницы.
+          Внутри карточек и сеток отступы свои и мельче: 24 px разделяет
+          самостоятельные блоки, 16 px — карточки внутри одного блока,
+          8–12 px — элементы внутри карточки. Три ступени, не восемь.
+        */}
+        <main
+          key={pathname}
+          className="page-enter flex-1 space-y-6 p-4 lg:p-6 xl:p-8"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

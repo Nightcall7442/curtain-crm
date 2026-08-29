@@ -1,3 +1,5 @@
+import type { Locale } from '../i18n/locale';
+
 /**
  * Денежные величины.
  *
@@ -12,7 +14,20 @@
 
 /** Валюта системы. Мультивалютность не требуется. */
 export const CURRENCY_CODE = 'UZS';
-export const CURRENCY_SYMBOL_RU = 'сум';
+
+/**
+ * Обозначение валюты на языке интерфейса.
+ *
+ * Одна и та же валюта, но пишется по-разному: «сум» и «so'm». Это не перевод
+ * названия, а его исходное написание в каждом языке, поэтому подстановка
+ * обязательна — «сум» в узбекском тексте читается как чужое слово.
+ */
+export const CURRENCY_SYMBOL: Readonly<Record<Locale, string>> = {
+  ru: 'сум',
+  uz: "so'm",
+};
+
+export const CURRENCY_SYMBOL_RU = CURRENCY_SYMBOL.ru;
 
 /** Количество знаков после запятой в хранимой сумме. */
 export const MONEY_SCALE = 2;
@@ -110,8 +125,12 @@ export function percentOfMoney(minor: MoneyMinor, percent: number): MoneyMinor {
 }
 
 /** Отображение для интерфейса: `1 250 000 сум`. Дробная часть скрыта, если она нулевая. */
-export function formatMoney(minor: MoneyMinor, options?: { readonly withCurrency?: boolean }): string {
+export function formatMoney(
+  minor: MoneyMinor,
+  options?: { readonly withCurrency?: boolean; readonly locale?: Locale },
+): string {
   const withCurrency = options?.withCurrency ?? true;
+  const locale = options?.locale ?? 'ru';
   const sign = minor < 0 ? '-' : '';
   const absolute = Math.abs(minor);
   const major = Math.trunc(absolute / MINOR_UNITS_PER_MAJOR);
@@ -125,5 +144,5 @@ export function formatMoney(minor: MoneyMinor, options?: { readonly withCurrency
     fraction === 0 ? '' : `,${fraction.toString().padStart(MONEY_SCALE, '0')}`;
 
   const amount = `${sign}${majorFormatted}${fractionFormatted}`;
-  return withCurrency ? `${amount}\u00A0${CURRENCY_SYMBOL_RU}` : amount;
+  return withCurrency ? `${amount}\u00A0${CURRENCY_SYMBOL[locale]}` : amount;
 }

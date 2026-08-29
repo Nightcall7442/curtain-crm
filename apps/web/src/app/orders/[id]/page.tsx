@@ -23,8 +23,10 @@ import { OrderPhotos } from '@/components/orders/OrderPhotos';
 import { OrderPurchases } from '@/components/orders/OrderPurchases';
 import { VoiceRecorder } from '@/components/orders/VoiceRecorder';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useToast } from '@/components/providers/ToastProvider';
 import { OrderStatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
+import { controlClass } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 import { cn, formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
 
@@ -36,6 +38,7 @@ import { cn, formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
  * тоже приходит оттуда — правило живёт в таблице переходов, а не в двух местах.
  */
 export default function OrderDetailPage(): ReactElement {
+  const toast = useToast();
   const params = useParams<{ id: string }>();
   const orderId = Number.parseInt(params.id, 10);
 
@@ -70,10 +73,17 @@ export default function OrderDetailPage(): ReactElement {
   };
 
   const changeStatus = trpc.orders.changeStatus.useMutation({
-    async onSuccess() {
+    async onSuccess(_result, variables) {
       setPendingStatus(null);
       setReason('');
       await refetchAll();
+      // Называем новый статус: сотрудник нажимает кнопку перехода десятки раз
+      // за смену, и подтверждение «заказ передан на пошив» отличается от
+      // «заказ принят» — из одного факта «сохранено» этого не видно.
+      toast.success(`Заказ переведён: ${ORDER_STATUS_LABELS_RU[variables.toStatus]}`);
+    },
+    onError(error) {
+      toast.error('Не удалось сменить статус', error.message);
     },
   });
 
@@ -81,6 +91,11 @@ export default function OrderDetailPage(): ReactElement {
     async onSuccess() {
       setComment('');
       await utils.orderComments.listByOrder.invalidate({ orderId });
+    },
+    onError(error) {
+      // Текст комментария намеренно НЕ очищается при ошибке: он остаётся
+      // в поле, и написанное не пропадает вместе с неудачным запросом.
+      toast.error('Комментарий не отправлен', error.message);
     },
   });
 
@@ -112,7 +127,7 @@ export default function OrderDetailPage(): ReactElement {
   const data = order.data;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {/* --- Шапка заказа --------------------------------------------------- */}
       <Card>
         <CardBody className="flex flex-wrap items-start gap-4">
@@ -126,14 +141,14 @@ export default function OrderDetailPage(): ReactElement {
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[17px] font-semibold text-primary">
+              <h2 className="text-heading font-semibold text-primary">
                 {data.orderNumber ?? `#${data.id.toString()}`}
               </h2>
               <OrderStatusBadge status={data.status} />
               <PriorityBadge priority={data.priority} />
             </div>
 
-            <p className="mt-1 text-[13px] text-secondary">
+            <p className="mt-1 text-caption text-secondary">
               {data.clientName}
               <a href={`tel:${data.clientPhone}`} className="ml-3 inline-flex items-center gap-1 hover:text-accent">
                 <Phone className="h-3.5 w-3.5" aria-hidden />
@@ -142,11 +157,11 @@ export default function OrderDetailPage(): ReactElement {
             </p>
 
             {data.installAddress !== null && (
-              <p className="mt-1 text-[12px] text-muted">{data.installAddress}</p>
+              <p className="mt-1 text-footnote text-muted">{data.installAddress}</p>
             )}
           </div>
 
-          <dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-1 text-[12px] sm:grid-cols-3">
+          <dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-1 text-footnote sm:grid-cols-3">
             <MoneyItem label="Стоимость работ" value={data.workPrice} />
             <MoneyItem label="Предоплата" value={data.deposit} />
             <MoneyItem label="Остаток" value={data.remainingPayment} />
@@ -194,10 +209,10 @@ export default function OrderDetailPage(): ReactElement {
                   }}
                   className={
                     transition.kind === TransitionKind.FORWARD
-                      ? 'rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-[12.5px] text-positive transition-colors hover:bg-positive/20 disabled:opacity-50'
+                      ? 'rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-caption text-positive transition-colors hover:bg-positive/20 disabled:opacity-50'
                       : transition.kind === TransitionKind.CANCEL
-                        ? 'rounded border border-danger/40 bg-danger/10 px-3 py-1.5 text-[12.5px] text-danger transition-colors hover:bg-danger/20 disabled:opacity-50'
-                        : 'rounded border border-warning/40 bg-warning/10 px-3 py-1.5 text-[12.5px] text-warning transition-colors hover:bg-warning/20 disabled:opacity-50'
+                        ? 'rounded border border-danger/40 bg-danger/10 px-3 py-1.5 text-caption text-danger transition-colors hover:bg-danger/20 disabled:opacity-50'
+                        : 'rounded border border-warning/40 bg-warning/10 px-3 py-1.5 text-caption text-warning transition-colors hover:bg-warning/20 disabled:opacity-50'
                   }
                 >
                   {transition.label}
@@ -209,7 +224,7 @@ export default function OrderDetailPage(): ReactElement {
           {/* Форма причины — появляется только для действий, где она обязательна */}
           {pendingStatus !== null && (
             <div className="mt-4 rounded border border-warning/30 bg-warning/5 p-3">
-              <p className="text-[12.5px] text-primary">
+              <p className="text-caption text-primary">
                 {`Переход в «${ORDER_STATUS_LABELS_RU[pendingStatus]}» требует причины`}
               </p>
               <textarea
@@ -219,7 +234,7 @@ export default function OrderDetailPage(): ReactElement {
                 }}
                 rows={2}
                 placeholder="Опишите причину — она попадёт в историю заказа и в уведомление участникам"
-                className="mt-2 w-full rounded border border-subtle bg-base px-2.5 py-2 text-[12.5px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
+                className={controlClass('md', 'mt-2')}
               />
               <div className="mt-2 flex gap-2">
                 <button
@@ -232,7 +247,7 @@ export default function OrderDetailPage(): ReactElement {
                       comment: reason.trim(),
                     });
                   }}
-                  className="rounded bg-accent px-3 py-1.5 text-[12.5px] font-medium text-base disabled:cursor-not-allowed disabled:opacity-50"
+                  className="pressable rounded-tile bg-accent px-3.5 py-2 text-caption font-medium text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Подтвердить
                 </button>
@@ -241,7 +256,7 @@ export default function OrderDetailPage(): ReactElement {
                   onClick={() => {
                     setPendingStatus(null);
                   }}
-                  className="rounded border border-subtle px-3 py-1.5 text-[12.5px] text-secondary hover:bg-raised"
+                  className="pressable rounded-tile border border-subtle px-3.5 py-2 text-caption text-secondary hover:bg-raised hover:text-primary"
                 >
                   Отмена
                 </button>
@@ -250,7 +265,7 @@ export default function OrderDetailPage(): ReactElement {
           )}
 
           {changeStatus.error !== null && (
-            <p role="alert" className="mt-3 rounded border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+            <p role="alert" className="mt-3 rounded border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger">
               {changeStatus.error.message}
             </p>
           )}
@@ -287,14 +302,14 @@ export default function OrderDetailPage(): ReactElement {
             {data.items.length === 0 ? (
               <EmptyState message="В заказе нет позиций" />
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-4">
                 {data.items.map((item, index) => (
                   <li key={item.id} className="rounded border border-subtle bg-base/40 p-3">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-[12.5px] font-medium text-primary">
+                      <span className="text-caption font-medium text-primary">
                         {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
                       </span>
-                      <span className="text-[11.5px] text-muted">
+                      <span className="text-footnote text-muted">
                         {ORDER_ITEM_KIND_LABELS_RU[item.kind]}
                         {item.quantity > 1 ? ` · ${item.quantity.toString()} шт` : ''}
                       </span>
@@ -308,7 +323,7 @@ export default function OrderDetailPage(): ReactElement {
                       либо две колонки на всю ширину с провалом посередине,
                       либо четыре — с переносом в узкой.
                     */}
-                    <dl className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-5 gap-y-1.5 text-[11.5px]">
+                    <dl className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-5 gap-y-1.5 text-footnote">
                       {item.widthCm !== null && item.heightCm !== null && (
                         <Detail
                           label="Размеры"
@@ -349,7 +364,7 @@ export default function OrderDetailPage(): ReactElement {
                     </dl>
 
                     {item.comment !== null && (
-                      <p className="mt-2 text-[11.5px] text-muted">{item.comment}</p>
+                      <p className="mt-2 text-footnote text-muted">{item.comment}</p>
                     )}
                   </li>
                 ))}
@@ -363,7 +378,7 @@ export default function OrderDetailPage(): ReactElement {
           <Card>
             <CardHeader title="Исполнители" />
             <CardBody>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
                 <Assignee role="master" person={data.master} />
                 <Assignee role="sewer" person={data.sewer} />
                 <Assignee role="qc" person={data.qc} />
@@ -379,7 +394,7 @@ export default function OrderDetailPage(): ReactElement {
       <OrderPhotos orderId={orderId} orderStatus={data.status} />
 
       {/* --- История и комментарии ------------------------------------------ */}
-      <section className="grid gap-3 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="История статусов" />
           <CardBody>
@@ -388,10 +403,10 @@ export default function OrderDetailPage(): ReactElement {
             ) : history.data === undefined || history.data.length === 0 ? (
               <EmptyState message="История пуста" />
             ) : (
-              <ol className="space-y-3">
+              <ol className="space-y-4">
                 {history.data.map((entry) => (
                   <li key={entry.id} className="border-l-2 border-subtle pl-3">
-                    <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                    <div className="flex flex-wrap items-center gap-2 text-footnote">
                       {entry.fromStatus !== null && (
                         <>
                           <span className="text-muted">
@@ -406,11 +421,11 @@ export default function OrderDetailPage(): ReactElement {
                         {ORDER_STATUS_LABELS_RU[entry.toStatus]}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-[11px] text-muted">
+                    <p className="mt-0.5 text-overline text-muted">
                       {`${entry.changedByName} · ${formatDateTime(entry.createdAt)}`}
                     </p>
                     {entry.comment !== null && (
-                      <p className="mt-1 text-[11.5px] text-secondary">{entry.comment}</p>
+                      <p className="mt-1 text-footnote text-secondary">{entry.comment}</p>
                     )}
                   </li>
                 ))}
@@ -436,13 +451,13 @@ export default function OrderDetailPage(): ReactElement {
                   setComment(event.target.value);
                 }}
                 placeholder="Написать комментарий участникам заказа"
-                className="min-w-0 flex-1 rounded border border-subtle bg-base px-2.5 py-2 text-[12.5px] text-primary placeholder:text-muted/70 focus:border-accent-muted focus:outline-none"
+                className={controlClass('md', 'min-w-0 flex-1')}
               />
               <button
                 type="submit"
                 disabled={addComment.isPending || comment.trim().length === 0}
                 aria-label="Отправить"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded bg-accent text-base disabled:opacity-50"
+                className="pressable grid h-9 w-9 shrink-0 place-items-center rounded-tile bg-accent text-on-accent hover:bg-accent-strong disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
               </button>
@@ -459,8 +474,8 @@ export default function OrderDetailPage(): ReactElement {
                 {comments.data.map((entry) => (
                   <li key={entry.id} className="rounded border border-subtle bg-base/40 p-2.5">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[12px] text-primary">{entry.authorName}</span>
-                      <span className="text-[10.5px] text-muted">
+                      <span className="text-footnote text-primary">{entry.authorName}</span>
+                      <span className="text-overline text-muted">
                         {formatDateTime(entry.createdAt)}
                       </span>
                     </div>
@@ -468,7 +483,7 @@ export default function OrderDetailPage(): ReactElement {
                     {entry.isVoice ? (
                       <div className="mt-1.5">
                         {entry.voiceUrl === null ? (
-                          <span className="text-[11.5px] text-muted">
+                          <span className="text-footnote text-muted">
                             Голосовое сообщение недоступно
                           </span>
                         ) : (
@@ -477,11 +492,11 @@ export default function OrderDetailPage(): ReactElement {
                           </audio>
                         )}
                         {entry.body !== null && (
-                          <p className="mt-1 text-[11.5px] text-secondary">{entry.body}</p>
+                          <p className="mt-1 text-footnote text-secondary">{entry.body}</p>
                         )}
                       </div>
                     ) : (
-                      <p className="mt-1 text-[12px] text-secondary">{entry.body}</p>
+                      <p className="mt-1 text-footnote text-secondary">{entry.body}</p>
                     )}
                   </li>
                 ))}

@@ -4,6 +4,7 @@ import { useState, type ReactElement } from 'react';
 
 import { AuditDetails } from '@/components/audit/AuditDetails';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
+import { controlClass } from '@/components/ui/Form';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { formatDateTime } from '@/lib/utils';
@@ -124,7 +125,7 @@ export default function AuditPage(): ReactElement {
                 setPage(1);
               }}
               aria-label="Сущность"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+              className={controlClass('sm', 'w-auto pr-8')}
             >
               <option value="">Все сущности</option>
               {(filters.data?.entityTypes ?? []).map((value) => (
@@ -143,7 +144,7 @@ export default function AuditPage(): ReactElement {
                 setPage(1);
               }}
               aria-label="Действие"
-              className="rounded border border-subtle bg-base px-2.5 py-1.5 text-[12px] text-secondary focus:border-accent-muted focus:outline-none"
+              className={controlClass('sm', 'w-auto pr-8')}
             >
               <option value="">Все действия</option>
               {(filters.data?.actions ?? []).map((value) => (

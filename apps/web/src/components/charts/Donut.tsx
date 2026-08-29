@@ -110,11 +110,11 @@ export function Donut({
         </svg>
 
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[22px] font-semibold leading-none text-primary">
+          <span className="text-title font-semibold leading-none text-primary">
             {centerValue}
           </span>
           {centerLabel !== undefined && (
-            <span className="mt-1 text-[10px] uppercase tracking-wide text-muted">
+            <span className="mt-1 text-overline uppercase tracking-wide text-muted">
               {centerLabel}
             </span>
           )}
@@ -135,7 +135,7 @@ export function DonutLegend({
   return (
     <ul className="space-y-1.5">
       {segments.map((segment) => (
-        <li key={segment.key} className="flex items-center gap-2 text-[12px]">
+        <li key={segment.key} className="flex items-center gap-2 text-footnote">
           <span
             aria-hidden
             className="h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -212,11 +212,11 @@ export function Gauge({
       </svg>
 
       <div className="-mt-6 flex flex-col items-center">
-        <span className="text-[26px] font-semibold leading-none text-primary">
+        <span className="text-display font-semibold leading-none text-primary">
           {`${clamped.toFixed(0)}%`}
         </span>
         {label !== undefined && (
-          <span className="mt-1 text-[11px] text-muted">{label}</span>
+          <span className="mt-1 text-overline text-muted">{label}</span>
         )}
       </div>
     </div>

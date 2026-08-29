@@ -93,7 +93,7 @@ export function OrderPurchases({ orderId }: { readonly orderId: number }): React
           // Выручка, маржа и рентабельность приходят `null`, если сотрудник
           // не из руководства. Показывать «—» вместо них не стоит: пустой
           // прочерк читается как «данных нет», хотя они просто не положены.
-          <dl className="grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 text-footnote sm:grid-cols-4">
             {cost.data.revenueFormatted !== null && (
               <Metric label="Выручка" value={cost.data.revenueFormatted} />
             )}
@@ -226,7 +226,7 @@ export function OrderPurchases({ orderId }: { readonly orderId: number }): React
             />
           </Field>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Количество" required>
               <Input
                 inputMode="decimal"
@@ -259,7 +259,7 @@ export function OrderPurchases({ orderId }: { readonly orderId: number }): React
           </Field>
 
           {itemId !== '' && (
-            <p className="text-[12px] text-secondary">
+            <p className="text-footnote text-secondary">
               {`Сумма строки: ${formatMoney(
                 Math.round(
                   parseMoney(Number.parseFloat(unitPrice.replace(',', '.')) || 0) *

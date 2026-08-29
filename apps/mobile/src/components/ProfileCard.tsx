@@ -1,10 +1,12 @@
-import { DEPARTMENT_LABELS_RU, formatTenure, type Department } from '@curtain-crm/shared';
+import { DEPARTMENT_LABELS, formatTenure, type Department } from '@curtain-crm/shared';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
+import { useLocale } from '../hooks/useLocale';
 
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, opacity } from '../theme';
 
 import { Card } from './Card';
+import { Icon, type IconName } from './Icon';
 
 /**
  * Карточка сотрудника на экране «Мой профиль».
@@ -36,6 +38,7 @@ export function ProfileCard({
   readonly onPressPhoto?: () => void;
   readonly isPhotoBusy?: boolean;
 }): ReactElement {
+  const { t } = useLocale();
   const initials = fullName
     .trim()
     .split(/\s+/)
@@ -47,14 +50,14 @@ export function ProfileCard({
     <Card>
       <View style={styles.container}>
         <View style={styles.details}>
-          <Field icon="👤" label="Имя и фамилия" value={fullName} />
-          <Field icon="💼" label="Должность" value={jobTitle ?? 'Не указана'} />
-          <Field icon="📅" label="Стаж работы" value={formatTenure(hiredAt)} />
-          <Field icon="🪪" label="Табельный номер" value={employeeCode ?? '—'} />
+          <Field icon="person" label="Имя и фамилия" value={fullName} />
+          <Field icon="jobTitle" label="Должность" value={jobTitle ?? 'Не указана'} />
+          <Field icon="calendar" label="Стаж работы" value={formatTenure(hiredAt)} />
+          <Field icon="badge" label="Табельный номер" value={employeeCode ?? '—'} />
           <Field
-            icon="🏢"
+            icon="branch"
             label="Подразделение"
-            value={DEPARTMENT_LABELS_RU[department]}
+            value={t(DEPARTMENT_LABELS, department)}
             isLast
           />
         </View>
@@ -106,7 +109,16 @@ function Field({
   value,
   isLast = false,
 }: {
-  readonly icon: string;
+  /**
+   * Тип, а не `string`.
+   *
+   * Пока здесь стоял `string`, компонент принимал что угодно и рисовал это
+   * текстом. При переходе с эмодзи на векторные иконки сюда подставили имена
+   * (`person`, `jobTitle`), и экран профиля стал показывать эти слова
+   * по-английски вместо значков — компилятор промолчал, потому что имя
+   * иконки тоже строка. `IconName` делает такую подстановку невозможной.
+   */
+  readonly icon: IconName;
   readonly label: string;
   readonly value: string;
   readonly isLast?: boolean;
@@ -114,7 +126,7 @@ function Field({
   return (
     <View style={[styles.field, isLast ? null : styles.fieldSpacing]}>
       <View style={styles.iconCircle}>
-        <Text style={styles.icon}>{icon}</Text>
+        <Icon name={icon} size={14} color={colors.accent} />
       </View>
       <View style={styles.fieldText}>
         <Text style={styles.label}>{label}</Text>
@@ -128,7 +140,7 @@ function Field({
 
 const styles = StyleSheet.create({
   photoPressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   photoOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -165,9 +177,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
-  },
-  icon: {
-    fontSize: 14,
   },
   fieldText: {
     flex: 1,
