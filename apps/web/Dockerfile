@@ -41,6 +41,14 @@ COPY apps/web/ apps/web/
 # подменяет `/trpc` на `C:/Program Files/Git/trpc` ещё до запуска docker build.
 ENV NODE_ENV=production
 
+# `rewrites()` вычисляется на этапе `next build`, поэтому адрес API обязан
+# быть виден сборке. Railway отдаёт переменные сервиса Dockerfile-сборке
+# ТОЛЬКО через объявленный ARG — без этих двух строк переменная доступна
+# рантайму, но не сборке, и панель молча собирается без проксирования
+# `/trpc`, `/files` и `/health`.
+ARG API_INTERNAL_URL
+ENV API_INTERNAL_URL=${API_INTERNAL_URL}
+
 RUN pnpm --filter @curtain-crm/web build
 
 USER node
