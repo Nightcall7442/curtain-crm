@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#14504A"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uz.designhouse.crm",
@@ -28,10 +30,11 @@
         "backgroundColor": "#14504A"
       },
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "CAMERA",
-        "RECORD_AUDIO"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "plugins": [
@@ -60,7 +63,11 @@
       "output": "single"
     },
     "extra": {
-      "apiUrl": "https://crm.pardabozor.uz/trpc"
-    }
+      "apiUrl": "https://crm.pardabozor.uz/trpc",
+      "eas": {
+        "projectId": "875c7ed7-2a4d-4e3d-b24e-9750ec827bac"
+      }
+    },
+    "owner": "wwy666"
   }
 }
