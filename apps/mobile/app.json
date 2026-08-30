@@ -60,7 +60,7 @@
       "output": "single"
     },
     "extra": {
-      "apiUrl": null
+      "apiUrl": "https://crm.pardabozor.uz/trpc"
     }
   }
 }
