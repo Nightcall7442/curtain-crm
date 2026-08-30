@@ -5,6 +5,7 @@
     "dockerfilePath": "apps/api/Dockerfile"
   },
   "deploy": {
+    "preDeployCommand": "pnpm --filter @curtain-crm/db db:migrate",
     "startCommand": "pnpm --filter @curtain-crm/api start",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 120,
