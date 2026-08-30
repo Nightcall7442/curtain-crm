@@ -5,7 +5,7 @@ import {
   parseMoney,
   PAYROLL_RECORD_STATUS_LABELS_RU,
   PAYROLL_SCHEME_TYPE_LABELS_RU,
-  type PayrollRecordStatus,
+  PayrollRecordStatus,
   Role,
   ROLE_LABELS_RU,
 } from '@curtain-crm/shared';
@@ -246,7 +246,7 @@ export default function PayrollPage(): ReactElement {
               render: (row) => {
                 if (!isCeo) return null;
 
-                if (row.status === 'draft') {
+                if (row.status === PayrollRecordStatus.DRAFT) {
                   return (
                     <button
                       type="button"
@@ -261,7 +261,7 @@ export default function PayrollPage(): ReactElement {
                   );
                 }
 
-                if (row.status === 'approved') {
+                if (row.status === PayrollRecordStatus.APPROVED) {
                   return (
                     <button
                       type="button"
@@ -356,7 +356,12 @@ export default function PayrollPage(): ReactElement {
 }
 
 function PayrollStatusBadge({ status }: { readonly status: PayrollRecordStatus }): ReactElement {
-  const tone = status === 'paid' ? 'positive' : status === 'approved' ? 'accent' : 'neutral';
+  const tone =
+    status === PayrollRecordStatus.PAID
+      ? 'positive'
+      : status === PayrollRecordStatus.APPROVED
+        ? 'accent'
+        : 'neutral';
   return <Badge tone={tone}>{PAYROLL_RECORD_STATUS_LABELS_RU[status]}</Badge>;
 }
 

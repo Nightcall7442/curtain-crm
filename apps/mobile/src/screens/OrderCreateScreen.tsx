@@ -1,10 +1,10 @@
 import {
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
+  OrderItemKind,
   PRIORITIES,
   PRIORITY_LABELS,
-  type OrderItemKind,
-  type Priority,
+  Priority,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
@@ -58,7 +58,7 @@ interface DraftItem {
 
 const emptyItem = (id: number): DraftItem => ({
   id,
-  kind: 'window',
+  kind: OrderItemKind.WINDOW,
   model: '',
   dimensions: '',
   quantity: '1',
@@ -73,7 +73,7 @@ export function OrderCreateScreen(): ReactElement {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [installAddress, setInstallAddress] = useState('');
-  const [priority, setPriority] = useState<Priority>('normal');
+  const [priority, setPriority] = useState<Priority>(Priority.NORMAL);
   const [deadline, setDeadline] = useState('');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');

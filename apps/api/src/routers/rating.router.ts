@@ -1,5 +1,11 @@
 import { users } from '@curtain-crm/db';
-import { formatMoney, RATED_ROLES, ratingScopeSchema, RatingScope } from '@curtain-crm/shared';
+import {
+  formatMoney,
+  RATED_ROLES,
+  ratingScopeSchema,
+  RatingScope,
+  Role,
+} from '@curtain-crm/shared';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -132,7 +138,7 @@ export const ratingRouter = router({
         // Выручка приходит в минорных единицах — формат собираем на сервере,
         // чтобы веб и мобилка не разошлись в разделителях.
         volumeFormatted:
-          role.role === 'seller' ? formatMoney(role.volumeValue) : null,
+          role.role === Role.SELLER ? formatMoney(role.volumeValue) : null,
       })),
     }));
 
@@ -256,7 +262,7 @@ export const ratingRouter = router({
                 byRole: mine.byRole.map((role) => ({
                   ...role,
                   volumeFormatted:
-                    role.role === 'seller' ? formatMoney(role.volumeValue) : null,
+                    role.role === Role.SELLER ? formatMoney(role.volumeValue) : null,
                 })),
               },
       };
