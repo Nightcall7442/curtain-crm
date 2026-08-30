@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useState, type ReactNode, type ReactElement } from 'react';
+import { useEffect, useState, type ReactNode, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 
@@ -18,10 +18,26 @@ import { Sidebar } from './Sidebar';
  */
 const BARE_ROUTES = new Set(['/login']);
 
+/**
+ * Брейкпоинт, с которого меню живёт в потоке страницы. Совпадает с `lg`
+ * Tailwind — та же граница используется классами `lg:` в разметке ниже,
+ * и расходиться им нельзя: иначе кнопка в шапке будет открывать выдвижное
+ * меню при видимом статичном.
+ */
+const DESKTOP_MEDIA = '(min-width: 1024px)';
+
 export function Shell({ children }: { readonly children: ReactNode }): ReactElement {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const { isLoading, user } = useAuth();
+
+  // Переход по ссылке закрывает выдвижное меню и сам по себе (`onNavigate`
+  // ниже), но сюда попадают и программные переходы — например редирект
+  // после выхода. Держать меню открытым над новой страницей нельзя.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   if (BARE_ROUTES.has(pathname)) {
     return <>{children}</>;
@@ -44,8 +60,40 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-base">
-      <Sidebar collapsed={collapsed} />
+    /*
+      `h-dvh`, а не `h-screen`: в мобильном Safari 100vh меряется при спрятанной
+      адресной строке, и нижняя кромка панели уезжает под неё. dvh следует за
+      фактической высотой окна. Tailwind 3.4 генерирует утилиту из коробки.
+    */
+    <div className="flex h-dvh overflow-hidden bg-base">
+      {/* Статичное меню — только от `lg`: на телефоне оно съедало бы
+          228 из 375 точек ширины. Уже — выдвижное, ниже. */}
+      <div className="hidden lg:block">
+        <Sidebar collapsed={collapsed} />
+      </div>
+
+      {/* Выдвижное меню для узких экранов: поверх содержимого, с подложкой,
+          закрывается по ней и по любому переходу. */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            aria-label="Закрыть меню"
+            onClick={() => {
+              setMobileOpen(false);
+            }}
+            className="absolute inset-0 bg-black/50"
+          />
+          <div className="absolute inset-y-0 left-0 shadow-2xl">
+            <Sidebar
+              collapsed={false}
+              onNavigate={() => {
+                setMobileOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/*
         Прокручивается вся колонка целиком, а не только `main`.
@@ -57,7 +105,15 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <Header
           onToggleSidebar={() => {
-            setCollapsed((value) => !value);
+            // Одна кнопка — два жеста: на десктопе она сворачивает статичное
+            // меню до иконок, на телефоне открывает выдвижное. Ширина экрана
+            // читается в момент клика: слушатель на resize здесь дал бы только
+            // лишний ререндер ради события, которое случается при клике.
+            if (window.matchMedia(DESKTOP_MEDIA).matches) {
+              setCollapsed((value) => !value);
+            } else {
+              setMobileOpen(true);
+            }
           }}
         />
         {/*
