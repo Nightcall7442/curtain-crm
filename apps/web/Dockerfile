@@ -13,7 +13,9 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 WORKDIR /app
 
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+# tsconfig.base.json обязателен: от него наследуются tsconfig всех пакетов,
+# и `next build` без него падает с TS5083 ещё до старта компиляции.
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
 COPY apps/api/package.json apps/api/
 COPY packages/config/package.json packages/config/

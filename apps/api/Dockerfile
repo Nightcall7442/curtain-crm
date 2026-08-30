@@ -21,7 +21,9 @@ WORKDIR /app
 
 # Манифесты копируются отдельно от исходников: слой с зависимостями
 # переиспользуется, пока не изменился `pnpm-lock.yaml`.
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+# tsconfig.base.json — от него наследуются tsconfig пакетов; tsx запускается
+# и без него, но конфигурация компилятора тогда молча теряется.
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc tsconfig.base.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
