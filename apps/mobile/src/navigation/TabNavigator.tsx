@@ -49,18 +49,19 @@ export function TabNavigator(): ReactElement {
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
         headerTitleStyle: { fontSize: 17, fontWeight: '600' },
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textMuted,
         /**
-         * Нижняя безопасная зона добавляется к панели, а не игнорируется.
-         *
-         * Своя `tabBarStyle` перекрывает `paddingBottom`, который навигатор
-         * вычисляет сам, — и панель прижимается к нижнему краю экрана вплотную,
-         * наезжая на жестовую полосу iPhone и на навигационную полосу Android.
-         * Иконки при этом попадают в зону системного жеста «домой»: палец
-         * промахивается по вкладке и сворачивает приложение.
+         * Панель тёмная (хвоя), поэтому активная вкладка — белым, неактивные —
+         * приглушённым светло-зелёным. Точка непрочитанного остаётся терракотой.
          */
-        tabBarStyle: [styles.tabBar, { height: 64 + insets.bottom, paddingBottom: 8 + insets.bottom }],
+        tabBarActiveTintColor: '#FFFFFF',
+        tabBarInactiveTintColor: 'rgba(233, 240, 236, 0.55)',
+        /**
+         * Панель ПЛАВАЕТ над содержимым — скруглённая пилюля с отступами от
+         * краёв, как в утверждённом макете «Хвоя UI». Нижняя безопасная зона
+         * не добавляется к высоте, а отодвигает панель от края: жестовая
+         * полоса iPhone остаётся под панелью, а не под иконками.
+         */
+        tabBarStyle: [styles.tabBar, { bottom: Math.max(insets.bottom, 10) }],
         tabBarLabelStyle: styles.tabLabel,
         /**
          * Подпись всегда ПОД иконкой.
@@ -135,19 +136,27 @@ export function TabNavigator(): ReactElement {
 }
 
 /**
- * Стеклянная подложка панели вкладок.
+ * Стеклянная подложка панели вкладок — ТЁМНАЯ хвоя, по макету «Хвоя UI».
  *
  * На Android размытие в `expo-blur` до 12-го уровня API работает через
  * программную реализацию и на дешёвых телефонах заметно роняет прокрутку —
  * а это ровно те телефоны, что в цехе. Поэтому там панель делается почти
  * непрозрачной без размытия: выглядит так же аккуратно, а список не дёргается.
+ *
+ * Поверх размытия на iOS лежит хвойная полупрозрачная заливка: голое стекло
+ * над светлым списком было бы светлым, а панель по макету — тёмная.
  */
 function TabBarGlass(): ReactElement {
   if (Platform.OS === 'android') {
-    return <View style={[StyleSheet.absoluteFill, styles.tabBarSolid]} />;
+    return <View style={[StyleSheet.absoluteFill, styles.glassRound, styles.tabBarSolid]} />;
   }
 
-  return <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />;
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.glassRound]}>
+      <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, styles.tabBarTint]} />
+    </View>
+  );
 }
 
 function TabGlyph({
@@ -174,20 +183,32 @@ const styles = StyleSheet.create({
     // Панель лежит поверх содержимого, поэтому фон прозрачный: его рисует
     // `tabBarBackground`. Своя заливка перекрыла бы размытие.
     position: 'absolute',
-    // Без явных координат положение считается от «статической» позиции и
-    // на части Android панель отходит от нижнего края.
-    left: 0,
-    right: 0,
-    bottom: 0,
+    // Отступы от краёв — панель плавает пилюлей, а не тянется во всю ширину.
+    left: 12,
+    right: 12,
     backgroundColor: 'transparent',
-    borderTopColor: colors.border,
+    borderTopWidth: 0,
+    borderRadius: 26,
     height: 64,
     paddingBottom: 8,
     paddingTop: 6,
-    elevation: 0,
+    // Тень самой панели: плавающий элемент без тени выглядит наклейкой.
+    shadowColor: '#0A1A13',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  /** Скругление подложки — стекло обязано обрезаться по форме пилюли. */
+  glassRound: {
+    borderRadius: 26,
+    overflow: 'hidden',
   },
   tabBarSolid: {
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    backgroundColor: 'rgba(17, 38, 30, 0.97)',
+  },
+  tabBarTint: {
+    backgroundColor: 'rgba(14, 33, 26, 0.72)',
   },
   /**
    * Подписи вкладок.
@@ -201,18 +222,22 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   checkInButton: {
-    width: 46,
-    height: 46,
+    width: 52,
+    height: 52,
     borderRadius: radius.pill,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentBright,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -18,
+    marginTop: -24,
+    // Ободок цвета панели отделяет кнопку от стекла под ней: без него
+    // приподнятый круг сливался с тёмной пилюлей в одно пятно.
+    borderWidth: 3,
+    borderColor: colors.header,
     shadowColor: colors.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 7,
   },
   badge: {
     backgroundColor: colors.danger,

@@ -117,6 +117,7 @@ export function WorkScreen(): ReactElement {
           <OrderCard
             orderNumber={item.orderNumber ?? `#${item.id.toString()}`}
             clientName={item.clientName}
+            clientPhone={item.clientPhone}
             status={item.status}
             priority={item.priority}
             deadline={item.deadline}

@@ -37,6 +37,8 @@ export type IconName =
   | 'profile'
   | 'chevron'
   | 'back'
+  | 'forward'
+  | 'call'
   /* Сущности и разделы */
   | 'shift'
   | 'orders'
@@ -79,6 +81,8 @@ const GLYPHS: Readonly<Record<IconName, IoniconName>> = {
   profile: 'person',
   chevron: 'chevron-forward',
   back: 'chevron-back',
+  forward: 'arrow-forward',
+  call: 'call',
 
   shift: 'time',
   orders: 'clipboard',

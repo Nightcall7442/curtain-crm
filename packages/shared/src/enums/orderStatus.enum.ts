@@ -122,6 +122,22 @@ export const ORDER_PHASES = [
 
 export type OrderPhase = (typeof ORDER_PHASES)[number];
 
+/**
+ * Объект-константа фаз — по образцу `OrderStatus`.
+ *
+ * Появился по итогам аудита 27.08 (пункт 3.3 плана): без него клиенты
+ * писали `'intake'` литералом, и переименование фазы прошло бы мимо
+ * компилятора.
+ */
+export const OrderPhase = {
+  INTAKE: 'intake',
+  MEASUREMENT: 'measurement',
+  SEWING: 'sewing',
+  QC: 'qc',
+  INSTALLATION: 'installation',
+  CLOSED: 'closed',
+} as const satisfies Record<string, OrderPhase>;
+
 export const ORDER_PHASE_LABELS: Translated<OrderPhase> = {
   ru: {
     intake: 'Приём заказа',

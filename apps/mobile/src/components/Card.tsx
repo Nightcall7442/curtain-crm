@@ -126,6 +126,12 @@ export function Pill({
 
   return (
     <View style={[styles.pill, { backgroundColor: palette.bg }]}>
+      {/*
+        Точка-индикатор перед текстом — из утверждённого макета «Хвоя UI».
+        Помимо ритма она страхует восприятие: на солнце тонированная
+        подложка выцветает первой, а плотная точка остаётся видимой.
+      */}
+      <View style={[styles.pillDot, { backgroundColor: palette.fg }]} />
       <Text style={[styles.pillText, { color: palette.fg }]} numberOfLines={1}>
         {text}
       </Text>
@@ -359,6 +365,9 @@ const styles = StyleSheet.create({
   },
   pill: {
     alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
@@ -366,9 +375,15 @@ const styles = StyleSheet.create({
     // за белый край на серый фон — RN без этого ничего не обрезает.
     flexShrink: 1,
   },
+  pillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: radius.pill,
+  },
   pillText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+    flexShrink: 1,
   },
   progressTrack: {
     height: 6,

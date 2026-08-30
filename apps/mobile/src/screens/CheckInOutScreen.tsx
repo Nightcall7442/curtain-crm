@@ -1,11 +1,13 @@
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Pill, Row } from '../components/Card';
 import { ShiftRing } from '../components/ShiftRing';
+import { SlideToConfirm } from '../components/SlideToConfirm';
 import { useLocation } from '../hooks/useLocation';
+import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
+import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Отметка начала и конца смены.
@@ -37,6 +39,9 @@ export function CheckInOutScreen(): ReactElement {
       await refresh();
     },
     onError: (error) => {
+      // Отказ сопровождается вибрацией: жест уже дотянут, взгляд мог уйти
+      // с экрана, и без тактильного сигнала отказ легко пропустить.
+      notifyError();
       setServerError(error.message);
     },
   });
@@ -47,6 +52,7 @@ export function CheckInOutScreen(): ReactElement {
       await refresh();
     },
     onError: (error) => {
+      notifyError();
       setServerError(error.message);
     },
   });
@@ -129,26 +135,18 @@ export function CheckInOutScreen(): ReactElement {
         </View>
       )}
 
-      <Pressable
-        onPress={shift === null ? handleCheckIn : handleCheckOut}
-        disabled={isBusy || current.isLoading}
-        style={({ pressed }) => [
-          styles.action,
-          shift === null ? styles.actionStart : styles.actionEnd,
-          isBusy || current.isLoading ? styles.actionDisabled : null,
-          pressed ? styles.actionPressed : null,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={shift === null ? 'Начать смену' : 'Завершить смену'}
-      >
-        {isBusy ? (
-          <ActivityIndicator color={colors.onAccent} />
-        ) : (
-          <Text style={styles.actionText}>
-            {shift === null ? 'Начать смену' : 'Завершить смену'}
-          </Text>
-        )}
-      </Pressable>
+      {/*
+        Жест вместо кнопки — по утверждённому макету «Хвоя UI»: случайное
+        касание в кармане смену не откроет, а завершение протяжки —
+        естественный момент запросить геолокацию. Для экранного диктора
+        компонент остаётся обычной кнопкой.
+      */}
+      <SlideToConfirm
+        label={shift === null ? 'Проведите, чтобы начать смену →' : 'Проведите, чтобы завершить →'}
+        onConfirm={shift === null ? handleCheckIn : handleCheckOut}
+        disabled={current.isLoading}
+        busy={isBusy}
+      />
 
       <Text style={styles.footnote}>
         {isRequesting
@@ -182,37 +180,6 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 13,
     lineHeight: 19,
-  },
-  action: {
-    borderRadius: radius.lg,
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 56,
-  },
-  actionStart: {
-    backgroundColor: colors.accent,
-  },
-  /**
-   * Завершение смены красится тем же зелёным, что и начало, — как в макете.
-   *
-   * Разными цветами было бы безопаснее, но кнопка тут одна, подпись на ней
-   * явная, а над ней идёт кольцо, по которому видно, что смена идёт. Цветом
-   * различать нечего: перепутать нажатие не с чем.
-   */
-  actionEnd: {
-    backgroundColor: colors.accent,
-  },
-  actionDisabled: {
-    opacity: opacity.pressed,
-  },
-  actionPressed: {
-    opacity: opacity.pressed,
-  },
-  actionText: {
-    color: colors.onAccent,
-    fontSize: 16,
-    fontWeight: '600',
   },
   footnote: {
     ...typography.caption,

@@ -19,10 +19,14 @@ import {
   View,
 } from 'react-native';
 
+import { BottomSheet } from '../components/BottomSheet';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
+import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
+import { Stepper } from '../components/Stepper';
 import { VoiceCommentPlayer, VoiceRecorderButton } from '../components/VoiceComment';
 import { useLocale } from '../hooks/useLocale';
+import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, typography, opacity } from '../theme';
 import type { RootStackScreenProps } from '../types';
@@ -44,6 +48,7 @@ export function OrderDetailScreen({
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [reason, setReason] = useState('');
   const [comment, setComment] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
@@ -59,11 +64,27 @@ export function OrderDetailScreen({
 
   const changeStatus = trpc.orders.changeStatus.useMutation({
     onSuccess: async () => {
+      // Переход состоялся — лёгкое подтверждение вибрацией.
+      notifySuccess();
       setPendingStatus(null);
       setReason('');
       await refresh();
     },
+    onError: () => {
+      notifyError();
+    },
   });
+
+  /** Запуск перехода: с причиной — через форму, без — сразу. */
+  const startTransition = (toStatus: OrderStatus, requiresComment: boolean): void => {
+    setSheetOpen(false);
+    if (requiresComment) {
+      setPendingStatus(toStatus);
+      setReason('');
+      return;
+    }
+    changeStatus.mutate({ id: orderId, toStatus });
+  };
 
   const addComment = trpc.orderComments.add.useMutation({
     onSuccess: async () => {
@@ -113,7 +134,8 @@ export function OrderDetailScreen({
           accessibilityRole="button"
           accessibilityLabel={`Позвонить клиенту ${data.clientName}`}
         >
-          <Text style={styles.callText}>{`📞 ${formatPhone(data.clientPhone)}`}</Text>
+          <Icon name="call" size={14} color={colors.accentStrong} />
+          <Text style={styles.callText}>{formatPhone(data.clientPhone)}</Text>
         </Pressable>
 
         <View style={styles.details}>
@@ -143,6 +165,11 @@ export function OrderDetailScreen({
         )}
       </Card>
 
+      {/* --- Этапы конвейера --------------------------------------------- */}
+      <Card>
+        <Stepper status={data.status} />
+      </Card>
+
       {/* --- Действия ---------------------------------------------------- */}
       <Card>
         <CardTitle title="Действия" icon="priority" />
@@ -155,44 +182,52 @@ export function OrderDetailScreen({
             hint="Либо заказ закрыт, либо этот этап ведёт другой сотрудник"
           />
         ) : (
+          /*
+            Главное действие — крупной сплошной кнопкой, остальное — в шторке.
+            По макету «Хвоя UI»: чаще всего нужен следующий шаг конвейера, и
+            он не должен делить внимание с откатом и отменой; те доступны
+            за «Все действия…» поверх контекста, без ухода с экрана.
+          */
           <View style={styles.actions}>
-            {transitions.data.map((transition) => (
-              <Pressable
-                key={transition.to}
-                disabled={changeStatus.isPending}
-                onPress={() => {
-                  if (transition.requiresComment) {
-                    setPendingStatus(transition.to);
-                    setReason('');
-                    return;
-                  }
-                  changeStatus.mutate({ id: orderId, toStatus: transition.to });
-                }}
-                style={({ pressed }) => [
-                  styles.action,
-                  transition.kind === TransitionKind.FORWARD
-                    ? styles.actionForward
-                    : transition.kind === TransitionKind.CANCEL
-                      ? styles.actionCancel
-                      : styles.actionRollback,
-                  pressed ? styles.pressed : null,
-                ]}
-                accessibilityRole="button"
-              >
-                <Text
-                  style={[
-                    styles.actionText,
-                    transition.kind === TransitionKind.FORWARD
-                      ? styles.actionTextForward
-                      : transition.kind === TransitionKind.CANCEL
-                        ? styles.actionTextCancel
-                        : styles.actionTextRollback,
-                  ]}
-                >
-                  {transition.label}
-                </Text>
-              </Pressable>
-            ))}
+            {(() => {
+              const list = transitions.data;
+              const primary = list.find((entry) => entry.kind === TransitionKind.FORWARD) ?? list[0];
+              if (primary === undefined) return null;
+
+              return (
+                <>
+                  <Pressable
+                    disabled={changeStatus.isPending}
+                    onPress={() => {
+                      startTransition(primary.to, primary.requiresComment);
+                    }}
+                    style={({ pressed }) => [
+                      styles.primaryAction,
+                      primary.kind === TransitionKind.FORWARD ? null : styles.primaryActionMuted,
+                      pressed ? styles.pressed : null,
+                      changeStatus.isPending ? styles.disabled : null,
+                    ]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.primaryActionText}>{primary.label}</Text>
+                  </Pressable>
+
+                  {list.length > 1 && (
+                    <Pressable
+                      onPress={() => {
+                        setSheetOpen(true);
+                      }}
+                      style={({ pressed }) => [styles.moreAction, pressed ? styles.pressed : null]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.moreActionText}>
+                        {`Все действия (${list.length.toString()})`}
+                      </Text>
+                    </Pressable>
+                  )}
+                </>
+              );
+            })()}
           </View>
         )}
 
@@ -357,6 +392,46 @@ export function OrderDetailScreen({
           ))
         )}
       </Card>
+
+      {/* --- Шторка со всеми действиями ----------------------------------- */}
+      <BottomSheet
+        visible={sheetOpen}
+        title="Действия по заказу"
+        onClose={() => {
+          setSheetOpen(false);
+        }}
+      >
+        {(transitions.data ?? []).map((transition) => {
+          const look =
+            transition.kind === TransitionKind.FORWARD
+              ? { icon: 'forward' as const, bg: colors.accentSoft, fg: colors.accent }
+              : transition.kind === TransitionKind.CANCEL
+                ? { icon: 'cancelled' as const, bg: colors.dangerSoft, fg: colors.danger }
+                : { icon: 'rolledBack' as const, bg: colors.warningSoft, fg: colors.warning };
+
+          return (
+            <Pressable
+              key={transition.to}
+              disabled={changeStatus.isPending}
+              onPress={() => {
+                startTransition(transition.to, transition.requiresComment);
+              }}
+              style={({ pressed }) => [styles.sheetRow, pressed ? styles.sheetRowPressed : null]}
+              accessibilityRole="button"
+            >
+              <View style={[styles.sheetIcon, { backgroundColor: look.bg }]}>
+                <Icon name={look.icon} size={17} color={look.fg} />
+              </View>
+              <View style={styles.sheetTextWrap}>
+                <Text style={[styles.sheetLabel, { color: look.fg }]}>{transition.label}</Text>
+                {transition.requiresComment && (
+                  <Text style={styles.sheetHint}>Попросим указать причину</Text>
+                )}
+              </View>
+            </Pressable>
+          );
+        })}
+      </BottomSheet>
     </ScrollView>
   );
 }
@@ -399,8 +474,9 @@ const styles = StyleSheet.create({
   },
   orderNumber: {
     fontSize: 18,
-    fontWeight: '700',
-    color: colors.header,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    color: colors.textPrimary,
   },
   client: {
     ...typography.body,
@@ -411,9 +487,12 @@ const styles = StyleSheet.create({
     minHeight: 44,
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
   },
   callText: {
@@ -438,40 +517,68 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
   },
-  action: {
-    minHeight: 44,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.sm,
-    borderWidth: 1,
+  primaryAction: {
+    minHeight: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
   },
-  // Движение вперёд по конвейеру — зелёным: это про «стало лучше»,
-  // а не про фирменный акцент.
-  actionForward: {
-    backgroundColor: colors.positiveSoft,
-    borderColor: colors.positive,
+  /**
+   * Когда вперёд идти некуда (доступны только откат или отмена), главная
+   * кнопка красится хвоей шапки, а не зелёным действия: «назад» не должно
+   * выглядеть как «дальше».
+   */
+  primaryActionMuted: {
+    backgroundColor: colors.header,
   },
-  actionRollback: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warning,
+  primaryActionText: {
+    ...typography.headline,
+    color: colors.onAccent,
+    fontWeight: '700',
   },
-  actionCancel: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.danger,
+  moreAction: {
+    minHeight: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  actionText: {
-    ...typography.body,
-    fontWeight: '600',
+  moreActionText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
   },
-  actionTextForward: {
-    color: colors.positive,
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.md,
   },
-  actionTextRollback: {
-    color: colors.warning,
+  sheetRowPressed: {
+    backgroundColor: colors.surfaceMuted,
   },
-  actionTextCancel: {
-    color: colors.danger,
+  sheetIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetLabel: {
+    ...typography.headline,
+  },
+  sheetHint: {
+    ...typography.footnote,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   reasonBlock: {
     marginTop: spacing.lg,

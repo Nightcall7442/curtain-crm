@@ -12,6 +12,7 @@ import { useMemo, type ReactElement } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
+import { Icon, type IconName } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { useAuth } from '../hooks/useAuth';
@@ -115,11 +116,18 @@ export function HomeScreen(): ReactElement {
         безопасной зоны: без него текст уезжает под вырез и часы.
       */}
       <View style={[styles.hero, { paddingTop: insets.top + spacing.lg }]}>
-        <Text style={styles.heroGreeting}>{greeting()}</Text>
-        <Text style={styles.heroName} numberOfLines={1}>
-          {`${firstName(user?.fullName ?? '')}! 👋`}
-        </Text>
-        <Text style={styles.heroHint}>Хорошего рабочего дня!</Text>
+        <View style={styles.heroRow}>
+          <View style={styles.heroText}>
+            <Text style={styles.heroGreeting}>{greeting()}</Text>
+            <Text style={styles.heroName} numberOfLines={1}>
+              {`${firstName(user?.fullName ?? '')}! 👋`}
+            </Text>
+            <Text style={styles.heroHint}>Хорошего рабочего дня!</Text>
+          </View>
+          <View style={styles.avatar} accessibilityElementsHidden>
+            <Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>
+          </View>
+        </View>
       </View>
 
       {/* Карточка смены заезжает на подложку */}
@@ -179,19 +187,26 @@ export function HomeScreen(): ReactElement {
         читался бы как факт.
       */}
       <View style={styles.tiles}>
-        <StatTile label="Заказы в работе" value={count(orders.data?.total, orders.isError)} />
+        <StatTile
+          label="Заказы в работе"
+          icon="work"
+          value={count(orders.data?.total, orders.isError)}
+        />
         <StatTile
           label="Просрочено"
+          icon="deadline"
           value={count(overdueCount.data?.total, overdueCount.isError)}
           tone={(overdueCount.data?.total ?? 0) > 0 ? 'danger' : 'neutral'}
         />
         <StatTile
           label="Уведомления"
+          icon="notifications"
           value={count(unread.data, unread.isError)}
           tone={(unread.data ?? 0) > 0 ? 'accent' : 'neutral'}
         />
         <StatTile
           label="Закрыто за месяц"
+          icon="completed"
           value={count(rating.data?.me?.ordersCount, rating.isError)}
           tone="accent"
         />
@@ -254,6 +269,7 @@ export function HomeScreen(): ReactElement {
               key={order.id}
               orderNumber={order.orderNumber ?? `#${order.id.toString()}`}
               clientName={order.clientName}
+              clientPhone={order.clientPhone}
               status={order.status}
               priority={order.priority}
               deadline={order.deadline}
@@ -322,24 +338,46 @@ function timeOf(value: string | Date): string {
   return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Инициалы для аватара в шапке: «Малика Юсупова» → «МЮ».
+ *
+ * Фотографии может не быть вовсе, а пустой круг в шапке читается как
+ * сломавшаяся картинка. Инициалы — честная замена.
+ */
+function initials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter((part) => part.length > 0);
+  const letters = parts.slice(0, 2).map((part) => (part[0] ?? '').toUpperCase());
+
+  return letters.join('') === '' ? '—' : letters.join('');
+}
+
 function StatTile({
   label,
+  icon,
   value,
   tone = 'neutral',
 }: {
   readonly label: string;
+  readonly icon: IconName;
   readonly value: string;
   readonly tone?: 'neutral' | 'danger' | 'accent';
 }): ReactElement {
   const color =
     tone === 'danger' ? colors.danger : tone === 'accent' ? colors.accent : colors.textPrimary;
+  // Плитка иконки тонируется в тон значения: терракотовая у «Просрочено»,
+  // зелёная у остальных — как в макете «Хвоя UI».
+  const chipBg = tone === 'danger' ? colors.dangerSoft : colors.accentSoft;
+  const chipFg = tone === 'danger' ? colors.danger : colors.accent;
 
   return (
     <Card style={styles.tile}>
+      <View style={[styles.tileIcon, { backgroundColor: chipBg }]}>
+        <Icon name={icon} size={17} color={chipFg} />
+      </View>
+      <Text style={[styles.tileValue, { color }]}>{value}</Text>
       <Text style={styles.tileLabel} numberOfLines={2}>
         {label}
       </Text>
-      <Text style={[styles.tileValue, { color }]}>{value}</Text>
     </Card>
   );
 }
@@ -360,14 +398,24 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: radius.lg + spacing.sm,
     borderBottomRightRadius: radius.lg + spacing.sm,
   },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  heroText: {
+    flex: 1,
+    minWidth: 0,
+  },
   heroGreeting: {
     ...typography.body,
     color: colors.headerText,
     opacity: opacity.pressed,
   },
   heroName: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 27,
+    fontWeight: '800',
+    letterSpacing: -0.4,
     color: colors.headerText,
     marginTop: 2,
   },
@@ -376,6 +424,21 @@ const styles = StyleSheet.create({
     color: colors.headerText,
     opacity: opacity.pressed,
     marginTop: spacing.xs,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: colors.headerRaised,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: colors.headerText,
+    fontSize: 14,
+    fontWeight: '800',
   },
   overlap: {
     paddingHorizontal: spacing.lg,
@@ -420,9 +483,16 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingVertical: spacing.lg,
   },
+  tileIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
   tileValue: {
     ...typography.largeTitle,
-    marginTop: spacing.xs,
     /**
      * Табличные цифры.
      *
