@@ -57,10 +57,12 @@ export function CardHeader({
   const Heading = level === 3 ? 'h3' : 'h2';
 
   return (
-    <div className={cn('flex items-center gap-2 border-b border-subtle px-4 py-3', className)}>
+    // `flex-wrap` обязателен: на телефоне ряд фильтров шире заголовка,
+    // и без переноса вся шапка карточки уезжала за правый край экрана.
+    <div className={cn('flex flex-wrap items-center gap-2 border-b border-subtle px-4 py-3', className)}>
       {icon !== undefined && <span className="text-accent-muted">{icon}</span>}
       <Heading className="section-title">{title}</Heading>
-      {action !== undefined && <div className="ml-auto">{action}</div>}
+      {action !== undefined && <div className="ml-auto min-w-0">{action}</div>}
     </div>
   );
 }
