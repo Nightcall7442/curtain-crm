@@ -247,9 +247,9 @@ export function DataTable<TRow>({
           {isLoading &&
             Array.from({ length: 5 }, (_unused, index) => (
               <tr key={`skeleton-${index.toString()}`} className="border-b border-subtle/60">
-                {selection !== undefined && <td className="px-3.5 py-3" />}
+                {selection !== undefined && <td className="px-3.5 py-2" />}
                 {columns.map((column) => (
-                  <td key={column.key} className="px-3.5 py-3">
+                  <td key={column.key} className="px-3.5 py-2">
                     <span className="block h-3 animate-pulse rounded bg-raised/70" />
                   </td>
                 ))}
@@ -323,7 +323,7 @@ export function DataTable<TRow>({
                   )}
                 >
                   {selection !== undefined && (
-                    <td className="px-3.5 py-3">
+                    <td className="px-3.5 py-2">
                       <Checkbox
                         checked={isSelected}
                         onChange={() => {
@@ -337,7 +337,12 @@ export function DataTable<TRow>({
                     <td
                       key={column.key}
                       className={cn(
-                        'px-3.5 py-3 text-secondary',
+                        /*
+                          py-2, а не py-3 — плотность по ревизии «Диспетчерская»:
+                          таблицы панели читают списками, и лишние 8 px на строку
+                          крадут четверть экрана на каждых двадцати строках.
+                        */
+                        'px-3.5 py-2 text-secondary',
                         column.align === 'right'
                           ? 'text-right'
                           : column.align === 'center'

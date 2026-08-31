@@ -8,6 +8,12 @@
       "port": 3000
     },
     {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@curtain-crm/web", "dev"],
+      "port": 3001
+    },
+    {
       "name": "mobile-web",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@curtain-crm/mobile", "exec", "expo", "start", "--web", "--port", "8081"],

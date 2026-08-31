@@ -1,7 +1,9 @@
 'use client';
 
 import {
+  formatIsoDateShort,
   formatMoney,
+  formatMoneyShort,
   isOrderStatus,
   isOverdueDate,
   isProductionStageKey,
@@ -11,7 +13,8 @@ import {
   type OrderStatus,
   parseMoney,
   PRIORITIES,
-  type Priority,
+  Priority,
+  type Priority as PriorityName,
   PRIORITY_LABELS,
   pluralize,
   PRODUCTION_STAGE_LABELS,
@@ -23,13 +26,13 @@ import {
 } from '@curtain-crm/shared';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusBadge, PriorityBadge } from '@/components/ui/Badge';
+import { OrderStatusBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, controlClass, FilterBar, Input, Select } from '@/components/ui/Form';
 import { DataTable, Pagination, type RowKey } from '@/components/ui/Table';
@@ -77,11 +80,28 @@ const encodeSelection = (selection: Selection): string => {
   return SELECT_ALL;
 };
 
+/**
+ * Вкладка-пресет над списком: готовый набор статусов одного участка работы.
+ *
+ * Пресеты заменили отдельные разделы «Производство», «Швейный цех»,
+ * «Установка» и «Качество»: всё это один список заказов, и пять пунктов меню
+ * создавали пять «мест», где может быть заказ, хотя место одно. Пресет без
+ * `statuses` («Все») снимает ограничение и открывает выбор статуса вручную.
+ */
+export interface OrdersPreset {
+  readonly key: string;
+  readonly label: string;
+  readonly statuses?: readonly OrderStatus[];
+  readonly emptyMessage?: string;
+}
+
 export function OrdersView({
   title,
   lockedStatuses,
   initialStatus,
   initialStage,
+  presets,
+  initialPreset,
   emptyMessage = 'Заказов не найдено',
 }: {
   readonly title: string;
@@ -91,9 +111,14 @@ export function OrdersView({
   readonly initialStatus?: OrderStatus;
   /** Начальный фильтр по этапу конвейера — из адреса (`/orders?stage=…`). */
   readonly initialStage?: ProductionStageKey;
+  /** Вкладки-пресеты. Первая — «все», без набора статусов. */
+  readonly presets?: readonly OrdersPreset[];
+  /** Ключ вкладки из адреса (`/orders?tab=…`). */
+  readonly initialPreset?: string;
   readonly emptyMessage?: string;
 }): ReactElement {
   const router = useRouter();
+  const pathname = usePathname();
   const utils = trpc.useUtils();
   const toast = useToast();
   const { hasRole, user } = useAuth();
@@ -117,8 +142,23 @@ export function OrdersView({
     if (initialStage !== undefined) return { kind: 'stage', stage: initialStage };
     return { kind: 'all' };
   });
-  const [priority, setPriority] = useState<Priority | ''>('');
+  const [priority, setPriority] = useState<PriorityName | ''>('');
   const [createOpen, setCreateOpen] = useState(false);
+
+  /**
+   * Активная вкладка-пресет.
+   *
+   * Точный фильтр из ссылки (`?status=…` с дашборда) главнее вкладки:
+   * человек пришёл за конкретным срезом, и подменять его пресетом нельзя.
+   */
+  const [presetKey, setPresetKey] = useState<string>(() => {
+    if (initialStatus !== undefined || initialStage !== undefined) {
+      return presets?.[0]?.key ?? '';
+    }
+    const known = presets?.find((entry) => entry.key === initialPreset);
+    return known?.key ?? presets?.[0]?.key ?? '';
+  });
+  const preset = presets?.find((entry) => entry.key === presetKey);
 
   /** Отмеченные галочками заказы — для массового действия. */
   const [checked, setChecked] = useState<ReadonlySet<RowKey>>(new Set());
@@ -140,7 +180,10 @@ export function OrdersView({
         ? statusesOfProductionStage(selection.stage)
         : undefined;
 
-  const statusFilter = lockedStatuses ?? selectedStatuses;
+  // Порядок силы: жёсткий набор раздела → вкладка-пресет → ручной выбор.
+  const statusFilter = lockedStatuses ?? preset?.statuses ?? selectedStatuses;
+  // Ручной селект статуса имеет смысл только там, где набор не зафиксирован.
+  const statusSelectVisible = lockedStatuses === undefined && preset?.statuses === undefined;
 
   const query = trpc.orders.list.useQuery({
     page,
@@ -338,7 +381,7 @@ export function OrdersView({
               className="w-56"
             />
 
-            {lockedStatuses === undefined && (
+            {statusSelectVisible && (
               // Собственный `<select>` из-за `<optgroup>`; классы — общие.
               <select
                 value={encodeSelection(selection)}
@@ -402,6 +445,43 @@ export function OrdersView({
         }
       />
 
+      {presets !== undefined && presets.length > 1 && (
+        <nav
+          aria-label="Участки работы"
+          className="flex flex-wrap gap-1.5 border-b border-subtle px-4 py-2"
+        >
+          {presets.map((entry) => {
+            const isActive = entry.key === presetKey;
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => {
+                  setPresetKey(entry.key);
+                  setSelection({ kind: 'all' });
+                  setPage(1);
+                  clearChecked();
+                  // Вкладка попадает в адрес: ссылку на «Установку» можно
+                  // отправить коллеге, а «назад» возвращает на тот же срез.
+                  router.replace(
+                    entry.key === presets[0]?.key ? pathname : `${pathname}?tab=${entry.key}`,
+                    { scroll: false },
+                  );
+                }}
+                className={
+                  isActive
+                    ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
+                    : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-raised hover:text-primary'
+                }
+              >
+                {entry.label}
+              </button>
+            );
+          })}
+        </nav>
+      )}
+
       <OrderCreateDialog
         open={createOpen}
         onClose={() => {
@@ -438,7 +518,7 @@ export function OrdersView({
         isLoading={query.isLoading}
         rows={rows}
         rowKey={(row) => row.id}
-        emptyMessage={emptyMessage}
+        emptyMessage={preset?.emptyMessage ?? emptyMessage}
         activeRowKey={activeId}
         selection={{
           selected: checked,
@@ -461,12 +541,35 @@ export function OrdersView({
             header: 'Номер',
             sortValue: (row) => row.id,
             render: (row) => (
-              <Link
-                href={`/orders/${row.id.toString()}`}
-                className="font-mono font-medium text-accent hover:underline"
-              >
-                {row.orderNumber ?? `#${row.id.toString()}`}
-              </Link>
+              /*
+                Приоритет — полосой перед номером, а не отдельной колонкой
+                со словом: слово «Критический» в каждой строке демо-выборки
+                съедало колонку и переставало читаться как тревога. Полоса
+                идёт вместе с подсказкой — на цвет в одиночку полагаться нельзя.
+              */
+              <span className="flex items-center gap-2 whitespace-nowrap">
+                <span
+                  aria-hidden={row.priority === Priority.NORMAL}
+                  title={
+                    row.priority === Priority.NORMAL
+                      ? undefined
+                      : `Приоритет: ${t(PRIORITY_LABELS, row.priority)}`
+                  }
+                  className={
+                    row.priority === Priority.CRITICAL
+                      ? 'h-4 w-1 shrink-0 rounded-full bg-danger'
+                      : row.priority === Priority.URGENT
+                        ? 'h-4 w-1 shrink-0 rounded-full bg-warning'
+                        : 'h-4 w-1 shrink-0 rounded-full bg-transparent'
+                  }
+                />
+                <Link
+                  href={`/orders/${row.id.toString()}`}
+                  className="font-mono font-medium text-accent hover:underline"
+                >
+                  {row.orderNumber ?? `#${row.id.toString()}`}
+                </Link>
+              </span>
             ),
           },
           {
@@ -474,9 +577,10 @@ export function OrdersView({
             header: 'Клиент',
             sortValue: (row) => row.clientName,
             render: (row) => (
-              <span className="block">
-                <span className="block text-primary">{row.clientName}</span>
-                <span className="block font-mono text-overline text-muted">{row.clientPhone}</span>
+              // Телефон — по наведению: в строке он превращал список в три
+              // этажа, а нужен раз на десять заказов. Поиск по нему остаётся.
+              <span className="block max-w-[16rem] truncate text-primary" title={row.clientPhone}>
+                {row.clientName}
               </span>
             ),
           },
@@ -484,11 +588,6 @@ export function OrdersView({
             key: 'status',
             header: 'Статус',
             render: (row) => <OrderStatusBadge status={row.status} />,
-          },
-          {
-            key: 'priority',
-            header: 'Приоритет',
-            render: (row) => <PriorityBadge priority={row.priority} />,
           },
           {
             key: 'deadline',
@@ -502,9 +601,17 @@ export function OrdersView({
               // СЕГОДНЯ краснел с пяти утра. Та же ошибка была в приложении.
               const overdue = isOverdueDate(row.deadline) && !isTerminalStatus(row.status);
 
+              // Просрочка называется словом, а не только цветом; дата — без
+              // года: сроки живут в горизонте пары месяцев, полная дата есть
+              // в карточке.
               return (
-                <span className={overdue ? 'text-danger' : undefined}>
-                  {formatDate(row.deadline)}
+                <span
+                  className={overdue ? 'whitespace-nowrap font-semibold text-danger' : 'whitespace-nowrap'}
+                  title={formatDate(row.deadline)}
+                >
+                  {overdue
+                    ? `просрочен · ${formatIsoDateShort(row.deadline)}`
+                    : `до ${formatIsoDateShort(row.deadline)}`}
                 </span>
               );
             },
@@ -515,23 +622,35 @@ export function OrdersView({
             align: 'right',
             sortValue: (row) => parseMoney(row.workPrice),
             render: (row) => (
-              <span className="font-mono text-primary">{formatMoney(parseMoney(row.workPrice))}</span>
+              // Точная сумма — по наведению: в списке сравнивают порядки
+              // величин, а не тийины.
+              <span
+                className="font-mono text-primary"
+                title={formatMoney(parseMoney(row.workPrice), { locale })}
+              >
+                {formatMoneyShort(parseMoney(row.workPrice), { locale })}
+              </span>
             ),
           },
           {
             key: 'remaining',
             header: 'Остаток',
             align: 'right',
-            render: (row) =>
-              row.remainingPayment === null
-                ? '—'
-                : formatMoney(parseMoney(row.remainingPayment)),
-          },
-          {
-            key: 'created',
-            header: 'Создан',
-            sortValue: (row) => new Date(row.createdAt).getTime(),
-            render: (row) => formatDate(row.createdAt),
+            sortValue: (row) =>
+              row.remainingPayment === null ? 0 : parseMoney(row.remainingPayment),
+            render: (row) => {
+              const remaining =
+                row.remainingPayment === null ? null : parseMoney(row.remainingPayment);
+              // Ноль — это «долга нет», и кричать им в каждой строке незачем.
+              if (remaining === null || remaining === 0) {
+                return <span className="text-muted">—</span>;
+              }
+              return (
+                <span className="font-mono font-medium text-danger">
+                  {formatMoneyShort(remaining, { locale })}
+                </span>
+              );
+            },
           },
           {
             key: 'actions',

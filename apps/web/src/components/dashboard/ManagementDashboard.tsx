@@ -17,7 +17,6 @@ import type { ReactElement } from 'react';
 import { RankedBars } from '@/components/charts/Bars';
 import { LineSeries } from '@/components/charts/LineSeries';
 import { ProductionPipeline } from '@/components/dashboard/ProductionPipeline';
-import { RatingBoardCard } from '@/components/rating/RatingBoardCard';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
@@ -87,6 +86,18 @@ export function ManagementDashboard(): ReactElement {
 
   return (
     <div className="space-y-6">
+      {/*
+        --- Требует внимания -------------------------------------------------
+        ПЕРВОЙ строкой, до парадных цифр: утренний вопрос директора — «что
+        горит», а не «сколько нас». Каждая цифра, у которой есть честный
+        фильтр, ведёт в отфильтрованный список; у просрочки такого фильтра
+        пока нет, и врать ссылкой она не станет.
+      */}
+      <AttentionStrip
+        isLoading={attention.isLoading}
+        entries={attention.data ?? []}
+      />
+
       {/* --- Показатели -------------------------------------------------- */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         {dashboard.isLoading
@@ -377,7 +388,7 @@ export function ManagementDashboard(): ReactElement {
         </Card>
       </section>
 
-      {/* --- Товары и внимание --------------------------------------------- */}
+      {/* --- Товары и динамика заказов -------------------------------------- */}
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Самые продаваемые модели (месяц)" />
@@ -403,39 +414,6 @@ export function ManagementDashboard(): ReactElement {
         </Card>
 
         <Card>
-          <CardHeader title="Требует внимания" icon={<AlertTriangle className="h-4 w-4" />} />
-          <CardBody>
-            {attention.isLoading ? (
-              <Skeleton className="h-32" />
-            ) : attention.data === undefined || attention.data.length === 0 ? (
-              <EmptyState message="Всё в порядке — заказов, требующих вмешательства, нет" />
-            ) : (
-              <ul className="space-y-2.5">
-                {attention.data.map((entry) => (
-                  <li key={entry.key} className="flex items-center gap-2.5 text-caption">
-                    <span
-                      aria-hidden
-                      className={
-                        entry.severity === 'high'
-                          ? 'h-2 w-2 shrink-0 rounded-full bg-danger'
-                          : entry.severity === 'medium'
-                            ? 'h-2 w-2 shrink-0 rounded-full bg-warning'
-                            : 'h-2 w-2 shrink-0 rounded-full bg-info'
-                      }
-                    />
-                    <span className="font-semibold text-primary">{entry.count}</span>
-                    <span className="text-secondary">{entry.label}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardBody>
-        </Card>
-      </section>
-
-      {/* --- Динамика ------------------------------------------------------- */}
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
           <CardHeader title="Динамика заказов" />
           <CardBody>
             {dynamics.isLoading ? (
@@ -451,7 +429,15 @@ export function ManagementDashboard(): ReactElement {
             )}
           </CardBody>
         </Card>
+      </section>
 
+      {/*
+        --- Выручка и продавцы ---------------------------------------------
+        Сквозного рейтинга сотрудников здесь больше нет: карточка была
+        точной копией раздела «Рейтинг» и удваивала длину страницы. Рейтинг
+        продавцов остаётся — у него на дашборде нет двойника.
+      */}
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Динамика выручки" />
           <CardBody>
@@ -473,18 +459,8 @@ export function ManagementDashboard(): ReactElement {
             )}
           </CardBody>
         </Card>
-      </section>
 
-      {/*
-        --- Сквозной рейтинг ------------------------------------------------
-        Отвечает на вопрос, которого нет ни у «лучших в роли» выше, ни у
-        рейтинга продавцов ниже: кто впереди по мастерской целиком. Балл
-        нормируется внутри роли, поэтому швея и установщик тут сравнимы.
-      */}
-      <RatingBoardCard year={period.year} month={period.month} />
-
-      {/* --- Рейтинг продавцов ---------------------------------------------- */}
-      <Card>
+        <Card>
         <CardHeader title="Рейтинг продавцов (месяц)" />
         <DataTable
           isLoading={sellers.isLoading}
@@ -514,7 +490,8 @@ export function ManagementDashboard(): ReactElement {
             },
           ]}
         />
-      </Card>
+        </Card>
+      </section>
     </div>
   );
 }
@@ -522,6 +499,94 @@ export function ManagementDashboard(): ReactElement {
 /** Процент или прочерк, если сравнивать не с чем. */
 function percentOrDash(value: number | null): string {
   return value === null ? '—' : `${value.toString()}%`;
+}
+
+/**
+ * Куда ведёт каждая тревога.
+ *
+ * Адреса выводятся из статуса, как и строки цехов ниже: у просрочки
+ * своего фильтра в списке заказов нет, поэтому ссылки у неё нет тоже —
+ * ссылка, открывающая «не то», хуже её отсутствия.
+ */
+const ATTENTION_HREFS: Readonly<Record<string, string>> = {
+  waiting_sewing: `/orders?status=${OrderStatus.PENDING_SEWING_ASSIGNMENT}`,
+  waiting_install: `/orders?status=${OrderStatus.PENDING_INSTALLATION_ASSIGNMENT}`,
+  waiting_qc: `/orders?status=${OrderStatus.PENDING_QC}`,
+};
+
+/**
+ * Полоса «Требует внимания» — первая строка дашборда.
+ *
+ * Горизонтальные чипы вместо вертикального списка: тревог немного, и им
+ * хватает одной строки, а сэкономленная высота отдаёт первый экран делу.
+ * Нулевые счётчики не показываются — ноль это «всё в порядке», а не тревога.
+ */
+function AttentionStrip({
+  isLoading,
+  entries,
+}: {
+  readonly isLoading: boolean;
+  readonly entries: readonly {
+    readonly key: string;
+    readonly label: string;
+    readonly count: number;
+    readonly severity: 'high' | 'medium' | 'low';
+  }[];
+}): ReactElement {
+  const alerts = entries.filter((entry) => entry.count > 0);
+
+  return (
+    <Card>
+      <CardBody className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+        <span className="flex items-center gap-2 text-caption font-semibold text-primary">
+          <AlertTriangle className="h-4 w-4 text-warning" aria-hidden />
+          Требует внимания
+        </span>
+
+        {isLoading ? (
+          <Skeleton className="h-5 w-64" />
+        ) : alerts.length === 0 ? (
+          <span className="text-caption text-positive">
+            Всё в порядке — заказов, требующих вмешательства, нет
+          </span>
+        ) : (
+          alerts.map((entry) => {
+            const href = ATTENTION_HREFS[entry.key];
+            const body = (
+              <>
+                <span
+                  aria-hidden
+                  className={
+                    entry.severity === 'high'
+                      ? 'h-2 w-2 shrink-0 rounded-full bg-danger'
+                      : entry.severity === 'medium'
+                        ? 'h-2 w-2 shrink-0 rounded-full bg-warning'
+                        : 'h-2 w-2 shrink-0 rounded-full bg-info'
+                  }
+                />
+                <span className="font-semibold text-primary">{entry.count}</span>
+                <span className="text-secondary">{entry.label}</span>
+              </>
+            );
+
+            return href === undefined ? (
+              <span key={entry.key} className="flex items-center gap-1.5 text-caption">
+                {body}
+              </span>
+            ) : (
+              <Link
+                key={entry.key}
+                href={href}
+                className="flex items-center gap-1.5 rounded px-1 py-0.5 text-caption transition-colors hover:bg-raised/60"
+              >
+                {body}
+              </Link>
+            );
+          })
+        )}
+      </CardBody>
+    </Card>
+  );
 }
 
 /**

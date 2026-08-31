@@ -5,24 +5,15 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import {
-  Archive,
   BarChart3,
-  Banknote,
   ClipboardList,
-  Factory,
-  GraduationCap,
+  Compass,
   LayoutGrid,
-  Package,
   ScrollText,
-  Scissors,
   Settings,
-  ShieldCheck,
   Trophy,
-  TrendingUp,
-  UserSquare,
   Users,
   Wallet,
-  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -66,33 +57,22 @@ const ALL_ROLES: readonly RoleName[] = [
   Role.SMM,
 ];
 
+/**
+ * Меню сжато с 19 пунктов до 10 (ревизия «Диспетчерская»).
+ *
+ * «Производство», «Швейный цех», «Установка», «Качество» и «Архив» стали
+ * вкладками раздела «Заказы»: всё это один список с готовым фильтром, и
+ * пять пунктов меню создавали пять «мест», где может быть заказ. Старые
+ * адреса перенаправляют на свою вкладку.
+ *
+ * «Финансы» из меню убраны: пункт перенаправлял в «Отчёты», а два имени
+ * у одних цифр — источник путаницы. Четыре раздела-заглушки собраны под
+ * одним пунктом «В планах»: решение их достроить принято, но четыре
+ * строки меню под «скоро» — слишком дорогая цена за напоминание.
+ */
 export const NAVIGATION: readonly NavItem[] = [
   { href: '/', label: 'Главная', icon: LayoutGrid, roles: ALL_ROLES, exact: true },
   { href: '/orders', label: 'Заказы', icon: ClipboardList, roles: ALL_ROLES },
-  {
-    href: '/production',
-    label: 'Производство',
-    icon: Factory,
-    roles: [Role.CEO, Role.ADMIN, Role.MASTER, Role.SEWER],
-  },
-  {
-    href: '/sewing',
-    label: 'Швейный цех',
-    icon: Scissors,
-    roles: [Role.CEO, Role.ADMIN, Role.SEWER],
-  },
-  {
-    href: '/installation',
-    label: 'Установка',
-    icon: Wrench,
-    roles: [Role.CEO, Role.ADMIN, Role.INSTALLER],
-  },
-  {
-    href: '/quality',
-    label: 'Качество',
-    icon: ShieldCheck,
-    roles: [Role.CEO, Role.ADMIN, Role.QC],
-  },
   {
     href: '/employees',
     label: 'Рабочие',
@@ -105,20 +85,8 @@ export const NAVIGATION: readonly NavItem[] = [
     ],
   },
   { href: '/payroll', label: 'Зарплаты', icon: Wallet, roles: MANAGEMENT_ROLES },
-  { href: '/clients', label: 'Клиенты', icon: UserSquare, roles: MANAGEMENT_ROLES, stub: true },
-  { href: '/sales', label: 'Продажи', icon: TrendingUp, roles: MANAGEMENT_ROLES, stub: true },
-  { href: '/warehouse', label: 'Склад тканей', icon: Package, roles: MANAGEMENT_ROLES, stub: true },
-  {
-    href: '/training',
-    label: 'Обучение',
-    icon: GraduationCap,
-    roles: MANAGEMENT_ROLES,
-    stub: true,
-  },
   { href: '/rating', label: 'Рейтинг', icon: Trophy, roles: MANAGEMENT_ROLES },
   { href: '/reports', label: 'Отчёты', icon: BarChart3, roles: MANAGEMENT_ROLES },
-  { href: '/finance', label: 'Финансы', icon: Banknote, roles: MANAGEMENT_ROLES },
-  { href: '/archive', label: 'Архив', icon: Archive, roles: ALL_ROLES },
   {
     href: '/audit',
     label: 'Журнал действий',
@@ -128,6 +96,7 @@ export const NAVIGATION: readonly NavItem[] = [
     roles: ROLE_MANAGER_ROLES,
   },
   { href: '/settings', label: 'Настройки', icon: Settings, roles: MANAGEMENT_ROLES },
+  { href: '/plans', label: 'В планах', icon: Compass, roles: MANAGEMENT_ROLES, stub: true },
 ];
 
 /** Пункты меню, доступные набору ролей. */

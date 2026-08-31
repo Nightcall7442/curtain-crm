@@ -146,3 +146,42 @@ export function formatMoney(
   const amount = `${sign}${majorFormatted}${fractionFormatted}`;
   return withCurrency ? `${amount}\u00A0${CURRENCY_SYMBOL[locale]}` : amount;
 }
+
+/**
+ * Компактная сумма для плотных списков: `13,8 млн сум` вместо
+ * `13 800 000 сум`.
+ *
+ * Восемь цифр подряд в строке таблицы никто не читает — их сравнивают
+ * по порядку величины. Точная запись остаётся там, где сумма — предмет
+ * (карточка заказа, ведомость зарплаты): это ЭКРАННОЕ сокращение,
+ * а не новый формат хранения.
+ *
+ * Один знак после запятой: этого хватает, чтобы отличить заказ от заказа.
+ * Суммы до 10 тысяч сумов отдаются полностью — сокращать в них нечего.
+ */
+export function formatMoneyShort(
+  minor: MoneyMinor,
+  options?: { readonly locale?: Locale },
+): string {
+  const locale = options?.locale ?? 'ru';
+  const soums = minor / MINOR_UNITS_PER_MAJOR;
+  const absolute = Math.abs(soums);
+
+  const scaled =
+    absolute >= 1_000_000_000
+      ? { value: soums / 1_000_000_000, unit: { ru: 'млрд', uz: 'mlrd' } as const }
+      : absolute >= 1_000_000
+        ? { value: soums / 1_000_000, unit: { ru: 'млн', uz: 'mln' } as const }
+        : absolute >= 10_000
+          ? { value: soums / 1_000, unit: { ru: 'тыс.', uz: 'ming' } as const }
+          : null;
+
+  if (scaled === null) return formatMoney(minor, { locale });
+
+  // Один знак после запятой, без хвостового нуля: «14 млн», а не «14,0 млн».
+  const rounded = Math.round(scaled.value * 10) / 10;
+  const amount = rounded.toString().replace('.', ',');
+
+  // Пробелы неразрывные, как в `formatMoney`: сумма не рвётся переносом.
+  return [amount, scaled.unit[locale], CURRENCY_SYMBOL[locale]].join(' ');
+}

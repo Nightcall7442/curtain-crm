@@ -77,7 +77,12 @@ export function ProductionPipeline({
           <Fragment key={stage.key}>
             <Link
               href={`/orders?stage=${stage.key}`}
-              className="card-link group flex min-w-[112px] flex-1 flex-col items-center gap-1.5 rounded-tile border bg-base/40 px-3 py-3 hover:bg-raised/50"
+              /*
+                min-w 92, а не 112, и паддинги теснее: на мониторе шириной от
+                ~1000 px все восемь этапов встают в одну строку без прокрутки —
+                конвейер, который надо листать вбок, не читается как конвейер.
+              */
+              className="card-link group flex min-w-[92px] flex-1 flex-col items-center gap-1 rounded-tile border bg-base/40 px-2 py-2 hover:bg-raised/50"
               style={{ borderColor: `color-mix(in srgb, ${visuals.color} 45%, transparent)` }}
             >
               <span

@@ -1,5 +1,6 @@
 import {
   formatIsoDateShort,
+  formatMoneyShort,
   isActiveStatus,
   isOverdueDate,
   ORDER_STATUS_LABELS,
@@ -13,7 +14,6 @@ import {
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 import { useLocale } from '../hooks/useLocale';
-import { formatMoneyShort } from '../lib/moneyShort';
 import { cardShadow, colors, radius, spacing, typography } from '../theme';
 
 import { Pill } from './Card';
