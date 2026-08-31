@@ -45,7 +45,20 @@ CREATE TABLE IF NOT EXISTS journal_entries (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_journal_created ON journal_entries (created_at);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
+
+/** Добавляет колонку в существующую базу, если её ещё нет (миграция). */
+function ensureColumn(db, table, column, ddl) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
 
 /**
  * Открывает базу и создаёт недостающие таблицы.
@@ -56,6 +69,9 @@ export function createDatabase(filePath = DATABASE_PATH) {
   const db = new DatabaseSync(filePath, { enableForeignKeyConstraints: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec(SCHEMA);
+  // Привязка стола к реле Tuya/MOES (настраивается во вкладке «Настройки»).
+  ensureColumn(db, "tables", "tuya_device_id", "tuya_device_id TEXT");
+  ensureColumn(db, "tables", "tuya_switch_code", "tuya_switch_code TEXT");
   return db;
 }
 

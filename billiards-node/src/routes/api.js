@@ -6,7 +6,13 @@ import { Router } from "express";
 import { kopecksToRubles } from "../services/billing.js";
 import { ConflictError } from "../services/errors.js";
 import { listJournal } from "../services/journal.js";
-import { getLightingController } from "../services/lighting.js";
+import {
+  getActiveDriver,
+  getLightingController,
+  initLighting,
+  listCloudDevices,
+} from "../services/lighting.js";
+import { getSettings, saveSettings } from "../services/settings.js";
 import {
   closeSession,
   currentCostKopecks,
@@ -14,7 +20,7 @@ import {
   listHistory,
   openSession,
 } from "../services/sessions.js";
-import { createTable, listTables } from "../services/tables.js";
+import { createTable, listTables, setTableDevice } from "../services/tables.js";
 import { createTariff, listTariffs } from "../services/tariffs.js";
 import { sessionToOut } from "./mappers.js";
 
@@ -108,6 +114,59 @@ export function createApiRouter(db) {
       };
     });
     res.json(result);
+  });
+
+  // --- Настройки -----------------------------------------------------------
+  // Всё, что нужно для реле Tuya/MOES, задаётся отсюда (вкладка «Настройки»):
+  // драйвер и ключи облака, привязка столов к устройствам, тест реле.
+
+  router.get("/settings", (req, res) => {
+    res.json({ ...getSettings(db), driver_active: getActiveDriver() });
+  });
+
+  router.put("/settings", async (req, res, next) => {
+    try {
+      saveSettings(db, req.body ?? {});
+      const status = await initLighting(db);
+      res.json({
+        ...getSettings(db),
+        driver_active: status.driver,
+        driver_error: status.error ?? null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/settings/devices", async (req, res, next) => {
+    try {
+      res.json(await listCloudDevices());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/tables/:id/device", (req, res) => {
+    const tableId = intParam(req.params.id);
+    if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
+    const table = setTableDevice(
+      db,
+      tableId,
+      req.body?.device_id ?? null,
+      req.body?.switch_code ?? null
+    );
+    res.json(table);
+  });
+
+  // Ручной тест реле из настроек: включить/выключить свет над столом.
+  router.post("/tables/:id/light", (req, res) => {
+    const tableId = intParam(req.params.id);
+    if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
+    const on = Boolean(req.body?.on);
+    const lighting = getLightingController();
+    if (on) lighting.turnLightOn(tableId);
+    else lighting.turnLightOff(tableId);
+    res.json({ table_id: tableId, light_on: lighting.isLightOn(tableId) });
   });
 
   // --- История и журнал ---------------------------------------------------

@@ -17,6 +17,7 @@ const state = {
   fetchedAt: 0,        // performance.now() в момент ответа
   tariffs: [],
   tariffChoice: new Map(), // table_id -> выбранный tariff_id в селекте
+  devices: [],         // устройства Tuya для вкладки «Настройки»
 };
 
 // ---------------------------------------------------------------- helpers
@@ -297,6 +298,179 @@ async function refreshTariffs() {
   }
 }
 
+// ---------------------------------------------------------------- settings
+
+const SWITCH_CODES = ["switch_1", "switch_2", "switch_3", "switch_4"];
+
+function deviceLabel(device) {
+  const online =
+    device.online === null ? "" : device.online ? "" : " (офлайн)";
+  return `${device.name}${online}`;
+}
+
+function buildDeviceSelect(current) {
+  const select = document.createElement("select");
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "— не привязано —";
+  select.append(none);
+  for (const device of state.devices) {
+    const option = document.createElement("option");
+    option.value = device.id;
+    option.textContent = deviceLabel(device);
+    select.append(option);
+  }
+  // Привязанное ранее устройство, которого нет в загруженном списке.
+  if (current && !state.devices.some((d) => d.id === current)) {
+    const option = document.createElement("option");
+    option.value = current;
+    option.textContent = current;
+    select.append(option);
+  }
+  select.value = current ?? "";
+  return select;
+}
+
+async function saveBinding(tableId, deviceSelect, channelSelect) {
+  try {
+    await api(`/api/tables/${tableId}/device`, {
+      method: "PUT",
+      body: JSON.stringify({
+        device_id: deviceSelect.value || null,
+        switch_code: channelSelect.value,
+      }),
+    });
+    showToast("Привязка сохранена", true);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function renderBindings(tables) {
+  const rows = document.getElementById("binding-rows");
+  rows.replaceChildren();
+  for (const table of tables) {
+    const tr = document.createElement("tr");
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = table.name;
+
+    const deviceCell = document.createElement("td");
+    const deviceSelect = buildDeviceSelect(table.tuya_device_id);
+    deviceCell.append(deviceSelect);
+
+    const channelCell = document.createElement("td");
+    const channelSelect = document.createElement("select");
+    for (const code of SWITCH_CODES) {
+      const option = document.createElement("option");
+      option.value = code;
+      option.textContent = code.replace("switch_", "Канал ");
+      channelSelect.append(option);
+    }
+    channelSelect.value = table.tuya_switch_code ?? "switch_1";
+    channelCell.append(channelSelect);
+
+    deviceSelect.addEventListener("change", () =>
+      saveBinding(table.id, deviceSelect, channelSelect)
+    );
+    channelSelect.addEventListener("change", () =>
+      saveBinding(table.id, deviceSelect, channelSelect)
+    );
+
+    const testCell = document.createElement("td");
+    const testBtn = document.createElement("button");
+    testBtn.className = "mini";
+    testBtn.textContent = "Тест";
+    testBtn.addEventListener("click", async () => {
+      testBtn.disabled = true;
+      try {
+        await api(`/api/tables/${table.id}/light`, {
+          method: "POST",
+          body: JSON.stringify({ on: true }),
+        });
+        setTimeout(async () => {
+          try {
+            await api(`/api/tables/${table.id}/light`, {
+              method: "POST",
+              body: JSON.stringify({ on: false }),
+            });
+          } finally {
+            testBtn.disabled = false;
+          }
+        }, 2000);
+      } catch (error) {
+        showToast(error.message);
+        testBtn.disabled = false;
+      }
+    });
+    testCell.append(testBtn);
+
+    tr.append(nameCell, deviceCell, channelCell, testCell);
+    rows.append(tr);
+  }
+}
+
+function showDriverStatus(settings) {
+  const status = document.getElementById("settings-status");
+  if (settings.driver_error) {
+    status.textContent = `⚠️ ${settings.driver_error} — работает Mock`;
+  } else if (settings.driver_active === "tuya") {
+    status.textContent = "✅ Подключено к Tuya";
+  } else {
+    status.textContent = "Свет сейчас не управляется (Mock)";
+  }
+}
+
+async function refreshSettings() {
+  const [settings, tables] = await Promise.all([
+    api("/api/settings"),
+    api("/api/tables"),
+  ]);
+  document.getElementById("set-driver").value = settings.lighting_driver;
+  document.getElementById("set-host").value = settings.tuya_api_host;
+  document.getElementById("set-access-id").value = settings.tuya_access_id;
+  document.getElementById("set-access-secret").value = settings.tuya_access_secret;
+  showDriverStatus(settings);
+  renderBindings(tables);
+}
+
+async function saveConnectionSettings() {
+  const payload = {
+    lighting_driver: document.getElementById("set-driver").value,
+    tuya_api_host: document.getElementById("set-host").value,
+    tuya_access_id: document.getElementById("set-access-id").value.trim(),
+    tuya_access_secret: document.getElementById("set-access-secret").value.trim(),
+  };
+  try {
+    const settings = await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    showDriverStatus(settings);
+    showToast(
+      settings.driver_active === "tuya"
+        ? "Настройки сохранены, Tuya подключена"
+        : "Настройки сохранены",
+      true
+    );
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function loadDevices() {
+  const status = document.getElementById("devices-status");
+  status.textContent = "Загружаем…";
+  try {
+    state.devices = await api("/api/settings/devices");
+    status.textContent = `Найдено устройств: ${state.devices.length}`;
+    renderBindings(await api("/api/tables"));
+  } catch (error) {
+    status.textContent = "";
+    showToast(error.message);
+  }
+}
+
 // ---------------------------------------------------------------- tabs
 
 const TAB_LOADERS = {
@@ -304,6 +478,7 @@ const TAB_LOADERS = {
   history: refreshHistory,
   journal: refreshJournal,
   tariffs: refreshTariffs,
+  settings: refreshSettings,
 };
 
 let activeTab = "dashboard";
@@ -365,8 +540,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   switchTab("dashboard");
 
+  document
+    .getElementById("save-settings")
+    .addEventListener("click", saveConnectionSettings);
+  document.getElementById("load-devices").addEventListener("click", loadDevices);
+
   setInterval(tick, TICK_MS);
   setInterval(() => {
+    // Настройки не перезагружаем по таймеру — там пользователь заполняет форму.
+    if (activeTab === "settings") return;
     TAB_LOADERS[activeTab]().catch(() => { /* сеть мигнула — следующий опрос */ });
   }, POLL_MS);
 });

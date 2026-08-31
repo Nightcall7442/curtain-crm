@@ -5,6 +5,11 @@
 // value: false. Команды отправляются асинхронно и не блокируют кассовые
 // операции: если облако недоступно, сеанс всё равно откроется/закроется,
 // а ошибка попадёт в лог сервера.
+//
+// Какое реле у какого стола — решает resolveDevice: привязка хранится
+// в базе и настраивается во вкладке «Настройки», без правки кода.
+
+export const DEFAULT_SWITCH_CODE = "switch_1";
 
 /**
  * @typedef {Object} TuyaDevice
@@ -14,29 +19,30 @@
 
 export class TuyaLightingController {
   #client;
-  #devices;
+  #resolveDevice;
   #on = new Set();
 
   /**
    * @param {{request: Function}} client TuyaContext из @tuya/tuya-connector-nodejs
    *   (в тестах — совместимая заглушка)
-   * @param {Record<string, TuyaDevice>} devices карта "id стола" -> устройство
+   * @param {(tableId: number) => TuyaDevice | null} resolveDevice привязка
+   *   стола к устройству (обычно чтение из базы)
    */
-  constructor(client, devices) {
+  constructor(client, resolveDevice) {
     this.#client = client;
-    this.#devices = devices;
+    this.#resolveDevice = resolveDevice;
   }
 
   /** @param {number} tableId @param {boolean} value */
   #send(tableId, value) {
-    const device = this.#devices[String(tableId)];
-    if (!device) {
+    const device = this.#resolveDevice(tableId);
+    if (!device?.device_id) {
       console.warn(
-        `Tuya lighting: для стола ${tableId} нет устройства в devices.json — команда пропущена`
+        `Tuya lighting: стол ${tableId} не привязан к устройству — команда пропущена`
       );
       return;
     }
-    const code = device.switch_code ?? "switch_1";
+    const code = device.switch_code || DEFAULT_SWITCH_CODE;
     this.#client
       .request({
         method: "POST",

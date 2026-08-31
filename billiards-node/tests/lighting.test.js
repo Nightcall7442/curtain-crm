@@ -17,14 +17,16 @@ function makeFakeClient() {
   };
 }
 
-const DEVICES = {
+const BINDINGS = {
   1: { device_id: "bf-table-1", switch_code: "switch_1" },
   2: { device_id: "bf-multi", switch_code: "switch_3" },
 };
 
+const resolveDevice = (tableId) => BINDINGS[tableId] ?? null;
+
 test("включение света отправляет команду switch=true на устройство стола", async () => {
   const client = makeFakeClient();
-  const lighting = new TuyaLightingController(client, DEVICES);
+  const lighting = new TuyaLightingController(client, resolveDevice);
 
   lighting.turnLightOn(1);
   await Promise.resolve(); // даём уйти асинхронной отправке
@@ -40,7 +42,7 @@ test("включение света отправляет команду switch=t
 
 test("выключение света отправляет команду switch=false", async () => {
   const client = makeFakeClient();
-  const lighting = new TuyaLightingController(client, DEVICES);
+  const lighting = new TuyaLightingController(client, resolveDevice);
 
   lighting.turnLightOn(1);
   lighting.turnLightOff(1);
@@ -53,9 +55,9 @@ test("выключение света отправляет команду switch
   assert.ok(!lighting.isLightOn(1));
 });
 
-test("многоканальный модуль: используется switch_code канала", async () => {
+test("многоканальный модуль: используется канал из привязки", async () => {
   const client = makeFakeClient();
-  const lighting = new TuyaLightingController(client, DEVICES);
+  const lighting = new TuyaLightingController(client, resolveDevice);
 
   lighting.turnLightOn(2);
   await Promise.resolve();
@@ -65,11 +67,11 @@ test("многоканальный модуль: используется switch
   });
 });
 
-test("стол без устройства в карте не ломает работу", async () => {
+test("стол без привязки не ломает работу", async () => {
   const client = makeFakeClient();
-  const lighting = new TuyaLightingController(client, DEVICES);
+  const lighting = new TuyaLightingController(client, resolveDevice);
 
-  lighting.turnLightOn(99); // устройства нет — только предупреждение в лог
+  lighting.turnLightOn(99); // привязки нет — только предупреждение в лог
   await Promise.resolve();
 
   assert.equal(client.calls.length, 0);
@@ -80,7 +82,7 @@ test("ошибка облака не приводит к необработан�
   const failingClient = {
     request: () => Promise.reject(new Error("cloud down")),
   };
-  const lighting = new TuyaLightingController(failingClient, DEVICES);
+  const lighting = new TuyaLightingController(failingClient, resolveDevice);
 
   lighting.turnLightOn(1); // не должно бросить
   await new Promise((resolve) => setTimeout(resolve, 10));

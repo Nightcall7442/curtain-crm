@@ -14,6 +14,7 @@
       <button class="tab" data-tab="history">История</button>
       <button class="tab" data-tab="journal">Журнал</button>
       <button class="tab" data-tab="tariffs">Тарифы</button>
+      <button class="tab" data-tab="settings">Настройки</button>
     </nav>
   </header>
 
@@ -58,6 +59,61 @@
         <input id="new-tariff-price" type="number" placeholder="₽/час" required min="1" step="1">
         <button type="submit">Добавить тариф</button>
       </form>
+    </section>
+    <section id="tab-settings" class="tab-panel" hidden>
+      <div class="settings-card">
+        <h3>Управление светом — реле Tuya / MOES</h3>
+        <p class="hint">
+          Ключи берутся из облачного проекта на
+          <a href="https://iot.tuya.com" target="_blank" rel="noopener">iot.tuya.com</a>
+          (Cloud → ваш проект → Overview). Подробная инструкция — в README.
+        </p>
+        <div class="settings-grid">
+          <label class="field">Драйвер
+            <select id="set-driver">
+              <option value="mock">Выключено (без оборудования)</option>
+              <option value="tuya">Tuya / MOES</option>
+            </select>
+          </label>
+          <label class="field">Дата-центр
+            <select id="set-host">
+              <option value="https://openapi.tuyaeu.com">Европа (Central Europe)</option>
+              <option value="https://openapi.tuyaus.com">Америка (Western America)</option>
+              <option value="https://openapi.tuyain.com">Индия</option>
+              <option value="https://openapi.tuyacn.com">Китай</option>
+            </select>
+          </label>
+          <label class="field">Access ID
+            <input id="set-access-id" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">Access Secret
+            <input id="set-access-secret" type="password" autocomplete="off">
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="save-settings" class="primary">Сохранить подключение</button>
+          <span id="settings-status" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Привязка столов к реле</h3>
+        <p class="hint">
+          Выберите для каждого стола его реле — свет будет включаться при
+          открытии сеанса и гаснуть при закрытии. Кнопка «Тест» щёлкает реле
+          на 2 секунды.
+        </p>
+        <div class="settings-actions">
+          <button id="load-devices" class="primary">Загрузить устройства из Tuya</button>
+          <span id="devices-status" class="hint"></span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Стол</th><th>Устройство</th><th>Канал</th><th></th></tr>
+          </thead>
+          <tbody id="binding-rows"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 

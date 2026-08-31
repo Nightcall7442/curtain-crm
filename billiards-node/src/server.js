@@ -11,7 +11,7 @@ const db = createDatabase();
 if (SEED_INITIAL_DATA) {
   seedInitialData(db);
 }
-await initLighting();
+await initLighting(db);
 
 const app = createApp(db);
 app.listen(PORT, () => {
