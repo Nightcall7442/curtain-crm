@@ -7,7 +7,7 @@
 // - при открытии включается свет над столом, при закрытии — выключается;
 // - каждое действие фиксируется в журнале.
 
-import { utcNow } from "../db.js";
+import { utcNow, withTransaction } from "../db.js";
 import { kopecksToRubles, sessionCostKopecks } from "./billing.js";
 import { ConflictError } from "./errors.js";
 import { JournalEvent, logEvent } from "./journal.js";
@@ -29,7 +29,7 @@ const SESSION_JOIN = `
 
 /**
  * Открытый сеанс стола, если есть.
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
  */
 export function getOpenSession(db, tableId) {
@@ -49,7 +49,7 @@ function getSession(db, sessionId) {
 
 /**
  * Открывает сеанс: стол занят, свет включён, событие в журнале.
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
  * @param {number} tariffId
  */
@@ -63,7 +63,7 @@ export function openSession(db, tableId, tariffId) {
     throw new ConflictError(`Стол «${table.name}» уже занят`);
   }
 
-  const open = db.transaction(() => {
+  const sessionId = withTransaction(db, () => {
     const { lastInsertRowid } = db
       .prepare(
         `INSERT INTO table_sessions
@@ -71,30 +71,29 @@ export function openSession(db, tableId, tariffId) {
          VALUES (?, ?, ?, ?)`
       )
       .run(table.id, tariff.id, tariff.price_per_hour, utcNow());
-    const sessionId = Number(lastInsertRowid);
+    const newSessionId = Number(lastInsertRowid);
     db.prepare("UPDATE tables SET status = 'busy' WHERE id = ?").run(table.id);
     logEvent(
       db,
       JournalEvent.SESSION_OPENED,
       `Открыт сеанс на столе «${table.name}», тариф «${tariff.name}» ` +
         `(${tariff.price_per_hour} ₽/час)`,
-      { tableId: table.id, sessionId }
+      { tableId: table.id, sessionId: newSessionId }
     );
     logEvent(db, JournalEvent.LIGHT_ON, `Включён свет над столом «${table.name}»`, {
       tableId: table.id,
-      sessionId,
+      sessionId: newSessionId,
     });
-    return sessionId;
+    return newSessionId;
   });
 
-  const sessionId = open();
   getLightingController().turnLightOn(table.id);
   return getSession(db, sessionId);
 }
 
 /**
  * Закрывает сеанс: считает стоимость, освобождает стол, гасит свет.
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
  */
 export function closeSession(db, tableId) {
@@ -111,7 +110,7 @@ export function closeSession(db, tableId) {
     endedAt
   );
 
-  const close = db.transaction(() => {
+  withTransaction(db, () => {
     db.prepare(
       "UPDATE table_sessions SET ended_at = ?, total_cost_kopecks = ? WHERE id = ?"
     ).run(endedAt, totalKopecks, session.id);
@@ -129,7 +128,6 @@ export function closeSession(db, tableId) {
     });
   });
 
-  close();
   getLightingController().turnLightOff(table.id);
   return getSession(db, session.id);
 }
@@ -151,7 +149,7 @@ export function currentCostKopecks(session) {
 
 /**
  * Закрытые сеансы, новые сверху.
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} [limit]
  */
 export function listHistory(db, limit = 100) {

@@ -1,10 +1,10 @@
 // Операции со столами.
 
-import { utcNow } from "../db.js";
+import { utcNow, withTransaction } from "../db.js";
 import { ConflictError, NotFoundError } from "./errors.js";
 import { JournalEvent, logEvent } from "./journal.js";
 
-/** @param {import("better-sqlite3").Database} db */
+/** @param {import("node:sqlite").DatabaseSync} db */
 export function listTables(db) {
   return db
     .prepare("SELECT id, name, status, created_at FROM tables ORDER BY id")
@@ -12,7 +12,7 @@ export function listTables(db) {
 }
 
 /**
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
  */
 export function getTable(db, tableId) {
@@ -26,7 +26,7 @@ export function getTable(db, tableId) {
 }
 
 /**
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {string} name
  */
 export function createTable(db, name) {
@@ -38,15 +38,15 @@ export function createTable(db, name) {
   if (exists) {
     throw new ConflictError(`Стол с названием «${trimmed}» уже существует`);
   }
-  const create = db.transaction(() => {
+  const id = withTransaction(db, () => {
     const { lastInsertRowid } = db
       .prepare("INSERT INTO tables (name, status, created_at) VALUES (?, 'free', ?)")
       .run(trimmed, utcNow());
-    const id = Number(lastInsertRowid);
+    const tableId = Number(lastInsertRowid);
     logEvent(db, JournalEvent.TABLE_CREATED, `Создан стол «${trimmed}»`, {
-      tableId: id,
+      tableId,
     });
-    return id;
+    return tableId;
   });
-  return getTable(db, create());
+  return getTable(db, id);
 }

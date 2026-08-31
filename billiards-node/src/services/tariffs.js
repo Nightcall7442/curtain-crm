@@ -1,13 +1,13 @@
 // Операции с тарифами.
 
-import { utcNow } from "../db.js";
+import { utcNow, withTransaction } from "../db.js";
 import { ConflictError, NotFoundError } from "./errors.js";
 import { JournalEvent, logEvent } from "./journal.js";
 
 const toTariff = (row) => ({ ...row, is_active: Boolean(row.is_active) });
 
 /**
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {{onlyActive?: boolean}} [options]
  */
 export function listTariffs(db, { onlyActive = false } = {}) {
@@ -21,7 +21,7 @@ export function listTariffs(db, { onlyActive = false } = {}) {
 }
 
 /**
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tariffId
  */
 export function getTariff(db, tariffId) {
@@ -35,7 +35,7 @@ export function getTariff(db, tariffId) {
 }
 
 /**
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {string} name
  * @param {number} pricePerHour рублей в час, целое > 0
  */
@@ -51,7 +51,7 @@ export function createTariff(db, name, pricePerHour) {
   if (exists) {
     throw new ConflictError(`Тариф с названием «${trimmed}» уже существует`);
   }
-  const create = db.transaction(() => {
+  const id = withTransaction(db, () => {
     const { lastInsertRowid } = db
       .prepare(
         "INSERT INTO tariffs (name, price_per_hour, is_active, created_at) VALUES (?, ?, 1, ?)"
@@ -64,5 +64,5 @@ export function createTariff(db, name, pricePerHour) {
     );
     return Number(lastInsertRowid);
   });
-  return getTariff(db, create());
+  return getTariff(db, id);
 }

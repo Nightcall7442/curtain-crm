@@ -30,7 +30,7 @@ function clampLimit(value, fallback, max) {
   return Math.min(n, max);
 }
 
-/** @param {import("better-sqlite3").Database} db */
+/** @param {import("node:sqlite").DatabaseSync} db */
 export function createApiRouter(db) {
   const router = Router();
 

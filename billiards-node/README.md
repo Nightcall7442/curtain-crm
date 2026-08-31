@@ -4,7 +4,8 @@
 таймер на дашборде, история сеансов, журнал событий и абстракция
 управления освещением (сейчас Mock, позже — реле MOES).
 
-Стек: **Node.js 18+, Express, better-sqlite3 (SQLite)**;
+Стек: **Node.js 22.13+, Express, встроенный SQLite (node:sqlite)** —
+никаких нативных зависимостей и компиляции при установке;
 фронтенд — чистый HTML/CSS/JS без сборки.
 
 ---
@@ -60,7 +61,7 @@ billiards-node/
 
 ## Работа с БД
 
-- СУБД — SQLite (better-sqlite3), файл `billiards.db` в корне проекта
+- СУБД — SQLite (встроенный модуль node:sqlite), файл `billiards.db` в корне проекта
   (создаётся автоматически при старте, в git не попадает).
 - Путь можно переопределить: `BILLIARDS_DATABASE_PATH=C:\data\club.db`.
 - Таблицы создаются автоматически (`CREATE TABLE IF NOT EXISTS`).

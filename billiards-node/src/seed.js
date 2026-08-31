@@ -11,7 +11,7 @@ const INITIAL_TARIFFS = [
   ["Выходной день", 600],
 ];
 
-/** @param {import("better-sqlite3").Database} db */
+/** @param {import("node:sqlite").DatabaseSync} db */
 export function seedInitialData(db) {
   const hasTables = db.prepare("SELECT id FROM tables LIMIT 1").get();
   const hasTariffs = db.prepare("SELECT id FROM tariffs LIMIT 1").get();

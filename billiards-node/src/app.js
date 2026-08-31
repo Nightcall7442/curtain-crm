@@ -8,7 +8,7 @@ import { PUBLIC_DIR } from "./config.js";
 import { createApiRouter } from "./routes/api.js";
 import { ConflictError, NotFoundError } from "./services/errors.js";
 
-/** @param {import("better-sqlite3").Database} db */
+/** @param {import("node:sqlite").DatabaseSync} db */
 export function createApp(db) {
   const app = express();
   app.use(express.json());

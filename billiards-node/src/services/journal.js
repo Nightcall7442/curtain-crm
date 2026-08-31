@@ -14,7 +14,7 @@ export const JournalEvent = Object.freeze({
 
 /**
  * Добавляет запись в журнал.
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {string} event значение из JournalEvent
  * @param {string} message человекочитаемое описание
  * @param {{tableId?: number, sessionId?: number}} [refs]
@@ -28,7 +28,7 @@ export function logEvent(db, event, message, refs = {}) {
 
 /**
  * Последние записи журнала, новые сверху.
- * @param {import("better-sqlite3").Database} db
+ * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} [limit]
  */
 export function listJournal(db, limit = 200) {

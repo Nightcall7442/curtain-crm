@@ -1,8 +1,9 @@
-// Подключение к SQLite (better-sqlite3, синхронный API).
+// Подключение к SQLite через встроенный модуль node:sqlite (Node 22.13+):
+// никаких нативных зависимостей и компиляции при npm install.
 // Единственная точка создания базы и схемы: остальной код получает
 // готовый объект db и не знает о деталях подключения.
 
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 
 import { DATABASE_PATH } from "./config.js";
 
@@ -48,15 +49,33 @@ CREATE INDEX IF NOT EXISTS idx_journal_created ON journal_entries (created_at);
 
 /**
  * Открывает базу и создаёт недостающие таблицы.
- * @param {string} [filePath] путь к файлу БД (в тестах — своя база)
- * @returns {Database.Database}
+ * @param {string} [filePath] путь к файлу БД (в тестах — ":memory:")
+ * @returns {DatabaseSync}
  */
 export function createDatabase(filePath = DATABASE_PATH) {
-  const db = new Database(filePath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  const db = new DatabaseSync(filePath, { enableForeignKeyConstraints: true });
+  db.exec("PRAGMA journal_mode = WAL");
   db.exec(SCHEMA);
   return db;
+}
+
+/**
+ * Выполняет fn внутри транзакции: всё или ничего.
+ * @template T
+ * @param {DatabaseSync} db
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withTransaction(db, fn) {
+  db.exec("BEGIN");
+  try {
+    const result = fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 /** Текущее время в UTC в формате ISO-8601 (так оно хранится в базе). */
