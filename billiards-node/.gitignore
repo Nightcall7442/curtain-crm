@@ -1,0 +1,4 @@
+node_modules/
+billiards.db
+billiards.db-*
+*.log

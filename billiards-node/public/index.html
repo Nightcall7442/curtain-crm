@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Бильярдный клуб</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎱 Бильярдный клуб</h1>
+    <nav class="tabs">
+      <button class="tab active" data-tab="dashboard">Залы</button>
+      <button class="tab" data-tab="history">История</button>
+      <button class="tab" data-tab="journal">Журнал</button>
+      <button class="tab" data-tab="tariffs">Тарифы</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="tab-dashboard" class="tab-panel">
+      <div id="tables" class="cards"></div>
+      <form id="add-table-form" class="inline-form">
+        <input id="new-table-name" type="text" placeholder="Название нового стола" required maxlength="100">
+        <button type="submit">Добавить стол</button>
+      </form>
+    </section>
+
+    <section id="tab-history" class="tab-panel" hidden>
+      <table class="data-table">
+        <thead>
+          <tr><th>Стол</th><th>Тариф</th><th>Начало</th><th>Конец</th><th>Длительность</th><th>Итог, ₽</th></tr>
+        </thead>
+        <tbody id="history-rows"></tbody>
+      </table>
+      <p id="history-empty" class="empty" hidden>Закрытых сеансов пока нет.</p>
+    </section>
+
+    <section id="tab-journal" class="tab-panel" hidden>
+      <table class="data-table">
+        <thead>
+          <tr><th>Время</th><th>Событие</th><th>Описание</th></tr>
+        </thead>
+        <tbody id="journal-rows"></tbody>
+      </table>
+      <p id="journal-empty" class="empty" hidden>Журнал пуст.</p>
+    </section>
+
+    <section id="tab-tariffs" class="tab-panel" hidden>
+      <table class="data-table">
+        <thead>
+          <tr><th>Название</th><th>Цена, ₽/час</th><th>Активен</th></tr>
+        </thead>
+        <tbody id="tariff-rows"></tbody>
+      </table>
+      <form id="add-tariff-form" class="inline-form">
+        <input id="new-tariff-name" type="text" placeholder="Название тарифа" required maxlength="100">
+        <input id="new-tariff-price" type="number" placeholder="₽/час" required min="1" step="1">
+        <button type="submit">Добавить тариф</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
