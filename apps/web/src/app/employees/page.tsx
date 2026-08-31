@@ -18,7 +18,8 @@ import {
   type Role,
 } from '@curtain-crm/shared';
 import { CalendarPlus, Cake, Plus, UserCheck, UserMinus, Users, Wallet } from 'lucide-react';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState, type ReactElement } from 'react';
 
 import { AttendanceHeatmap, ColumnChart, ProgressBar } from '@/components/charts/Bars';
 import { Donut, DonutLegend, Gauge } from '@/components/charts/Donut';
@@ -49,11 +50,34 @@ import { formatDate, formatPercent, initials } from '@/lib/utils';
  * из фактических смен.
  */
 export default function EmployeesPage(): ReactElement {
+  return (
+    // `useSearchParams()` выключает статическую отрисовку страницы целиком,
+    // поэтому чтение адреса вынесено под собственную границу Suspense —
+    // тот же приём, что на странице заказов.
+    <Suspense fallback={<EmployeesInner />}>
+      <EmployeesFromUrl />
+    </Suspense>
+  );
+}
+
+/** `?search=Малика` приходит из глобального поиска (Ctrl+K). */
+function EmployeesFromUrl(): ReactElement {
+  const params = useSearchParams();
+  const search = params.get('search');
+
+  return <EmployeesInner initialSearch={search ?? ''} />;
+}
+
+function EmployeesInner({
+  initialSearch = '',
+}: {
+  readonly initialSearch?: string;
+}): ReactElement {
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
 
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [department, setDepartment] = useState<Department | ''>('');
   const [role, setRole] = useState<Role | ''>('');
   const [employmentType, setEmploymentType] = useState<EmploymentType | ''>('');
@@ -175,6 +199,254 @@ export default function EmployeesPage(): ReactElement {
               </>
             )}
       </section>
+
+      {/*
+        Список — ВЫШЕ разрезов штата (ревизия «Диспетчерская», П2):
+        ежедневная задача раздела — найти сотрудника и действовать, а
+        демография (возраст, стаж, статусы) — чтение раз в квартал.
+      */}
+      {/* --- Список сотрудников ---------------------------------------------- */}
+      <Card>
+        <CardHeader
+          title="Список сотрудников"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Поиск по имени или телефону"
+                className={controlClass('sm', 'w-56')}
+              />
+
+              <FilterSelect
+                value={department}
+                onChange={(value) => {
+                  setDepartment(value as Department | '');
+                  setPage(1);
+                }}
+                placeholder="Все подразделения"
+                options={DEPARTMENTS.map((value) => ({
+                  value,
+                  label: departmentLabel(value),
+                }))}
+              />
+
+              <FilterSelect
+                value={role}
+                onChange={(value) => {
+                  setRole(value as Role | '');
+                  setPage(1);
+                }}
+                placeholder="Все роли"
+                options={ROLES.map((value) => ({ value, label: ROLE_LABELS_RU[value] }))}
+              />
+
+              <FilterSelect
+                value={employmentType}
+                onChange={(value) => {
+                  setEmploymentType(value as EmploymentType | '');
+                  setPage(1);
+                }}
+                placeholder="Все статусы"
+                options={EMPLOYMENT_TYPES.map((value) => ({
+                  value,
+                  label: EMPLOYMENT_TYPE_LABELS_RU[value],
+                }))}
+              />
+
+              <Button
+                onClick={() => {
+                  setEditing(null);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                Новый сотрудник
+              </Button>
+            </div>
+          }
+        />
+
+        <DataTable
+          isLoading={list.isLoading}
+          rows={rows}
+          rowKey={(row) => row.id}
+          emptyMessage="Сотрудники не найдены"
+          columns={[
+            {
+              key: 'name',
+              header: 'ФИО',
+              render: (row) => (
+                <span className="flex items-center gap-2.5">
+                  {/* Фото сотрудник загружает сам в мобильном приложении;
+                      пока его нет — инициалы, а не пустая рамка. */}
+                  {row.avatarUrl === null ? (
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-overline text-secondary">
+                      {initials(row.fullName)}
+                    </span>
+                  ) : (
+                    // Обычный <img>, а не next/image: адрес приходит из
+                    // хранилища и меняется вместе с драйвером, а оптимизатору
+                    // Next нужен заранее известный список источников.
+                    <img
+                      src={row.avatarUrl}
+                      alt=""
+                      className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover"
+                    />
+                  )}
+                  <span className="block min-w-0">
+                    <span className="block truncate text-primary">{row.fullName}</span>
+                    <span className="block text-overline text-muted">
+                      {row.employeeCode ?? '—'}
+                    </span>
+                  </span>
+                </span>
+              ),
+            },
+            {
+              key: 'job',
+              header: 'Должность',
+              render: (row) => row.jobTitle ?? '—',
+            },
+            {
+              key: 'department',
+              header: 'Подразделение',
+              render: (row) => departmentLabel(row.department),
+            },
+            {
+              key: 'employment',
+              header: 'Статус',
+              render: (row) => (
+                <Badge tone={row.employmentType === 'permanent' ? 'positive' : 'warning'}>
+                  {employmentLabel(row.employmentType)}
+                </Badge>
+              ),
+            },
+            {
+              key: 'phone',
+              header: 'Телефон',
+              // Номер не переносится: разорванный на три строки телефон
+              // превращал строку списка в три этажа.
+              render: (row) => (
+                <a href={`tel:${row.phone}`} className="whitespace-nowrap hover:text-accent">
+                  {formatPhone(row.phone)}
+                </a>
+              ),
+            },
+            {
+              key: 'hired',
+              header: 'Дата приёма',
+              render: (row) => formatDate(row.hiredAt),
+            },
+            {
+              key: 'tenure',
+              header: 'Стаж',
+              render: (row) => formatTenure(row.hiredAt),
+            },
+            {
+              key: 'plan',
+              header: 'План / мес.',
+              align: 'right',
+              render: (row) => performanceByUser.get(row.id)?.plan ?? '—',
+            },
+            {
+              key: 'fact',
+              header: 'Выполнено',
+              align: 'right',
+              render: (row) => performanceByUser.get(row.id)?.completed ?? 0,
+            },
+            {
+              key: 'percent',
+              header: '% выполнения',
+              align: 'right',
+              render: (row) => {
+                const percent = performanceByUser.get(row.id)?.percent;
+                if (percent === undefined || percent === null) {
+                  return <span className="text-muted">—</span>;
+                }
+                return (
+                  <span className="inline-flex w-24 items-center gap-2">
+                    <ProgressBar
+                      percent={percent}
+                      tone={percent >= 100 ? 'positive' : percent >= 70 ? 'accent' : 'danger'}
+                      className="flex-1"
+                    />
+                    <span
+                      className={
+                        percent >= 100
+                          ? 'text-positive'
+                          : percent >= 70
+                            ? 'text-primary'
+                            : 'text-danger'
+                      }
+                    >
+                      {`${percent.toFixed(0)}%`}
+                    </span>
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'salary',
+              header: 'З/П (месяц)',
+              align: 'right',
+              render: (row) => {
+                const amount = performanceByUser.get(row.id)?.payrollAmount;
+                return amount === undefined ? '—' : formatMoney(parseMoney(amount));
+              },
+            },
+            {
+              key: 'presence',
+              header: 'Сегодня',
+              align: 'center',
+              render: (row) => <PresenceBadge status={presenceOf(row.id)} />,
+            },
+            {
+              key: 'actions',
+              header: '',
+              align: 'right',
+              render: (row) => (
+                <EmployeeActions
+                  employee={{
+                    id: row.id,
+                    fullName: row.fullName,
+                    isActive: row.isActive,
+                    roles: row.roles,
+                  }}
+                  onEdit={() => {
+                    setEditing({
+                      id: row.id,
+                      fullName: row.fullName,
+                      phone: row.phone,
+                      jobTitle: row.jobTitle,
+                      department: row.department,
+                      employmentType: row.employmentType,
+                      birthDate: row.birthDate,
+                      hiredAt: row.hiredAt,
+                      roles: row.roles,
+                      branchIds: row.branchIds,
+                      primaryBranchId: row.primaryBranchId,
+                    });
+                  }}
+                />
+              ),
+            },
+          ]}
+        />
+
+        {list.data !== undefined && (
+          <Pagination
+            page={list.data.page}
+            totalPages={list.data.totalPages}
+            total={list.data.total}
+            pageSize={list.data.pageSize}
+            onChange={setPage}
+          />
+        )}
+      </Card>
 
       {/* --- Разрезы штата -------------------------------------------------- */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -303,247 +575,6 @@ export default function EmployeesPage(): ReactElement {
           </CardBody>
         </Card>
       </section>
-
-      {/* --- Список сотрудников ---------------------------------------------- */}
-      <Card>
-        <CardHeader
-          title="Список сотрудников"
-          action={
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Поиск по имени или телефону"
-                className={controlClass('sm', 'w-56')}
-              />
-
-              <FilterSelect
-                value={department}
-                onChange={(value) => {
-                  setDepartment(value as Department | '');
-                  setPage(1);
-                }}
-                placeholder="Все подразделения"
-                options={DEPARTMENTS.map((value) => ({
-                  value,
-                  label: departmentLabel(value),
-                }))}
-              />
-
-              <FilterSelect
-                value={role}
-                onChange={(value) => {
-                  setRole(value as Role | '');
-                  setPage(1);
-                }}
-                placeholder="Все роли"
-                options={ROLES.map((value) => ({ value, label: ROLE_LABELS_RU[value] }))}
-              />
-
-              <FilterSelect
-                value={employmentType}
-                onChange={(value) => {
-                  setEmploymentType(value as EmploymentType | '');
-                  setPage(1);
-                }}
-                placeholder="Все статусы"
-                options={EMPLOYMENT_TYPES.map((value) => ({
-                  value,
-                  label: EMPLOYMENT_TYPE_LABELS_RU[value],
-                }))}
-              />
-
-              <Button
-                onClick={() => {
-                  setEditing(null);
-                }}
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden />
-                Новый сотрудник
-              </Button>
-            </div>
-          }
-        />
-
-        <DataTable
-          isLoading={list.isLoading}
-          rows={rows}
-          rowKey={(row) => row.id}
-          emptyMessage="Сотрудники не найдены"
-          columns={[
-            {
-              key: 'name',
-              header: 'ФИО',
-              render: (row) => (
-                <span className="flex items-center gap-2.5">
-                  {/* Фото сотрудник загружает сам в мобильном приложении;
-                      пока его нет — инициалы, а не пустая рамка. */}
-                  {row.avatarUrl === null ? (
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-overline text-secondary">
-                      {initials(row.fullName)}
-                    </span>
-                  ) : (
-                    // Обычный <img>, а не next/image: адрес приходит из
-                    // хранилища и меняется вместе с драйвером, а оптимизатору
-                    // Next нужен заранее известный список источников.
-                    <img
-                      src={row.avatarUrl}
-                      alt=""
-                      className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover"
-                    />
-                  )}
-                  <span className="block min-w-0">
-                    <span className="block truncate text-primary">{row.fullName}</span>
-                    <span className="block text-overline text-muted">
-                      {row.employeeCode ?? '—'}
-                    </span>
-                  </span>
-                </span>
-              ),
-            },
-            {
-              key: 'job',
-              header: 'Должность',
-              render: (row) => row.jobTitle ?? '—',
-            },
-            {
-              key: 'department',
-              header: 'Подразделение',
-              render: (row) => departmentLabel(row.department),
-            },
-            {
-              key: 'employment',
-              header: 'Статус',
-              render: (row) => (
-                <Badge tone={row.employmentType === 'permanent' ? 'positive' : 'warning'}>
-                  {employmentLabel(row.employmentType)}
-                </Badge>
-              ),
-            },
-            {
-              key: 'phone',
-              header: 'Телефон',
-              render: (row) => (
-                <a href={`tel:${row.phone}`} className="hover:text-accent">
-                  {formatPhone(row.phone)}
-                </a>
-              ),
-            },
-            {
-              key: 'hired',
-              header: 'Дата приёма',
-              render: (row) => formatDate(row.hiredAt),
-            },
-            {
-              key: 'tenure',
-              header: 'Стаж',
-              render: (row) => formatTenure(row.hiredAt),
-            },
-            {
-              key: 'plan',
-              header: 'План / мес.',
-              align: 'right',
-              render: (row) => performanceByUser.get(row.id)?.plan ?? '—',
-            },
-            {
-              key: 'fact',
-              header: 'Выполнено',
-              align: 'right',
-              render: (row) => performanceByUser.get(row.id)?.completed ?? 0,
-            },
-            {
-              key: 'percent',
-              header: '% выполнения',
-              align: 'right',
-              render: (row) => {
-                const percent = performanceByUser.get(row.id)?.percent;
-                if (percent === undefined || percent === null) {
-                  return <span className="text-muted">—</span>;
-                }
-                return (
-                  <span className="inline-flex w-24 items-center gap-2">
-                    <ProgressBar
-                      percent={percent}
-                      tone={percent >= 100 ? 'positive' : percent >= 70 ? 'accent' : 'danger'}
-                      className="flex-1"
-                    />
-                    <span
-                      className={
-                        percent >= 100
-                          ? 'text-positive'
-                          : percent >= 70
-                            ? 'text-primary'
-                            : 'text-danger'
-                      }
-                    >
-                      {`${percent.toFixed(0)}%`}
-                    </span>
-                  </span>
-                );
-              },
-            },
-            {
-              key: 'salary',
-              header: 'З/П (месяц)',
-              align: 'right',
-              render: (row) => {
-                const amount = performanceByUser.get(row.id)?.payrollAmount;
-                return amount === undefined ? '—' : formatMoney(parseMoney(amount));
-              },
-            },
-            {
-              key: 'presence',
-              header: 'Сегодня',
-              align: 'center',
-              render: (row) => <PresenceBadge status={presenceOf(row.id)} />,
-            },
-            {
-              key: 'actions',
-              header: '',
-              align: 'right',
-              render: (row) => (
-                <EmployeeActions
-                  employee={{
-                    id: row.id,
-                    fullName: row.fullName,
-                    isActive: row.isActive,
-                    roles: row.roles,
-                  }}
-                  onEdit={() => {
-                    setEditing({
-                      id: row.id,
-                      fullName: row.fullName,
-                      phone: row.phone,
-                      jobTitle: row.jobTitle,
-                      department: row.department,
-                      employmentType: row.employmentType,
-                      birthDate: row.birthDate,
-                      hiredAt: row.hiredAt,
-                      roles: row.roles,
-                      branchIds: row.branchIds,
-                      primaryBranchId: row.primaryBranchId,
-                    });
-                  }}
-                />
-              ),
-            },
-          ]}
-        />
-
-        {list.data !== undefined && (
-          <Pagination
-            page={list.data.page}
-            totalPages={list.data.totalPages}
-            total={list.data.total}
-            pageSize={list.data.pageSize}
-            onChange={setPage}
-          />
-        )}
-      </Card>
 
       {/* --- Нижний ряд ------------------------------------------------------ */}
       <section className="grid gap-4 lg:grid-cols-3">

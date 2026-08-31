@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 
+import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 
@@ -30,6 +31,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { isLoading, user } = useAuth();
 
   // Переход по ссылке закрывает выдвижное меню и сам по себе (`onNavigate`
@@ -38,6 +40,26 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  /**
+   * Ctrl+K / Cmd+K — глобальный поиск из любого раздела.
+   *
+   * Слушатель живёт здесь, а не в палитре: палитра закрытая не отрисована,
+   * и слушать ей нечем. Браузерных сочетаний на Ctrl+K нет (адресную строку
+   * фокусирует Ctrl+L), так что ни у кого ничего не отбирается.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((current) => !current);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   if (BARE_ROUTES.has(pathname)) {
     return <>{children}</>;
@@ -66,6 +88,13 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
       фактической высотой окна. Tailwind 3.4 генерирует утилиту из коробки.
     */
     <div className="flex h-dvh overflow-hidden bg-base">
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => {
+          setPaletteOpen(false);
+        }}
+      />
+
       {/* Статичное меню — только от `lg`: на телефоне оно съедало бы
           228 из 375 точек ширины. Уже — выдвижное, ниже. */}
       <div className="hidden lg:block">

@@ -28,7 +28,7 @@ import { OrderStatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
-import { cn, formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
+import { formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
 
 /**
  * Карточка заказа.
@@ -127,7 +127,14 @@ export default function OrderDetailPage(): ReactElement {
   const data = order.data;
 
   return (
-    <div className="space-y-6">
+    /*
+      Две колонки от `lg` (ревизия «Диспетчерская», П2): слева — жизнь заказа
+      (позиции, закупки, фото, история, комментарии), справа — узкая колонка
+      управления, прилипающая при прокрутке. Раньше все секции шли простынёй
+      во всю ширину: на обычном мониторе половина экрана пустовала, а до
+      комментариев было шесть прокруток.
+    */
+    <div className="space-y-4">
       {/* --- Шапка заказа --------------------------------------------------- */}
       <Card>
         <CardBody className="flex flex-wrap items-start gap-4">
@@ -181,6 +188,13 @@ export default function OrderDetailPage(): ReactElement {
         </CardBody>
       </Card>
 
+      <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
+      {/*
+        Правая колонка — управление. `sticky` держит действия под рукой,
+        пока левая колонка прокручивается; в один столбец (до `lg`) порядок
+        в разметке ставит её ПЕРВОЙ — действия важнее длинных списков.
+      */}
+      <div className="space-y-4 lg:sticky lg:top-20 lg:order-2">
       {/* --- Действия ------------------------------------------------------- */}
       <Card>
         <CardHeader title="Действия по заказу" />
@@ -290,11 +304,27 @@ export default function OrderDetailPage(): ReactElement {
 
       {/*
         Руководителю карточка «Исполнители» не показывается: те же четыре роли
-        строкой выше стоят в «Управлении заказом», уже выпадающими списками.
-        Читать их дважды незачем, а освободившаяся половина уходит позициям
-        заказа — там размеры, материалы и опции, которым тесно в колонке.
+        стоят в «Управлении заказом», уже выпадающими списками. Читать их
+        дважды незачем.
       */}
-      <section className={cn('grid gap-3', !isManagement && 'lg:grid-cols-2')}>
+      {!isManagement && (
+        <Card>
+          <CardHeader title="Исполнители" />
+          <CardBody>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
+              <Assignee role="master" person={data.master} />
+              <Assignee role="sewer" person={data.sewer} />
+              <Assignee role="qc" person={data.qc} />
+              <Assignee role="installer" person={data.installer} />
+            </dl>
+          </CardBody>
+        </Card>
+      )}
+      </div>
+
+      {/* --- Левая колонка: жизнь заказа ------------------------------------ */}
+      <div className="space-y-4 lg:col-span-2 lg:order-1">
+      <section className="grid gap-3">
         {/* --- Позиции ------------------------------------------------------ */}
         <Card>
           <CardHeader title="Позиции заказа" />
@@ -373,20 +403,6 @@ export default function OrderDetailPage(): ReactElement {
           </CardBody>
         </Card>
 
-        {/* --- Исполнители --------------------------------------------------- */}
-        {!isManagement && (
-          <Card>
-            <CardHeader title="Исполнители" />
-            <CardBody>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
-                <Assignee role="master" person={data.master} />
-                <Assignee role="sewer" person={data.sewer} />
-                <Assignee role="qc" person={data.qc} />
-                <Assignee role="installer" person={data.installer} />
-              </dl>
-            </CardBody>
-          </Card>
-        )}
       </section>
 
       {/* --- Закупки и фото ------------------------------------------------- */}
@@ -394,7 +410,7 @@ export default function OrderDetailPage(): ReactElement {
       <OrderPhotos orderId={orderId} orderStatus={data.status} />
 
       {/* --- История и комментарии ------------------------------------------ */}
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader title="История статусов" />
           <CardBody>
@@ -505,6 +521,8 @@ export default function OrderDetailPage(): ReactElement {
           </CardBody>
         </Card>
       </section>
+      </div>
+      </div>
     </div>
   );
 }
