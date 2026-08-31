@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button, controlClass } from '@/components/ui/Form';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
-import { DataTable } from '@/components/ui/Table';
+import { DataTable, type RowKey } from '@/components/ui/Table';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/components/providers/ToastProvider';
 import { trpc } from '@/lib/trpc';
@@ -37,6 +37,8 @@ export default function PayrollPage(): ReactElement {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [schemeOpen, setSchemeOpen] = useState(false);
+  /** Отмеченные строки ведомости — для массового утверждения директором. */
+  const [checked, setChecked] = useState<ReadonlySet<RowKey>>(new Set());
 
   const { hasRole } = useAuth();
   const isCeo = hasRole(Role.CEO);
@@ -89,6 +91,25 @@ export default function PayrollPage(): ReactElement {
     },
   });
 
+  const approveMany = trpc.payroll.approveMany.useMutation({
+    onSuccess: (result) => {
+      void invalidate();
+      setChecked(new Set());
+      const failed = result.results.filter((entry) => !entry.ok);
+      if (failed.length === 0) {
+        toast.success(`Утверждено расчётов: ${result.approved.toString()}`);
+      } else {
+        toast.error(
+          `Утверждено ${result.approved.toString()}, не удалось ${failed.length.toString()}`,
+          failed[0]?.message,
+        );
+      }
+    },
+    onError: (error) => {
+      toast.error('Не удалось утвердить', error.message);
+    },
+  });
+
   if (list.isError) {
     return (
       <Card>
@@ -104,6 +125,21 @@ export default function PayrollPage(): ReactElement {
 
   const totalCalculated = list.data === undefined ? 0 : parseMoney(list.data.totalCalculated);
   const totalPaid = list.data === undefined ? 0 : parseMoney(list.data.totalPaid);
+
+  /**
+   * Что реально уйдёт на утверждение из отмеченного.
+   *
+   * Считаются только черновики: утверждённые и выплаченные строки галочка
+   * не ломает — сервер их всё равно отклонит, но директор должен видеть
+   * ДО подтверждения, какая сумма утверждается, одной цифрой.
+   */
+  const checkedDrafts = (list.data?.items ?? []).filter(
+    (row) => checked.has(row.id) && row.status === PayrollRecordStatus.DRAFT,
+  );
+  const checkedSum = checkedDrafts.reduce(
+    (sum, row) => sum + parseMoney(row.calculatedAmount),
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -186,11 +222,52 @@ export default function PayrollPage(): ReactElement {
           </div>
         )}
 
+        {/* Панель массового утверждения — конец месяца одним подтверждением. */}
+        {isCeo && checked.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-subtle bg-accent-soft/70 px-4 py-2.5">
+            <span className="text-caption font-medium text-primary">
+              {checkedDrafts.length === 0
+                ? 'Среди отмеченных нет черновиков — утверждать нечего'
+                : `Черновиков к утверждению: ${checkedDrafts.length.toString()} на ${formatMoney(checkedSum)}`}
+            </span>
+            {checkedDrafts.length > 0 && (
+              <Button
+                size="sm"
+                loading={approveMany.isPending}
+                onClick={() => {
+                  approveMany.mutate({ ids: checkedDrafts.map((row) => row.id) });
+                }}
+              >
+                Утвердить выбранных
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto"
+              onClick={() => {
+                setChecked(new Set());
+              }}
+            >
+              Снять выделение
+            </Button>
+          </div>
+        )}
+
         <DataTable
           isLoading={list.isLoading}
           rows={list.data?.items ?? []}
           rowKey={(row) => row.id}
           emptyMessage="За этот период расчётов нет — нажмите «Рассчитать»"
+          {...(isCeo
+            ? {
+                selection: {
+                  selected: checked,
+                  onChange: setChecked,
+                  rowLabel: (key: RowKey) => `Выбрать расчёт ${String(key)}`,
+                },
+              }
+            : {})}
           columns={[
             {
               key: 'name',

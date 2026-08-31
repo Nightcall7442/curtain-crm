@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney, OrderStatus } from '@curtain-crm/shared';
+import { formatMoney, formatMoneyShort, OrderStatus } from '@curtain-crm/shared';
 import {
   AlertTriangle,
   Banknote,
@@ -138,9 +138,11 @@ export function ManagementDashboard(): ReactElement {
                   tone="positive"
                 />
                 <StatCard
+                  // Компактно: «115,1 млн сум» читается с плитки мгновенно,
+                  // а «115 100 000 сум» — нет. Точная сумма — в подписи.
                   label="Выручка за месяц"
-                  value={data.revenueThisMonthFormatted}
-                  caption={`Прошлый месяц: ${data.revenuePrevMonthFormatted}`}
+                  value={formatMoneyShort(data.revenueThisMonthMinor)}
+                  caption={`Точно: ${data.revenueThisMonthFormatted} · прошлый месяц: ${formatMoneyShort(data.revenuePrevMonthMinor)}`}
                   deltaPercent={data.revenueMonthDelta}
                   icon={Banknote}
                   tone="accent"
@@ -485,7 +487,9 @@ export function ManagementDashboard(): ReactElement {
               header: 'Выручка',
               align: 'right',
               render: (row) => (
-                <span className="text-primary">{formatMoney(row.revenueMinor)}</span>
+                <span className="text-primary" title={formatMoney(row.revenueMinor)}>
+                  {formatMoneyShort(row.revenueMinor)}
+                </span>
               ),
             },
           ]}

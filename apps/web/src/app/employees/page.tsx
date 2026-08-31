@@ -5,6 +5,7 @@ import {
   EMPLOYMENT_TYPE_LABELS_RU,
   EMPLOYMENT_TYPES,
   formatMoney,
+  formatMoneyShort,
   formatPhone,
   formatTenure,
   parseMoney,
@@ -185,14 +186,16 @@ function EmployeesInner({
                   icon={CalendarPlus}
                 />
                 <StatCard
+                  // Компактно, точная сумма — в подписи: плитка — сводка,
+                  // предметная точность живёт в ведомости зарплат.
                   label="Фонд зарплаты (месяц)"
-                  value={formatMoney(payrollFund)}
-                  caption={`Выплачено: ${formatMoney(payrollPaid)}`}
+                  value={formatMoneyShort(payrollFund)}
+                  caption={`Точно: ${formatMoney(payrollFund)} · выплачено: ${formatMoneyShort(payrollPaid)}`}
                   icon={Wallet}
                 />
                 <StatCard
                   label="Средняя З/П (месяц)"
-                  value={formatMoney(averageSalary)}
+                  value={formatMoneyShort(averageSalary)}
                   caption="На активного сотрудника"
                   icon={Wallet}
                 />

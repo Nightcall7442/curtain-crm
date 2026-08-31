@@ -28,7 +28,7 @@ import { router } from '../trpc';
  * Права доступа:
  *  - `schemes.list`, `calculate`, `list` — руководство (CEO, админ):
  *    админ считает ведомость, но не утверждает её;
- *  - `schemes.upsert`, `schemes.setActive`, `approve`, `markPaid` — ТОЛЬКО CEO:
+ *  - `schemes.upsert`, `approve`, `approveMany`, `markPaid` — ТОЛЬКО CEO:
  *    ставки и факт выплаты — зона директора;
  *  - `my` — любой вошедший сотрудник, только свои начисления.
  *
@@ -317,6 +317,85 @@ export const payrollRouter = router({
         return updated;
       }),
     ),
+
+  /**
+   * Массовое утверждение — конец месяца одним подтверждением, а не 22-мя.
+   *
+   * Каждая запись обрабатывается в СВОЕЙ транзакции с теми же проверками,
+   * что и одиночное `approve`: чужой статус или пропавшая запись валят
+   * только свою строку, остальные утверждаются. Клиент получает пофамильный
+   * отчёт — как у `orders.changeStatusBatch`, и по той же причине: тихо
+   * проглоченный отказ в зарплатной ведомости хуже явного.
+   */
+  approveMany: ceoProcedure
+    .input(z.object({ ids: z.array(idSchema).min(1).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const results: {
+        readonly id: number;
+        readonly ok: boolean;
+        readonly message?: string;
+      }[] = [];
+
+      for (const id of input.ids) {
+        try {
+          await ctx.db.transaction(async (tx) => {
+            const record = await tx.query.payrollRecords.findFirst({
+              where: eq(payrollRecords.id, id),
+            });
+
+            if (record === undefined) {
+              throw new TRPCError({ code: 'NOT_FOUND', message: 'Расчёт не найден' });
+            }
+
+            if (!canTransitionPayrollStatus(record.status, PayrollRecordStatus.APPROVED)) {
+              throw new TRPCError({
+                code: 'CONFLICT',
+                message: `Нельзя утвердить расчёт в статусе «${record.status}»`,
+              });
+            }
+
+            const [updated] = await tx
+              .update(payrollRecords)
+              .set({
+                status: PayrollRecordStatus.APPROVED,
+                approvedBy: ctx.user.id,
+                approvedAt: new Date(),
+              })
+              .where(eq(payrollRecords.id, id))
+              .returning();
+
+            if (updated === undefined) {
+              throw new TRPCError({ code: 'NOT_FOUND', message: 'Расчёт не найден' });
+            }
+
+            await recordAudit(tx, {
+              actorId: ctx.user.id,
+              action: 'payroll.approved',
+              entityType: 'payroll_record',
+              entityId: updated.id,
+              details: { amount: updated.calculatedAmount, batch: true },
+              ipAddress: ctx.ipAddress,
+            });
+
+            await notifyPayroll(tx, updated.userId, {
+              paid: false,
+              period: formatPeriod({ year: updated.periodYear, month: updated.periodMonth }),
+              amount: formatMoney(parseMoney(updated.calculatedAmount)),
+            });
+          });
+
+          results.push({ id, ok: true });
+        } catch (error) {
+          results.push({
+            id,
+            ok: false,
+            message: error instanceof TRPCError ? error.message : 'Не удалось утвердить расчёт',
+          });
+        }
+      }
+
+      return { results, approved: results.filter((entry) => entry.ok).length };
+    }),
 
   /** Отметка о выплате. Сумма может отличаться от расчётной — с комментарием. */
   markPaid: ceoProcedure

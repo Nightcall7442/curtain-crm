@@ -16,43 +16,83 @@ import { trpc } from '@/lib/trpc';
 /**
  * Настройки: филиалы, справочники, каталог закупки и собственный пароль.
  *
- * Карточки собраны в три озаглавленных раздела, а не идут сплошной стопкой.
- * Стопка из пяти одинаковых карточек не отвечала на главный вопрос человека,
- * впервые сюда зашедшего: что здесь общее для всей мастерской, а что —
- * только моё. Разница существенная: радиус отметки правит смены всему цеху,
- * а выбранный скин не виден никому, кроме автора.
+ * Разделы — ВКЛАДКАМИ, а не стопкой (ревизия «Диспетчерская», П3): одной
+ * страницей филиалы, восемь справочников и каталог закупки складывались в
+ * простыню, где нужную настройку искали прокруткой. Вкладка держит каждую
+ * на расстоянии одного клика — и, побочно, не грузит справочники тому, кто
+ * зашёл сменить пароль.
  *
- * Порядок разделов — по цене ошибки. Сверху то, что действует на всех, снизу
- * личное; внутри «Организации» — филиалы, от которых зависит, сможет ли цех
- * вообще отметить смену.
+ * Деление отвечает на главный вопрос впервые зашедшего: что здесь общее для
+ * всей мастерской, а что — только моё. Разница существенная: радиус отметки
+ * правит смены всему цеху, а выбранный скин не виден никому, кроме автора.
+ * Порядок вкладок — по цене ошибки: сначала то, что действует на всех.
  */
+type SettingsTab = 'organization' | 'catalogs' | 'personal';
+
+const SETTINGS_TABS: readonly { readonly key: SettingsTab; readonly label: string }[] = [
+  { key: 'organization', label: 'Организация' },
+  { key: 'catalogs', label: 'Справочники' },
+  { key: 'personal', label: 'Личные настройки' },
+];
+
 export default function SettingsPage(): ReactElement {
+  const [tab, setTab] = useState<SettingsTab>('organization');
+
   return (
-    <div className="space-y-6">
-      <SettingsSection
-        title="Организация"
-        hint="Параметры мастерской. Действуют на всех сотрудников сразу."
-      >
-        <BranchManager />
-      </SettingsSection>
+    <div className="space-y-4">
+      <nav aria-label="Разделы настроек" className="flex flex-wrap gap-1.5">
+        {SETTINGS_TABS.map((entry) => {
+          const isActive = entry.key === tab;
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => {
+                setTab(entry.key);
+              }}
+              className={
+                isActive
+                  ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
+                  : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-raised hover:text-primary'
+              }
+            >
+              {entry.label}
+            </button>
+          );
+        })}
+      </nav>
 
-      <SettingsSection
-        title="Справочники"
-        hint="То, из чего продавец собирает заказ. Позиции отсюда не удаляются, а выводятся из обращения — удалённая позиция обнулила бы аналитику по старым заказам."
-      >
-        <CatalogManager />
-        <PurchaseItemManager />
-      </SettingsSection>
+      {tab === 'organization' && (
+        <SettingsSection
+          title="Организация"
+          hint="Параметры мастерской. Действуют на всех сотрудников сразу."
+        >
+          <BranchManager />
+        </SettingsSection>
+      )}
 
-      <SettingsSection
-        title="Личные настройки"
-        hint="Касаются только вашей учётной записи. Другие сотрудники этих изменений не увидят."
-      >
-        <LocalePicker />
-        <ThemePicker />
-        <SkinPicker />
-        <PasswordCard />
-      </SettingsSection>
+      {tab === 'catalogs' && (
+        <SettingsSection
+          title="Справочники"
+          hint="То, из чего продавец собирает заказ. Позиции отсюда не удаляются, а выводятся из обращения — удалённая позиция обнулила бы аналитику по старым заказам."
+        >
+          <CatalogManager />
+          <PurchaseItemManager />
+        </SettingsSection>
+      )}
+
+      {tab === 'personal' && (
+        <SettingsSection
+          title="Личные настройки"
+          hint="Касаются только вашей учётной записи. Другие сотрудники этих изменений не увидят."
+        >
+          <LocalePicker />
+          <ThemePicker />
+          <SkinPicker />
+          <PasswordCard />
+        </SettingsSection>
+      )}
     </div>
   );
 }
