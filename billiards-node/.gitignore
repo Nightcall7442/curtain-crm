@@ -2,3 +2,5 @@ node_modules/
 billiards.db
 billiards.db-*
 *.log
+.env
+devices.json

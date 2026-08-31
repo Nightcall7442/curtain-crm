@@ -1,0 +1,5 @@
+{
+  "_комментарий": "Карта: id стола -> реле Tuya/MOES. Скопируйте файл в devices.json и подставьте свои device_id из Tuya IoT Platform. id столов видны в GET /api/tables. switch_code — канал реле: switch_1 для 1-канального модуля, switch_2/3/4 — для остальных каналов многоканального.",
+  "1": { "device_id": "bfXXXXXXXXXXXXXXXX", "switch_code": "switch_1" },
+  "2": { "device_id": "bfYYYYYYYYYYYYYYYY", "switch_code": "switch_1" }
+}
