@@ -1,10 +1,13 @@
+import type { OrderItemAccessory } from '@curtain-crm/shared';
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   doublePrecision,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -180,11 +183,21 @@ export const orderItems = pgTable(
     heightCm: numeric('height_cm', { precision: 7, scale: 1 }),
     areaM2: numeric('area_m2', { precision: 10, scale: 4 }),
 
+    /** Карниз — код (артикул), а не выбор из справочника: у карнизов и тюля
+     *  нет фиксированного набора вариантов, продавец переписывает код с
+     *  этикетки товара. */
     cornice: text('cornice'),
     corniceRotation: text('cornice_rotation'),
     tulle: text('tulle'),
-    sachak: text('sachak'),
-    accessory: text('accessory'),
+    /** Нужна ли антимоскитная сетка. */
+    hasProtection: boolean('has_protection').notNull().default(false),
+    /**
+     * Аксессуары позиции: держатели, султанчики, бубоны, обхваты, сачак —
+     * список, а не одно поле, потому что к одной шторе часто идёт сразу
+     * несколько штук разного количества. Бывшее отдельное поле «Сачак»
+     * сведено сюда же: сачак — просто ещё один вид аксессуара.
+     */
+    accessories: jsonb('accessories').$type<OrderItemAccessory[]>().notNull().default([]),
 
     quantity: integer('quantity').notNull().default(1),
     comment: text('comment'),

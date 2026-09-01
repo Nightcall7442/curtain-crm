@@ -26,6 +26,9 @@ export * from './constants/calendar';
 export * from './constants/catalog';
 export * from './constants/rating';
 
+/* Типы */
+export * from './types/orderItemAccessory';
+
 /* Утилиты */
 export * from './utils/dates';
 export * from './utils/geolocation';

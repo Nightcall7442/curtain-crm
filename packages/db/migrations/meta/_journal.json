@@ -29,6 +29,13 @@
       "when": 1788260015951,
       "tag": "0003_plain_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788261323457,
+      "tag": "0004_order_item_accessories",
+      "breakpoints": true
     }
   ]
 }

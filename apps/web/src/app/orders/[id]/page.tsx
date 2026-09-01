@@ -376,14 +376,26 @@ export default function OrderDetailPage(): ReactElement {
                         <Detail label="Опции материала" value={item.materialOptions.join(', ')} />
                       )}
                       {item.color !== null && <Detail label="Цвет" value={item.color} />}
-                      {item.cornice !== null && <Detail label="Карниз" value={item.cornice} />}
+                      {item.cornice !== null && <Detail label="Карниз, код" value={item.cornice} />}
                       {item.corniceRotation !== null && (
                         <Detail label="Поворот карниза" value={item.corniceRotation} />
                       )}
-                      {item.tulle !== null && <Detail label="Тюль" value={item.tulle} />}
-                      {item.sachak !== null && <Detail label="Сачак" value={item.sachak} />}
-                      {item.accessory !== null && (
-                        <Detail label="Аксессуары" value={item.accessory} />
+                      {item.tulle !== null && <Detail label="Тюль, код" value={item.tulle} />}
+                      {item.hasProtection && (
+                        <Detail label="Антимоскитная сетка" value="Нужна" />
+                      )}
+                      {item.accessories.length > 0 && (
+                        <Detail
+                          label="Аксессуары"
+                          value={item.accessories
+                            .map(
+                              (accessory) =>
+                                `${accessory.name} × ${accessory.quantity.toString()}` +
+                                (accessory.code === null ? '' : ` (${accessory.code})`),
+                            )
+                            .join(', ')}
+                          className="col-span-2"
+                        />
                       )}
                       {item.characteristics !== null && (
                         <Detail

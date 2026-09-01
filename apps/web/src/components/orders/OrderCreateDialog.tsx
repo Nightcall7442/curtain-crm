@@ -1,11 +1,11 @@
 'use client';
 
 import {
+  areaM2FromCm,
   CatalogKind,
   ORDER_ITEM_KIND_LABELS_RU,
   ORDER_ITEM_KINDS,
   OrderItemKind,
-  parseDimensions,
   PRIORITIES,
   type Priority,
   PRIORITY_LABELS_RU,
@@ -39,6 +39,21 @@ import { formatQuantity } from '@/lib/utils';
  * а не валидация.
  */
 
+/** Один аксессуар в списке позиции: держатель, султанчик, бубон, сачак и т.д. */
+interface AccessoryDraft {
+  readonly id: string;
+  name: string;
+  quantity: number;
+  code: string;
+}
+
+const emptyAccessory = (): AccessoryDraft => ({
+  id: Math.random().toString(36).slice(2),
+  name: '',
+  quantity: 1,
+  code: '',
+});
+
 interface ItemDraft {
   readonly id: string;
   kind: OrderItemKind;
@@ -47,12 +62,14 @@ interface ItemDraft {
   materialOptions: string[];
   color: string;
   characteristics: string;
-  dimensions: string;
+  widthCm: string;
+  heightCm: string;
+  /** Код карниза/тюля с этикетки — не выбор из справочника. */
   cornice: string;
   corniceRotation: string;
   tulle: string;
-  sachak: string;
-  accessory: string;
+  hasProtection: boolean;
+  accessories: AccessoryDraft[];
   quantity: number;
   comment: string;
 }
@@ -65,12 +82,13 @@ const emptyItem = (): ItemDraft => ({
   materialOptions: [],
   color: '',
   characteristics: '',
-  dimensions: '',
+  widthCm: '',
+  heightCm: '',
   cornice: '',
   corniceRotation: '',
   tulle: '',
-  sachak: '',
-  accessory: '',
+  hasProtection: false,
+  accessories: [],
   quantity: 1,
   comment: '',
 });
@@ -134,11 +152,46 @@ export function OrderCreateDialog({
   const options = (kind: string): { value: string; label: string }[] =>
     (byKind.get(kind) ?? []).map((name) => ({ value: name, label: name }));
 
+  /**
+   * Список аксессуаров на выбор — из двух справочников сразу.
+   *
+   * «Сачак» больше не отдельное поле позиции: оно такой же аксессуар, как
+   * держатель или бубон, просто из другого справочника. Объединяем оба
+   * списка здесь, а не в справочнике, — сами справочники (и права на их
+   * редактирование) трогать не пришлось.
+   */
+  const accessoryOptions = useMemo(() => {
+    const names = new Set([
+      ...(byKind.get(CatalogKind.ACCESSORY) ?? []),
+      ...(byKind.get(CatalogKind.SACHAK) ?? []),
+    ]);
+    return Array.from(names).map((name) => ({ value: name, label: name }));
+  }, [byKind]);
+
   const errors = fieldErrors(create.error);
 
   const patchItem = (id: string, patch: Partial<ItemDraft>): void => {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  };
+
+  const patchAccessory = (
+    itemId: string,
+    accessoryId: string,
+    patch: Partial<AccessoryDraft>,
+  ): void => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id !== itemId
+          ? item
+          : {
+              ...item,
+              accessories: item.accessories.map((accessory) =>
+                accessory.id === accessoryId ? { ...accessory, ...patch } : accessory,
+              ),
+            },
+      ),
     );
   };
 
@@ -162,14 +215,25 @@ export function OrderCreateDialog({
         ...(item.characteristics.trim().length > 0
           ? { characteristics: item.characteristics.trim() }
           : {}),
-        ...(item.dimensions.trim().length > 0 ? { dimensions: item.dimensions.trim() } : {}),
-        ...(item.cornice.length > 0 ? { cornice: item.cornice } : {}),
+        ...(item.widthCm.trim().length > 0 && item.heightCm.trim().length > 0
+          ? {
+              widthCm: Number.parseFloat(item.widthCm.replace(',', '.')),
+              heightCm: Number.parseFloat(item.heightCm.replace(',', '.')),
+            }
+          : {}),
+        ...(item.cornice.trim().length > 0 ? { cornice: item.cornice.trim() } : {}),
         ...(item.corniceRotation.trim().length > 0
           ? { corniceRotation: item.corniceRotation.trim() }
           : {}),
-        ...(item.tulle.length > 0 ? { tulle: item.tulle } : {}),
-        ...(item.sachak.length > 0 ? { sachak: item.sachak } : {}),
-        ...(item.accessory.length > 0 ? { accessory: item.accessory } : {}),
+        ...(item.tulle.trim().length > 0 ? { tulle: item.tulle.trim() } : {}),
+        hasProtection: item.hasProtection,
+        accessories: item.accessories
+          .filter((accessory) => accessory.name.trim().length > 0)
+          .map((accessory) => ({
+            name: accessory.name.trim(),
+            quantity: Math.max(1, accessory.quantity),
+            code: accessory.code.trim().length > 0 ? accessory.code.trim() : null,
+          })),
         quantity: item.quantity,
         ...(item.comment.trim().length > 0 ? { comment: item.comment.trim() } : {}),
       })),
@@ -340,8 +404,12 @@ export function OrderCreateDialog({
 
           <div className="space-y-3">
             {items.map((item, index) => {
-              const parsed =
-                item.dimensions.trim().length === 0 ? null : parseDimensions(item.dimensions);
+              const widthNum = Number.parseFloat(item.widthCm.replace(',', '.'));
+              const heightNum = Number.parseFloat(item.heightCm.replace(',', '.'));
+              const area =
+                Number.isFinite(widthNum) && Number.isFinite(heightNum) && widthNum > 0 && heightNum > 0
+                  ? areaM2FromCm(widthNum, heightNum)
+                  : null;
 
               return (
                 <div key={item.id} className="rounded border border-subtle bg-base/40 p-3">
@@ -403,78 +471,32 @@ export function OrderCreateDialog({
                       />
                     </Field>
 
+                    <Field label="Высота, см">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={2000}
+                        value={item.heightCm}
+                        onChange={(event) => {
+                          patchItem(item.id, { heightCm: event.target.value });
+                        }}
+                        placeholder="200"
+                      />
+                    </Field>
+
                     <Field
-                      label="Размеры"
-                      hint={
-                        parsed === null
-                          ? 'Ширина × высота в см: 150x200'
-                          : parsed.ok
-                            ? `${formatQuantity(parsed.value.widthCm, 1)} × ${formatQuantity(parsed.value.heightCm, 1)} см · ${formatQuantity(parsed.value.areaM2, 2)} м²`
-                            : undefined
-                      }
-                      error={parsed !== null && !parsed.ok ? parsed.message : undefined}
+                      label="Ширина, см"
+                      hint={area === null ? undefined : `Площадь: ${formatQuantity(area, 2)} м²`}
                     >
                       <Input
-                        value={item.dimensions}
+                        type="number"
+                        min={1}
+                        max={2000}
+                        value={item.widthCm}
                         onChange={(event) => {
-                          patchItem(item.id, { dimensions: event.target.value });
+                          patchItem(item.id, { widthCm: event.target.value });
                         }}
-                        placeholder="150x200"
-                        invalid={parsed !== null && !parsed.ok}
-                      />
-                    </Field>
-
-                    <Field label="Карниз">
-                      <Select
-                        value={item.cornice}
-                        onChange={(event) => {
-                          patchItem(item.id, { cornice: event.target.value });
-                        }}
-                        placeholder="Не выбран"
-                        options={options(CatalogKind.CORNICE)}
-                      />
-                    </Field>
-
-                    <Field label="Поворот карниза" hint="Например: левый, правый, П-образный">
-                      <Input
-                        value={item.corniceRotation}
-                        onChange={(event) => {
-                          patchItem(item.id, { corniceRotation: event.target.value });
-                        }}
-                        placeholder="Не задан"
-                      />
-                    </Field>
-
-                    <Field label="Тюль">
-                      <Select
-                        value={item.tulle}
-                        onChange={(event) => {
-                          patchItem(item.id, { tulle: event.target.value });
-                        }}
-                        placeholder="Не нужна"
-                        options={options(CatalogKind.TULLE)}
-                      />
-                    </Field>
-
-                    <Field label="Сачак">
-                      <Select
-                        value={item.sachak}
-                        onChange={(event) => {
-                          patchItem(item.id, { sachak: event.target.value });
-                        }}
-                        placeholder="Не нужен"
-                        options={options(CatalogKind.SACHAK)}
-                      />
-                    </Field>
-
-                    <Field label="Аксессуары">
-                      <Select
-                        value={item.accessory}
-                        onChange={(event) => {
-                          patchItem(item.id, { accessory: event.target.value });
-                        }}
-                        placeholder="Не нужны"
-                        options={options(CatalogKind.ACCESSORY)}
+                        placeholder="150"
                       />
                     </Field>
 
@@ -491,6 +513,125 @@ export function OrderCreateDialog({
                         }}
                       />
                     </Field>
+
+                    <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
+                      <Input
+                        value={item.cornice}
+                        onChange={(event) => {
+                          patchItem(item.id, { cornice: event.target.value });
+                        }}
+                        placeholder="Например: К-104"
+                      />
+                    </Field>
+
+                    <Field label="Поворот карниза" hint="Например: левый, правый, П-образный">
+                      <Input
+                        value={item.corniceRotation}
+                        onChange={(event) => {
+                          patchItem(item.id, { corniceRotation: event.target.value });
+                        }}
+                        placeholder="Не задан"
+                      />
+                    </Field>
+
+                    <Field label="Тюль, код" hint="Код с этикетки — справочника нет">
+                      <Input
+                        value={item.tulle}
+                        onChange={(event) => {
+                          patchItem(item.id, { tulle: event.target.value });
+                        }}
+                        placeholder="Например: Т-22"
+                      />
+                    </Field>
+
+                    <label className="flex items-center gap-2 self-center text-caption text-primary sm:col-span-2 lg:col-span-3">
+                      <input
+                        type="checkbox"
+                        checked={item.hasProtection}
+                        onChange={(event) => {
+                          patchItem(item.id, { hasProtection: event.target.checked });
+                        }}
+                        className="h-4 w-4 accent-accent"
+                      />
+                      Нужна антимоскитная сетка
+                    </label>
+
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="text-footnote font-medium text-secondary">Аксессуары</span>
+                        <Button
+                          variant="ghost"
+                          className="ml-auto"
+                          onClick={() => {
+                            patchItem(item.id, {
+                              accessories: [...item.accessories, emptyAccessory()],
+                            });
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5" aria-hidden />
+                          Добавить аксессуар
+                        </Button>
+                      </div>
+
+                      {item.accessories.length === 0 ? (
+                        <p className="text-footnote text-muted">
+                          Держатели, султанчики, бубоны, обхваты, сачак — добавляются по одному, с
+                          количеством и кодом
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {item.accessories.map((accessory) => (
+                            <div key={accessory.id} className="flex items-center gap-2">
+                              <Select
+                                className="flex-1"
+                                value={accessory.name}
+                                onChange={(event) => {
+                                  patchAccessory(item.id, accessory.id, {
+                                    name: event.target.value,
+                                  });
+                                }}
+                                placeholder="Выберите аксессуар"
+                                options={accessoryOptions}
+                              />
+                              <Input
+                                type="number"
+                                min={1}
+                                max={1000}
+                                className="w-20 shrink-0"
+                                value={accessory.quantity}
+                                onChange={(event) => {
+                                  patchAccessory(item.id, accessory.id, {
+                                    quantity: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                                  });
+                                }}
+                              />
+                              <Input
+                                className="w-28 shrink-0"
+                                value={accessory.code}
+                                onChange={(event) => {
+                                  patchAccessory(item.id, accessory.id, { code: event.target.value });
+                                }}
+                                placeholder="Код"
+                              />
+                              <button
+                                type="button"
+                                aria-label="Удалить аксессуар"
+                                onClick={() => {
+                                  patchItem(item.id, {
+                                    accessories: item.accessories.filter(
+                                      (entry) => entry.id !== accessory.id,
+                                    ),
+                                  });
+                                }}
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <Field label="Материалы" className="sm:col-span-2 lg:col-span-3">
                       <ChipSelect
