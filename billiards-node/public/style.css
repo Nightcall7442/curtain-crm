@@ -112,8 +112,44 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
   padding: 6px 14px;
 }
 
-.shift-chip { color: var(--orange-text); background: rgba(255, 149, 0, 0.14); }
-.shift-chip.open { color: var(--green-text); background: rgba(52, 199, 89, 0.14); }
+/* --- Контекстное меню столов --- */
+
+.context-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 230px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(30, 40, 80, 0.28);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.context-item {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.93rem;
+  font-weight: 550;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.context-item:hover { background: rgba(0, 122, 255, 0.12); color: var(--blue); }
+
+/* Предоплата: истёкшее время */
+.timer.expired {
+  color: var(--red);
+  font-size: 1.35rem;
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink { 50% { opacity: 0.45; } }
 
 .user-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 

@@ -25,6 +25,11 @@ export function sessionToOut(session) {
     client_name: session.client_name ?? null,
     discount_percent: session.discount_percent ?? 0,
     payment_method: session.payment_method ?? null,
+    prepaid_seconds: session.prepaid_seconds ?? null,
+    prepaid_amount:
+      session.prepaid_kopecks === null || session.prepaid_kopecks === undefined
+        ? null
+        : kopecksToRubles(session.prepaid_kopecks),
     time_cost:
       session.time_cost_kopecks === null || session.time_cost_kopecks === undefined
         ? null

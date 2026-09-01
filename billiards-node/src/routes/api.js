@@ -195,15 +195,27 @@ export function createApiRouter(db) {
       throw new ConflictError("Поле tariff_id обязательно и должно быть числом");
     }
     const clientId = intParam(req.body?.client_id);
+    // Режимы: postpaid (по умолчанию), time (минуты вперёд), amount (сумма).
+    const mode = req.body?.mode ?? "postpaid";
+    const options = { clientId };
+    if (mode === "time") {
+      options.prepaidSeconds = Math.round(Number(req.body?.minutes) * 60);
+      options.paymentMethod = req.body?.payment_method ?? null;
+    } else if (mode === "amount") {
+      options.prepaidAmount = Number(req.body?.amount);
+      options.paymentMethod = req.body?.payment_method ?? null;
+    } else if (mode !== "postpaid") {
+      throw new ConflictError(`Неизвестный режим открытия «${mode}»`);
+    }
     res
       .status(201)
-      .json(sessionToOut(openSession(db, tableId, tariffId, req.user, { clientId })));
+      .json(sessionToOut(openSession(db, tableId, tariffId, req.user, options)));
   });
 
   router.post("/tables/:id/close", (req, res) => {
     const tableId = intParam(req.params.id);
     if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
-    const paymentMethod = req.body?.payment_method ?? "cash";
+    const paymentMethod = req.body?.payment_method ?? null;
     res.json(sessionToOut(closeSession(db, tableId, req.user, { paymentMethod })));
   });
 
@@ -309,25 +321,42 @@ export function createApiRouter(db) {
         light_on: lighting.isLightOn(table.id),
         booking: booking
           ? {
+              id: booking.id,
               client_name: booking.client_name,
               starts_at: booking.starts_at,
               duration_minutes: booking.duration_minutes,
             }
           : null,
         session: session
-          ? {
-              session_id: session.id,
-              tariff_name: session.tariff_name,
-              price_per_hour: session.price_per_hour_snapshot,
-              started_at: session.started_at,
-              client_name: session.client_name ?? null,
-              discount_percent: session.discount_percent ?? 0,
-              elapsed_seconds: Math.max(
+          ? (() => {
+              const elapsed = Math.max(
                 0,
                 Math.floor((now - Date.parse(session.started_at)) / 1000)
-              ),
-              current_cost: kopecksToRubles(currentCostKopecks(db, session)),
-            }
+              );
+              const prepaid =
+                session.prepaid_kopecks !== null &&
+                session.prepaid_kopecks !== undefined;
+              return {
+                session_id: session.id,
+                tariff_name: session.tariff_name,
+                price_per_hour: session.price_per_hour_snapshot,
+                started_at: session.started_at,
+                client_name: session.client_name ?? null,
+                discount_percent: session.discount_percent ?? 0,
+                elapsed_seconds: elapsed,
+                current_cost: kopecksToRubles(currentCostKopecks(db, session)),
+                prepaid,
+                prepaid_seconds: prepaid ? session.prepaid_seconds : null,
+                prepaid_amount: prepaid
+                  ? kopecksToRubles(session.prepaid_kopecks)
+                  : null,
+                payment_method: session.payment_method ?? null,
+                remaining_seconds: prepaid
+                  ? session.prepaid_seconds - elapsed
+                  : null,
+                expired: prepaid ? elapsed >= session.prepaid_seconds : false,
+              };
+            })()
           : null,
       };
     });

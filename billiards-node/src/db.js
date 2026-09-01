@@ -157,6 +157,9 @@ export function createDatabase(filePath = DATABASE_PATH) {
   ensureColumn(db, "table_sessions", "closed_by", "closed_by INTEGER REFERENCES users (id)");
   ensureColumn(db, "table_sessions", "shift_id", "shift_id INTEGER REFERENCES shifts (id)");
   ensureColumn(db, "table_sessions", "close_shift_id", "close_shift_id INTEGER REFERENCES shifts (id)");
+  // Предоплата: оплаченное время (сек) и сумма (коп); NULL = постоплата.
+  ensureColumn(db, "table_sessions", "prepaid_seconds", "prepaid_seconds INTEGER");
+  ensureColumn(db, "table_sessions", "prepaid_kopecks", "prepaid_kopecks INTEGER");
   // Оплата, клиент и разбивка итога сеанса.
   ensureColumn(db, "table_sessions", "payment_method", "payment_method TEXT");
   ensureColumn(db, "table_sessions", "client_id", "client_id INTEGER REFERENCES clients (id)");

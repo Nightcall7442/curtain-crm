@@ -183,15 +183,31 @@ function renderTables() {
     if (booking) card.append(booking);
 
     if (table.session) {
+      const prepaid = table.session.prepaid;
       const timer = document.createElement("div");
       timer.className = "timer";
       timer.dataset.role = "timer";
-      timer.textContent = formatDuration(liveElapsedSeconds(table));
 
       const cost = document.createElement("div");
       cost.className = "cost";
       cost.dataset.role = "cost";
-      cost.textContent = `${formatMoney(liveCost(table))} ₽`;
+
+      if (prepaid) {
+        // Предоплата: обратный отсчёт оплаченного времени.
+        const remaining = table.session.remaining_seconds -
+          (performance.now() - state.fetchedAt) / 1000;
+        timer.textContent = formatDuration(Math.max(0, remaining));
+        timer.classList.toggle("expired", remaining <= 0);
+        if (remaining <= 0) timer.textContent = "ВРЕМЯ ВЫШЛО";
+        cost.textContent =
+          `Оплачено ${formatMoney(table.session.prepaid_amount)} ₽` +
+          (table.session.payment_method
+            ? ` · ${PAYMENT_LABELS[table.session.payment_method].toLowerCase()}`
+            : "");
+      } else {
+        timer.textContent = formatDuration(liveElapsedSeconds(table));
+        cost.textContent = `${formatMoney(liveCost(table))} ₽`;
+      }
 
       const meta = document.createElement("div");
       meta.className = "session-meta";
@@ -263,6 +279,9 @@ function renderTables() {
       card.append(select, clientInput, openBtn);
     }
 
+    card.addEventListener("contextmenu", (event) =>
+      showContextMenu(event, table, card)
+    );
     container.append(card);
   }
 }
@@ -275,6 +294,20 @@ function tick() {
     if (!card) continue;
     const timer = card.querySelector('[data-role="timer"]');
     const cost = card.querySelector('[data-role="cost"]');
+    if (table.session.prepaid) {
+      if (!timer) continue;
+      const remaining =
+        table.session.remaining_seconds -
+        (performance.now() - state.fetchedAt) / 1000;
+      if (remaining <= 0) {
+        timer.textContent = "ВРЕМЯ ВЫШЛО";
+        timer.classList.add("expired");
+      } else {
+        timer.textContent = formatDuration(remaining);
+        timer.classList.remove("expired");
+      }
+      continue;
+    }
     if (timer) timer.textContent = formatDuration(liveElapsedSeconds(table));
     if (cost) cost.textContent = `${formatMoney(liveCost(table))} ₽`;
   }
@@ -424,6 +457,7 @@ async function openCloseModal(table) {
   }
 
   const body = document.createElement("div");
+  const prepaid = Boolean(table.session?.prepaid);
 
   const lines = document.createElement("div");
   lines.className = "check-lines";
@@ -437,55 +471,80 @@ async function openCloseModal(table) {
     row.append(l, v);
     lines.append(row);
   };
-  addLine(
-    `Время (${formatDuration(check.billed_seconds)})`,
-    `${formatMoney(check.time_cost)} ₽`
-  );
-  if (check.discount_percent > 0) {
+  if (prepaid) {
     addLine(
-      `Скидка ${check.discount_percent}%${check.client_name ? ` — ${check.client_name}` : ""}`,
-      `−${formatMoney(check.time_cost - check.discounted_time)} ₽`
+      `Оплаченное время (${formatDuration(check.billed_seconds)})`,
+      `${formatMoney(check.time_cost)} ₽ · оплачено`
     );
+  } else {
+    addLine(
+      `Время (${formatDuration(check.billed_seconds)})`,
+      `${formatMoney(check.time_cost)} ₽`
+    );
+    if (check.discount_percent > 0) {
+      addLine(
+        `Скидка ${check.discount_percent}%${check.client_name ? ` — ${check.client_name}` : ""}`,
+        `−${formatMoney(check.time_cost - check.discounted_time)} ₽`
+      );
+    }
   }
   if (check.bar_cost > 0) {
     addLine("Бар", `${formatMoney(check.bar_cost)} ₽`);
   }
-  addLine("К оплате", `${formatMoney(check.total)} ₽`, true);
+  if (prepaid) {
+    addLine(
+      check.bar_cost > 0 ? "К доплате за бар" : "Итого (оплачено)",
+      `${formatMoney(check.bar_cost > 0 ? check.bar_cost : check.total)} ₽`,
+      true
+    );
+  } else {
+    addLine("К оплате", `${formatMoney(check.total)} ₽`, true);
+  }
   body.append(lines);
+
+  const closeWith = async (method) => {
+    try {
+      const session = await api(`/api/tables/${table.id}/close`, {
+        method: "POST",
+        body: JSON.stringify(method ? { payment_method: method } : {}),
+      });
+      closeModal();
+      showToast(
+        `Сеанс закрыт: ${table.name}, итог ${formatMoney(session.total_cost)} ₽`,
+        true
+      );
+      await refreshDashboard();
+      openReceipt(session.id);
+    } catch (error) {
+      showToast(error.message);
+      closeModal();
+      await refreshDashboard();
+    }
+  };
 
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "Выберите способ оплаты — стол закроется сразу.";
-  body.append(hint);
-
-  const buttons = document.createElement("div");
-  buttons.className = "pay-buttons";
-  for (const [method, label] of Object.entries(PAYMENT_LABELS)) {
-    const btn = document.createElement("button");
-    btn.className = "primary";
-    btn.textContent = label;
-    btn.addEventListener("click", async () => {
-      try {
-        const session = await api(`/api/tables/${table.id}/close`, {
-          method: "POST",
-          body: JSON.stringify({ payment_method: method }),
-        });
-        closeModal();
-        showToast(
-          `Сеанс закрыт: ${table.name}, итог ${formatMoney(session.total_cost)} ₽ (${label.toLowerCase()})`,
-          true
-        );
-        await refreshDashboard();
-        openReceipt(session.id);
-      } catch (error) {
-        showToast(error.message);
-        closeModal();
-        await refreshDashboard();
-      }
-    });
-    buttons.append(btn);
+  if (prepaid) {
+    hint.textContent =
+      check.bar_cost > 0
+        ? "Время уже оплачено — осталось принять оплату за бар и закрыть стол."
+        : "Время уже оплачено — просто закройте стол.";
+    body.append(hint);
+    if (check.bar_cost > 0) {
+      body.append(paymentButtonsRow((method) => closeWith(method)));
+    } else {
+      const confirm = document.createElement("button");
+      confirm.className = "primary";
+      confirm.style.width = "100%";
+      confirm.textContent = "Закрыть стол";
+      confirm.addEventListener("click", () => closeWith(null));
+      body.append(confirm);
+    }
+  } else {
+    hint.textContent = "Выберите способ оплаты — стол закроется сразу.";
+    body.append(hint);
+    body.append(paymentButtonsRow((method) => closeWith(method)));
   }
-  body.append(buttons);
 
   openModal(`Закрытие — ${table.name}`, body);
 }
@@ -565,26 +624,11 @@ function renderUserChip() {
   chip.textContent = `${state.user.name} · ${role}`;
 }
 
-/** Индикатор и кнопка смены в шапке. */
+/** Кнопка смены в шапке (без статистики — итоги видны только при
+ *  закрытии смены и в «Отчётах»). */
 function renderShiftBar() {
-  const chip = document.getElementById("shift-chip");
   const toggle = document.getElementById("shift-toggle");
-  if (state.shift) {
-    chip.hidden = false;
-    chip.classList.add("open");
-    const openedAt = new Date(state.shift.opened_at).toLocaleTimeString("ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    chip.textContent =
-      `Смена с ${openedAt} · ${formatMoney(state.shift.revenue)} ₽`;
-    toggle.textContent = "Закрыть смену";
-  } else {
-    chip.hidden = state.user.role !== "cashier";
-    chip.classList.remove("open");
-    chip.textContent = "Смена не открыта";
-    toggle.textContent = "Открыть смену";
-  }
+  toggle.textContent = state.shift ? "Закрыть смену" : "Открыть смену";
 }
 
 async function refreshShift() {
@@ -1012,84 +1056,295 @@ async function refreshReports() {
 }
 
 // ---------------------------------------------------------------- bookings
+// Брони живут прямо на столах: создание и отмена — через правый клик
+// по карточке; на карточке показывается ближайшая бронь.
 
-async function refreshBookings() {
-  const [bookings, tables] = await Promise.all([
-    api("/api/bookings"),
-    api("/api/tables"),
-  ]);
-
-  const tableSelect = document.getElementById("booking-table");
-  const selected = tableSelect.value;
-  tableSelect.replaceChildren();
-  for (const table of tables) {
-    const option = document.createElement("option");
-    option.value = String(table.id);
-    option.textContent = table.name;
-    tableSelect.append(option);
-  }
-  if (selected) tableSelect.value = selected;
-
-  const rows = document.getElementById("booking-rows");
-  rows.replaceChildren();
-  for (const booking of bookings) {
-    const tr = document.createElement("tr");
-    const cells = [
-      booking.table_name,
-      formatDateTime(booking.starts_at),
-      `${booking.duration_minutes} мин`,
-      booking.client_name,
-      booking.phone ?? "—",
-    ];
-    for (const text of cells) {
-      const td = document.createElement("td");
-      td.textContent = text;
-      tr.append(td);
-    }
-    const actions = document.createElement("td");
-    const cancel = document.createElement("button");
-    cancel.className = "mini";
-    cancel.textContent = "Отменить";
-    cancel.addEventListener("click", async () => {
-      try {
-        await api(`/api/bookings/${booking.id}/cancel`, { method: "POST" });
-        showToast("Бронь отменена", true);
-        await refreshBookings();
-      } catch (error) {
-        showToast(error.message);
-      }
-    });
-    actions.append(cancel);
-    tr.append(actions);
-    rows.append(tr);
-  }
-  document.getElementById("bookings-empty").hidden = bookings.length > 0;
+function makeField(labelText, inputEl) {
+  const label = document.createElement("label");
+  label.className = "field";
+  label.append(labelText, inputEl);
+  return label;
 }
 
-async function addBooking() {
-  const startValue = document.getElementById("booking-start").value;
-  if (!startValue) {
-    showToast("Укажите дату и время брони");
-    return;
+function openBookingModal(table) {
+  const body = document.createElement("div");
+  const grid = document.createElement("div");
+  grid.className = "settings-grid";
+
+  const start = document.createElement("input");
+  start.type = "datetime-local";
+  const inHour = new Date(Date.now() + 3600 * 1000);
+  inHour.setSeconds(0, 0);
+  start.value =
+    `${inHour.getFullYear()}-${String(inHour.getMonth() + 1).padStart(2, "0")}-` +
+    `${String(inHour.getDate()).padStart(2, "0")}T` +
+    `${String(inHour.getHours()).padStart(2, "0")}:` +
+    `${String(inHour.getMinutes()).padStart(2, "0")}`;
+
+  const duration = document.createElement("select");
+  for (const [minutes, label] of [
+    [30, "30 минут"], [60, "1 час"], [90, "1.5 часа"], [120, "2 часа"], [180, "3 часа"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = String(minutes);
+    option.textContent = label;
+    duration.append(option);
   }
+  duration.value = "60";
+
+  const name = document.createElement("input");
+  name.type = "text";
+  name.placeholder = "Имя клиента";
+  const phone = document.createElement("input");
+  phone.type = "tel";
+  phone.placeholder = "Телефон (не обязательно)";
+
+  grid.append(
+    makeField("Дата и время", start),
+    makeField("Длительность", duration),
+    makeField("Имя клиента", name),
+    makeField("Телефон", phone)
+  );
+
+  const submit = document.createElement("button");
+  submit.className = "primary";
+  submit.textContent = "Забронировать";
+  submit.addEventListener("click", async () => {
+    if (!start.value) {
+      showToast("Укажите дату и время брони");
+      return;
+    }
+    try {
+      await api("/api/bookings", {
+        method: "POST",
+        body: JSON.stringify({
+          table_id: table.id,
+          starts_at: new Date(start.value).toISOString(),
+          duration_minutes: Number(duration.value),
+          client_name: name.value.trim(),
+          phone: phone.value.trim(),
+        }),
+      });
+      closeModal();
+      showToast("Бронь создана", true);
+      await refreshDashboard();
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "settings-actions";
+  actions.append(submit);
+  body.append(grid, actions);
+  openModal(`Бронь — ${table.name}`, body);
+}
+
+async function cancelTableBooking(table) {
   try {
-    await api("/api/bookings", {
-      method: "POST",
-      body: JSON.stringify({
-        table_id: Number(document.getElementById("booking-table").value),
-        starts_at: new Date(startValue).toISOString(),
-        duration_minutes: Number(document.getElementById("booking-duration").value),
-        client_name: document.getElementById("booking-name").value.trim(),
-        phone: document.getElementById("booking-phone").value.trim(),
-      }),
-    });
-    document.getElementById("booking-name").value = "";
-    document.getElementById("booking-phone").value = "";
-    showToast("Бронь создана", true);
-    await refreshBookings();
+    await api(`/api/bookings/${table.booking.id}/cancel`, { method: "POST" });
+    showToast("Бронь отменена", true);
+    await refreshDashboard();
   } catch (error) {
     showToast(error.message);
   }
+}
+
+// ---------------------------------------------------------------- prepaid
+
+/** Тариф и скидка клиента, выбранные на карточке стола. */
+function cardPricing(card) {
+  const select = card.querySelector("select");
+  const tariff = state.tariffs.find((t) => t.id === Number(select?.value));
+  const clientInput = card.querySelector("input[list='clients-datalist']");
+  const clientId = clientInput ? clientIdFromInput(clientInput.value) : null;
+  const client = state.clients.find((c) => c.id === clientId);
+  return {
+    tariff,
+    clientId,
+    discount: client?.discount_percent ?? 0,
+  };
+}
+
+function paymentButtonsRow(onPick) {
+  const row = document.createElement("div");
+  row.className = "pay-buttons";
+  for (const [method, label] of Object.entries(PAYMENT_LABELS)) {
+    const btn = document.createElement("button");
+    btn.className = "primary";
+    btn.textContent = label;
+    btn.addEventListener("click", () => onPick(method));
+    row.append(btn);
+  }
+  return row;
+}
+
+async function openPrepaid(table, payload) {
+  try {
+    await api(`/api/tables/${table.id}/open`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    closeModal();
+    state.clientDraft.delete(table.id);
+    showToast("Стол открыт по предоплате", true);
+    await refreshDashboard();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function openPrepaidTimeModal(table, card) {
+  const { tariff, clientId, discount } = cardPricing(card);
+  if (!tariff) {
+    showToast("Сначала выберите тариф на карточке стола");
+    return;
+  }
+  const body = document.createElement("div");
+
+  const duration = document.createElement("select");
+  for (const [minutes, label] of [
+    [30, "30 минут"], [60, "1 час"], [90, "1.5 часа"],
+    [120, "2 часа"], [180, "3 часа"], [240, "4 часа"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = String(minutes);
+    option.textContent = label;
+    duration.append(option);
+  }
+  duration.value = "60";
+
+  const preview = document.createElement("p");
+  preview.className = "order-total";
+  const updatePreview = () => {
+    const hours = Number(duration.value) / 60;
+    const sum = tariff.price_per_hour * hours * (1 - discount / 100);
+    preview.textContent =
+      `К оплате сейчас: ~${formatMoney(sum)} ₽` +
+      (discount ? ` (скидка ${discount}%)` : "");
+  };
+  duration.addEventListener("change", updatePreview);
+  updatePreview();
+
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent =
+    `Тариф «${tariff.name}» — ${tariff.price_per_hour} ₽/час. ` +
+    "Клиент платит сразу; когда время закончится, стол подсветится.";
+
+  body.append(makeField("Оплаченное время", duration), preview, hint);
+  body.append(
+    paymentButtonsRow((method) =>
+      openPrepaid(table, {
+        tariff_id: tariff.id,
+        client_id: clientId,
+        mode: "time",
+        minutes: Number(duration.value),
+        payment_method: method,
+      })
+    )
+  );
+  openModal(`На время — ${table.name}`, body);
+}
+
+function openPrepaidAmountModal(table, card) {
+  const { tariff, clientId, discount } = cardPricing(card);
+  if (!tariff) {
+    showToast("Сначала выберите тариф на карточке стола");
+    return;
+  }
+  const body = document.createElement("div");
+
+  const amount = document.createElement("input");
+  amount.type = "number";
+  amount.min = "1";
+  amount.step = "1";
+  amount.placeholder = "Сумма, ₽";
+  amount.className = "cash-input";
+
+  const preview = document.createElement("p");
+  preview.className = "order-total";
+  const perHour = tariff.price_per_hour * (1 - discount / 100);
+  const updatePreview = () => {
+    const sum = Number(amount.value);
+    if (!Number.isFinite(sum) || sum <= 0 || perHour <= 0) {
+      preview.textContent = "";
+      return;
+    }
+    const minutes = Math.floor((sum / perHour) * 60);
+    preview.textContent = `Этого хватит примерно на ${formatDuration(minutes * 60)}`;
+  };
+  amount.addEventListener("input", updatePreview);
+
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent =
+    `Тариф «${tariff.name}» — ${tariff.price_per_hour} ₽/час` +
+    (discount ? ` со скидкой ${discount}%` : "") +
+    ". Клиент платит сумму сразу, система отсчитает оплаченное время.";
+
+  body.append(makeField("Сумма предоплаты, ₽", amount), preview, hint);
+  body.append(
+    paymentButtonsRow((method) => {
+      const sum = Number(amount.value);
+      if (!Number.isFinite(sum) || sum <= 0) {
+        showToast("Укажите сумму больше нуля");
+        return;
+      }
+      openPrepaid(table, {
+        tariff_id: tariff.id,
+        client_id: clientId,
+        mode: "amount",
+        amount: sum,
+        payment_method: method,
+      });
+    })
+  );
+  openModal(`На сумму — ${table.name}`, body);
+}
+
+// ---------------------------------------------------------------- context menu
+
+function hideContextMenu() {
+  document.getElementById("context-menu").hidden = true;
+}
+
+function showContextMenu(event, table, card) {
+  event.preventDefault();
+  const menu = document.getElementById("context-menu");
+  menu.replaceChildren();
+
+  const addItem = (label, handler) => {
+    const item = document.createElement("button");
+    item.className = "context-item";
+    item.textContent = label;
+    item.addEventListener("click", () => {
+      hideContextMenu();
+      handler();
+    });
+    menu.append(item);
+  };
+
+  if (table.session) {
+    addItem("🍹 Бар…", () => openBarModal(table));
+    addItem("💳 Закрыть стол…", () => openCloseModal(table));
+  } else {
+    const select = card.querySelector("select");
+    const clientInput = card.querySelector("input[list='clients-datalist']");
+    addItem("▶ Открыть — постоплата", () => openTable(table, select, clientInput));
+    addItem("⏱ Открыть на время…", () => openPrepaidTimeModal(table, card));
+    addItem("💰 Открыть на сумму…", () => openPrepaidAmountModal(table, card));
+    addItem("📅 Забронировать…", () => openBookingModal(table));
+  }
+  if (table.booking) {
+    addItem("✖ Отменить бронь", () => cancelTableBooking(table));
+  }
+
+  menu.hidden = false;
+  const { innerWidth, innerHeight } = window;
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(event.clientX, innerWidth - rect.width - 8)}px`;
+  menu.style.top = `${Math.min(event.clientY, innerHeight - rect.height - 8)}px`;
 }
 
 // ---------------------------------------------------------------- clients tab
@@ -1535,20 +1790,12 @@ const TAB_LOADERS = {
   settings: refreshSettings,
   reports: refreshReports,
   users: refreshUsers,
-  bookings: refreshBookings,
   clients: refreshClientsTab,
   menu: refreshMenuTab,
 };
 
 // Вкладки с формами не перезагружаем по таймеру, чтобы не мешать вводу.
-const NO_POLL_TABS = new Set([
-  "settings",
-  "users",
-  "bookings",
-  "clients",
-  "menu",
-  "tariffs",
-]);
+const NO_POLL_TABS = new Set(["settings", "users", "clients", "menu", "tariffs"]);
 
 let activeTab = "dashboard";
 
@@ -1595,8 +1842,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("shift-toggle").addEventListener("click", toggleShift);
   document.getElementById("add-user-btn").addEventListener("click", addUser);
-  document.getElementById("add-booking-btn").addEventListener("click", addBooking);
   document.getElementById("add-client-btn").addEventListener("click", addClient);
+  // Контекстное меню столов закрывается по клику и прокрутке.
+  document.addEventListener("click", hideContextMenu);
+  document.addEventListener("scroll", hideContextMenu, true);
   document.getElementById("add-menu-btn").addEventListener("click", addMenuItem);
   document.getElementById("save-club-btn").addEventListener("click", saveClubSettings);
   document.getElementById("add-rule-btn").addEventListener("click", addTariffRule);

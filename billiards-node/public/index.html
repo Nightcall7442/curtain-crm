@@ -11,7 +11,6 @@
     <h1>🎱 Бильярдный клуб</h1>
     <nav class="tabs">
       <button class="tab active" data-tab="dashboard">Залы</button>
-      <button class="tab" data-tab="bookings">Брони</button>
       <button class="tab" data-tab="clients">Клиенты</button>
       <button class="tab" data-tab="history">История</button>
       <button class="tab" data-tab="journal">Журнал</button>
@@ -22,7 +21,6 @@
       <button class="tab" data-tab="settings" data-admin hidden>Настройки</button>
     </nav>
     <div class="user-area">
-      <span id="shift-chip" class="user-chip shift-chip" hidden></span>
       <button id="shift-toggle" class="mini"></button>
       <span id="user-chip" class="user-chip"></span>
       <button id="logout-btn" class="mini">Выйти</button>
@@ -33,6 +31,9 @@
 
     <section id="tab-dashboard" class="tab-panel">
       <div id="tables" class="cards"></div>
+      <p class="hint" style="margin-top:14px">
+        Правый клик по столу: постоплата · на время · на сумму · бронь
+      </p>
       <form id="add-table-form" class="inline-form" data-admin hidden>
         <input id="new-table-name" type="text" placeholder="Название нового стола" required maxlength="100">
         <button type="submit">Добавить стол</button>
@@ -106,48 +107,6 @@
         </div>
       </div>
     </section>
-    <section id="tab-bookings" class="tab-panel" hidden>
-      <div class="settings-card">
-        <h3>Новая бронь</h3>
-        <div class="settings-grid">
-          <label class="field">Стол
-            <select id="booking-table"></select>
-          </label>
-          <label class="field">Дата и время
-            <input id="booking-start" type="datetime-local">
-          </label>
-          <label class="field">Длительность
-            <select id="booking-duration">
-              <option value="30">30 минут</option>
-              <option value="60" selected>1 час</option>
-              <option value="90">1.5 часа</option>
-              <option value="120">2 часа</option>
-              <option value="180">3 часа</option>
-            </select>
-          </label>
-          <label class="field">Имя клиента
-            <input id="booking-name" type="text" maxlength="100">
-          </label>
-          <label class="field">Телефон
-            <input id="booking-phone" type="tel" maxlength="30">
-          </label>
-        </div>
-        <div class="settings-actions">
-          <button id="add-booking-btn" class="primary">Забронировать</button>
-        </div>
-      </div>
-      <div class="settings-card">
-        <h3>Актуальные брони</h3>
-        <table class="data-table">
-          <thead>
-            <tr><th>Стол</th><th>Начало</th><th>Длительность</th><th>Клиент</th><th>Телефон</th><th></th></tr>
-          </thead>
-          <tbody id="booking-rows"></tbody>
-        </table>
-        <p id="bookings-empty" class="empty" hidden>Броней нет.</p>
-      </div>
-    </section>
-
     <section id="tab-clients" class="tab-panel" hidden>
       <div class="settings-card">
         <h3>Клиенты</h3>
@@ -392,6 +351,7 @@
     </section>
   </main>
 
+  <div id="context-menu" class="context-menu" hidden></div>
   <div id="modal-overlay" class="modal-overlay" hidden>
     <div id="modal" class="modal"></div>
   </div>

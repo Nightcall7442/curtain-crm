@@ -30,6 +30,7 @@ const SESSION_FIELDS = `
   s.started_at, s.ended_at, s.total_cost_kopecks,
   s.payment_method, s.client_id, s.discount_percent,
   s.time_cost_kopecks, s.bar_cost_kopecks,
+  s.prepaid_seconds, s.prepaid_kopecks,
   t.name AS table_name, tr.name AS tariff_name,
   uo.name AS opened_by_name, uc.name AS closed_by_name,
   cl.name AS client_name
@@ -64,10 +65,25 @@ export function computeCheck(db, session, endIso) {
     0,
     Math.floor((Date.parse(endIso) - Date.parse(session.started_at)) / 1000)
   );
+  const barCost = barTotalKopecks(db, session.id);
+
+  // Предоплаченный сеанс: время уже оплачено фиксированной суммой.
+  if (session.prepaid_kopecks !== null && session.prepaid_kopecks !== undefined) {
+    return {
+      duration_seconds: rawSeconds,
+      billed_seconds: session.prepaid_seconds,
+      time_cost_kopecks: session.prepaid_kopecks,
+      discount_percent: session.discount_percent ?? 0,
+      discounted_time_kopecks: session.prepaid_kopecks,
+      bar_cost_kopecks: barCost,
+      total_kopecks: session.prepaid_kopecks + barCost,
+      prepaid: true,
+    };
+  }
+
   const billedSeconds = Math.max(rawSeconds, club.min_session_minutes * 60);
   const timeCost = costKopecks(session.price_per_hour_snapshot, billedSeconds);
   const discountedTime = applyDiscount(timeCost, session.discount_percent ?? 0);
-  const barCost = barTotalKopecks(db, session.id);
   const total = roundToStep(discountedTime + barCost, club.rounding_step_kopecks);
   return {
     duration_seconds: rawSeconds,
@@ -77,6 +93,7 @@ export function computeCheck(db, session, endIso) {
     discounted_time_kopecks: discountedTime,
     bar_cost_kopecks: barCost,
     total_kopecks: total,
+    prepaid: false,
   };
 }
 
@@ -119,10 +136,22 @@ function getSession(db, sessionId) {
  * @param {number} tableId
  * @param {number} tariffId
  * @param {{id: number, name: string, role: string}} user кто открывает
- * @param {{clientId?: number | null}} [options] клиент (его скидка
- *   фиксируется снимком на весь сеанс)
+ * @param {{clientId?: number | null,
+ *          prepaidSeconds?: number | null,
+ *          prepaidAmount?: number | null,
+ *          paymentMethod?: string | null}} [options]
+ *   clientId — клиент (его скидка фиксируется снимком на весь сеанс);
+ *   prepaidSeconds — предоплата «на время»: оплаченные секунды;
+ *   prepaidAmount — предоплата «на сумму»: рубли, время считается по
+ *   тарифу со скидкой; paymentMethod обязателен для предоплаты.
  */
-export function openSession(db, tableId, tariffId, user, { clientId = null } = {}) {
+export function openSession(
+  db,
+  tableId,
+  tariffId,
+  user,
+  { clientId = null, prepaidSeconds = null, prepaidAmount = null, paymentMethod = null } = {}
+) {
   const table = getTable(db, tableId);
   const tariff = getTariff(db, tariffId);
   if (!tariff.is_active) {
@@ -133,14 +162,54 @@ export function openSession(db, tableId, tariffId, user, { clientId = null } = {
   }
   const shiftId = requireShiftFor(db, user);
   const client = clientId ? getClient(db, clientId) : null;
+  const discount = client?.discount_percent ?? 0;
+
+  // Предоплата: считаем оплаченное время и сумму.
+  let prepaid = null;
+  if (prepaidSeconds !== null || prepaidAmount !== null) {
+    if (!PAYMENT_METHODS.includes(paymentMethod)) {
+      throw new ConflictError("Для предоплаты укажите способ оплаты");
+    }
+    const club = getClubSettings(db);
+    // Эффективная цена часа с учётом скидки клиента, в копейках.
+    const perHour = applyDiscount(tariff.price_per_hour * 100, discount);
+    if (perHour <= 0) {
+      throw new ConflictError("Цена со скидкой равна нулю — предоплата невозможна");
+    }
+    if (prepaidSeconds !== null) {
+      const seconds = Number(prepaidSeconds);
+      if (!Number.isInteger(seconds) || seconds < 15 * 60 || seconds > 24 * 3600) {
+        throw new ConflictError("Оплаченное время: от 15 минут до 24 часов");
+      }
+      prepaid = {
+        seconds,
+        kopecks: roundToStep(
+          applyDiscount(costKopecks(tariff.price_per_hour, seconds), discount),
+          club.rounding_step_kopecks
+        ),
+      };
+    } else {
+      const amount = Number(prepaidAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new ConflictError("Сумма предоплаты должна быть больше нуля");
+      }
+      const kopecks = Math.round(amount * 100);
+      const seconds = Math.floor((kopecks * 3600) / perHour);
+      if (seconds < 5 * 60) {
+        throw new ConflictError("Этой суммы хватает меньше чем на 5 минут");
+      }
+      prepaid = { seconds, kopecks };
+    }
+  }
 
   const sessionId = withTransaction(db, () => {
     const { lastInsertRowid } = db
       .prepare(
         `INSERT INTO table_sessions
            (table_id, tariff_id, price_per_hour_snapshot, started_at,
-            opened_by, shift_id, client_id, discount_percent)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            opened_by, shift_id, client_id, discount_percent,
+            prepaid_seconds, prepaid_kopecks, payment_method)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         table.id,
@@ -150,16 +219,24 @@ export function openSession(db, tableId, tariffId, user, { clientId = null } = {
         user.id,
         shiftId,
         client?.id ?? null,
-        client?.discount_percent ?? 0
+        discount,
+        prepaid?.seconds ?? null,
+        prepaid?.kopecks ?? null,
+        prepaid ? paymentMethod : null
       );
     const newSessionId = Number(lastInsertRowid);
     db.prepare("UPDATE tables SET status = 'busy' WHERE id = ?").run(table.id);
+    const prepaidNote = prepaid
+      ? `, предоплата ${kopecksToRubles(prepaid.kopecks).toFixed(2)} ₽ ` +
+        `на ${Math.round(prepaid.seconds / 60)} мин`
+      : "";
     logEvent(
       db,
       JournalEvent.SESSION_OPENED,
       `Открыт сеанс на столе «${table.name}», тариф «${tariff.name}» ` +
         `(${tariff.price_per_hour} ₽/час)` +
         (client ? `, клиент «${client.name}»` : "") +
+        prepaidNote +
         ` — ${user.name}`,
       { tableId: table.id, sessionId: newSessionId }
     );
@@ -180,15 +257,17 @@ export function openSession(db, tableId, tariffId, user, { clientId = null } = {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
  * @param {{id: number, name: string, role: string}} user кто закрывает
- * @param {{paymentMethod?: string}} [options] способ оплаты
- *   (cash | card | transfer, по умолчанию cash)
+ * @param {{paymentMethod?: string | null}} [options] способ оплаты
+ *   (cash | card | transfer); по умолчанию — способ, выбранный при
+ *   предоплате, иначе cash
  */
-export function closeSession(db, tableId, user, { paymentMethod = "cash" } = {}) {
+export function closeSession(db, tableId, user, { paymentMethod = null } = {}) {
   const table = getTable(db, tableId);
   const session = getOpenSession(db, table.id);
   if (!session) {
     throw new ConflictError(`Стол «${table.name}» свободен — закрывать нечего`);
   }
+  paymentMethod = paymentMethod ?? session.payment_method ?? "cash";
   if (!PAYMENT_METHODS.includes(paymentMethod)) {
     throw new ConflictError(
       `Недопустимый способ оплаты «${paymentMethod}» (cash, card или transfer)`
