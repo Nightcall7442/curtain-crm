@@ -23,7 +23,13 @@ const state = {
   shift: null,         // открытая кассовая смена или null
   clients: [],         // клиентская база для быстрого выбора при открытии
   autoTariffId: null,  // тариф по расписанию на «сейчас»
+  view: "map",         // вид «Залов»: map (карта) или cards (карточки)
 };
+
+try {
+  const savedView = localStorage.getItem("billiards_view");
+  if (savedView === "cards" || savedView === "map") state.view = savedView;
+} catch {}
 
 const PAYMENT_LABELS = { cash: "Наличные", card: "Карта", transfer: "Перевод" };
 
@@ -155,11 +161,21 @@ function bookingBadge(table) {
   return el;
 }
 
-function renderTables() {
-  const container = document.getElementById("tables");
-  container.replaceChildren();
+/** Статус стола для карты: free | busy | prepaid | expired (+ booked). */
+function tableStatusClass(table) {
+  if (!table.session) return "free";
+  if (!table.session.prepaid) return "busy";
+  return table.session.expired ? "expired" : "prepaid";
+}
 
-  for (const table of state.tables) {
+function bookingSoon(table) {
+  if (!table.booking) return false;
+  return Date.parse(table.booking.starts_at) - Date.now() <= 60 * 60000;
+}
+
+/** Полная интерактивная карточка стола (для сетки карточек и окна стола). */
+function buildTableCard(table, { inModal = false } = {}) {
+  {
     const card = document.createElement("div");
     card.className = "card";
     card.dataset.tableId = String(table.id);
@@ -274,20 +290,128 @@ function renderTables() {
         openBtn.disabled = true;
         openBtn.textContent = "НЕТ АКТИВНЫХ ТАРИФОВ";
       }
-      openBtn.addEventListener("click", () => openTable(table, select, clientInput));
+      openBtn.addEventListener("click", () => {
+        const done = openTable(table, select, clientInput);
+        if (inModal) done.finally(closeModal);
+      });
 
       card.append(select, clientInput, openBtn);
     }
 
-    card.addEventListener("contextmenu", (event) =>
-      showContextMenu(event, table, card)
+    if (!inModal) {
+      card.addEventListener("contextmenu", (event) =>
+        showContextMenu(event, table, card)
+      );
+    }
+    return card;
+  }
+}
+
+/** Окно стола (открывается кликом по плитке на карте). */
+function openTableModal(table) {
+  openModal(table.name, buildTableCard(table, { inModal: true }));
+}
+
+function renderMap() {
+  const map = document.getElementById("tables-map");
+  map.replaceChildren();
+  for (const table of state.tables) {
+    const tile = document.createElement("div");
+    tile.className = `tile ${tableStatusClass(table)}`;
+    if (bookingSoon(table)) tile.classList.add("booked");
+    tile.dataset.tableId = String(table.id);
+
+    const name = document.createElement("div");
+    name.className = "tile-name";
+    // Короткий номер, если имя вида «Стол 5», иначе имя целиком.
+    const short = table.name.match(/^стол\s*(\d+)$/i);
+    name.textContent = short ? short[1] : table.name;
+    name.title = table.name;
+
+    const sub = document.createElement("div");
+    sub.className = "tile-sub";
+    sub.dataset.role = "tile-sub";
+    tile.append(name, sub);
+
+    const bar = document.createElement("div");
+    bar.className = "tile-bar";
+    tile.append(bar);
+
+    tile.addEventListener("click", () => openTableModal(table));
+    tile.addEventListener("contextmenu", (event) =>
+      showContextMenu(event, table, tile)
     );
-    container.append(card);
+    map.append(tile);
+  }
+  updateTiles();
+}
+
+/** Текст под номером на плитке: таймер/остаток. */
+function updateTiles() {
+  for (const table of state.tables) {
+    const tile = document.querySelector(`.tile[data-table-id="${table.id}"]`);
+    if (!tile) continue;
+    const sub = tile.querySelector('[data-role="tile-sub"]');
+    if (!table.session) {
+      sub.textContent = bookingSoon(table)
+        ? `бронь ${new Date(Date.parse(table.booking.starts_at)).toLocaleTimeString(
+            "ru-RU",
+            { hour: "2-digit", minute: "2-digit" }
+          )}`
+        : "";
+      continue;
+    }
+    if (table.session.prepaid) {
+      const remaining =
+        table.session.remaining_seconds -
+        (performance.now() - state.fetchedAt) / 1000;
+      if (remaining <= 0) {
+        sub.textContent = "время вышло";
+        tile.classList.remove("prepaid");
+        tile.classList.add("expired");
+      } else {
+        sub.textContent = `-${formatDuration(remaining)}`;
+      }
+    } else {
+      sub.textContent = formatDuration(liveElapsedSeconds(table));
+    }
+  }
+}
+
+function setDashView(view) {
+  state.view = view;
+  try {
+    localStorage.setItem("billiards_view", view);
+  } catch {}
+  document.getElementById("tables-map").hidden = view !== "map";
+  document.getElementById("tables").hidden = view !== "cards";
+  document.getElementById("view-map").classList.toggle("view-active", view === "map");
+  document
+    .getElementById("view-cards")
+    .classList.toggle("view-active", view === "cards");
+  renderTables();
+}
+
+function renderTables() {
+  // Загрузка клуба: занято / всего.
+  const busy = state.tables.filter((t) => t.session).length;
+  const load = document.getElementById("club-load");
+  load.textContent = `Загрузка клуба ${busy}/${state.tables.length}`;
+
+  if (state.view === "map") {
+    renderMap();
+    return;
+  }
+  const container = document.getElementById("tables");
+  container.replaceChildren();
+  for (const table of state.tables) {
+    container.append(buildTableCard(table));
   }
 }
 
 /** Секундный тик: обновляет только цифры, без перерисовки карточек. */
 function tick() {
+  if (state.view === "map" && activeTab === "dashboard") updateTiles();
   for (const table of state.tables) {
     if (!table.session) continue;
     const card = document.querySelector(`.card[data-table-id="${table.id}"]`);
@@ -1152,11 +1276,15 @@ async function cancelTableBooking(table) {
 
 // ---------------------------------------------------------------- prepaid
 
-/** Тариф и скидка клиента, выбранные на карточке стола. */
+/** Тариф и скидка клиента, выбранные на карточке стола.
+ *  Для плитки карты (без селекта) — тариф по расписанию или первый активный. */
 function cardPricing(card) {
-  const select = card.querySelector("select");
-  const tariff = state.tariffs.find((t) => t.id === Number(select?.value));
-  const clientInput = card.querySelector("input[list='clients-datalist']");
+  const select = card?.querySelector?.("select");
+  const active = state.tariffs.filter((t) => t.is_active);
+  const tariff = select
+    ? state.tariffs.find((t) => t.id === Number(select.value))
+    : active.find((t) => t.id === state.autoTariffId) ?? active[0];
+  const clientInput = card?.querySelector?.("input[list='clients-datalist']");
   const clientId = clientInput ? clientIdFromInput(clientInput.value) : null;
   const client = state.clients.find((c) => c.id === clientId);
   return {
@@ -1331,7 +1459,24 @@ function showContextMenu(event, table, card) {
   } else {
     const select = card.querySelector("select");
     const clientInput = card.querySelector("input[list='clients-datalist']");
-    addItem("▶ Открыть — постоплата", () => openTable(table, select, clientInput));
+    addItem("▶ Открыть — постоплата", () => {
+      if (select) {
+        openTable(table, select, clientInput);
+      } else {
+        // Плитка карты: тариф по расписанию (или первый активный).
+        const { tariff } = cardPricing(null);
+        if (!tariff) {
+          showToast("Нет активных тарифов");
+          return;
+        }
+        api(`/api/tables/${table.id}/open`, {
+          method: "POST",
+          body: JSON.stringify({ tariff_id: tariff.id }),
+        })
+          .then(() => refreshDashboard())
+          .catch((error) => showToast(error.message));
+      }
+    });
     addItem("⏱ Открыть на время…", () => openPrepaidTimeModal(table, card));
     addItem("💰 Открыть на сумму…", () => openPrepaidAmountModal(table, card));
     addItem("📅 Забронировать…", () => openBookingModal(table));
@@ -1846,6 +1991,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Контекстное меню столов закрывается по клику и прокрутке.
   document.addEventListener("click", hideContextMenu);
   document.addEventListener("scroll", hideContextMenu, true);
+  document.getElementById("view-map").addEventListener("click", () => setDashView("map"));
+  document
+    .getElementById("view-cards")
+    .addEventListener("click", () => setDashView("cards"));
+  setDashView(state.view);
   document.getElementById("add-menu-btn").addEventListener("click", addMenuItem);
   document.getElementById("save-club-btn").addEventListener("click", saveClubSettings);
   document.getElementById("add-rule-btn").addEventListener("click", addTariffRule);

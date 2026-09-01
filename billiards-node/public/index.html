@@ -30,9 +30,24 @@
   <main>
 
     <section id="tab-dashboard" class="tab-panel">
+      <div class="dash-head">
+        <div class="view-toggle">
+          <button id="view-map" class="mini">Карта</button>
+          <button id="view-cards" class="mini">Карточки</button>
+        </div>
+        <div class="legend">
+          <span><i class="dot dot-free"></i>свободен</span>
+          <span><i class="dot dot-busy"></i>занят</span>
+          <span><i class="dot dot-prepaid"></i>предоплата</span>
+          <span><i class="dot dot-expired"></i>время вышло</span>
+          <span><i class="dot dot-booked"></i>скоро бронь</span>
+        </div>
+        <span id="club-load" class="club-load"></span>
+      </div>
+      <div id="tables-map" class="tiles" hidden></div>
       <div id="tables" class="cards"></div>
       <p class="hint" style="margin-top:14px">
-        Правый клик по столу: постоплата · на время · на сумму · бронь
+        Клик по плитке — карточка стола. Правый клик: постоплата · на время · на сумму · бронь
       </p>
       <form id="add-table-form" class="inline-form" data-admin hidden>
         <input id="new-table-name" type="text" placeholder="Название нового стола" required maxlength="100">

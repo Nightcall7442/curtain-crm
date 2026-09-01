@@ -2,22 +2,25 @@
    «стеклянные» карточки (backdrop-filter), сегментированные вкладки,
    системные акцентные цвета. */
 
+/* Тёмная неоновая тема в духе софта компьютерных клубов. */
 :root {
-  --bg: #eef1f7;
-  --text: #1c1c1e;
-  --muted: #6e6e73;
-  --blue: #007aff;
-  --blue-pressed: #0a6ce0;
-  --green: #34c759;
-  --green-text: #1e8e3e;
-  --red: #ff3b30;
+  --bg: #0b101c;
+  --text: #e8ecf5;
+  --muted: #8892a6;
+  --blue: #2f8bff;
+  --blue-pressed: #1f6fe0;
+  --green: #2ecc71;
+  --green-text: #3ddc84;
+  --red: #ff453a;
   --red-pressed: #e0321f;
-  --orange-text: #c25200;
-  --glass: rgba(255, 255, 255, 0.66);
-  --glass-strong: rgba(255, 255, 255, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.75);
-  --hairline: rgba(60, 60, 67, 0.12);
-  --shadow: 0 8px 32px rgba(50, 60, 100, 0.12);
+  --orange-text: #ffb340;
+  --yellow: #ffd60a;
+  --magenta: #d63ae1;
+  --glass: rgba(24, 31, 48, 0.72);
+  --glass-strong: rgba(21, 27, 42, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --hairline: rgba(255, 255, 255, 0.09);
+  --shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
 }
 
 * { box-sizing: border-box; }
@@ -34,16 +37,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Цветные пятна на фоне — за счёт них видно «стекло» карточек. */
+/* Неоновые пятна на тёмном фоне — за счёт них видно «стекло» панелей. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(640px 420px at 12% 4%, rgba(0, 122, 255, 0.16), transparent 65%),
-    radial-gradient(560px 400px at 88% 18%, rgba(191, 90, 242, 0.14), transparent 65%),
-    radial-gradient(620px 460px at 45% 105%, rgba(52, 199, 89, 0.13), transparent 65%);
+    radial-gradient(640px 420px at 12% 4%, rgba(47, 139, 255, 0.12), transparent 65%),
+    radial-gradient(560px 400px at 88% 18%, rgba(214, 58, 225, 0.10), transparent 65%),
+    radial-gradient(620px 460px at 45% 105%, rgba(46, 204, 113, 0.07), transparent 65%);
 }
 
 .topbar {
@@ -74,7 +77,7 @@ body::before {
   display: flex;
   gap: 2px;
   padding: 3px;
-  background: rgba(120, 120, 128, 0.14);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
 }
 
@@ -94,9 +97,9 @@ body::before {
 .tab:hover { color: var(--text); }
 
 .tab.active {
-  background: #ffffff;
-  color: var(--text);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  background: rgba(47, 139, 255, 0.18);
+  color: #dceafe;
+  box-shadow: inset 0 0 0 1px rgba(47, 139, 255, 0.35);
 }
 
 main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
@@ -107,7 +110,7 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--muted);
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(255, 255, 255, 0.07);
   border-radius: 999px;
   padding: 6px 14px;
 }
@@ -156,7 +159,7 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
 .load-bar {
   height: 10px;
   border-radius: 999px;
-  background: rgba(120, 120, 128, 0.15);
+  background: rgba(255, 255, 255, 0.09);
   overflow: hidden;
 }
 
@@ -165,6 +168,107 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
   border-radius: 999px;
   background: linear-gradient(90deg, #34c759, #007aff);
 }
+
+/* --- Шапка «Залов»: переключатель вида, легенда, загрузка клуба --- */
+
+.dash-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.view-toggle { display: flex; gap: 6px; }
+.view-active {
+  background: rgba(47, 139, 255, 0.18) !important;
+  color: #dceafe !important;
+  box-shadow: inset 0 0 0 1px rgba(47, 139, 255, 0.35);
+}
+
+.legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.dot-free { background: rgba(255, 255, 255, 0.25); }
+.dot-busy { background: var(--blue); }
+.dot-prepaid { background: var(--yellow); }
+.dot-expired { background: var(--red); }
+.dot-booked { background: var(--orange-text); }
+
+.club-load {
+  margin-left: auto;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* --- Карта клуба: плитки столов --- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 14px;
+}
+
+.tile {
+  position: relative;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 12px 8px 14px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.08s, border-color 0.15s;
+}
+.tile:hover { transform: translateY(-2px); border-color: rgba(47, 139, 255, 0.5); }
+
+.tile-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-sub {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 0.9rem;
+  margin-top: 2px;
+}
+
+.tile-bar {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.tile.busy .tile-bar { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+.tile.busy .tile-name { color: #9ecbff; }
+.tile.prepaid .tile-bar { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+.tile.prepaid .tile-sub { color: var(--yellow); }
+.tile.expired .tile-bar { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.tile.expired .tile-sub { color: var(--red); font-weight: 700; }
+.tile.expired { animation: blink 1.2s ease-in-out infinite; }
+.tile.booked { border-color: rgba(255, 179, 64, 0.55); }
+.tile.booked .tile-sub { color: var(--orange-text); }
 
 .cards {
   display: grid;
@@ -226,7 +330,7 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
 .card select,
 .inline-form input {
   appearance: none;
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   border: 0.5px solid var(--hairline);
   border-radius: 12px;
@@ -237,7 +341,7 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
 }
 
 .card select {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236e6e73' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238892a6' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 32px;
@@ -269,7 +373,7 @@ button.action.open {
 }
 button.action.open:hover { background: var(--blue-pressed); }
 button.action.open:disabled {
-  background: rgba(120, 120, 128, 0.25);
+  background: rgba(255, 255, 255, 0.14);
   color: var(--muted);
   box-shadow: none;
   cursor: default;
@@ -325,7 +429,7 @@ button.action.close:hover { background: var(--red-pressed); }
   font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .data-table tr:last-child td { border-bottom: 0; }
@@ -371,7 +475,7 @@ button.action.close:hover { background: var(--red-pressed); }
 .field select,
 .settings-card td select {
   appearance: none;
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   border: 0.5px solid var(--hairline);
   border-radius: 12px;
@@ -418,7 +522,7 @@ button.mini {
   border: 0.5px solid var(--hairline);
   border-radius: 10px;
   padding: 7px 16px;
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--blue);
   font-weight: 650;
   font-size: 0.86rem;
@@ -498,7 +602,7 @@ button.mini:disabled { color: var(--muted); cursor: default; }
   border: 0.5px solid var(--hairline);
   border-radius: 12px;
   padding: 10px 8px;
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   font-family: inherit;
   font-size: 0.86rem;
@@ -521,7 +625,7 @@ button.mini:disabled { color: var(--muted); cursor: default; }
 /* --- Кнопка бара на карточке --- */
 
 button.action.bar {
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--text);
   box-shadow: none;
   border: 0.5px solid var(--hairline);
@@ -534,7 +638,7 @@ button.action.bar:hover { background: rgba(0, 122, 255, 0.12); color: var(--blue
   font-size: 0.84rem;
   font-weight: 600;
   color: var(--muted);
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   padding: 7px 10px;
 }
@@ -574,7 +678,7 @@ button.action.bar:hover { background: rgba(0, 122, 255, 0.12); color: var(--blue
 
 .cash-input,
 .search-input {
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   border: 0.5px solid var(--hairline);
   border-radius: 12px;
@@ -607,7 +711,7 @@ button.action.bar:hover { background: rgba(0, 122, 255, 0.12); color: var(--blue
 .day-chip span {
   padding: 7px 10px;
   border-radius: 9px;
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--muted);
   border: 0.5px solid transparent;
 }
