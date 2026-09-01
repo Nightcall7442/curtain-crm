@@ -5,11 +5,11 @@ import { test } from "node:test";
 import supertest from "supertest";
 
 import { getLightingController } from "../src/services/lighting.js";
-import { createTable, createTariff, makeApp } from "./helpers.js";
+import { adminAgent, createTable, createTariff, makeApp } from "./helpers.js";
 
 test("открытие стола", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
   const tariff = await createTariff(request);
 
@@ -32,7 +32,7 @@ test("открытие стола", async () => {
 
 test("закрытие стола", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
   const tariff = await createTariff(request);
   await request.post(`/api/tables/${table.id}/open`).send({ tariff_id: tariff.id });
@@ -64,7 +64,7 @@ test("закрытие стола", async () => {
 
 test("невозможно открыть занятый стол", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
   const tariff = await createTariff(request);
   await request.post(`/api/tables/${table.id}/open`).send({ tariff_id: tariff.id });
@@ -81,7 +81,7 @@ test("невозможно открыть занятый стол", async () => 
 
 test("невозможно закрыть свободный стол", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
 
   const res = await request.post(`/api/tables/${table.id}/close`);
@@ -94,7 +94,7 @@ test("невозможно закрыть свободный стол", async ()
 
 test("несуществующие стол и тариф дают 404", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
   const tariff = await createTariff(request);
 

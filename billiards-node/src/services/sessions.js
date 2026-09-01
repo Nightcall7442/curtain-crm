@@ -12,20 +12,37 @@ import { kopecksToRubles, sessionCostKopecks } from "./billing.js";
 import { ConflictError } from "./errors.js";
 import { JournalEvent, logEvent } from "./journal.js";
 import { getLightingController } from "./lighting.js";
+import { getOpenShift } from "./shifts.js";
 import { getTable } from "./tables.js";
 import { getTariff } from "./tariffs.js";
 
 const SESSION_FIELDS = `
   s.id, s.table_id, s.tariff_id, s.price_per_hour_snapshot,
   s.started_at, s.ended_at, s.total_cost_kopecks,
-  t.name AS table_name, tr.name AS tariff_name
+  t.name AS table_name, tr.name AS tariff_name,
+  uo.name AS opened_by_name, uc.name AS closed_by_name
 `;
 
 const SESSION_JOIN = `
   FROM table_sessions s
   JOIN tables t ON t.id = s.table_id
   JOIN tariffs tr ON tr.id = s.tariff_id
+  LEFT JOIN users uo ON uo.id = s.opened_by
+  LEFT JOIN users uc ON uc.id = s.closed_by
 `;
+
+/**
+ * Смена, к которой привязывается действие кассира. Кассиру смена
+ * обязательна; администратор может работать и без неё.
+ * @returns {number | null} id смены
+ */
+function requireShiftFor(db, user) {
+  const shift = getOpenShift(db, user.id);
+  if (!shift && user.role === "cashier") {
+    throw new ConflictError("Сначала откройте кассовую смену");
+  }
+  return shift?.id ?? null;
+}
 
 /**
  * Открытый сеанс стола, если есть.
@@ -52,8 +69,9 @@ function getSession(db, sessionId) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
  * @param {number} tariffId
+ * @param {{id: number, name: string, role: string}} user кто открывает
  */
-export function openSession(db, tableId, tariffId) {
+export function openSession(db, tableId, tariffId, user) {
   const table = getTable(db, tableId);
   const tariff = getTariff(db, tariffId);
   if (!tariff.is_active) {
@@ -62,22 +80,24 @@ export function openSession(db, tableId, tariffId) {
   if (table.status !== "free" || getOpenSession(db, table.id)) {
     throw new ConflictError(`Стол «${table.name}» уже занят`);
   }
+  const shiftId = requireShiftFor(db, user);
 
   const sessionId = withTransaction(db, () => {
     const { lastInsertRowid } = db
       .prepare(
         `INSERT INTO table_sessions
-           (table_id, tariff_id, price_per_hour_snapshot, started_at)
-         VALUES (?, ?, ?, ?)`
+           (table_id, tariff_id, price_per_hour_snapshot, started_at,
+            opened_by, shift_id)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(table.id, tariff.id, tariff.price_per_hour, utcNow());
+      .run(table.id, tariff.id, tariff.price_per_hour, utcNow(), user.id, shiftId);
     const newSessionId = Number(lastInsertRowid);
     db.prepare("UPDATE tables SET status = 'busy' WHERE id = ?").run(table.id);
     logEvent(
       db,
       JournalEvent.SESSION_OPENED,
       `Открыт сеанс на столе «${table.name}», тариф «${tariff.name}» ` +
-        `(${tariff.price_per_hour} ₽/час)`,
+        `(${tariff.price_per_hour} ₽/час) — ${user.name}`,
       { tableId: table.id, sessionId: newSessionId }
     );
     logEvent(db, JournalEvent.LIGHT_ON, `Включён свет над столом «${table.name}»`, {
@@ -93,15 +113,18 @@ export function openSession(db, tableId, tariffId) {
 
 /**
  * Закрывает сеанс: считает стоимость, освобождает стол, гасит свет.
+ * Выручка привязывается к открытой смене закрывающего сотрудника.
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {number} tableId
+ * @param {{id: number, name: string, role: string}} user кто закрывает
  */
-export function closeSession(db, tableId) {
+export function closeSession(db, tableId, user) {
   const table = getTable(db, tableId);
   const session = getOpenSession(db, table.id);
   if (!session) {
     throw new ConflictError(`Стол «${table.name}» свободен — закрывать нечего`);
   }
+  const closeShiftId = requireShiftFor(db, user);
 
   const endedAt = utcNow();
   const totalKopecks = sessionCostKopecks(
@@ -112,14 +135,15 @@ export function closeSession(db, tableId) {
 
   withTransaction(db, () => {
     db.prepare(
-      "UPDATE table_sessions SET ended_at = ?, total_cost_kopecks = ? WHERE id = ?"
-    ).run(endedAt, totalKopecks, session.id);
+      `UPDATE table_sessions SET ended_at = ?, total_cost_kopecks = ?,
+         closed_by = ?, close_shift_id = ? WHERE id = ?`
+    ).run(endedAt, totalKopecks, user.id, closeShiftId, session.id);
     db.prepare("UPDATE tables SET status = 'free' WHERE id = ?").run(table.id);
     logEvent(
       db,
       JournalEvent.SESSION_CLOSED,
       `Закрыт сеанс на столе «${table.name}», итог ` +
-        `${kopecksToRubles(totalKopecks).toFixed(2)} ₽`,
+        `${kopecksToRubles(totalKopecks).toFixed(2)} ₽ — ${user.name}`,
       { tableId: table.id, sessionId: session.id }
     );
     logEvent(db, JournalEvent.LIGHT_OFF, `Выключен свет над столом «${table.name}»`, {

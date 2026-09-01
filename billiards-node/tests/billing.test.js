@@ -5,7 +5,7 @@ import { test } from "node:test";
 import supertest from "supertest";
 
 import { costKopecks, sessionCostKopecks } from "../src/services/billing.js";
-import { createTable, createTariff, makeApp } from "./helpers.js";
+import { adminAgent, createTable, createTariff, makeApp } from "./helpers.js";
 
 const PRICE = 600; // ₽/час
 
@@ -42,7 +42,7 @@ test("стоимость между двумя метками времени", (
 
 test("интеграция: сеанс длительностью 1 час стоит цену тарифа", async () => {
   const { db, app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
   const tariff = await createTariff(request);
 

@@ -5,11 +5,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import supertest from "supertest";
 
-import { createTable, makeApp } from "./helpers.js";
+import { adminAgent, createTable, makeApp } from "./helpers.js";
 
 test("настройки по умолчанию: драйвер mock", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   const res = await request.get("/api/settings");
   assert.equal(res.status, 200);
@@ -19,7 +19,7 @@ test("настройки по умолчанию: драйвер mock", async ()
 
 test("сохранение настроек: значения возвращаются обратно", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   const res = await request.put("/api/settings").send({
     lighting_driver: "mock",
@@ -37,7 +37,7 @@ test("сохранение настроек: значения возвращаю
 
 test("драйвер tuya без ключей: сервер остаётся на mock и сообщает причину", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   const res = await request.put("/api/settings").send({
     lighting_driver: "tuya",
@@ -51,7 +51,7 @@ test("драйвер tuya без ключей: сервер остаётся н�
 
 test("недопустимый драйвер отклоняется", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   const res = await request
     .put("/api/settings")
@@ -61,7 +61,7 @@ test("недопустимый драйвер отклоняется", async () 
 
 test("привязка стола к устройству сохраняется и видна в списке столов", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
 
   const res = await request
@@ -84,7 +84,7 @@ test("привязка стола к устройству сохраняется
 
 test("недопустимый канал реле отклоняется", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
 
   const res = await request
@@ -95,7 +95,7 @@ test("недопустимый канал реле отклоняется", asyn
 
 test("список устройств без настроенного Tuya — понятная ошибка", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   const res = await request.get("/api/settings/devices");
   assert.equal(res.status, 409);
@@ -104,7 +104,7 @@ test("список устройств без настроенного Tuya — �
 
 test("ручной тест реле включает и выключает свет", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
   const table = await createTable(request);
 
   const on = await request

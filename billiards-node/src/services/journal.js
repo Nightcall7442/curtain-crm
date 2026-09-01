@@ -10,6 +10,11 @@ export const JournalEvent = Object.freeze({
   SESSION_CLOSED: "session_closed",
   LIGHT_ON: "light_on",
   LIGHT_OFF: "light_off",
+  SHIFT_OPENED: "shift_opened",
+  SHIFT_CLOSED: "shift_closed",
+  USER_CREATED: "user_created",
+  USER_UPDATED: "user_updated",
+  SETTINGS_UPDATED: "settings_updated",
 });
 
 /**

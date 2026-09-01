@@ -18,6 +18,8 @@ const state = {
   tariffs: [],
   tariffChoice: new Map(), // table_id -> выбранный tariff_id в селекте
   devices: [],         // устройства Tuya для вкладки «Настройки»
+  user: null,          // текущий сотрудник {id, name, role}
+  shift: null,         // открытая кассовая смена или null
 };
 
 // ---------------------------------------------------------------- helpers
@@ -27,6 +29,10 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
+  if (response.status === 401) {
+    window.location.href = "/login";
+    throw new Error("Требуется вход");
+  }
   if (!response.ok) {
     let detail = `Ошибка ${response.status}`;
     try {
@@ -217,6 +223,61 @@ async function closeTable(table) {
   }
 }
 
+// ---------------------------------------------------------------- auth & shift
+
+function renderUserChip() {
+  const chip = document.getElementById("user-chip");
+  const role = state.user.role === "admin" ? "администратор" : "кассир";
+  chip.textContent = `${state.user.name} · ${role}`;
+}
+
+function renderShiftBar() {
+  const bar = document.getElementById("shift-bar");
+  const info = document.getElementById("shift-info");
+  const toggle = document.getElementById("shift-toggle");
+  bar.hidden = false;
+  if (state.shift) {
+    bar.classList.add("open");
+    info.textContent =
+      `Смена открыта с ${formatDateTime(state.shift.opened_at)} · ` +
+      `сеансов: ${state.shift.sessions_count} · ` +
+      `выручка: ${formatMoney(state.shift.revenue)} ₽`;
+    toggle.textContent = "Закрыть смену";
+  } else {
+    bar.classList.remove("open");
+    info.textContent =
+      state.user.role === "cashier"
+        ? "Кассовая смена не открыта — откройте её, чтобы работать со столами"
+        : "Кассовая смена не открыта";
+    toggle.textContent = "Открыть смену";
+  }
+}
+
+async function refreshShift() {
+  state.shift = await api("/api/shifts/current");
+  renderShiftBar();
+}
+
+async function toggleShift() {
+  try {
+    if (state.shift) {
+      const closed = await api("/api/shifts/close", { method: "POST" });
+      showToast(
+        `Смена закрыта: сеансов ${closed.sessions_count}, ` +
+          `выручка ${formatMoney(closed.revenue)} ₽`,
+        true
+      );
+      state.shift = null;
+    } else {
+      state.shift = await api("/api/shifts/open", { method: "POST" });
+      showToast("Смена открыта", true);
+    }
+    renderShiftBar();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 // ---------------------------------------------------------------- history
 
 async function refreshHistory() {
@@ -232,6 +293,7 @@ async function refreshHistory() {
       formatDateTime(s.ended_at),
       formatDuration(s.duration_seconds),
       formatMoney(s.total_cost),
+      s.closed_by_name ?? s.opened_by_name ?? "—",
     ];
     for (const text of cells) {
       const td = document.createElement("td");
@@ -252,6 +314,11 @@ const EVENT_LABELS = {
   session_closed: "Сеанс закрыт",
   light_on: "Свет включён",
   light_off: "Свет выключен",
+  shift_opened: "Смена открыта",
+  shift_closed: "Смена закрыта",
+  user_created: "Создан сотрудник",
+  user_updated: "Обновлён сотрудник",
+  settings_updated: "Изменены настройки",
 };
 
 async function refreshJournal() {
@@ -295,6 +362,151 @@ async function refreshTariffs() {
       tr.append(td);
     }
     rows.append(tr);
+  }
+}
+
+// ---------------------------------------------------------------- reports
+
+async function refreshReports() {
+  const days = Number(document.getElementById("stats-days").value);
+  const [shifts, stats] = await Promise.all([
+    api("/api/shifts"),
+    api(`/api/stats/tables?days=${days}`),
+  ]);
+
+  const shiftRows = document.getElementById("shift-rows");
+  shiftRows.replaceChildren();
+  for (const shift of shifts) {
+    const tr = document.createElement("tr");
+    const cells = [
+      shift.user_name,
+      formatDateTime(shift.opened_at),
+      shift.closed_at ? formatDateTime(shift.closed_at) : "открыта",
+      String(shift.sessions_count),
+      formatMoney(shift.revenue),
+    ];
+    for (const text of cells) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.append(td);
+    }
+    shiftRows.append(tr);
+  }
+  document.getElementById("shifts-empty").hidden = shifts.length > 0;
+
+  const statsRows = document.getElementById("stats-rows");
+  statsRows.replaceChildren();
+  const maxRevenue = Math.max(1, ...stats.tables.map((t) => t.revenue));
+  for (const table of stats.tables) {
+    const tr = document.createElement("tr");
+    const hours = table.busy_seconds / 3600;
+    const cells = [
+      table.name,
+      String(table.sessions_count),
+      hours >= 0.1 ? `${hours.toFixed(1)} ч` : "—",
+      formatMoney(table.revenue),
+    ];
+    for (const text of cells) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.append(td);
+    }
+    const barCell = document.createElement("td");
+    const bar = document.createElement("div");
+    bar.className = "load-bar";
+    const fill = document.createElement("div");
+    fill.className = "load-bar-fill";
+    fill.style.width = `${Math.round((table.revenue / maxRevenue) * 100)}%`;
+    bar.append(fill);
+    barCell.append(bar);
+    tr.append(barCell);
+    statsRows.append(tr);
+  }
+}
+
+// ---------------------------------------------------------------- users
+
+const ROLE_LABELS = { admin: "Администратор", cashier: "Кассир" };
+
+async function refreshUsers() {
+  const users = await api("/api/users");
+  const rows = document.getElementById("user-rows");
+  rows.replaceChildren();
+  for (const user of users) {
+    const tr = document.createElement("tr");
+
+    for (const text of [user.login, user.name, ROLE_LABELS[user.role]]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.append(td);
+    }
+
+    const statusCell = document.createElement("td");
+    statusCell.textContent = user.is_active ? "активен" : "отключён";
+    tr.append(statusCell);
+
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "user-actions";
+
+    const passwordBtn = document.createElement("button");
+    passwordBtn.className = "mini";
+    passwordBtn.textContent = "Сбросить пароль";
+    passwordBtn.addEventListener("click", async () => {
+      const password = prompt(`Новый пароль для «${user.name}»:`);
+      if (!password) return;
+      try {
+        await api(`/api/users/${user.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ password }),
+        });
+        showToast("Пароль обновлён", true);
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+    actionsCell.append(passwordBtn);
+
+    if (user.id !== state.user.id) {
+      const activeBtn = document.createElement("button");
+      activeBtn.className = "mini";
+      activeBtn.textContent = user.is_active ? "Отключить" : "Включить";
+      activeBtn.addEventListener("click", async () => {
+        try {
+          await api(`/api/users/${user.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ is_active: !user.is_active }),
+          });
+          await refreshUsers();
+        } catch (error) {
+          showToast(error.message);
+        }
+      });
+      actionsCell.append(activeBtn);
+    }
+
+    tr.append(actionsCell);
+    rows.append(tr);
+  }
+}
+
+async function addUser() {
+  try {
+    await api("/api/users", {
+      method: "POST",
+      body: JSON.stringify({
+        login: document.getElementById("new-user-login").value.trim(),
+        name: document.getElementById("new-user-name").value.trim(),
+        password: document.getElementById("new-user-password").value,
+        role: document.getElementById("new-user-role").value,
+      }),
+    });
+    for (const id of ["new-user-login", "new-user-name", "new-user-password"]) {
+      document.getElementById(id).value = "";
+    }
+    showToast("Аккаунт создан", true);
+    await refreshUsers();
+  } catch (error) {
+    showToast(error.message);
   }
 }
 
@@ -479,7 +691,12 @@ const TAB_LOADERS = {
   journal: refreshJournal,
   tariffs: refreshTariffs,
   settings: refreshSettings,
+  reports: refreshReports,
+  users: refreshUsers,
 };
+
+// Вкладки с формами не перезагружаем по таймеру, чтобы не мешать вводу.
+const NO_POLL_TABS = new Set(["settings", "users"]);
 
 let activeTab = "dashboard";
 
@@ -496,7 +713,31 @@ function switchTab(name) {
 
 // ---------------------------------------------------------------- init
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  // Кто вошёл: настраиваем интерфейс под роль до первой отрисовки.
+  try {
+    const me = await api("/api/auth/me");
+    state.user = me.user;
+    state.shift = me.shift;
+  } catch {
+    return; // api() уже отправил на /login
+  }
+  renderUserChip();
+  renderShiftBar();
+  if (state.user.role === "admin") {
+    for (const el of document.querySelectorAll("[data-admin]")) el.hidden = false;
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = "/login";
+  });
+  document.getElementById("shift-toggle").addEventListener("click", toggleShift);
+  document.getElementById("add-user-btn").addEventListener("click", addUser);
+  document
+    .getElementById("stats-days")
+    .addEventListener("change", () => refreshReports().catch(() => {}));
+
   for (const button of document.querySelectorAll(".tab")) {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
   }
@@ -547,8 +788,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setInterval(tick, TICK_MS);
   setInterval(() => {
-    // Настройки не перезагружаем по таймеру — там пользователь заполняет форму.
-    if (activeTab === "settings") return;
+    if (NO_POLL_TABS.has(activeTab)) return;
     TAB_LOADERS[activeTab]().catch(() => { /* сеть мигнула — следующий опрос */ });
+    refreshShift().catch(() => {});
   }, POLL_MS);
 });

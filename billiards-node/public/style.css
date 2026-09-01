@@ -98,6 +98,54 @@ body::before {
 
 main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
 
+.user-area { display: flex; align-items: center; gap: 10px; }
+
+.user-chip {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(120, 120, 128, 0.12);
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+
+.shift-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: rgba(255, 149, 0, 0.12);
+  border: 1px solid rgba(255, 149, 0, 0.25);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--orange-text);
+}
+
+.shift-bar.open {
+  background: rgba(52, 199, 89, 0.12);
+  border-color: rgba(52, 199, 89, 0.25);
+  color: var(--green-text);
+}
+
+.user-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.load-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.15);
+  overflow: hidden;
+}
+
+.load-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34c759, #007aff);
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));

@@ -8,3 +8,9 @@ export class NotFoundError extends DomainError {}
 
 /** Действие противоречит текущему состоянию (занятый/свободный стол и т.п.). */
 export class ConflictError extends DomainError {}
+
+/** Пользователь не вошёл в систему. */
+export class UnauthorizedError extends DomainError {}
+
+/** Действие доступно только администратору. */
+export class ForbiddenError extends DomainError {}

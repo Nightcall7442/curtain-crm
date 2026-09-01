@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import supertest from "supertest";
 
-import { makeApp } from "./helpers.js";
+import { adminAgent, makeApp } from "./helpers.js";
 
 test("создание стола", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   const res = await request.post("/api/tables").send({ name: "Стол А" });
   assert.equal(res.status, 201);
@@ -24,7 +24,7 @@ test("создание стола", async () => {
 
 test("дубликат названия стола отклоняется", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   await request.post("/api/tables").send({ name: "Стол А" });
   const res = await request.post("/api/tables").send({ name: "Стол А" });
@@ -34,7 +34,7 @@ test("дубликат названия стола отклоняется", asyn
 
 test("создание стола пишется в журнал", async () => {
   const { app } = makeApp();
-  const request = supertest(app);
+  const request = await adminAgent(app);
 
   await request.post("/api/tables").send({ name: "Стол А" });
   const journal = await request.get("/api/journal");

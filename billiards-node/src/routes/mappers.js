@@ -20,6 +20,8 @@ export function sessionToOut(session) {
     started_at: session.started_at,
     ended_at: session.ended_at ?? null,
     duration_seconds: durationSeconds,
+    opened_by_name: session.opened_by_name ?? null,
+    closed_by_name: session.closed_by_name ?? null,
     total_cost:
       session.total_cost_kopecks === null || session.total_cost_kopecks === undefined
         ? null

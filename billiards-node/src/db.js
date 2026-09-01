@@ -50,6 +50,31 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  login         TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role          TEXT NOT NULL CHECK (role IN ('admin', 'cashier')),
+  is_active     INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token      TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS shifts (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+  opened_at TEXT NOT NULL,
+  closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_shifts_open ON shifts (user_id) WHERE closed_at IS NULL;
 `;
 
 /** Добавляет колонку в существующую базу, если её ещё нет (миграция). */
@@ -72,6 +97,11 @@ export function createDatabase(filePath = DATABASE_PATH) {
   // Привязка стола к реле Tuya/MOES (настраивается во вкладке «Настройки»).
   ensureColumn(db, "tables", "tuya_device_id", "tuya_device_id TEXT");
   ensureColumn(db, "tables", "tuya_switch_code", "tuya_switch_code TEXT");
+  // Кто и в какую кассовую смену открыл/закрыл сеанс.
+  ensureColumn(db, "table_sessions", "opened_by", "opened_by INTEGER REFERENCES users (id)");
+  ensureColumn(db, "table_sessions", "closed_by", "closed_by INTEGER REFERENCES users (id)");
+  ensureColumn(db, "table_sessions", "shift_id", "shift_id INTEGER REFERENCES shifts (id)");
+  ensureColumn(db, "table_sessions", "close_shift_id", "close_shift_id INTEGER REFERENCES shifts (id)");
   return db;
 }
 
