@@ -15,6 +15,13 @@
       "when": 1787759900667,
       "tag": "0001_high_black_crow",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788258670319,
+      "tag": "0002_rapid_firelord",
+      "breakpoints": true
     }
   ]
 }

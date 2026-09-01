@@ -12,6 +12,7 @@ import {
   PURCHASE_CATEGORIES,
   PURCHASE_UNITS,
   ROLES,
+  TASK_STATUSES,
 } from '@curtain-crm/shared';
 import { pgEnum } from 'drizzle-orm/pg-core';
 
@@ -35,6 +36,7 @@ export const payrollSchemeTypeEnum = pgEnum('payroll_scheme_type', PAYROLL_SCHEM
 export const payrollRecordStatusEnum = pgEnum('payroll_record_status', PAYROLL_RECORD_STATUSES);
 export const purchaseUnitEnum = pgEnum('purchase_unit', PURCHASE_UNITS);
 export const purchaseCategoryEnum = pgEnum('purchase_category', PURCHASE_CATEGORIES);
+export const taskStatusEnum = pgEnum('task_status', TASK_STATUSES);
 export const catalogKindEnum = pgEnum('catalog_kind', CATALOG_KINDS);
 export const departmentEnum = pgEnum('department', DEPARTMENTS);
 export const employmentTypeEnum = pgEnum('employment_type', EMPLOYMENT_TYPES);

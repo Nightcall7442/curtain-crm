@@ -153,5 +153,8 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   shift_adjusted: 'shift',
   payroll_approved: 'payroll',
   payroll_paid: 'paid',
+  task_assigned: 'work',
+  task_completed: 'completed',
+  task_cancelled: 'cancelled',
   role_changed: 'roleChanged',
 };

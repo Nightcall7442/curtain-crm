@@ -13,6 +13,7 @@ import { ratingRouter } from './rating.router';
 import { reportsRouter } from './reports.router';
 import { shiftsRouter } from './shifts.router';
 import { smmRouter } from './smm.router';
+import { tasksRouter } from './tasks.router';
 import { usersRouter } from './users.router';
 import { baseProcedure, router } from '../trpc';
 
@@ -43,6 +44,7 @@ export const appRouter = router({
   archive: archiveRouter,
   audit: auditRouter,
   smm: smmRouter,
+  tasks: tasksRouter,
 });
 
 export type AppRouter = typeof appRouter;

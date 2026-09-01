@@ -217,3 +217,51 @@ export async function notifyRoleChanged(
     body: `${params.actorName} ${params.granted ? 'назначил вам роль' : 'отозвал роль'} «${ROLE_LABELS_RU[params.role]}»`,
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                 Поручения                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Руководитель дал сотруднику поручение. */
+export async function notifyTaskAssigned(
+  executor: DbExecutor,
+  assigneeId: number,
+  params: { readonly title: string; readonly creatorName: string; readonly dueDate: string | null },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: assigneeId,
+    type: NotificationType.TASK_ASSIGNED,
+    title: 'Новое поручение',
+    body:
+      `${params.creatorName}: «${params.title}»` +
+      (params.dueDate === null ? '' : ` — срок до ${params.dueDate}`),
+  });
+}
+
+/** Сотрудник отметил поручение выполненным — узнаёт его автор. */
+export async function notifyTaskCompleted(
+  executor: DbExecutor,
+  creatorId: number,
+  params: { readonly title: string; readonly assigneeName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: creatorId,
+    type: NotificationType.TASK_COMPLETED,
+    title: 'Поручение выполнено',
+    body: `${params.assigneeName}: «${params.title}»`,
+  });
+}
+
+/** Поручение отменено руководителем — узнаёт адресат. */
+export async function notifyTaskCancelled(
+  executor: DbExecutor,
+  assigneeId: number,
+  params: { readonly title: string; readonly reason: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: assigneeId,
+    type: NotificationType.TASK_CANCELLED,
+    title: 'Поручение отменено',
+    body: `«${params.title}» — ${params.reason}`,
+  });
+}

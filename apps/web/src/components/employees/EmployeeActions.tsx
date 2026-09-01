@@ -5,13 +5,15 @@ import {
   ROLE_LABELS_RU,
   ROLES,
 } from '@curtain-crm/shared';
-import { KeyRound, Pencil, ShieldCheck, UserMinus, UserPlus } from 'lucide-react';
+import { ClipboardList, KeyRound, Pencil, ShieldCheck, UserMinus, UserPlus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useToast } from '@/components/providers/ToastProvider';
 import { Badge } from '@/components/ui/Badge';
 import {
   Button,
+  controlClass,
   Field,
   FormError,
   Input,
@@ -43,11 +45,16 @@ export function EmployeeActions({
   readonly onEdit: () => void;
 }): ReactElement {
   const { hasRole, user } = useAuth();
+  const toast = useToast();
   const isCeo = hasRole(Role.CEO);
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDetails, setTaskDetails] = useState('');
+  const [taskDue, setTaskDue] = useState('');
 
   const utils = trpc.useUtils();
   const refresh = async (): Promise<void> => {
@@ -64,6 +71,20 @@ export function EmployeeActions({
     },
   });
 
+  const createTask = trpc.tasks.create.useMutation({
+    onSuccess() {
+      setTaskOpen(false);
+      setTaskTitle('');
+      setTaskDetails('');
+      setTaskDue('');
+      toast.success('Поручение отправлено', `${employee.fullName} получит уведомление`);
+      void utils.tasks.list.invalidate();
+    },
+    onError(error) {
+      toast.error('Поручение не создано', error.message);
+    },
+  });
+
   const isSelf = user?.id === employee.id;
 
   return (
@@ -71,6 +92,87 @@ export function EmployeeActions({
       <IconButton label="Изменить данные" onClick={onEdit}>
         <Pencil className="h-3.5 w-3.5" />
       </IconButton>
+
+      {employee.isActive && (
+        <IconButton
+          label="Дать поручение"
+          onClick={() => {
+            setTaskOpen(true);
+          }}
+        >
+          <ClipboardList className="h-3.5 w-3.5" />
+        </IconButton>
+      )}
+
+      <Modal
+        open={taskOpen}
+        title={`Поручение: ${employee.fullName}`}
+        onClose={() => {
+          setTaskOpen(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setTaskOpen(false);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              loading={createTask.isPending}
+              disabled={taskTitle.trim().length === 0}
+              onClick={() => {
+                createTask.mutate({
+                  assigneeId: employee.id,
+                  title: taskTitle.trim(),
+                  ...(taskDetails.trim().length > 0 ? { details: taskDetails.trim() } : {}),
+                  ...(taskDue.length > 0 ? { dueDate: taskDue } : {}),
+                });
+              }}
+            >
+              Отправить
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <FormError message={createTask.error?.message ?? null} />
+
+          <Field label="Что нужно сделать" required>
+            <Input
+              value={taskTitle}
+              onChange={(event) => {
+                setTaskTitle(event.target.value);
+              }}
+              placeholder="Например: получить ткань у поставщика"
+            />
+          </Field>
+
+          <Field label="Подробности">
+            <textarea
+              value={taskDetails}
+              onChange={(event) => {
+                setTaskDetails(event.target.value);
+              }}
+              rows={3}
+              placeholder="Адрес, контакты, детали — всё, что понадобится на месте"
+              className={controlClass('md')}
+            />
+          </Field>
+
+          <Field label="Срок" hint="Не обязателен — поручение без срока просто висит открытым">
+            <Input
+              type="date"
+              value={taskDue}
+              onChange={(event) => {
+                setTaskDue(event.target.value);
+              }}
+            />
+          </Field>
+        </div>
+      </Modal>
 
       {isCeo && (
         <>

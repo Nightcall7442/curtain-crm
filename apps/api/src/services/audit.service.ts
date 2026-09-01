@@ -20,6 +20,7 @@ export const AUDIT_ENTITY_TYPES = [
   'payroll_scheme',
   'payroll_record',
   'catalog_item',
+  'task',
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];

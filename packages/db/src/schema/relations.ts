@@ -10,6 +10,7 @@ import { orderStatusHistory } from './orderStatusHistory.schema';
 import { orderInstallationTeam, orderItems, orders } from './orders.schema';
 import { payrollRecords, payrollSchemes } from './payroll.schema';
 import { purchaseItems, purchases } from './purchases.schema';
+import { tasks } from './tasks.schema';
 import { shifts } from './shifts.schema';
 import { refreshTokens, userBranches, userRoles, users } from './users.schema';
 
@@ -216,6 +217,23 @@ export const payrollRecordsRelations = relations(payrollRecords, ({ one }) => ({
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, { fields: [notifications.userId], references: [users.id] }),
   order: one(orders, { fields: [notifications.relatedOrderId], references: [orders.id] }),
+}));
+
+/**
+ * У поручения два человека — адресат и автор; обе связи смотрят в `users`,
+ * поэтому пары разводит `relationName`.
+ */
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  assignee: one(users, {
+    fields: [tasks.assigneeId],
+    references: [users.id],
+    relationName: 'taskAssignee',
+  }),
+  creator: one(users, {
+    fields: [tasks.createdBy],
+    references: [users.id],
+    relationName: 'taskCreator',
+  }),
 }));
 
 export const auditLogRelations = relations(auditLog, ({ one }) => ({

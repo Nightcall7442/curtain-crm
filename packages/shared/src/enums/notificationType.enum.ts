@@ -32,6 +32,12 @@ export const NOTIFICATION_TYPES = [
   'payroll_paid',
   /** Сотруднику выдана или отозвана роль. */
   'role_changed',
+  /** Руководитель дал сотруднику поручение. */
+  'task_assigned',
+  /** Сотрудник отметил поручение выполненным (адресат — автор поручения). */
+  'task_completed',
+  /** Поручение отменено руководителем. */
+  'task_cancelled',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -49,6 +55,9 @@ export const NotificationType = {
   PAYROLL_APPROVED: 'payroll_approved',
   PAYROLL_PAID: 'payroll_paid',
   ROLE_CHANGED: 'role_changed',
+  TASK_ASSIGNED: 'task_assigned',
+  TASK_COMPLETED: 'task_completed',
+  TASK_CANCELLED: 'task_cancelled',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -81,6 +90,10 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   payroll_approved: 'accent',
   payroll_paid: 'accent',
   role_changed: 'warning',
+  // Поручение — прямая просьба руководителя: заметнее рядового хода заказа.
+  task_assigned: 'warning',
+  task_completed: 'accent',
+  task_cancelled: 'neutral',
 };
 
 /**
@@ -97,6 +110,8 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
   NotificationType.ORDER_ROLLED_BACK,
   NotificationType.ORDER_REJECTED_TO_CEO,
   NotificationType.ORDER_CANCELLED,
+  // Поручение — прямая просьба руководителя сделать что-то, а не сводка.
+  NotificationType.TASK_ASSIGNED,
 ];
 
 export function isImportantNotification(type: NotificationType): boolean {

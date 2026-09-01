@@ -18,6 +18,7 @@ export * from './enums/photoStage.enum';
 export * from './enums/notificationType.enum';
 export * from './enums/payroll.enum';
 export * from './enums/staff.enum';
+export * from './enums/task.enum';
 
 /* Константы */
 export * from './constants/calendar';

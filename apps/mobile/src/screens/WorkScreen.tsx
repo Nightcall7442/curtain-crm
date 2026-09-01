@@ -1,4 +1,9 @@
-import { isActiveStatus, isOverdueDate, ORDER_INTAKE_ROLES } from '@curtain-crm/shared';
+import {
+  isActiveStatus,
+  isOverdueDate,
+  ORDER_INTAKE_ROLES,
+  TaskStatus,
+} from '@curtain-crm/shared';
 
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
@@ -7,24 +12,31 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
+import { TaskCard } from '../components/TaskCard';
 import { useAuth } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
- * Мои заказы.
+ * Работа сотрудника: его заказы И поручения от руководства.
+ *
+ * Заказы — этапы конвейера, где сотрудник исполнитель; поручения —
+ * дополнительная работа мимо конвейера («съезди за тканью»), которую выдаёт
+ * директор или админ. Оба списка живут в одной вкладке: у сотрудника одно
+ * место, где лежит вся его работа.
  *
  * Сервер отдаёт только те заказы, в которых сотрудник участвует, — фильтры
  * на этом экране лишь сужают выдачу, а не расширяют её. Обойти ограничение,
  * подобрав параметры, невозможно.
  */
 
-type Filter = 'active' | 'all' | 'overdue';
+type Filter = 'active' | 'all' | 'overdue' | 'tasks';
 
 const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
   { key: 'active', label: 'В работе' },
   { key: 'overdue', label: 'Просрочены' },
   { key: 'all', label: 'Все' },
+  { key: 'tasks', label: 'Поручения' },
 ];
 
 export function WorkScreen(): ReactElement {
@@ -41,11 +53,24 @@ export function WorkScreen(): ReactElement {
    */
   const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
 
-  const query = trpc.orders.list.useQuery({
-    page: 1,
-    pageSize: 50,
-    includeArchived: filter === 'all',
-  });
+  const query = trpc.orders.list.useQuery(
+    {
+      page: 1,
+      pageSize: 50,
+      includeArchived: filter === 'all',
+    },
+    { enabled: filter !== 'tasks' },
+  );
+
+  /**
+   * Поручения запрашиваются всегда, а не только на своей вкладке: счётчик
+   * на чипе — единственное место, откуда сотрудник узнаёт о новом поручении,
+   * не заходя в уведомления.
+   */
+  const tasksQuery = trpc.tasks.my.useQuery();
+  const openTasks = (tasksQuery.data ?? []).filter(
+    (task) => task.status === TaskStatus.OPEN,
+  );
 
   const items = (query.data?.items ?? []).filter((order) => {
     if (filter === 'overdue') {
@@ -62,6 +87,10 @@ export function WorkScreen(): ReactElement {
       <View style={styles.filters}>
         {FILTERS.map((entry) => {
           const isActive = entry.key === filter;
+          const label =
+            entry.key === 'tasks' && openTasks.length > 0
+              ? `${entry.label} (${openTasks.length.toString()})`
+              : entry.label;
           return (
             <Pressable
               key={entry.key}
@@ -73,13 +102,38 @@ export function WorkScreen(): ReactElement {
               accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.filterText, isActive ? styles.filterTextActive : null]}>
-                {entry.label}
+                {label}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
+      {filter === 'tasks' ? (
+        <FlatList
+          data={tasksQuery.data ?? []}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+          refreshing={tasksQuery.isFetching && !tasksQuery.isLoading}
+          onRefresh={() => {
+            void tasksQuery.refetch();
+          }}
+          ListEmptyComponent={
+            tasksQuery.isLoading ? (
+              <Skeleton />
+            ) : tasksQuery.isError ? (
+              <ErrorState />
+            ) : (
+              <Empty
+                message="Поручений нет"
+                hint="Здесь появляются задания от директора или администратора"
+              />
+            )
+          }
+          renderItem={({ item }) => <TaskCard task={item} />}
+        />
+      ) : (
+      <>
       {canCreate && (
         <Pressable
           onPress={() => {
@@ -128,6 +182,8 @@ export function WorkScreen(): ReactElement {
           />
         )}
       />
+      </>
+      )}
     </View>
   );
 }

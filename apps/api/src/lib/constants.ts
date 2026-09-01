@@ -160,6 +160,9 @@ export const AUDIT_ACTIONS = [
   'catalog.item_created',
   'catalog.item_updated',
   'catalog.item_deactivated',
+  'task.created',
+  'task.completed',
+  'task.cancelled',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
