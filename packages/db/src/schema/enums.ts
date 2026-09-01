@@ -1,5 +1,6 @@
 import {
   CATALOG_KINDS,
+  DAY_OFF_STATUSES,
   DEPARTMENTS,
   EMPLOYMENT_TYPES,
   NOTIFICATION_TYPES,
@@ -39,6 +40,7 @@ export const payrollRecordStatusEnum = pgEnum('payroll_record_status', PAYROLL_R
 export const purchaseUnitEnum = pgEnum('purchase_unit', PURCHASE_UNITS);
 export const purchaseCategoryEnum = pgEnum('purchase_category', PURCHASE_CATEGORIES);
 export const taskStatusEnum = pgEnum('task_status', TASK_STATUSES);
+export const dayOffStatusEnum = pgEnum('day_off_status', DAY_OFF_STATUSES);
 export const catalogKindEnum = pgEnum('catalog_kind', CATALOG_KINDS);
 export const departmentEnum = pgEnum('department', DEPARTMENTS);
 export const employmentTypeEnum = pgEnum('employment_type', EMPLOYMENT_TYPES);

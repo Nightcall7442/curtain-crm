@@ -38,6 +38,12 @@ export const NOTIFICATION_TYPES = [
   'task_completed',
   /** Поручение отменено руководителем. */
   'task_cancelled',
+  /** Сотрудник запросил выходные — видит руководство. */
+  'day_off_requested',
+  /** Запрос на выходные одобрен. */
+  'day_off_approved',
+  /** Запрос на выходные отклонён. */
+  'day_off_rejected',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -58,6 +64,9 @@ export const NotificationType = {
   TASK_ASSIGNED: 'task_assigned',
   TASK_COMPLETED: 'task_completed',
   TASK_CANCELLED: 'task_cancelled',
+  DAY_OFF_REQUESTED: 'day_off_requested',
+  DAY_OFF_APPROVED: 'day_off_approved',
+  DAY_OFF_REJECTED: 'day_off_rejected',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -94,6 +103,10 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   task_assigned: 'warning',
   task_completed: 'accent',
   task_cancelled: 'neutral',
+  // Запрос ждёт решения руководства — заметнее рядовой сводки, как поручение.
+  day_off_requested: 'warning',
+  day_off_approved: 'accent',
+  day_off_rejected: 'neutral',
 };
 
 /**
@@ -112,6 +125,8 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
   NotificationType.ORDER_CANCELLED,
   // Поручение — прямая просьба руководителя сделать что-то, а не сводка.
   NotificationType.TASK_ASSIGNED,
+  // Запрос на выходные ждёт решения — без действия руководства так и повиснет.
+  NotificationType.DAY_OFF_REQUESTED,
 ];
 
 export function isImportantNotification(type: NotificationType): boolean {

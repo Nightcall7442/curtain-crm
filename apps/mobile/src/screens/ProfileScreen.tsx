@@ -363,6 +363,13 @@ export function ProfileScreen(): ReactElement {
           }}
         />
         <ListRow
+          icon="calendar"
+          label="Запрос на выходные"
+          onPress={() => {
+            navigation.navigate('DayOff');
+          }}
+        />
+        <ListRow
           icon="logout"
           label="Выйти из аккаунта"
           tone="danger"

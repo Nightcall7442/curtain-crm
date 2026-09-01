@@ -163,6 +163,11 @@ export const AUDIT_ACTIONS = [
   'task.created',
   'task.completed',
   'task.cancelled',
+
+  'dayoff.requested',
+  'dayoff.approved',
+  'dayoff.rejected',
+  'dayoff.cancelled',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

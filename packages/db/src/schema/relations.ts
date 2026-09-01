@@ -11,6 +11,7 @@ import { orderInstallationTeam, orderItems, orders } from './orders.schema';
 import { payrollRecords, payrollSchemes } from './payroll.schema';
 import { purchaseItems, purchases } from './purchases.schema';
 import { tasks } from './tasks.schema';
+import { dayOffRequests } from './dayOffRequests.schema';
 import { shifts } from './shifts.schema';
 import { refreshTokens, userBranches, userRoles, users } from './users.schema';
 
@@ -233,6 +234,19 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
     fields: [tasks.createdBy],
     references: [users.id],
     relationName: 'taskCreator',
+  }),
+}));
+
+export const dayOffRequestsRelations = relations(dayOffRequests, ({ one }) => ({
+  requester: one(users, {
+    fields: [dayOffRequests.userId],
+    references: [users.id],
+    relationName: 'dayOffRequester',
+  }),
+  reviewer: one(users, {
+    fields: [dayOffRequests.reviewedBy],
+    references: [users.id],
+    relationName: 'dayOffReviewer',
   }),
 }));
 

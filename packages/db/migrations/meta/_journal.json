@@ -36,6 +36,13 @@
       "when": 1788261323457,
       "tag": "0004_order_item_accessories",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788262777924,
+      "tag": "0005_pale_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

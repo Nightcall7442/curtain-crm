@@ -265,3 +265,59 @@ export async function notifyTaskCancelled(
     body: `«${params.title}» — ${params.reason}`,
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/*                            Запросы на выходные                             */
+/* -------------------------------------------------------------------------- */
+
+/** Форматирует период одной строкой: один день короче, чем диапазон. */
+function formatPeriod(startDate: string, endDate: string): string {
+  return startDate === endDate ? startDate : `${startDate} — ${endDate}`;
+}
+
+/** Сотрудник запросил выходные — узнаёт руководство. */
+export async function notifyDayOffRequested(
+  executor: DbExecutor,
+  recipientIds: readonly number[],
+  params: { readonly requesterName: string; readonly startDate: string; readonly endDate: string },
+): Promise<void> {
+  if (recipientIds.length === 0) return;
+
+  await createNotifications(
+    executor,
+    recipientIds.map((userId) => ({
+      userId,
+      type: NotificationType.DAY_OFF_REQUESTED,
+      title: 'Запрос на выходные',
+      body: `${params.requesterName} просит выходные: ${formatPeriod(params.startDate, params.endDate)}`,
+    })),
+  );
+}
+
+/** Запрос на выходные одобрен — узнаёт сотрудник. */
+export async function notifyDayOffApproved(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly startDate: string; readonly endDate: string; readonly reviewerName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.DAY_OFF_APPROVED,
+    title: 'Выходные одобрены',
+    body: `${params.reviewerName} одобрил ваш запрос на ${formatPeriod(params.startDate, params.endDate)}`,
+  });
+}
+
+/** Запрос на выходные отклонён — узнаёт сотрудник. */
+export async function notifyDayOffRejected(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly startDate: string; readonly endDate: string; readonly reason: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.DAY_OFF_REJECTED,
+    title: 'Выходные отклонены',
+    body: `${formatPeriod(params.startDate, params.endDate)} — ${params.reason}`,
+  });
+}

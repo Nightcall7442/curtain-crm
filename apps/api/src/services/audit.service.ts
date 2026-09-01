@@ -21,6 +21,7 @@ export const AUDIT_ENTITY_TYPES = [
   'payroll_record',
   'catalog_item',
   'task',
+  'day_off_request',
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];

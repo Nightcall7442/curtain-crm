@@ -3,6 +3,7 @@ import { auditRouter } from './audit.router';
 import { authRouter } from './auth.router';
 import { branchesRouter } from './branches.router';
 import { catalogRouter } from './catalog.router';
+import { dayOffRouter } from './dayOff.router';
 import { notificationsRouter } from './notifications.router';
 import { orderCommentsRouter } from './orderComments.router';
 import { orderPhotosRouter } from './orderPhotos.router';
@@ -45,6 +46,7 @@ export const appRouter = router({
   audit: auditRouter,
   smm: smmRouter,
   tasks: tasksRouter,
+  dayOff: dayOffRouter,
 });
 
 export type AppRouter = typeof appRouter;

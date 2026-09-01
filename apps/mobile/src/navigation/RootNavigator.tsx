@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
+import { DayOffScreen } from '../screens/DayOffScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
@@ -64,6 +65,11 @@ export function RootNavigator(): ReactElement {
         name="SellReadyMade"
         component={SellReadyMadeScreen}
         options={{ title: 'Готовые шторы' }}
+      />
+      <Stack.Screen
+        name="DayOff"
+        component={DayOffScreen}
+        options={{ title: 'Запрос на выходные' }}
       />
     </Stack.Navigator>
   );
