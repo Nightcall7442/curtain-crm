@@ -270,6 +270,17 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
 .tile.booked { border-color: rgba(255, 179, 64, 0.55); }
 .tile.booked .tile-sub { color: var(--orange-text); }
 
+.tile.selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(47, 139, 255, 0.35), 0 0 14px rgba(47, 139, 255, 0.35);
+  background: rgba(47, 139, 255, 0.12);
+}
+
+.selection-chip {
+  color: #dceafe !important;
+  background: rgba(47, 139, 255, 0.18) !important;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));

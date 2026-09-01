@@ -24,6 +24,7 @@ const state = {
   clients: [],         // клиентская база для быстрого выбора при открытии
   autoTariffId: null,  // тариф по расписанию на «сейчас»
   view: "map",         // вид «Залов»: map (карта) или cards (карточки)
+  selected: new Set(), // выбранные на карте столы (id)
 };
 
 try {
@@ -312,9 +313,51 @@ function openTableModal(table) {
   openModal(table.name, buildTableCard(table, { inModal: true }));
 }
 
+// --- Выделение столов на карте (клик; несколько сразу) ---
+
+function updateSelectionUI() {
+  const chip = document.getElementById("selection-chip");
+  const selectAll = document.getElementById("select-all");
+  const count = state.selected.size;
+  chip.hidden = count === 0;
+  chip.textContent = `Выбрано: ${count} ✕`;
+  selectAll.textContent =
+    count === state.tables.length && count > 0 ? "Снять выбор" : "Выбрать все";
+  for (const tile of document.querySelectorAll(".tile")) {
+    tile.classList.toggle(
+      "selected",
+      state.selected.has(Number(tile.dataset.tableId))
+    );
+  }
+}
+
+function clearSelection() {
+  state.selected.clear();
+  updateSelectionUI();
+}
+
+function toggleSelect(tableId) {
+  if (state.selected.has(tableId)) state.selected.delete(tableId);
+  else state.selected.add(tableId);
+  updateSelectionUI();
+}
+
+function toggleSelectAll() {
+  if (state.selected.size === state.tables.length && state.tables.length > 0) {
+    state.selected.clear();
+  } else {
+    state.selected = new Set(state.tables.map((t) => t.id));
+  }
+  updateSelectionUI();
+}
+
 function renderMap() {
   const map = document.getElementById("tables-map");
   map.replaceChildren();
+  // Убираем из выбора столы, которых больше нет.
+  const ids = new Set(state.tables.map((t) => t.id));
+  for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
+
   for (const table of state.tables) {
     const tile = document.createElement("div");
     tile.className = `tile ${tableStatusClass(table)}`;
@@ -337,12 +380,16 @@ function renderMap() {
     bar.className = "tile-bar";
     tile.append(bar);
 
-    tile.addEventListener("click", () => openTableModal(table));
+    // Клик — выделение (двойной клик открывает карточку: два клика
+    // до него взаимно погасят друг друга, выбор не собьётся).
+    tile.addEventListener("click", () => toggleSelect(table.id));
+    tile.addEventListener("dblclick", () => openTableModal(table));
     tile.addEventListener("contextmenu", (event) =>
       showContextMenu(event, table, tile)
     );
     map.append(tile);
   }
+  updateSelectionUI();
   updateTiles();
 }
 
@@ -1431,6 +1478,124 @@ function openPrepaidAmountModal(table, card) {
   openModal(`На сумму — ${table.name}`, body);
 }
 
+// --- Групповые действия над выбранными столами ---
+
+function selectedTables() {
+  return state.tables.filter((t) => state.selected.has(t.id));
+}
+
+/** Последовательно выполняет действие над столами, показывает итог. */
+async function runGroup(tables, action, successWord) {
+  let ok = 0;
+  let firstError = null;
+  for (const table of tables) {
+    try {
+      await action(table);
+      ok += 1;
+    } catch (error) {
+      firstError = firstError ?? `${table.name}: ${error.message}`;
+    }
+  }
+  clearSelection();
+  await refreshDashboard();
+  if (firstError && ok === 0) showToast(firstError);
+  else if (firstError) showToast(`${successWord}: ${ok}. Ошибка — ${firstError}`);
+  else showToast(`${successWord}: ${ok}`, true);
+}
+
+function groupOpenPostpaid() {
+  const free = selectedTables().filter((t) => !t.session);
+  const { tariff } = cardPricing(null);
+  if (!free.length) return showToast("Среди выбранных нет свободных столов");
+  if (!tariff) return showToast("Нет активных тарифов");
+  runGroup(
+    free,
+    (table) =>
+      api(`/api/tables/${table.id}/open`, {
+        method: "POST",
+        body: JSON.stringify({ tariff_id: tariff.id }),
+      }),
+    "Открыто столов"
+  );
+}
+
+function groupOpenTimeModal() {
+  const free = selectedTables().filter((t) => !t.session);
+  const { tariff } = cardPricing(null);
+  if (!free.length) return showToast("Среди выбранных нет свободных столов");
+  if (!tariff) return showToast("Нет активных тарифов");
+
+  const body = document.createElement("div");
+  const duration = document.createElement("select");
+  for (const [minutes, label] of [
+    [30, "30 минут"], [60, "1 час"], [90, "1.5 часа"], [120, "2 часа"], [180, "3 часа"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = String(minutes);
+    option.textContent = label;
+    duration.append(option);
+  }
+  duration.value = "60";
+  const preview = document.createElement("p");
+  preview.className = "order-total";
+  const updatePreview = () => {
+    const sum = tariff.price_per_hour * (Number(duration.value) / 60) * free.length;
+    preview.textContent =
+      `${free.length} стол(а) × тариф «${tariff.name}» — итого ~${formatMoney(sum)} ₽`;
+  };
+  duration.addEventListener("change", updatePreview);
+  updatePreview();
+  body.append(makeField("Оплаченное время", duration), preview);
+  body.append(
+    paymentButtonsRow((method) => {
+      closeModal();
+      runGroup(
+        free,
+        (table) =>
+          api(`/api/tables/${table.id}/open`, {
+            method: "POST",
+            body: JSON.stringify({
+              tariff_id: tariff.id,
+              mode: "time",
+              minutes: Number(duration.value),
+              payment_method: method,
+            }),
+          }),
+        "Открыто столов"
+      );
+    })
+  );
+  openModal(`На время — ${free.length} стол(а)`, body);
+}
+
+function groupCloseModal() {
+  const busy = selectedTables().filter((t) => t.session);
+  if (!busy.length) return showToast("Среди выбранных нет занятых столов");
+
+  const body = document.createElement("div");
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent =
+    `Закроются столы: ${busy.map((t) => t.name).join(", ")}. ` +
+    "Выберите способ оплаты для всех.";
+  body.append(hint);
+  body.append(
+    paymentButtonsRow((method) => {
+      closeModal();
+      runGroup(
+        busy,
+        (table) =>
+          api(`/api/tables/${table.id}/close`, {
+            method: "POST",
+            body: JSON.stringify({ payment_method: method }),
+          }),
+        "Закрыто столов"
+      );
+    })
+  );
+  openModal(`Закрытие — ${busy.length} стол(а)`, body);
+}
+
 // ---------------------------------------------------------------- context menu
 
 function hideContextMenu() {
@@ -1452,6 +1617,27 @@ function showContextMenu(event, table, card) {
     });
     menu.append(item);
   };
+
+  // Групповое меню: правый клик по одному из нескольких выбранных столов.
+  if (state.selected.size > 1 && state.selected.has(table.id)) {
+    const chosen = selectedTables();
+    const free = chosen.filter((t) => !t.session).length;
+    const busy = chosen.length - free;
+    if (free > 0) {
+      addItem(`▶ Открыть свободные (${free}) — постоплата`, groupOpenPostpaid);
+      addItem(`⏱ Открыть свободные (${free}) на время…`, groupOpenTimeModal);
+    }
+    if (busy > 0) {
+      addItem(`💳 Закрыть занятые (${busy})…`, groupCloseModal);
+    }
+    addItem("✖ Снять выделение", clearSelection);
+    menu.hidden = false;
+    const { innerWidth, innerHeight } = window;
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.min(event.clientX, innerWidth - rect.width - 8)}px`;
+    menu.style.top = `${Math.min(event.clientY, innerHeight - rect.height - 8)}px`;
+    return;
+  }
 
   if (table.session) {
     addItem("🍹 Бар…", () => openBarModal(table));
@@ -1995,6 +2181,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   document
     .getElementById("view-cards")
     .addEventListener("click", () => setDashView("cards"));
+  document.getElementById("select-all").addEventListener("click", toggleSelectAll);
+  document.getElementById("selection-chip").addEventListener("click", clearSelection);
   setDashView(state.view);
   document.getElementById("add-menu-btn").addEventListener("click", addMenuItem);
   document.getElementById("save-club-btn").addEventListener("click", saveClubSettings);

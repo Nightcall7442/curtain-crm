@@ -35,6 +35,8 @@
           <button id="view-map" class="mini">Карта</button>
           <button id="view-cards" class="mini">Карточки</button>
         </div>
+        <button id="select-all" class="mini">Выбрать все</button>
+        <button id="selection-chip" class="mini selection-chip" hidden></button>
         <div class="legend">
           <span><i class="dot dot-free"></i>свободен</span>
           <span><i class="dot dot-busy"></i>занят</span>
@@ -47,7 +49,8 @@
       <div id="tables-map" class="tiles" hidden></div>
       <div id="tables" class="cards"></div>
       <p class="hint" style="margin-top:14px">
-        Клик по плитке — карточка стола. Правый клик: постоплата · на время · на сумму · бронь
+        Клик по плитке — выбрать (можно несколько) · двойной клик — карточка стола ·
+        правый клик — действия со столом или со всеми выбранными
       </p>
       <form id="add-table-form" class="inline-form" data-admin hidden>
         <input id="new-table-name" type="text" placeholder="Название нового стола" required maxlength="100">
