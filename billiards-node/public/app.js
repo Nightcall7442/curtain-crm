@@ -25,7 +25,12 @@ const state = {
   autoTariffId: null,  // тариф по расписанию на «сейчас»
   view: "map",         // вид «Залов»: map (карта) или cards (карточки)
   selected: new Set(), // выбранные на карте столы (id)
+  plan: { cols: 40, rows: 25, elements: [] }, // план зала: сетка, стены, двери
+  editMode: false,     // включён ли редактор зала
+  edit: null,          // рабочая копия плана в редакторе
 };
+
+const CELL = 20; // размер клетки сетки, px
 
 try {
   const savedView = localStorage.getItem("billiards_view");
@@ -351,18 +356,85 @@ function toggleSelectAll() {
   updateSelectionUI();
 }
 
+/** Раскладка столов на плане: сохранённая или авторасстановка для новых. */
+function resolveLayouts() {
+  const layouts = new Map();
+  const plan = state.editMode ? state.edit : state.plan;
+  let autoIndex = 0;
+  const perRow = Math.max(1, Math.floor((plan.cols - 2) / 5));
+  for (const table of state.tables) {
+    if (state.editMode && state.edit.layouts.has(table.id)) {
+      layouts.set(table.id, { ...state.edit.layouts.get(table.id) });
+      continue;
+    }
+    if (table.pos_x !== null && table.pos_y !== null) {
+      layouts.set(table.id, {
+        x: table.pos_x,
+        y: table.pos_y,
+        w: table.size_w ?? 4,
+        h: table.size_h ?? 3,
+      });
+    } else {
+      // Нерасставленный стол — во временную сетку сверху слева.
+      layouts.set(table.id, {
+        x: 1 + (autoIndex % perRow) * 5,
+        y: 1 + Math.floor(autoIndex / perRow) * 4,
+        w: 4,
+        h: 3,
+      });
+      autoIndex += 1;
+    }
+  }
+  return layouts;
+}
+
+function planCellFromEvent(event) {
+  const rect = document.getElementById("plan").getBoundingClientRect();
+  const plan = state.editMode ? state.edit : state.plan;
+  return {
+    x: Math.max(0, Math.min(plan.cols - 1, Math.floor((event.clientX - rect.left) / CELL))),
+    y: Math.max(0, Math.min(plan.rows - 1, Math.floor((event.clientY - rect.top) / CELL))),
+  };
+}
+
 function renderMap() {
-  const map = document.getElementById("tables-map");
-  map.replaceChildren();
+  const planData = state.editMode ? state.edit : state.plan;
+  const planEl = document.getElementById("plan");
+  planEl.classList.toggle("editing", state.editMode);
+  planEl.style.width = `${planData.cols * CELL}px`;
+  planEl.style.height = `${planData.rows * CELL}px`;
+  planEl.replaceChildren();
+
   // Убираем из выбора столы, которых больше нет.
   const ids = new Set(state.tables.map((t) => t.id));
   for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
 
+  // Стены и двери.
+  planData.elements.forEach((el, index) => {
+    const div = document.createElement("div");
+    div.className = `plan-el ${el.type}`;
+    div.style.left = `${el.x * CELL}px`;
+    div.style.top = `${el.y * CELL}px`;
+    div.style.width = `${el.w * CELL}px`;
+    div.style.height = `${el.h * CELL}px`;
+    if (state.editMode) {
+      div.dataset.elIndex = String(index);
+    }
+    planEl.append(div);
+  });
+
+  // Столы.
+  const layouts = resolveLayouts();
   for (const table of state.tables) {
+    const layout = layouts.get(table.id);
     const tile = document.createElement("div");
     tile.className = `tile ${tableStatusClass(table)}`;
     if (bookingSoon(table)) tile.classList.add("booked");
     tile.dataset.tableId = String(table.id);
+    tile.style.left = `${layout.x * CELL}px`;
+    tile.style.top = `${layout.y * CELL}px`;
+    tile.style.width = `${layout.w * CELL}px`;
+    tile.style.height = `${layout.h * CELL}px`;
 
     const name = document.createElement("div");
     name.className = "tile-name";
@@ -380,17 +452,199 @@ function renderMap() {
     bar.className = "tile-bar";
     tile.append(bar);
 
-    // Клик — выделение (двойной клик открывает карточку: два клика
-    // до него взаимно погасят друг друга, выбор не собьётся).
-    tile.addEventListener("click", () => toggleSelect(table.id));
-    tile.addEventListener("dblclick", () => openTableModal(table));
-    tile.addEventListener("contextmenu", (event) =>
-      showContextMenu(event, table, tile)
-    );
-    map.append(tile);
+    if (state.editMode) {
+      tile.classList.add("editable");
+      const handle = document.createElement("span");
+      handle.className = "rsz";
+      tile.append(handle);
+      tile.addEventListener("mousedown", (event) =>
+        startTileDrag(event, table, tile, layout, event.target === handle)
+      );
+    } else {
+      // Клик — выделение (двойной клик открывает карточку: два клика
+      // до него взаимно погасят друг друга, выбор не собьётся).
+      tile.addEventListener("click", () => toggleSelect(table.id));
+      tile.addEventListener("dblclick", () => openTableModal(table));
+      tile.addEventListener("contextmenu", (event) =>
+        showContextMenu(event, table, tile)
+      );
+    }
+    planEl.append(tile);
   }
+
   updateSelectionUI();
   updateTiles();
+}
+
+// ---------------------------------------------------------------- plan editor
+
+function enterPlanEditor() {
+  if (state.view !== "map") setDashView("map");
+  const layouts = resolveLayouts();
+  state.editMode = true;
+  state.edit = {
+    cols: state.plan.cols,
+    rows: state.plan.rows,
+    elements: state.plan.elements.map((el) => ({ ...el })),
+    layouts,
+    changed: new Set(),
+    tool: "move",
+  };
+  document.getElementById("editor-palette").hidden = false;
+  document.getElementById("plan-cols").value = state.edit.cols;
+  document.getElementById("plan-rows").value = state.edit.rows;
+  setEditorTool("move");
+  clearSelection();
+  renderMap();
+}
+
+function exitPlanEditor() {
+  state.editMode = false;
+  state.edit = null;
+  document.getElementById("editor-palette").hidden = true;
+  refreshDashboard().catch(() => {});
+}
+
+function setEditorTool(tool) {
+  if (state.edit) state.edit.tool = tool;
+  for (const btn of document.querySelectorAll(".pal-tool")) {
+    btn.classList.toggle("sel", btn.dataset.tool === tool);
+  }
+  document.getElementById("plan").dataset.tool = tool;
+}
+
+async function savePlanEditor() {
+  try {
+    await api("/api/plan", {
+      method: "PUT",
+      body: JSON.stringify({
+        cols: state.edit.cols,
+        rows: state.edit.rows,
+        elements: state.edit.elements.map(({ type, x, y, w, h }) => ({
+          type, x, y, w, h,
+        })),
+      }),
+    });
+    // Сохраняем раскладку всех столов (включая авторасставленные).
+    for (const [tableId, layout] of state.edit.layouts) {
+      await api(`/api/tables/${tableId}/layout`, {
+        method: "PUT",
+        body: JSON.stringify(layout),
+      });
+    }
+    showToast("План зала сохранён", true);
+    exitPlanEditor();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+/** Перетаскивание/растягивание стола в редакторе. */
+function startTileDrag(event, table, tile, layout, isResize) {
+  if (state.edit.tool !== "move") return;
+  event.preventDefault();
+  event.stopPropagation();
+  const start = { x: event.clientX, y: event.clientY };
+  const orig = { ...layout };
+  const tip = document.createElement("div");
+  tip.className = "size-tip";
+  document.getElementById("plan").append(tip);
+  tile.classList.add(isResize ? "resizing" : "dragging");
+
+  const onMove = (e) => {
+    const dxCells = Math.round((e.clientX - start.x) / CELL);
+    const dyCells = Math.round((e.clientY - start.y) / CELL);
+    const next = { ...orig };
+    if (isResize) {
+      next.w = Math.max(2, Math.min(16, orig.w + dxCells));
+      next.h = Math.max(1, Math.min(12, orig.h + dyCells));
+    } else {
+      next.x = Math.max(0, Math.min(state.edit.cols - orig.w, orig.x + dxCells));
+      next.y = Math.max(0, Math.min(state.edit.rows - orig.h, orig.y + dyCells));
+    }
+    Object.assign(layout, next);
+    tile.style.left = `${next.x * CELL}px`;
+    tile.style.top = `${next.y * CELL}px`;
+    tile.style.width = `${next.w * CELL}px`;
+    tile.style.height = `${next.h * CELL}px`;
+    tip.textContent = isResize
+      ? `${next.w} × ${next.h} клеток`
+      : `${next.x}, ${next.y}`;
+    tip.style.left = `${(next.x + next.w) * CELL + 6}px`;
+    tip.style.top = `${(next.y + next.h) * CELL + 6}px`;
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    tile.classList.remove("resizing", "dragging");
+    tip.remove();
+    state.edit.layouts.set(table.id, { ...layout });
+    state.edit.changed.add(table.id);
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
+
+/** Рисование стены/двери и ластик. */
+function planDrawStart(event) {
+  const tool = state.edit?.tool;
+  if (!tool || tool === "move") return;
+  if (event.target.closest(".tile")) return;
+  event.preventDefault();
+
+  if (tool === "erase") {
+    const el = event.target.closest(".plan-el");
+    if (el) {
+      state.edit.elements.splice(Number(el.dataset.elIndex), 1);
+      renderMap();
+    }
+    return;
+  }
+
+  const startCell = planCellFromEvent(event);
+  const preview = document.createElement("div");
+  preview.className = `plan-el ${tool} preview`;
+  document.getElementById("plan").append(preview);
+  let current = { type: tool, x: startCell.x, y: startCell.y, w: 1, h: 1 };
+
+  const applyPreview = (cell) => {
+    // Ось с бОльшим смещением задаёт направление линии.
+    const dx = cell.x - startCell.x;
+    const dy = cell.y - startCell.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      current = {
+        type: tool,
+        x: Math.min(startCell.x, cell.x),
+        y: startCell.y,
+        w: Math.abs(dx) + 1,
+        h: 1,
+      };
+    } else {
+      current = {
+        type: tool,
+        x: startCell.x,
+        y: Math.min(startCell.y, cell.y),
+        w: 1,
+        h: Math.abs(dy) + 1,
+      };
+    }
+    preview.style.left = `${current.x * CELL}px`;
+    preview.style.top = `${current.y * CELL}px`;
+    preview.style.width = `${current.w * CELL}px`;
+    preview.style.height = `${current.h * CELL}px`;
+  };
+  applyPreview(startCell);
+
+  const onMove = (e) => applyPreview(planCellFromEvent(e));
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    preview.remove();
+    state.edit.elements.push(current);
+    renderMap();
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
 }
 
 /** Текст под номером на плитке: таймер/остаток. */
@@ -430,7 +684,7 @@ function setDashView(view) {
   try {
     localStorage.setItem("billiards_view", view);
   } catch {}
-  document.getElementById("tables-map").hidden = view !== "map";
+  document.getElementById("map-wrap").hidden = view !== "map";
   document.getElementById("tables").hidden = view !== "cards";
   document.getElementById("view-map").classList.toggle("view-active", view === "map");
   document
@@ -458,6 +712,7 @@ function renderTables() {
 
 /** Секундный тик: обновляет только цифры, без перерисовки карточек. */
 function tick() {
+  if (state.editMode) return;
   if (state.view === "map" && activeTab === "dashboard") updateTiles();
   for (const table of state.tables) {
     if (!table.session) continue;
@@ -485,14 +740,17 @@ function tick() {
 }
 
 async function refreshDashboard() {
-  const [tables, tariffs, auto] = await Promise.all([
+  if (state.editMode) return; // пока редактируют план — данные не трогаем
+  const [tables, tariffs, auto, plan] = await Promise.all([
     api("/api/dashboard"),
     api("/api/tariffs"),
     api("/api/tariffs/auto"),
+    api("/api/plan"),
   ]);
   state.tables = tables;
   state.tariffs = tariffs;
   state.autoTariffId = auto.tariff_id;
+  state.plan = plan;
   state.fetchedAt = performance.now();
   renderTables();
 }
@@ -2183,6 +2441,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     .addEventListener("click", () => setDashView("cards"));
   document.getElementById("select-all").addEventListener("click", toggleSelectAll);
   document.getElementById("selection-chip").addEventListener("click", clearSelection);
+  // Редактор зала (только администратор).
+  document.getElementById("plan").addEventListener("mousedown", planDrawStart);
+  document.getElementById("edit-plan").addEventListener("click", enterPlanEditor);
+  document.getElementById("plan-save").addEventListener("click", savePlanEditor);
+  document.getElementById("plan-cancel").addEventListener("click", exitPlanEditor);
+  for (const btn of document.querySelectorAll(".pal-tool")) {
+    btn.addEventListener("click", () => setEditorTool(btn.dataset.tool));
+  }
+  for (const id of ["plan-cols", "plan-rows"]) {
+    document.getElementById(id).addEventListener("change", () => {
+      if (!state.edit) return;
+      state.edit.cols = Math.max(10, Math.min(120, Number(document.getElementById("plan-cols").value) || 40));
+      state.edit.rows = Math.max(8, Math.min(80, Number(document.getElementById("plan-rows").value) || 25));
+      renderMap();
+    });
+  }
   setDashView(state.view);
   document.getElementById("add-menu-btn").addEventListener("click", addMenuItem);
   document.getElementById("save-club-btn").addEventListener("click", saveClubSettings);

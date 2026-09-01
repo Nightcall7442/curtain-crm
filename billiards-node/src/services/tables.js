@@ -5,7 +5,8 @@ import { ConflictError, NotFoundError } from "./errors.js";
 import { JournalEvent, logEvent } from "./journal.js";
 
 const TABLE_FIELDS =
-  "id, name, status, created_at, tuya_device_id, tuya_switch_code";
+  "id, name, status, created_at, tuya_device_id, tuya_switch_code, " +
+  "pos_x, pos_y, size_w, size_h";
 
 /** @param {import("node:sqlite").DatabaseSync} db */
 export function listTables(db) {
@@ -24,6 +25,32 @@ export function getTable(db, tableId) {
     throw new NotFoundError(`Стол id=${tableId} не найден`);
   }
   return table;
+}
+
+/**
+ * Позиция и размер стола на плане зала (в клетках сетки).
+ * @param {import("node:sqlite").DatabaseSync} db
+ * @param {number} tableId
+ * @param {{x: number, y: number, w: number, h: number}} layout
+ */
+export function setTableLayout(db, tableId, layout) {
+  const table = getTable(db, tableId);
+  const { x, y, w, h } = layout;
+  for (const value of [x, y, w, h]) {
+    if (!Number.isInteger(value)) {
+      throw new ConflictError("Координаты стола должны быть целыми числами");
+    }
+  }
+  if (x < 0 || y < 0 || x > 500 || y > 500) {
+    throw new ConflictError("Позиция стола вне допустимых пределов");
+  }
+  if (w < 2 || h < 1 || w > 16 || h > 12) {
+    throw new ConflictError("Размер стола: от 2×1 до 16×12 клеток");
+  }
+  db.prepare(
+    "UPDATE tables SET pos_x = ?, pos_y = ?, size_w = ?, size_h = ? WHERE id = ?"
+  ).run(x, y, w, h, table.id);
+  return getTable(db, table.id);
 }
 
 /**

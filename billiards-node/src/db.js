@@ -122,6 +122,16 @@ CREATE TABLE IF NOT EXISTS bookings (
 );
 CREATE INDEX IF NOT EXISTS idx_bookings_time ON bookings (starts_at);
 
+CREATE TABLE IF NOT EXISTS plan_elements (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  type       TEXT NOT NULL CHECK (type IN ('wall', 'door')),
+  x          INTEGER NOT NULL,
+  y          INTEGER NOT NULL,
+  w          INTEGER NOT NULL CHECK (w > 0),
+  h          INTEGER NOT NULL CHECK (h > 0),
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tariff_rules (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   tariff_id    INTEGER NOT NULL REFERENCES tariffs (id) ON DELETE CASCADE,
@@ -149,6 +159,11 @@ export function createDatabase(filePath = DATABASE_PATH) {
   const db = new DatabaseSync(filePath, { enableForeignKeyConstraints: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec(SCHEMA);
+  // План зала: позиция и размер стола в клетках сетки (NULL = ещё не расставлен).
+  ensureColumn(db, "tables", "pos_x", "pos_x INTEGER");
+  ensureColumn(db, "tables", "pos_y", "pos_y INTEGER");
+  ensureColumn(db, "tables", "size_w", "size_w INTEGER NOT NULL DEFAULT 4");
+  ensureColumn(db, "tables", "size_h", "size_h INTEGER NOT NULL DEFAULT 3");
   // Привязка стола к реле Tuya/MOES (настраивается во вкладке «Настройки»).
   ensureColumn(db, "tables", "tuya_device_id", "tuya_device_id TEXT");
   ensureColumn(db, "tables", "tuya_switch_code", "tuya_switch_code TEXT");

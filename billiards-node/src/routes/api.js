@@ -22,6 +22,7 @@ import { listBookings, cancelBooking, createBooking, nextBookingForTable } from 
 import { createClient, listClients, updateClient } from "../services/clients.js";
 import { createMenuItem, listMenu, updateMenuItem } from "../services/menu.js";
 import { addOrder, listOrders, removeOrder } from "../services/orders.js";
+import { getPlan, savePlan } from "../services/plan.js";
 import { getClubSettings, getSettings, saveSettings } from "../services/settings.js";
 import {
   closeSession,
@@ -40,7 +41,12 @@ import {
 } from "../services/shifts.js";
 import { revenueReport, tableLoad } from "../services/stats.js";
 import { createRule, deleteRule, listRules, resolveTariffId } from "../services/tariff-rules.js";
-import { createTable, listTables, setTableDevice } from "../services/tables.js";
+import {
+  createTable,
+  listTables,
+  setTableDevice,
+  setTableLayout,
+} from "../services/tables.js";
 import { createTariff, listTariffs } from "../services/tariffs.js";
 import {
   authenticate,
@@ -319,6 +325,10 @@ export function createApiRouter(db) {
         name: table.name,
         status: table.status,
         light_on: lighting.isLightOn(table.id),
+        pos_x: table.pos_x,
+        pos_y: table.pos_y,
+        size_w: table.size_w,
+        size_h: table.size_h,
         booking: booking
           ? {
               id: booking.id,
@@ -424,6 +434,33 @@ export function createApiRouter(db) {
     if (on) lighting.turnLightOn(tableId);
     else lighting.turnLightOff(tableId);
     res.json({ table_id: tableId, light_on: lighting.isLightOn(tableId) });
+  });
+
+  // --- План зала -----------------------------------------------------------
+  // Смотрят все сотрудники, редактирует администратор.
+
+  router.get("/plan", (req, res) => {
+    res.json(getPlan(db));
+  });
+
+  router.put("/plan", (req, res) => {
+    adminOnly(req);
+    res.json(savePlan(db, req.body ?? {}));
+  });
+
+  router.put("/tables/:id/layout", (req, res) => {
+    adminOnly(req);
+    const tableId = intParam(req.params.id);
+    if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
+    const { x, y, w, h } = req.body ?? {};
+    res.json(
+      setTableLayout(db, tableId, {
+        x: Number(x),
+        y: Number(y),
+        w: Number(w),
+        h: Number(h),
+      })
+    );
   });
 
   // --- Клиенты -------------------------------------------------------------

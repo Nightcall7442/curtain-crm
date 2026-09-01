@@ -37,6 +37,7 @@
         </div>
         <button id="select-all" class="mini">Выбрать все</button>
         <button id="selection-chip" class="mini selection-chip" hidden></button>
+        <button id="edit-plan" class="mini" data-admin hidden>⚙ Редактор зала</button>
         <div class="legend">
           <span><i class="dot dot-free"></i>свободен</span>
           <span><i class="dot dot-busy"></i>занят</span>
@@ -46,7 +47,31 @@
         </div>
         <span id="club-load" class="club-load"></span>
       </div>
-      <div id="tables-map" class="tiles" hidden></div>
+      <div id="map-wrap" class="map-wrap" hidden>
+        <div class="plan-scroll">
+          <div id="plan" class="plan"></div>
+        </div>
+        <div id="editor-palette" class="palette-panel" hidden>
+          <h3>Элементы</h3>
+          <button class="pal-tool" data-tool="move">🖐 Столы — двигать и растягивать</button>
+          <button class="pal-tool" data-tool="wall">▬ Стена</button>
+          <button class="pal-tool" data-tool="door">🚪 Дверь</button>
+          <button class="pal-tool" data-tool="erase">⌫ Ластик</button>
+          <p class="hint">
+            Столы: перетаскивайте мышью, тяните за синий уголок, чтобы изменить
+            размер. Стена и дверь: зажмите кнопку мыши и проведите по клеткам.
+            Ластик: клик по стене или двери удаляет её.
+          </p>
+          <div class="grid-set">Сетка:
+            <input id="plan-cols" type="number" min="10" max="120"> ×
+            <input id="plan-rows" type="number" min="8" max="80"> клеток
+          </div>
+          <div class="settings-actions">
+            <button id="plan-save" class="primary">Сохранить план</button>
+            <button id="plan-cancel" class="mini">Отмена</button>
+          </div>
+        </div>
+      </div>
       <div id="tables" class="cards"></div>
       <p class="hint" style="margin-top:14px">
         Клик по плитке — выбрать (можно несколько) · двойной клик — карточка стола ·

@@ -213,26 +213,150 @@ main { padding: 28px 24px 48px; max-width: 1100px; margin: 0 auto; }
   color: var(--muted);
 }
 
-/* --- Карта клуба: плитки столов --- */
+/* --- Карта клуба: план с координатами --- */
 
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 14px;
+.map-wrap { display: flex; gap: 14px; align-items: flex-start; }
+
+.plan-scroll {
+  flex: 1;
+  overflow: auto;
+  max-height: 72vh;
+  border-radius: 12px;
 }
 
-.tile {
+.plan {
   position: relative;
-  background: var(--glass);
+  background-color: #0d1322;
   border: 1px solid var(--glass-border);
   border-radius: 12px;
-  padding: 12px 8px 14px;
+}
+
+.plan.editing {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.plan.editing[data-tool="wall"],
+.plan.editing[data-tool="door"] { cursor: crosshair; }
+.plan.editing[data-tool="erase"] { cursor: not-allowed; }
+
+.plan-el { position: absolute; border-radius: 3px; }
+.plan-el.wall {
+  background: #3a4358;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.plan-el.door { background: #c98a3d; box-shadow: 0 0 8px rgba(201, 138, 61, 0.4); }
+.plan-el.preview { opacity: 0.6; outline: 2px dashed rgba(47, 139, 255, 0.6); }
+.plan.editing[data-tool="erase"] .plan-el:hover { outline: 2px solid var(--red); }
+
+.tile {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(24, 31, 48, 0.9);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
   text-align: center;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.08s, border-color 0.15s;
+  transition: border-color 0.15s;
+  overflow: hidden;
 }
-.tile:hover { transform: translateY(-2px); border-color: rgba(47, 139, 255, 0.5); }
+.tile:hover { border-color: rgba(47, 139, 255, 0.5); }
+
+.tile.editable { cursor: grab; }
+.tile.dragging { cursor: grabbing; opacity: 0.9; z-index: 5; }
+.tile.dragging,
+.tile.resizing {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(47, 139, 255, 0.35), 0 10px 26px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+
+.rsz {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px 0 8px 0;
+  background: var(--blue);
+  box-shadow: 0 0 6px rgba(47, 139, 255, 0.8);
+  cursor: nwse-resize;
+}
+
+.size-tip {
+  position: absolute;
+  z-index: 6;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  color: #dceafe;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Палитра редактора зала */
+.palette-panel {
+  width: 240px;
+  flex: none;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.palette-panel h3 {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pal-tool {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 9px 10px;
+  border-radius: 9px;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.pal-tool:hover { background: rgba(47, 139, 255, 0.1); }
+.pal-tool.sel {
+  background: rgba(47, 139, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(47, 139, 255, 0.4);
+  color: #dceafe;
+}
+.grid-set {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 10px;
+}
+.grid-set input {
+  width: 52px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 0.5px solid var(--hairline);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px;
+  text-align: center;
+  font-family: inherit;
+}
 
 .tile-name {
   font-size: 1.15rem;

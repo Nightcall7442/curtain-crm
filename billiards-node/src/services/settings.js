@@ -20,6 +20,8 @@ const DEFAULTS = {
   rounding_step_kopecks: "1", // 1 = без округления, 100 = до рубля, 1000 = до 10 ₽
   min_session_minutes: "0", // минимальное оплачиваемое время сеанса
   tz_offset_minutes: "180", // локальный пояс клуба (для расписаний и отчётов)
+  plan_cols: "40", // сетка плана зала: ширина в клетках
+  plan_rows: "25", // сетка плана зала: высота в клетках
 };
 
 const ALLOWED_KEYS = Object.keys(DEFAULTS);
@@ -72,6 +74,8 @@ export function saveSettings(db, patch) {
     }
     if (key === "min_session_minutes") validateIntInRange(key, value, 0, 240);
     if (key === "tz_offset_minutes") validateIntInRange(key, value, -720, 840);
+    if (key === "plan_cols") validateIntInRange(key, value, 10, 120);
+    if (key === "plan_rows") validateIntInRange(key, value, 8, 80);
     if (key === "club_name" && !value) {
       throw new ConflictError("Название клуба не может быть пустым");
     }
