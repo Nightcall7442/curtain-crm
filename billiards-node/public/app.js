@@ -565,24 +565,24 @@ function renderUserChip() {
   chip.textContent = `${state.user.name} · ${role}`;
 }
 
+/** Индикатор и кнопка смены в шапке. */
 function renderShiftBar() {
-  const bar = document.getElementById("shift-bar");
-  const info = document.getElementById("shift-info");
+  const chip = document.getElementById("shift-chip");
   const toggle = document.getElementById("shift-toggle");
-  bar.hidden = false;
   if (state.shift) {
-    bar.classList.add("open");
-    info.textContent =
-      `Смена открыта с ${formatDateTime(state.shift.opened_at)} · ` +
-      `сеансов: ${state.shift.sessions_count} · ` +
-      `выручка: ${formatMoney(state.shift.revenue)} ₽`;
+    chip.hidden = false;
+    chip.classList.add("open");
+    const openedAt = new Date(state.shift.opened_at).toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    chip.textContent =
+      `Смена с ${openedAt} · ${formatMoney(state.shift.revenue)} ₽`;
     toggle.textContent = "Закрыть смену";
   } else {
-    bar.classList.remove("open");
-    info.textContent =
-      state.user.role === "cashier"
-        ? "Кассовая смена не открыта — откройте её, чтобы работать со столами"
-        : "Кассовая смена не открыта";
+    chip.hidden = state.user.role !== "cashier";
+    chip.classList.remove("open");
+    chip.textContent = "Смена не открыта";
     toggle.textContent = "Открыть смену";
   }
 }
@@ -1581,6 +1581,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderUserChip();
   renderShiftBar();
   loadClients().catch(() => {});
+  // Кассиру смена нужна для работы — предлагаем открыть её сразу при входе.
+  if (state.user.role === "cashier" && !state.shift) {
+    toggleShift();
+  }
   if (state.user.role === "admin") {
     for (const el of document.querySelectorAll("[data-admin]")) el.hidden = false;
   }
