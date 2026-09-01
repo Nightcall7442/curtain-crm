@@ -237,10 +237,11 @@ export async function changeOrderStatus(
     });
   }
 
-  /* 1. Легальность перехода. */
-  const transition = findTransition(fromStatus, toStatus);
+  /* 1. Легальность перехода — с учётом типа заказа: обходной путь готовых
+     штор («новый → сразу к установке / выполнен») для пошива закрыт. */
+  const transition = findTransition(fromStatus, toStatus, order.orderType);
   if (transition === undefined) {
-    const allowed = transitionsFrom(fromStatus)
+    const allowed = transitionsFrom(fromStatus, order.orderType)
       .map((item) => ORDER_STATUS_LABELS_RU[item.to])
       .join(', ');
 
@@ -272,7 +273,7 @@ export async function changeOrderStatus(
 
   /* 4. Обязательный комментарий для откатов, отклонений и отмен. */
   const comment = params.comment?.trim() ?? '';
-  if (requiresComment(fromStatus, toStatus) && comment.length === 0) {
+  if (requiresComment(fromStatus, toStatus, order.orderType) && comment.length === 0) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
       message: `Укажите причину: действие «${transition.label}» требует комментария`,
@@ -333,7 +334,7 @@ export async function changeOrderStatus(
 
   /* 6. Запись нового статуса. */
   const now = new Date();
-  const wasRollback = isRollback(fromStatus, toStatus);
+  const wasRollback = isRollback(fromStatus, toStatus, order.orderType);
 
   const [updated] = await executor
     .update(orders)

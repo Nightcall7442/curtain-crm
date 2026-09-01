@@ -20,6 +20,7 @@ import {
   orderStatusSchema,
   parseDimensions,
   OrderStatus,
+  OrderType,
   parseMoney,
   prioritySchema,
   TransitionKind,
@@ -413,6 +414,136 @@ export const ordersRouter = router({
     }),
 
   /**
+   * Продажа готовых штор — товар с витрины, минуя цех.
+   *
+   * Схема бизнеса, которую попросил заказчик: продавец выбирает готовые
+   * шторы и продаёт их сразу. Требуется установка? Если нет — заказ
+   * закрывается тем же действием. Если да — заказ уходит в статус «ждёт
+   * установщика» с указанным адресом, и админ назначает установщика обычным
+   * порядком, как в пошиве.
+   *
+   * Заказ создаётся и сразу переводится нужным путём ОДНОЙ транзакцией:
+   * `orderType: 'ready_made'` в статусе `new` не должен существовать сам по
+   * себе — оба перехода из `new` для готовых штор открыты только продавцу
+   * этой процедурой, а не общей `changeStatus`, чтобы адрес установки не
+   * потерялся между «создали» и «перевели».
+   */
+  sellReadyMade: orderIntakeProcedure
+    .input(
+      z
+        .object({
+          branchId: idSchema.optional(),
+          clientName: nonEmptyString(200, 'Укажите имя клиента'),
+          clientPhone: phoneSchema,
+          clientComment: optionalText(2000),
+
+          workPrice: moneySchema.default(0),
+          deposit: moneySchema.default(0),
+
+          model: optionalText(200),
+          quantity: z.number().int().positive().max(1000).default(1),
+          comment: optionalText(500),
+
+          needsInstallation: z.boolean(),
+          /** Обязателен, если нужна установка; иначе заказ закрывается сразу. */
+          installAddress: optionalText(500),
+          installLatitude: z.number().min(-90).max(90).optional(),
+          installLongitude: z.number().min(-180).max(180).optional(),
+          deadline: z.string().date().optional(),
+        })
+        .refine((input) => !input.needsInstallation || input.installAddress !== undefined, {
+          message: 'Укажите адрес установки',
+          path: ['installAddress'],
+        }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const branchId = input.branchId ?? ctx.user.primaryBranchId;
+      if (branchId === null || branchId === undefined) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Укажите филиал: у вас не задан основной филиал',
+        });
+      }
+      if (!isManagement(ctx.user.roles) && !ctx.user.branchIds.includes(branchId)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Нельзя создать заказ в филиале, к которому вы не привязаны',
+        });
+      }
+
+      return ctx.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(orders)
+          .values({
+            branchId,
+            orderType: OrderType.READY_MADE,
+            clientName: input.clientName,
+            clientPhone: input.clientPhone,
+            clientComment: input.clientComment ?? null,
+            installAddress: input.needsInstallation ? (input.installAddress ?? null) : null,
+            installLatitude: input.needsInstallation ? (input.installLatitude ?? null) : null,
+            installLongitude: input.needsInstallation ? (input.installLongitude ?? null) : null,
+            deadline: input.deadline ?? null,
+            workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
+            deposit: moneyToDecimalString(parseMoney(input.deposit)),
+            createdBy: ctx.user.id,
+          })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Не удалось создать заказ',
+          });
+        }
+
+        await tx.insert(orderItems).values([
+          toOrderItemValues(
+            {
+              kind: 'other',
+              materials: [],
+              materialOptions: [],
+              quantity: input.quantity,
+              ...(input.model === undefined ? {} : { model: input.model }),
+              ...(input.comment === undefined ? {} : { comment: input.comment }),
+            },
+            created.id,
+            0,
+          ),
+        ]);
+
+        await tx.insert(orderStatusHistory).values({
+          orderId: created.id,
+          fromStatus: null,
+          toStatus: OrderStatus.NEW,
+          changedBy: ctx.user.id,
+          comment: 'Продажа готовых штор',
+        });
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'order.created',
+          entityType: 'order',
+          entityId: created.id,
+          details: { clientName: created.clientName, orderType: OrderType.READY_MADE },
+          ipAddress: ctx.ipAddress,
+        });
+
+        const { order } = await changeOrderStatus(tx, {
+          orderId: created.id,
+          toStatus: input.needsInstallation
+            ? OrderStatus.PENDING_INSTALLATION_ASSIGNMENT
+            : OrderStatus.COMPLETED,
+          actor: ctx.user,
+          comment: input.needsInstallation ? null : 'Продано без установки',
+          ipAddress: ctx.ipAddress,
+        });
+
+        return order;
+      });
+    }),
+
+  /**
    * Правка заказа.
    *
    * Автор может править заказ, пока тот не ушёл дальше проверки админом:
@@ -666,7 +797,7 @@ export const ordersRouter = router({
       }
       assertCanAccessOrder(order, ctx.user);
 
-      return availableTransitions(order.status, ctx.user.roles).map((transition) => ({
+      return availableTransitions(order.status, ctx.user.roles, order.orderType).map((transition) => ({
         to: transition.to,
         label: transition.label,
         kind: transition.kind,

@@ -135,16 +135,37 @@ export function WorkScreen(): ReactElement {
       ) : (
       <>
       {canCreate && (
-        <Pressable
-          onPress={() => {
-            navigation.navigate('OrderCreate');
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.create, pressed ? styles.createPressed : null]}
-        >
-          <Icon name="assigned" size={18} color={colors.onAccent} />
-          <Text style={styles.createText}>Новый заказ</Text>
-        </Pressable>
+        <View style={styles.createRow}>
+          <Pressable
+            onPress={() => {
+              navigation.navigate('OrderCreate');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.create,
+              styles.createFlex,
+              pressed ? styles.createPressed : null,
+            ]}
+          >
+            <Icon name="assigned" size={18} color={colors.onAccent} />
+            <Text style={styles.createText}>Новый заказ</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              navigation.navigate('SellReadyMade');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.createSecondary,
+              styles.createFlex,
+              pressed ? styles.createPressed : null,
+            ]}
+          >
+            <Icon name="orders" size={18} color={colors.accentStrong} />
+            <Text style={styles.createSecondaryText}>Готовые шторы</Text>
+          </Pressable>
+        </View>
       )}
 
       <FlatList
@@ -229,16 +250,34 @@ const styles = StyleSheet.create({
     color: colors.headerText,
     fontWeight: '600',
   },
+  createRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  createFlex: {
+    flex: 1,
+  },
   create: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
     minHeight: 48,
     borderRadius: radius.lg,
     backgroundColor: colors.accent,
+  },
+  createSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.accentSoft,
+    backgroundColor: colors.surface,
   },
   createPressed: {
     opacity: opacity.pressed,
@@ -246,6 +285,11 @@ const styles = StyleSheet.create({
   createText: {
     ...typography.body,
     color: colors.onAccent,
+    fontWeight: '600',
+  },
+  createSecondaryText: {
+    ...typography.body,
+    color: colors.accentStrong,
     fontWeight: '600',
   },
   list: {

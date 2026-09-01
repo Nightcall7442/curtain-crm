@@ -15,7 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { branches } from './branches.schema';
-import { orderItemKindEnum, orderStatusEnum, priorityEnum } from './enums';
+import { orderItemKindEnum, orderStatusEnum, orderTypeEnum, priorityEnum } from './enums';
 import { users } from './users.schema';
 
 /**
@@ -53,6 +53,11 @@ export const orders = pgTable(
       .references(() => branches.id, { onDelete: 'restrict' }),
 
     status: orderStatusEnum('status').notNull().default('new'),
+    /**
+     * Пошив на заказ или продажа готовых штор. Задаётся при создании и не
+     * меняется: у типов разные жизненные циклы (см. `ORDER_TRANSITIONS`).
+     */
+    orderType: orderTypeEnum('order_type').notNull().default('custom'),
     priority: priorityEnum('priority').notNull().default('normal'),
 
     /* --- Клиент ----------------------------------------------------------- */

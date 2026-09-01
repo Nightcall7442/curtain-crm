@@ -12,6 +12,7 @@
 export * from './enums/role.enum';
 export * from './i18n/locale';
 export * from './enums/orderStatus.enum';
+export * from './enums/orderType.enum';
 export * from './enums/orderItemKind.enum';
 export * from './enums/priority.enum';
 export * from './enums/photoStage.enum';

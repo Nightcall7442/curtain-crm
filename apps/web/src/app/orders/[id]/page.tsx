@@ -24,7 +24,7 @@ import { OrderPurchases } from '@/components/orders/OrderPurchases';
 import { VoiceRecorder } from '@/components/orders/VoiceRecorder';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusBadge, PriorityBadge } from '@/components/ui/Badge';
+import { OrderStatusBadge, OrderTypeBadge, PriorityBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
@@ -153,6 +153,7 @@ export default function OrderDetailPage(): ReactElement {
               </h2>
               <OrderStatusBadge status={data.status} />
               <PriorityBadge priority={data.priority} />
+              <OrderTypeBadge orderType={data.orderType} />
             </div>
 
             <p className="mt-1 text-caption text-secondary">

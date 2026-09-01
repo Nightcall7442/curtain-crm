@@ -3,9 +3,11 @@
 import type { ReactElement, ReactNode } from 'react';
 import {
   ORDER_STATUS_LABELS,
+  OrderType,
   PRESENCE_STATUS_LABELS,
   PRIORITY_LABELS,
   type OrderStatus,
+  type OrderType as OrderTypeName,
   type PresenceStatus,
   type Priority,
 } from '@curtain-crm/shared';
@@ -97,6 +99,23 @@ const PRIORITY_TONE: Readonly<Record<Priority, Tone>> = {
 export function PriorityBadge({ priority }: { readonly priority: Priority }): ReactElement {
   const { t } = useLocale();
   return <Badge tone={PRIORITY_TONE[priority]}>{t(PRIORITY_LABELS, priority)}</Badge>;
+}
+
+/**
+ * Метка «Готовые шторы».
+ *
+ * Появляется только у продаж с витрины — обычный пошив ничем не помечен,
+ * это ожидаемое большинство заказов. Без метки заказ, миновавший цех целиком
+ * (замер, раскрой, контроль качества), выглядел бы в списке как пропущенные
+ * этапы — а не как другой тип продажи.
+ */
+export function OrderTypeBadge({
+  orderType,
+}: {
+  readonly orderType: OrderTypeName;
+}): ReactElement | null {
+  if (orderType !== OrderType.READY_MADE) return null;
+  return <Badge tone="accent">Готовые шторы</Badge>;
 }
 
 const PRESENCE_TONE: Readonly<Record<PresenceStatus, Tone>> = {

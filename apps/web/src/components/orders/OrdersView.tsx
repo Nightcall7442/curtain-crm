@@ -24,7 +24,7 @@ import {
   statusesOfProductionStage,
   TransitionKind,
 } from '@curtain-crm/shared';
-import { Plus } from 'lucide-react';
+import { Plus, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
@@ -32,7 +32,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusBadge } from '@/components/ui/Badge';
+import { OrderStatusBadge, OrderTypeBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, controlClass, FilterBar, Input, Select } from '@/components/ui/Form';
 import { DataTable, Pagination, type RowKey } from '@/components/ui/Table';
@@ -48,6 +48,7 @@ import {
 } from './OrderActionDialog';
 import { OrderCreateDialog } from './OrderCreateDialog';
 import { orderRowActions, OrderRowActions } from './OrderRowActions';
+import { SellReadyMadeDialog } from './SellReadyMadeDialog';
 
 /**
  * Список заказов с фильтрами.
@@ -144,6 +145,7 @@ export function OrdersView({
   });
   const [priority, setPriority] = useState<PriorityName | ''>('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [sellReadyMadeOpen, setSellReadyMadeOpen] = useState(false);
 
   /**
    * Активная вкладка-пресет.
@@ -293,7 +295,7 @@ export function OrdersView({
       }
 
       // Открытое окно забирает клавиатуру себе целиком.
-      if (pending !== null || createOpen) return;
+      if (pending !== null || createOpen || sellReadyMadeOpen) return;
       if (rows.length === 0) return;
 
       const move = (delta: number): void => {
@@ -432,14 +434,26 @@ export function OrdersView({
             />
 
             {canCreate && (
-              <Button
-                icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
-                onClick={() => {
-                  setCreateOpen(true);
-                }}
-              >
-                Новый заказ
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  icon={<ShoppingBag className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => {
+                    setSellReadyMadeOpen(true);
+                  }}
+                >
+                  Готовые шторы
+                </Button>
+
+                <Button
+                  icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => {
+                    setCreateOpen(true);
+                  }}
+                >
+                  Новый заказ
+                </Button>
+              </>
             )}
           </FilterBar>
         }
@@ -489,6 +503,17 @@ export function OrdersView({
         }}
         onCreated={(orderId) => {
           setCreateOpen(false);
+          router.push(`/orders/${orderId.toString()}`);
+        }}
+      />
+
+      <SellReadyMadeDialog
+        open={sellReadyMadeOpen}
+        onClose={() => {
+          setSellReadyMadeOpen(false);
+        }}
+        onSold={(orderId) => {
+          setSellReadyMadeOpen(false);
           router.push(`/orders/${orderId.toString()}`);
         }}
       />
@@ -587,7 +612,12 @@ export function OrdersView({
           {
             key: 'status',
             header: 'Статус',
-            render: (row) => <OrderStatusBadge status={row.status} />,
+            render: (row) => (
+              <span className="inline-flex items-center gap-1.5">
+                <OrderStatusBadge status={row.status} />
+                <OrderTypeBadge orderType={row.orderType} />
+              </span>
+            ),
           },
           {
             key: 'deadline',

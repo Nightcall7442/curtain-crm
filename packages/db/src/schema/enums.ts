@@ -5,6 +5,7 @@ import {
   NOTIFICATION_TYPES,
   ORDER_ITEM_KINDS,
   ORDER_STATUSES,
+  ORDER_TYPES,
   PAYROLL_RECORD_STATUSES,
   PAYROLL_SCHEME_TYPES,
   PHOTO_STAGES,
@@ -29,6 +30,7 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 
 export const roleEnum = pgEnum('role', ROLES);
 export const orderStatusEnum = pgEnum('order_status', ORDER_STATUSES);
+export const orderTypeEnum = pgEnum('order_type', ORDER_TYPES);
 export const priorityEnum = pgEnum('priority', PRIORITIES);
 export const photoStageEnum = pgEnum('photo_stage', PHOTO_STAGES);
 export const notificationTypeEnum = pgEnum('notification_type', NOTIFICATION_TYPES);

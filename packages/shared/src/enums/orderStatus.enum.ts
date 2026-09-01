@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { Locale, Translated } from '../i18n/locale';
+import { OrderType, type OrderType as OrderTypeName } from './orderType.enum';
 import { Role } from './role.enum';
 
 /**
@@ -381,6 +382,15 @@ export interface OrderTransition {
   readonly kind: TransitionKind;
   /** Подпись действия для кнопки в веб-панели и мобильном приложении. */
   readonly label: string;
+  /**
+   * Типы заказа, которым переход доступен. Отсутствие поля — доступен всем.
+   *
+   * Появилось вместе с готовыми шторами: их путь «новый → сразу к установке»
+   * и «новый → выполнен» перепрыгивает весь цех, и открыть такие переходы
+   * обычному пошиву значило бы позволить продавцу закрыть заказ, который
+   * никто не шил. Ограничение по типу держит обходную дорогу закрытой.
+   */
+  readonly orderTypes?: readonly OrderTypeName[];
 }
 
 /**
@@ -397,6 +407,26 @@ const EXPLICIT_TRANSITIONS: readonly OrderTransition[] = [
     roles: [Role.SELLER, Role.ADMIN, Role.CEO],
     kind: TransitionKind.FORWARD,
     label: 'Отправить на проверку админу',
+  },
+
+  // --- Готовые шторы: продажа без цеха --------------------------------------
+  // Оба перехода выполняет `orders.sellReadyMade` в той же транзакции, что и
+  // создание, поэтому в статусе `new` готовые шторы не живут ни секунды.
+  {
+    from: OrderStatus.NEW,
+    to: OrderStatus.COMPLETED,
+    roles: [Role.SELLER, Role.ADMIN, Role.CEO],
+    kind: TransitionKind.FORWARD,
+    label: 'Продано без установки',
+    orderTypes: [OrderType.READY_MADE],
+  },
+  {
+    from: OrderStatus.NEW,
+    to: OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+    roles: [Role.SELLER, Role.ADMIN, Role.CEO],
+    kind: TransitionKind.FORWARD,
+    label: 'Продано, передать на установку',
+    orderTypes: [OrderType.READY_MADE],
   },
   {
     from: OrderStatus.PENDING_ADMIN_REVIEW,
@@ -696,6 +726,8 @@ export const ORDER_STATUS_REQUIRED_ASSIGNEE: Readonly<
  */
 const TRANSITION_LABELS_UZ: Readonly<Record<string, string>> = {
   'new->pending_admin_review': 'Admin tekshiruviga yuborish',
+  'new->completed': "O'rnatishsiz sotildi",
+  'new->pending_installation_assignment': "Sotildi, o'rnatishga berish",
   'pending_admin_review->measurement_assigned': "O'lchovni tayinlash",
   'pending_admin_review->pending_sewing_assignment': "O'lchovni o'tkazib, tikuvga berish",
   'pending_admin_review->rejected_to_ceo': 'Rad etib, direktorga topshirish',
@@ -757,22 +789,49 @@ export function isOrderStatus(value: unknown): value is OrderStatus {
   return typeof value === 'string' && (ORDER_STATUSES as readonly string[]).includes(value);
 }
 
+/**
+ * Доступен ли переход заказу этого типа.
+ *
+ * Все функции ниже принимают тип заказа с умолчанием `custom`: до появления
+ * готовых штор других заказов не существовало, и все прежние вызовы обязаны
+ * работать как раньше. Переходы, помеченные `orderTypes`, при умолчании
+ * скрыты — обходная дорога готовых штор не открывается забытым аргументом.
+ */
+export function transitionAllowsOrderType(
+  transition: OrderTransition,
+  orderType: OrderTypeName,
+): boolean {
+  return transition.orderTypes === undefined || transition.orderTypes.includes(orderType);
+}
+
 /** Все переходы, выходящие из указанного статуса (без учёта ролей). */
-export function transitionsFrom(from: OrderStatus): readonly OrderTransition[] {
-  return TRANSITIONS_BY_FROM.get(from) ?? [];
+export function transitionsFrom(
+  from: OrderStatus,
+  orderType: OrderTypeName = OrderType.CUSTOM,
+): readonly OrderTransition[] {
+  return (TRANSITIONS_BY_FROM.get(from) ?? []).filter((transition) =>
+    transitionAllowsOrderType(transition, orderType),
+  );
 }
 
 /** Описание конкретного перехода или `undefined`, если такой переход запрещён. */
 export function findTransition(
   from: OrderStatus,
   to: OrderStatus,
+  orderType: OrderTypeName = OrderType.CUSTOM,
 ): OrderTransition | undefined {
-  return TRANSITIONS_BY_PAIR.get(transitionKey(from, to));
+  const transition = TRANSITIONS_BY_PAIR.get(transitionKey(from, to));
+  if (transition === undefined) return undefined;
+  return transitionAllowsOrderType(transition, orderType) ? transition : undefined;
 }
 
 /** Разрешён ли переход в принципе (без учёта ролей). */
-export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
-  return TRANSITIONS_BY_PAIR.has(transitionKey(from, to));
+export function canTransition(
+  from: OrderStatus,
+  to: OrderStatus,
+  orderType: OrderTypeName = OrderType.CUSTOM,
+): boolean {
+  return findTransition(from, to, orderType) !== undefined;
 }
 
 /**
@@ -782,8 +841,9 @@ export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
 export function availableTransitions(
   from: OrderStatus,
   userRoles: readonly Role[],
+  orderType: OrderTypeName = OrderType.CUSTOM,
 ): readonly OrderTransition[] {
-  return transitionsFrom(from).filter((transition) =>
+  return transitionsFrom(from, orderType).filter((transition) =>
     transition.roles.some((role) => userRoles.includes(role)),
   );
 }
@@ -870,8 +930,9 @@ export function primaryOrderAction(
   from: OrderStatus,
   userRoles: readonly Role[],
   locale: Locale = 'ru',
+  orderType: OrderTypeName = OrderType.CUSTOM,
 ): PrimaryOrderAction | null {
-  const forward = availableTransitions(from, userRoles).filter(
+  const forward = availableTransitions(from, userRoles, orderType).filter(
     (transition) => transition.kind === TransitionKind.FORWARD,
   );
 
@@ -933,8 +994,12 @@ export const MAX_BATCH_ORDERS = 50;
  * таблице, — например, при отрисовке исторических записей, сделанных до
  * изменения правил переходов.
  */
-export function isRollback(from: OrderStatus, to: OrderStatus): boolean {
-  const transition = findTransition(from, to);
+export function isRollback(
+  from: OrderStatus,
+  to: OrderStatus,
+  orderType: OrderTypeName = OrderType.CUSTOM,
+): boolean {
+  const transition = findTransition(from, to, orderType);
   if (transition !== undefined) return transition.kind === TransitionKind.ROLLBACK;
 
   const fromIndex = ORDER_STATUS_STAGE_INDEX[from];
@@ -947,8 +1012,12 @@ export function isRollback(from: OrderStatus, to: OrderStatus): boolean {
  * Обязателен ли комментарий (причина) при переходе.
  * Комментарий обязателен для откатов, отклонений и отмен.
  */
-export function requiresComment(from: OrderStatus, to: OrderStatus): boolean {
-  const transition = findTransition(from, to);
+export function requiresComment(
+  from: OrderStatus,
+  to: OrderStatus,
+  orderType: OrderTypeName = OrderType.CUSTOM,
+): boolean {
+  const transition = findTransition(from, to, orderType);
   if (transition === undefined) return false;
   return transition.kind !== TransitionKind.FORWARD;
 }

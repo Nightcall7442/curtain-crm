@@ -7,6 +7,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
 import { RatingScreen } from '../screens/RatingScreen';
+import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types';
@@ -58,6 +59,11 @@ export function RootNavigator(): ReactElement {
         name="OrderCreate"
         component={OrderCreateScreen}
         options={{ title: 'Новый заказ' }}
+      />
+      <Stack.Screen
+        name="SellReadyMade"
+        component={SellReadyMadeScreen}
+        options={{ title: 'Готовые шторы' }}
       />
     </Stack.Navigator>
   );
