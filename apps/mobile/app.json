@@ -56,7 +56,9 @@
         {
           "microphonePermission": "Микрофон нужен для голосовых комментариев к заказу."
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-font"
     ],
     "web": {
       "bundler": "metro",

@@ -1,5 +1,7 @@
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+// Новый классовый API файловой системы (SDK 54). Устаревший вход `/legacy`
+// не подошёл — он раздаёт исходники, и их проверял бы наш строгий tsc.
+import { File } from 'expo-file-system';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -112,18 +114,29 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => undefined);
 
     const uri = recording.getURI();
+    const removeTemp = (target: string): void => {
+      try {
+        new File(target).delete();
+      } catch {
+        // Файл мог не существовать — для уборки это не ошибка.
+      }
+    };
+
     if (!shouldSend || uri === null) {
-      if (uri !== null) await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+      if (uri !== null) removeTemp(uri);
       return;
     }
 
-    const content = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    }).catch(() => null);
+    let content: string | null;
+    try {
+      content = await new File(uri).base64();
+    } catch {
+      content = null;
+    }
 
     // Временный файл больше не нужен ни при успехе, ни при отказе: он лежит
     // в кеше приложения и иначе копился бы там до переустановки.
-    await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+    removeTemp(uri);
 
     if (content === null) {
       Alert.alert('Не удалось прочитать запись', 'Попробуйте ещё раз.');
