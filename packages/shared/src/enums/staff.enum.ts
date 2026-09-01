@@ -126,16 +126,18 @@ export const EMPLOYMENT_TYPE_LABELS_RU = EMPLOYMENT_TYPE_LABELS.ru;
  *
  * Значения `at_work` и `absent` выводятся из смен: открытая смена сегодня —
  * «на работе», иначе «отсутствует». `finished` — смена была и уже закрыта.
- *
- * Отдельного статуса «перерыв» НЕТ: по требованию заказчика смена учитывается
- * одним блоком, без перерывов, поэтому вывести его не из чего.
+ * `on_break` — смена открыта, но сотрудник в личной отлучке (см.
+ * `personal_breaks`); он остаётся на этом статусе и после истечения
+ * заявленного времени — просрочку показывает не сам статус, а сравнение
+ * с плановым временем возврата там, где оно есть под рукой.
  */
-export const PRESENCE_STATUSES = ['at_work', 'finished', 'absent'] as const;
+export const PRESENCE_STATUSES = ['at_work', 'on_break', 'finished', 'absent'] as const;
 
 export type PresenceStatus = (typeof PRESENCE_STATUSES)[number];
 
 export const PresenceStatus = {
   AT_WORK: 'at_work',
+  ON_BREAK: 'on_break',
   FINISHED: 'finished',
   ABSENT: 'absent',
 } as const satisfies Record<string, PresenceStatus>;
@@ -143,11 +145,13 @@ export const PresenceStatus = {
 export const PRESENCE_STATUS_LABELS: Translated<PresenceStatus> = {
   ru: {
     at_work: 'На работе',
+    on_break: 'На отлучке',
     finished: 'Смена закрыта',
     absent: 'Отсутствует',
   },
   uz: {
     at_work: 'Ishda',
+    on_break: 'Vaqtincha chiqib ketgan',
     finished: 'Smena yopilgan',
     absent: 'Yo‘q',
   },

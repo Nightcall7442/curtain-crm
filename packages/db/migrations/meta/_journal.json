@@ -43,6 +43,13 @@
       "when": 1788262777924,
       "tag": "0005_pale_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788280963560,
+      "tag": "0006_orange_moonstone",
+      "breakpoints": true
     }
   ]
 }

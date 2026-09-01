@@ -1,4 +1,5 @@
-import { branches, shifts, users } from '@curtain-crm/db';
+import { branches, personalBreaks, shifts, users } from '@curtain-crm/db';
+import { MAX_PERSONAL_BREAK_MINUTES } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -157,6 +158,124 @@ export const shiftsRouter = router({
         return updated;
       }),
     ),
+
+  /**
+   * Начать личную отлучку.
+   *
+   * Доступно только при открытой смене: без неё отлучаться не от чего —
+   * это не отгул и не перерыв в расписании, а пауза внутри рабочего дня,
+   * который уже идёт. Вторая отлучка поверх ещё не закрытой первой
+   * запрещена и кодом, и частичным уникальным индексом на случай гонки.
+   */
+  startBreak: protectedProcedure
+    .input(z.object({ plannedMinutes: z.number().int().min(1).max(MAX_PERSONAL_BREAK_MINUTES) }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const [openShift] = await tx
+          .select({ id: shifts.id })
+          .from(shifts)
+          .where(findOpenShift(ctx.user.id))
+          .limit(1);
+
+        if (openShift === undefined) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Сначала откройте смену — отлучаться не от чего',
+          });
+        }
+
+        const [activeBreak] = await tx
+          .select({ id: personalBreaks.id })
+          .from(personalBreaks)
+          .where(and(eq(personalBreaks.shiftId, openShift.id), isNull(personalBreaks.returnedAt)))
+          .limit(1);
+
+        if (activeBreak !== undefined) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Отлучка уже начата' });
+        }
+
+        const [created] = await tx
+          .insert(personalBreaks)
+          .values({ shiftId: openShift.id, plannedMinutes: input.plannedMinutes })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Не удалось начать отлучку' });
+        }
+
+        return created;
+      }),
+    ),
+
+  /** Отметить возвращение из личной отлучки. */
+  endBreak: protectedProcedure.mutation(async ({ ctx }) =>
+    ctx.db.transaction(async (tx) => {
+      const [openShift] = await tx
+        .select({ id: shifts.id })
+        .from(shifts)
+        .where(findOpenShift(ctx.user.id))
+        .limit(1);
+
+      if (openShift === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Открытая смена не найдена' });
+      }
+
+      const [updated] = await tx
+        .update(personalBreaks)
+        .set({ returnedAt: new Date() })
+        .where(and(eq(personalBreaks.shiftId, openShift.id), isNull(personalBreaks.returnedAt)))
+        .returning();
+
+      if (updated === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Открытая отлучка не найдена' });
+      }
+
+      return updated;
+    }),
+  ),
+
+  /** Текущая открытая отлучка или `null`. Экран смены спрашивает это при старте. */
+  currentBreak: protectedProcedure.query(async ({ ctx }) => {
+    const [row] = await ctx.db
+      .select({
+        id: personalBreaks.id,
+        plannedMinutes: personalBreaks.plannedMinutes,
+        startedAt: personalBreaks.startedAt,
+      })
+      .from(personalBreaks)
+      .innerJoin(shifts, eq(shifts.id, personalBreaks.shiftId))
+      .where(and(eq(shifts.userId, ctx.user.id), isNull(shifts.endedAt), isNull(personalBreaks.returnedAt)))
+      .limit(1);
+
+    return row ?? null;
+  }),
+
+  /**
+   * Все, кто сейчас в личной отлучке — для руководства.
+   *
+   * Отлучка не пишется в аудит и не рассылает уведомления: это рутинное
+   * самообслуживание, как чек-ин, а не событие, о котором нужно оповещать.
+   * Видимость руководству — не пуш, а этот список по запросу.
+   */
+  activeBreaks: managementProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db
+      .select({
+        id: personalBreaks.id,
+        plannedMinutes: personalBreaks.plannedMinutes,
+        startedAt: personalBreaks.startedAt,
+        userId: shifts.userId,
+        userFullName: users.fullName,
+        branchName: branches.name,
+      })
+      .from(personalBreaks)
+      .innerJoin(shifts, eq(shifts.id, personalBreaks.shiftId))
+      .innerJoin(users, eq(users.id, shifts.userId))
+      .innerJoin(branches, eq(branches.id, shifts.branchId))
+      .where(isNull(personalBreaks.returnedAt))
+      .orderBy(personalBreaks.startedAt);
+
+    return rows;
+  }),
 
   /** История собственных смен. */
   my: protectedProcedure

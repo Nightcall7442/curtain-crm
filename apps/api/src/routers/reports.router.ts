@@ -3,6 +3,7 @@ import {
   orders,
   orderStatusHistory,
   payrollRecords,
+  personalBreaks,
   purchases,
   shifts,
   users,
@@ -417,7 +418,7 @@ export const reportsRouter = router({
         return row?.value ?? 0;
       };
 
-      const [overdue, waitingSewing, waitingInstall, waitingQc] = await Promise.all([
+      const [overdue, waitingSewing, waitingInstall, waitingQc, overdueBreaks] = await Promise.all([
         (async () => {
           const [row] = await ctx.db
             .select({ value: count() })
@@ -428,10 +429,31 @@ export const reportsRouter = router({
         countWhere(eq(orders.status, OrderStatus.PENDING_SEWING_ASSIGNMENT)),
         countWhere(eq(orders.status, OrderStatus.PENDING_INSTALLATION_ASSIGNMENT)),
         countWhere(eq(orders.status, OrderStatus.PENDING_QC)),
+        (async () => {
+          // Просроченная отлучка: план (начало + заявленные минуты) уже в прошлом,
+          // а возврат ещё не отмечен. Филиалом не фильтруется — сама отлучка
+          // к филиалу не привязана.
+          const [row] = await ctx.db
+            .select({ value: count() })
+            .from(personalBreaks)
+            .where(
+              and(
+                isNull(personalBreaks.returnedAt),
+                sql`${personalBreaks.startedAt} + (${personalBreaks.plannedMinutes} || ' minutes')::interval < now()`,
+              ),
+            );
+          return row?.value ?? 0;
+        })(),
       ]);
 
       return [
         { key: 'overdue', label: 'заказов просрочено', count: overdue, severity: 'high' as const },
+        {
+          key: 'overdue_breaks',
+          label: 'сотрудников не вернулись из отлучки вовремя',
+          count: overdueBreaks,
+          severity: 'high' as const,
+        },
         { key: 'waiting_sewing', label: 'заказов ждут шитья', count: waitingSewing, severity: 'medium' as const },
         { key: 'waiting_install', label: 'заказов в очереди на установку', count: waitingInstall, severity: 'medium' as const },
         { key: 'waiting_qc', label: 'заказов ждут контроля качества', count: waitingQc, severity: 'low' as const },

@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Pill, Row } from '../components/Card';
+import { PersonalBreakCard } from '../components/PersonalBreakCard';
 import { ShiftRing } from '../components/ShiftRing';
 import { SlideToConfirm } from '../components/SlideToConfirm';
 import { useLocation } from '../hooks/useLocation';
@@ -128,6 +129,8 @@ export function CheckInOutScreen(): ReactElement {
       <Card>
         <ShiftRing startedAt={startedAt} />
       </Card>
+
+      <PersonalBreakCard shiftOpen={shift !== null} />
 
       {(locationError !== null || serverError !== null) && (
         <View style={styles.error} accessibilityRole="alert">

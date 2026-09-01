@@ -1,4 +1,4 @@
-import { shifts, users, type DbExecutor } from '@curtain-crm/db';
+import { personalBreaks, shifts, users, type DbExecutor } from '@curtain-crm/db';
 import {
   ageBucket,
   ageInYears,
@@ -39,8 +39,10 @@ function todayBounds(now: Date): { start: Date; end: Date } {
  * Статус присутствия сотрудников на сегодня.
  *
  * Открытая смена — «на работе», закрытая — «смена закрыта», нет смены —
- * «отсутствует». Статуса «перерыв» нет: смена по требованию заказчика
- * учитывается одним блоком, и вывести перерыв не из чего.
+ * «отсутствует». Открытая смена с незакрытой личной отлучкой — «на отлучке»:
+ * статус не различает, уложился сотрудник в заявленный срок или нет —
+ * это вопрос точного времени, а не одной из четырёх фиксированных меток,
+ * и его показывают места, где секунды под рукой (`shifts.activeBreaks`).
  */
 export async function presenceToday(
   executor: DbExecutor,
@@ -48,19 +50,33 @@ export async function presenceToday(
 ): Promise<Map<number, PresenceStatusName>> {
   const bounds = todayBounds(now);
 
-  const rows = await executor
-    .select({
-      userId: shifts.userId,
-      hasOpen: sql<boolean>`bool_or(${shifts.endedAt} is null)`,
-    })
-    .from(shifts)
-    .where(and(gte(shifts.startedAt, bounds.start), lt(shifts.startedAt, bounds.end)))
-    .groupBy(shifts.userId);
+  const [rows, onBreakRows] = await Promise.all([
+    executor
+      .select({
+        userId: shifts.userId,
+        hasOpen: sql<boolean>`bool_or(${shifts.endedAt} is null)`,
+      })
+      .from(shifts)
+      .where(and(gte(shifts.startedAt, bounds.start), lt(shifts.startedAt, bounds.end)))
+      .groupBy(shifts.userId),
+
+    executor
+      .selectDistinct({ userId: shifts.userId })
+      .from(personalBreaks)
+      .innerJoin(shifts, eq(shifts.id, personalBreaks.shiftId))
+      .where(and(isNull(shifts.endedAt), isNull(personalBreaks.returnedAt))),
+  ]);
+
+  const onBreak = new Set(onBreakRows.map((row) => row.userId));
 
   return new Map(
     rows.map((row) => [
       row.userId,
-      row.hasOpen ? PresenceStatus.AT_WORK : PresenceStatus.FINISHED,
+      row.hasOpen
+        ? onBreak.has(row.userId)
+          ? PresenceStatus.ON_BREAK
+          : PresenceStatus.AT_WORK
+        : PresenceStatus.FINISHED,
     ]),
   );
 }

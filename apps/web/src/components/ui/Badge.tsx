@@ -120,6 +120,7 @@ export function OrderTypeBadge({
 
 const PRESENCE_TONE: Readonly<Record<PresenceStatus, Tone>> = {
   at_work: 'positive',
+  on_break: 'warning',
   finished: 'info',
   absent: 'danger',
 };

@@ -18,7 +18,7 @@ import {
   type PresenceStatus as PresenceStatusName,
   type Role,
 } from '@curtain-crm/shared';
-import { CalendarPlus, Cake, Plus, UserCheck, UserMinus, Users, Wallet } from 'lucide-react';
+import { CalendarPlus, Cake, Clock, Plus, UserCheck, UserMinus, Users, Wallet } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState, type ReactElement } from 'react';
 
@@ -88,6 +88,9 @@ function EmployeesInner({
 
   const stats = trpc.users.stats.useQuery();
   const presence = trpc.users.presenceToday.useQuery();
+  // Опрос раз в 30 секунд — единственное место в системе, где «просрочено»
+  // должно быть видно почти сразу, а не после случайного обновления страницы.
+  const activeBreaks = trpc.shifts.activeBreaks.useQuery(undefined, { refetchInterval: 30_000 });
   const attendance = trpc.users.attendance.useQuery(period);
   const birthdays = trpc.users.birthdays.useQuery({ withinDays: 30 });
   const payroll = trpc.payroll.list.useQuery(period);
@@ -202,6 +205,46 @@ function EmployeesInner({
               </>
             )}
       </section>
+
+      {/*
+        --- Сейчас в отлучке ------------------------------------------------
+        Нулевой список не показывается вовсе — по тому же правилу, что
+        и у «Требует внимания» на главной: пустая карточка «никого нет»
+        отвлекает не меньше, чем сама тревога.
+      */}
+      {(activeBreaks.data?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader title="Сейчас в отлучке" icon={<Clock className="h-4 w-4" />} />
+          <CardBody>
+            <ul className="divide-y divide-subtle">
+              {activeBreaks.data?.map((entry) => {
+                const started = new Date(entry.startedAt);
+                const expectedReturn = new Date(started.getTime() + entry.plannedMinutes * 60_000);
+                const overdue = Date.now() > expectedReturn.getTime();
+                const overdueMinutes = Math.floor((Date.now() - expectedReturn.getTime()) / 60_000);
+                const timeLabel = (value: Date): string =>
+                  value.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+                return (
+                  <li key={entry.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-caption text-primary">{entry.userFullName}</p>
+                      <p className="truncate text-footnote text-muted">
+                        {`${entry.branchName} · ушёл в ${timeLabel(started)} · заявил ${entry.plannedMinutes.toString()} мин`}
+                      </p>
+                    </div>
+                    <Badge tone={overdue ? 'danger' : 'warning'}>
+                      {overdue
+                        ? `Просрочено на ${overdueMinutes.toString()} мин`
+                        : `Вернётся до ${timeLabel(expectedReturn)}`}
+                    </Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
 
       {/*
         Список — ВЫШЕ разрезов штата (ревизия «Диспетчерская», П2):

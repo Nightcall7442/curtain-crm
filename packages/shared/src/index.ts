@@ -26,6 +26,7 @@ export * from './enums/dayOff.enum';
 export * from './constants/calendar';
 export * from './constants/catalog';
 export * from './constants/rating';
+export * from './constants/personalBreak';
 
 /* Типы */
 export * from './types/orderItemAccessory';
