@@ -43,3 +43,26 @@ export function sessionCostKopecks(pricePerHour, startedAt, endedAt) {
 export function kopecksToRubles(kopecks) {
   return kopecks / KOPECKS_PER_RUBLE;
 }
+
+/** Рубли из API -> копейки (например, наличные при пересдаче кассы). */
+export function rublesToKopecks(rubles) {
+  const n = Number(rubles);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new RangeError("Сумма должна быть числом не меньше нуля");
+  }
+  return Math.round(n * KOPECKS_PER_RUBLE);
+}
+
+/** Скидка в процентах: 10000 коп. при 15% -> 8500. */
+export function applyDiscount(kopecks, percent) {
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
+    throw new RangeError("Скидка должна быть целым числом 0–100");
+  }
+  return Math.round((kopecks * (100 - percent)) / 100);
+}
+
+/** Округление итога к шагу (в копейках), к ближайшему: 100 -> до рубля. */
+export function roundToStep(kopecks, stepKopecks) {
+  if (stepKopecks <= 1) return kopecks;
+  return Math.round(kopecks / stepKopecks) * stepKopecks;
+}

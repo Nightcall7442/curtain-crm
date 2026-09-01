@@ -15,10 +15,23 @@ const DEFAULTS = {
   tuya_access_id: TUYA_ACCESS_ID,
   tuya_access_secret: TUYA_ACCESS_SECRET,
   tuya_api_host: TUYA_API_HOST,
+  // Настройки клуба (правятся во вкладке «Настройки»).
+  club_name: "Бильярдный клуб",
+  rounding_step_kopecks: "1", // 1 = без округления, 100 = до рубля, 1000 = до 10 ₽
+  min_session_minutes: "0", // минимальное оплачиваемое время сеанса
+  tz_offset_minutes: "180", // локальный пояс клуба (для расписаний и отчётов)
 };
 
 const ALLOWED_KEYS = Object.keys(DEFAULTS);
 const ALLOWED_DRIVERS = ["mock", "tuya"];
+const ALLOWED_ROUNDING = ["1", "100", "1000"];
+
+function validateIntInRange(key, value, min, max) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new ConflictError(`Недопустимое значение «${value}» для ${key}`);
+  }
+}
 
 /**
  * Текущие настройки: сохранённые в базе поверх значений по умолчанию.
@@ -54,7 +67,29 @@ export function saveSettings(db, patch) {
         `Недопустимый драйвер освещения «${value}» (mock или tuya)`
       );
     }
+    if (key === "rounding_step_kopecks" && !ALLOWED_ROUNDING.includes(value)) {
+      throw new ConflictError("Шаг округления: 1 (нет), 100 (до ₽) или 1000 (до 10 ₽)");
+    }
+    if (key === "min_session_minutes") validateIntInRange(key, value, 0, 240);
+    if (key === "tz_offset_minutes") validateIntInRange(key, value, -720, 840);
+    if (key === "club_name" && !value) {
+      throw new ConflictError("Название клуба не может быть пустым");
+    }
     upsert.run(key, value);
   }
   return getSettings(db);
+}
+
+/**
+ * Настройки клуба в числовом виде — для биллинга, расписаний и отчётов.
+ * @param {import("node:sqlite").DatabaseSync} db
+ */
+export function getClubSettings(db) {
+  const s = getSettings(db);
+  return {
+    club_name: s.club_name,
+    rounding_step_kopecks: Number(s.rounding_step_kopecks),
+    min_session_minutes: Number(s.min_session_minutes),
+    tz_offset_minutes: Number(s.tz_offset_minutes),
+  };
 }

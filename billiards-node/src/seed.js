@@ -2,6 +2,7 @@
 // ни тарифов) создаём стартовый набор, чтобы клуб мог работать сразу.
 // На непустую базу не влияет.
 
+import { createMenuItem } from "./services/menu.js";
 import { createTable } from "./services/tables.js";
 import { createTariff } from "./services/tariffs.js";
 import { createUser } from "./services/users.js";
@@ -26,9 +27,22 @@ export function seedInitialData(db) {
     );
   }
 
+  if (!db.prepare("SELECT id FROM menu_items LIMIT 1").get()) {
+    for (const [name, price, category] of INITIAL_MENU) {
+      createMenuItem(db, { name, price, category });
+    }
+  }
+
   const hasTables = db.prepare("SELECT id FROM tables LIMIT 1").get();
   const hasTariffs = db.prepare("SELECT id FROM tariffs LIMIT 1").get();
   if (hasTables || hasTariffs) return;
   for (const name of INITIAL_TABLES) createTable(db, name);
   for (const [name, price] of INITIAL_TARIFFS) createTariff(db, name, price);
 }
+
+const INITIAL_MENU = [
+  ["Чай", 100, "Напитки"],
+  ["Кофе", 150, "Напитки"],
+  ["Лимонад", 120, "Напитки"],
+  ["Орешки", 180, "Закуски"],
+];

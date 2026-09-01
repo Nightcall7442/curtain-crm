@@ -408,6 +408,197 @@ button.mini {
 button.mini:hover { background: rgba(0, 122, 255, 0.12); }
 button.mini:disabled { color: var(--muted); cursor: default; }
 
+/* --- Модальные окна --- */
+
+.modal-overlay[hidden] { display: none; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 25, 40, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 20px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--glass-strong);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(30, 40, 80, 0.3);
+  padding: 20px 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.modal-head h3 { margin: 0; font-size: 1.05rem; }
+
+/* --- Чек при закрытии --- */
+
+.check-lines { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.check-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.check-line.strong {
+  font-weight: 700;
+  font-size: 1.1rem;
+  border-top: 0.5px solid var(--hairline);
+  padding-top: 10px;
+  color: var(--blue);
+}
+
+.pay-buttons { display: flex; gap: 10px; margin-top: 14px; }
+.pay-buttons .primary { flex: 1; }
+
+/* --- Бар в модальном окне --- */
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.menu-item-btn {
+  border: 0.5px solid var(--hairline);
+  border-radius: 12px;
+  padding: 10px 8px;
+  background: rgba(120, 120, 128, 0.1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.menu-item-btn:hover { background: rgba(0, 122, 255, 0.12); color: var(--blue); }
+
+.order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--hairline);
+  font-size: 0.92rem;
+}
+.order-total { font-weight: 700; margin: 10px 0 0; }
+
+/* --- Кнопка бара на карточке --- */
+
+button.action.bar {
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--text);
+  box-shadow: none;
+  border: 0.5px solid var(--hairline);
+}
+button.action.bar:hover { background: rgba(0, 122, 255, 0.12); color: var(--blue); }
+
+/* --- Брони --- */
+
+.booking-note {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(120, 120, 128, 0.1);
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+.booking-note.soon {
+  color: var(--orange-text);
+  background: rgba(255, 149, 0, 0.14);
+}
+
+/* --- Отчёты: пиковые часы --- */
+
+.hours-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 130px;
+  margin-top: 10px;
+}
+.hour-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 4px;
+}
+.hour-bar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #007aff, #34c759);
+}
+.hour-label { font-size: 0.66rem; color: var(--muted); height: 12px; }
+
+.ok-text { color: var(--green-text); font-weight: 600; }
+.bad-text { color: var(--red); font-weight: 700; }
+
+.cash-input,
+.search-input {
+  background: rgba(120, 120, 128, 0.1);
+  color: var(--text);
+  border: 0.5px solid var(--hairline);
+  border-radius: 12px;
+  padding: 11px 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  width: 100%;
+}
+.search-input { max-width: 340px; }
+.cash-input:focus,
+.search-input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3.5px rgba(0, 122, 255, 0.18);
+}
+
+.table-scroll { overflow-x: auto; }
+
+/* --- Дни недели в расписании тарифов --- */
+
+.days-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.day-chip {
+  display: inline-flex;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+.day-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.day-chip span {
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--muted);
+  border: 0.5px solid transparent;
+}
+.day-chip input:checked + span {
+  background: rgba(0, 122, 255, 0.14);
+  color: var(--blue);
+  border-color: rgba(0, 122, 255, 0.35);
+}
+
 .toast {
   position: fixed;
   bottom: 28px;

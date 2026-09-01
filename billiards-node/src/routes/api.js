@@ -18,11 +18,17 @@ import {
   initLighting,
   listCloudDevices,
 } from "../services/lighting.js";
-import { getSettings, saveSettings } from "../services/settings.js";
+import { listBookings, cancelBooking, createBooking, nextBookingForTable } from "../services/bookings.js";
+import { createClient, listClients, updateClient } from "../services/clients.js";
+import { createMenuItem, listMenu, updateMenuItem } from "../services/menu.js";
+import { addOrder, listOrders, removeOrder } from "../services/orders.js";
+import { getClubSettings, getSettings, saveSettings } from "../services/settings.js";
 import {
   closeSession,
+  computeCheck,
   currentCostKopecks,
   getOpenSession,
+  getSessionById,
   listHistory,
   openSession,
 } from "../services/sessions.js";
@@ -32,7 +38,8 @@ import {
   listShifts,
   openShift,
 } from "../services/shifts.js";
-import { tableLoad } from "../services/stats.js";
+import { revenueReport, tableLoad } from "../services/stats.js";
+import { createRule, deleteRule, listRules, resolveTariffId } from "../services/tariff-rules.js";
 import { createTable, listTables, setTableDevice } from "../services/tables.js";
 import { createTariff, listTariffs } from "../services/tariffs.js";
 import {
@@ -42,6 +49,7 @@ import {
   listUsers,
   updateUser,
 } from "../services/users.js";
+import { utcNow } from "../db.js";
 import { sessionToOut } from "./mappers.js";
 
 /** Пропускает только администратора. */
@@ -76,7 +84,11 @@ export function createApiRouter(db) {
     }
     const token = createAuthSession(db, user.id);
     res.setHeader("Set-Cookie", sessionCookie(token));
-    res.json({ user, shift: currentShift(db, user.id) });
+    res.json({
+      user,
+      shift: currentShift(db, user.id),
+      club_name: getClubSettings(db).club_name,
+    });
   });
 
   router.post("/auth/logout", (req, res) => {
@@ -86,7 +98,11 @@ export function createApiRouter(db) {
   });
 
   router.get("/auth/me", (req, res) => {
-    res.json({ user: req.user, shift: currentShift(db, req.user.id) });
+    res.json({
+      user: req.user,
+      shift: currentShift(db, req.user.id),
+      club_name: getClubSettings(db).club_name,
+    });
   });
 
   router.post("/auth/password", (req, res) => {
@@ -127,11 +143,19 @@ export function createApiRouter(db) {
   });
 
   router.post("/shifts/open", (req, res) => {
-    res.status(201).json(openShift(db, req.user));
+    const openingCash =
+      req.body?.opening_cash === undefined || req.body?.opening_cash === null
+        ? null
+        : Number(req.body.opening_cash);
+    res.status(201).json(openShift(db, req.user, { openingCash }));
   });
 
   router.post("/shifts/close", (req, res) => {
-    res.json(closeShift(db, req.user));
+    const closingCash =
+      req.body?.closing_cash === undefined || req.body?.closing_cash === null
+        ? null
+        : Number(req.body.closing_cash);
+    res.json(closeShift(db, req.user, { closingCash }));
   });
 
   // Администратор видит все смены, кассир — только свои.
@@ -170,13 +194,86 @@ export function createApiRouter(db) {
     if (tariffId === null) {
       throw new ConflictError("Поле tariff_id обязательно и должно быть числом");
     }
-    res.status(201).json(sessionToOut(openSession(db, tableId, tariffId, req.user)));
+    const clientId = intParam(req.body?.client_id);
+    res
+      .status(201)
+      .json(sessionToOut(openSession(db, tableId, tariffId, req.user, { clientId })));
   });
 
   router.post("/tables/:id/close", (req, res) => {
     const tableId = intParam(req.params.id);
     if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
-    res.json(sessionToOut(closeSession(db, tableId, req.user)));
+    const paymentMethod = req.body?.payment_method ?? "cash";
+    res.json(sessionToOut(closeSession(db, tableId, req.user, { paymentMethod })));
+  });
+
+  // Предпросмотр чека открытого сеанса (время, скидка, бар, итог).
+  router.get("/tables/:id/check", (req, res) => {
+    const tableId = intParam(req.params.id);
+    if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
+    const session = getOpenSession(db, tableId);
+    if (!session) {
+      throw new ConflictError("Стол свободен — чека нет");
+    }
+    const check = computeCheck(db, session, utcNow());
+    res.json({
+      session_id: session.id,
+      table_name: session.table_name,
+      tariff_name: session.tariff_name,
+      client_name: session.client_name ?? null,
+      duration_seconds: check.duration_seconds,
+      billed_seconds: check.billed_seconds,
+      time_cost: kopecksToRubles(check.time_cost_kopecks),
+      discount_percent: check.discount_percent,
+      discounted_time: kopecksToRubles(check.discounted_time_kopecks),
+      bar_cost: kopecksToRubles(check.bar_cost_kopecks),
+      total: kopecksToRubles(check.total_kopecks),
+      orders: listOrders(db, session.id).map((o) => ({
+        id: o.id,
+        item_name: o.item_name,
+        price: kopecksToRubles(o.price_kopecks),
+        quantity: o.quantity,
+      })),
+    });
+  });
+
+  // --- Бар: заказы на открытый сеанс ---------------------------------------
+
+  router.post("/tables/:id/orders", (req, res) => {
+    const tableId = intParam(req.params.id);
+    if (tableId === null) return res.status(404).json({ detail: "Стол не найден" });
+    const result = addOrder(db, tableId, req.body ?? {}, req.user);
+    res.status(201).json({
+      orders: result.orders,
+      bar_total: kopecksToRubles(result.bar_total_kopecks),
+    });
+  });
+
+  router.delete("/orders/:id", (req, res) => {
+    const orderId = intParam(req.params.id);
+    if (orderId === null) return res.status(404).json({ detail: "Позиция не найдена" });
+    const result = removeOrder(db, orderId);
+    res.json({
+      orders: result.orders,
+      bar_total: kopecksToRubles(result.bar_total_kopecks),
+    });
+  });
+
+  // --- Чек закрытого сеанса ------------------------------------------------
+
+  router.get("/sessions/:id", (req, res) => {
+    const sessionId = intParam(req.params.id);
+    if (sessionId === null) return res.status(404).json({ detail: "Сеанс не найден" });
+    const session = getSessionById(db, sessionId);
+    res.json({
+      ...sessionToOut(session),
+      club_name: getClubSettings(db).club_name,
+      orders: listOrders(db, session.id).map((o) => ({
+        item_name: o.item_name,
+        price: kopecksToRubles(o.price_kopecks),
+        quantity: o.quantity,
+      })),
+    });
   });
 
   // --- Тарифы ------------------------------------------------------------
@@ -204,22 +301,32 @@ export function createApiRouter(db) {
     const now = Date.now();
     const result = listTables(db).map((table) => {
       const session = getOpenSession(db, table.id);
+      const booking = nextBookingForTable(db, table.id);
       return {
         id: table.id,
         name: table.name,
         status: table.status,
         light_on: lighting.isLightOn(table.id),
+        booking: booking
+          ? {
+              client_name: booking.client_name,
+              starts_at: booking.starts_at,
+              duration_minutes: booking.duration_minutes,
+            }
+          : null,
         session: session
           ? {
               session_id: session.id,
               tariff_name: session.tariff_name,
               price_per_hour: session.price_per_hour_snapshot,
               started_at: session.started_at,
+              client_name: session.client_name ?? null,
+              discount_percent: session.discount_percent ?? 0,
               elapsed_seconds: Math.max(
                 0,
                 Math.floor((now - Date.parse(session.started_at)) / 1000)
               ),
-              current_cost: kopecksToRubles(currentCostKopecks(session)),
+              current_cost: kopecksToRubles(currentCostKopecks(db, session)),
             }
           : null,
       };
@@ -288,6 +395,92 @@ export function createApiRouter(db) {
     if (on) lighting.turnLightOn(tableId);
     else lighting.turnLightOff(tableId);
     res.json({ table_id: tableId, light_on: lighting.isLightOn(tableId) });
+  });
+
+  // --- Клиенты -------------------------------------------------------------
+  // Создавать клиентов может любой сотрудник; менять скидку — администратор.
+
+  router.get("/clients", (req, res) => {
+    res.json(listClients(db, { query: String(req.query.query ?? "") }));
+  });
+
+  router.post("/clients", (req, res) => {
+    res.status(201).json(createClient(db, req.body ?? {}, req.user));
+  });
+
+  router.put("/clients/:id", (req, res) => {
+    adminOnly(req);
+    const clientId = intParam(req.params.id);
+    if (clientId === null) return res.status(404).json({ detail: "Клиент не найден" });
+    res.json(updateClient(db, clientId, req.body ?? {}));
+  });
+
+  // --- Меню бара -----------------------------------------------------------
+
+  router.get("/menu", (req, res) => {
+    res.json(listMenu(db, { onlyActive: req.query.only_active === "true" }));
+  });
+
+  router.post("/menu", (req, res) => {
+    adminOnly(req);
+    res.status(201).json(createMenuItem(db, req.body ?? {}));
+  });
+
+  router.put("/menu/:id", (req, res) => {
+    adminOnly(req);
+    const itemId = intParam(req.params.id);
+    if (itemId === null) return res.status(404).json({ detail: "Позиция не найдена" });
+    res.json(updateMenuItem(db, itemId, req.body ?? {}));
+  });
+
+  // --- Брони ---------------------------------------------------------------
+
+  router.get("/bookings", (req, res) => {
+    res.json(listBookings(db));
+  });
+
+  router.post("/bookings", (req, res) => {
+    res.status(201).json(createBooking(db, req.body ?? {}, req.user));
+  });
+
+  router.post("/bookings/:id/cancel", (req, res) => {
+    const bookingId = intParam(req.params.id);
+    if (bookingId === null) return res.status(404).json({ detail: "Бронь не найдена" });
+    res.json(cancelBooking(db, bookingId, req.user));
+  });
+
+  // --- Тарифные расписания (только администратор) --------------------------
+
+  router.get("/tariff-rules", (req, res) => {
+    adminOnly(req);
+    res.json(listRules(db));
+  });
+
+  router.post("/tariff-rules", (req, res) => {
+    adminOnly(req);
+    res.status(201).json(createRule(db, req.body ?? {}));
+  });
+
+  router.delete("/tariff-rules/:id", (req, res) => {
+    adminOnly(req);
+    const ruleId = intParam(req.params.id);
+    if (ruleId === null) return res.status(404).json({ detail: "Правило не найдено" });
+    deleteRule(db, ruleId);
+    res.json({ ok: true });
+  });
+
+  // Тариф по расписанию на «сейчас» — для автоподстановки при открытии.
+  router.get("/tariffs/auto", (req, res) => {
+    const tz = getClubSettings(db).tz_offset_minutes;
+    res.json({ tariff_id: resolveTariffId(db, tz) });
+  });
+
+  // --- Отчёт по выручке (только администратор) -----------------------------
+
+  router.get("/stats/revenue", (req, res) => {
+    adminOnly(req);
+    const days = clampLimit(req.query.days, 30, 365);
+    res.json({ days, ...revenueReport(db, days) });
   });
 
   // --- История и журнал ---------------------------------------------------

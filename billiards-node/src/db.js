@@ -75,6 +75,61 @@ CREATE TABLE IF NOT EXISTS shifts (
   closed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_shifts_open ON shifts (user_id) WHERE closed_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS clients (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  name             TEXT NOT NULL,
+  phone            TEXT,
+  discount_percent INTEGER NOT NULL DEFAULT 0
+                   CHECK (discount_percent BETWEEN 0 AND 100),
+  note             TEXT,
+  created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS menu_items (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL UNIQUE,
+  price      INTEGER NOT NULL CHECK (price > 0),
+  category   TEXT NOT NULL DEFAULT '',
+  is_active  INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_orders (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id    INTEGER NOT NULL REFERENCES table_sessions (id) ON DELETE CASCADE,
+  menu_item_id  INTEGER REFERENCES menu_items (id) ON DELETE SET NULL,
+  item_name     TEXT NOT NULL,
+  price_kopecks INTEGER NOT NULL,
+  quantity      INTEGER NOT NULL CHECK (quantity > 0),
+  created_by    INTEGER REFERENCES users (id),
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_orders_session ON session_orders (session_id);
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_id         INTEGER NOT NULL REFERENCES tables (id) ON DELETE CASCADE,
+  client_name      TEXT NOT NULL,
+  phone            TEXT,
+  starts_at        TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+  note             TEXT,
+  status           TEXT NOT NULL DEFAULT 'active'
+                   CHECK (status IN ('active', 'cancelled')),
+  created_by       INTEGER REFERENCES users (id),
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bookings_time ON bookings (starts_at);
+
+CREATE TABLE IF NOT EXISTS tariff_rules (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  tariff_id    INTEGER NOT NULL REFERENCES tariffs (id) ON DELETE CASCADE,
+  days         TEXT NOT NULL,
+  start_minute INTEGER NOT NULL CHECK (start_minute BETWEEN 0 AND 1439),
+  end_minute   INTEGER NOT NULL CHECK (end_minute BETWEEN 0 AND 1440),
+  created_at   TEXT NOT NULL
+);
 `;
 
 /** Добавляет колонку в существующую базу, если её ещё нет (миграция). */
@@ -102,6 +157,15 @@ export function createDatabase(filePath = DATABASE_PATH) {
   ensureColumn(db, "table_sessions", "closed_by", "closed_by INTEGER REFERENCES users (id)");
   ensureColumn(db, "table_sessions", "shift_id", "shift_id INTEGER REFERENCES shifts (id)");
   ensureColumn(db, "table_sessions", "close_shift_id", "close_shift_id INTEGER REFERENCES shifts (id)");
+  // Оплата, клиент и разбивка итога сеанса.
+  ensureColumn(db, "table_sessions", "payment_method", "payment_method TEXT");
+  ensureColumn(db, "table_sessions", "client_id", "client_id INTEGER REFERENCES clients (id)");
+  ensureColumn(db, "table_sessions", "discount_percent", "discount_percent INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "table_sessions", "time_cost_kopecks", "time_cost_kopecks INTEGER");
+  ensureColumn(db, "table_sessions", "bar_cost_kopecks", "bar_cost_kopecks INTEGER");
+  // Пересдача кассы: наличные на начало и конец смены.
+  ensureColumn(db, "shifts", "opening_cash_kopecks", "opening_cash_kopecks INTEGER");
+  ensureColumn(db, "shifts", "closing_cash_kopecks", "closing_cash_kopecks INTEGER");
   return db;
 }
 

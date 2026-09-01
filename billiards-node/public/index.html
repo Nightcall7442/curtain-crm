@@ -11,10 +11,13 @@
     <h1>🎱 Бильярдный клуб</h1>
     <nav class="tabs">
       <button class="tab active" data-tab="dashboard">Залы</button>
+      <button class="tab" data-tab="bookings">Брони</button>
+      <button class="tab" data-tab="clients">Клиенты</button>
       <button class="tab" data-tab="history">История</button>
       <button class="tab" data-tab="journal">Журнал</button>
       <button class="tab" data-tab="reports" data-admin hidden>Отчёты</button>
       <button class="tab" data-tab="tariffs" data-admin hidden>Тарифы</button>
+      <button class="tab" data-tab="menu" data-admin hidden>Бар</button>
       <button class="tab" data-tab="users" data-admin hidden>Сотрудники</button>
       <button class="tab" data-tab="settings" data-admin hidden>Настройки</button>
     </nav>
@@ -41,7 +44,7 @@
     <section id="tab-history" class="tab-panel" hidden>
       <table class="data-table">
         <thead>
-          <tr><th>Стол</th><th>Тариф</th><th>Начало</th><th>Конец</th><th>Длительность</th><th>Итог, ₽</th><th>Кассир</th></tr>
+          <tr><th>Стол</th><th>Тариф</th><th>Начало</th><th>Длительность</th><th>Бар, ₽</th><th>Итог, ₽</th><th>Оплата</th><th>Кассир</th><th></th></tr>
         </thead>
         <tbody id="history-rows"></tbody>
       </table>
@@ -70,17 +73,177 @@
         <input id="new-tariff-price" type="number" placeholder="₽/час" required min="1" step="1">
         <button type="submit">Добавить тариф</button>
       </form>
+
+      <div class="settings-card" style="margin-top:24px">
+        <h3>Расписание тарифов</h3>
+        <p class="hint">
+          Система сама подставит тариф при открытии стола по дню недели и
+          времени (пояс клуба — в «Настройках»). Кассир может выбрать другой
+          тариф вручную. Интервал «через полночь» (например 22:00–08:00)
+          относится ко дню начала.
+        </p>
+        <table class="data-table">
+          <thead>
+            <tr><th>Тариф</th><th>Дни</th><th>Время</th><th></th></tr>
+          </thead>
+          <tbody id="rule-rows"></tbody>
+        </table>
+        <p id="rules-empty" class="empty" hidden>Правил нет — тариф выбирается вручную.</p>
+        <div class="settings-grid" style="margin-top:16px">
+          <label class="field">Тариф
+            <select id="rule-tariff"></select>
+          </label>
+          <label class="field">Дни недели
+            <div id="rule-days" class="days-picker"></div>
+          </label>
+          <label class="field">С
+            <input id="rule-start" type="time" value="10:00">
+          </label>
+          <label class="field">До
+            <input id="rule-end" type="time" value="22:00">
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="add-rule-btn" class="primary">Добавить правило</button>
+        </div>
+      </div>
     </section>
+    <section id="tab-bookings" class="tab-panel" hidden>
+      <div class="settings-card">
+        <h3>Новая бронь</h3>
+        <div class="settings-grid">
+          <label class="field">Стол
+            <select id="booking-table"></select>
+          </label>
+          <label class="field">Дата и время
+            <input id="booking-start" type="datetime-local">
+          </label>
+          <label class="field">Длительность
+            <select id="booking-duration">
+              <option value="30">30 минут</option>
+              <option value="60" selected>1 час</option>
+              <option value="90">1.5 часа</option>
+              <option value="120">2 часа</option>
+              <option value="180">3 часа</option>
+            </select>
+          </label>
+          <label class="field">Имя клиента
+            <input id="booking-name" type="text" maxlength="100">
+          </label>
+          <label class="field">Телефон
+            <input id="booking-phone" type="tel" maxlength="30">
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="add-booking-btn" class="primary">Забронировать</button>
+        </div>
+      </div>
+      <div class="settings-card">
+        <h3>Актуальные брони</h3>
+        <table class="data-table">
+          <thead>
+            <tr><th>Стол</th><th>Начало</th><th>Длительность</th><th>Клиент</th><th>Телефон</th><th></th></tr>
+          </thead>
+          <tbody id="booking-rows"></tbody>
+        </table>
+        <p id="bookings-empty" class="empty" hidden>Броней нет.</p>
+      </div>
+    </section>
+
+    <section id="tab-clients" class="tab-panel" hidden>
+      <div class="settings-card">
+        <h3>Клиенты</h3>
+        <div class="settings-actions">
+          <input id="client-search" type="search" placeholder="Поиск по имени или телефону" class="search-input">
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Имя</th><th>Телефон</th><th>Скидка</th><th>Визитов</th><th data-admin hidden></th></tr>
+          </thead>
+          <tbody id="client-rows"></tbody>
+        </table>
+        <p id="clients-empty" class="empty" hidden>Клиентов пока нет.</p>
+      </div>
+      <div class="settings-card">
+        <h3>Новый клиент</h3>
+        <div class="settings-grid">
+          <label class="field">Имя
+            <input id="new-client-name" type="text" maxlength="100">
+          </label>
+          <label class="field">Телефон
+            <input id="new-client-phone" type="tel" maxlength="30">
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="add-client-btn" class="primary">Добавить клиента</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-menu" class="tab-panel" hidden>
+      <div class="settings-card">
+        <h3>Меню бара</h3>
+        <table class="data-table">
+          <thead>
+            <tr><th>Название</th><th>Категория</th><th>Цена, ₽</th><th>Статус</th><th>Действия</th></tr>
+          </thead>
+          <tbody id="menu-rows"></tbody>
+        </table>
+      </div>
+      <div class="settings-card">
+        <h3>Новая позиция</h3>
+        <div class="settings-grid">
+          <label class="field">Название
+            <input id="new-menu-name" type="text" maxlength="100">
+          </label>
+          <label class="field">Категория
+            <input id="new-menu-category" type="text" maxlength="50" placeholder="Напитки, Закуски…">
+          </label>
+          <label class="field">Цена, ₽
+            <input id="new-menu-price" type="number" min="1" step="1">
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="add-menu-btn" class="primary">Добавить позицию</button>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-reports" class="tab-panel" hidden>
       <div class="settings-card">
         <h3>Кассовые смены</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead>
-            <tr><th>Кассир</th><th>Открыта</th><th>Закрыта</th><th>Сеансов</th><th>Выручка, ₽</th></tr>
+            <tr><th>Кассир</th><th>Открыта</th><th>Закрыта</th><th>Сеансов</th><th>Выручка, ₽</th><th>Нал / Карта / Перевод</th><th>Касса: сдано / расчёт</th><th>Расхождение</th></tr>
           </thead>
           <tbody id="shift-rows"></tbody>
         </table>
+        </div>
         <p id="shifts-empty" class="empty" hidden>Смен пока не было.</p>
+      </div>
+      <div class="settings-card">
+        <h3>Выручка по дням</h3>
+        <div class="settings-actions">
+          <label class="field">Период
+            <select id="revenue-days">
+              <option value="7" selected>7 дней</option>
+              <option value="14">14 дней</option>
+              <option value="30">30 дней</option>
+              <option value="90">90 дней</option>
+            </select>
+          </label>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>День</th><th>Сеансов</th><th>Наличные</th><th>Карта</th><th>Перевод</th><th>Итого, ₽</th><th style="width:26%"></th></tr>
+          </thead>
+          <tbody id="revenue-rows"></tbody>
+        </table>
+        <p id="revenue-empty" class="empty" hidden>Закрытых сеансов за период нет.</p>
+        <h3 style="margin-top:22px">Пиковые часы</h3>
+        <p class="hint">Число открытых сеансов по часам суток за выбранный период.</p>
+        <div id="hours-chart" class="hours-chart"></div>
       </div>
       <div class="settings-card">
         <h3>Нагруженность столов</h3>
@@ -140,6 +303,42 @@
 
     <section id="tab-settings" class="tab-panel" hidden>
       <div class="settings-card">
+        <h3>Клуб</h3>
+        <div class="settings-grid">
+          <label class="field">Название клуба
+            <input id="set-club-name" type="text" maxlength="100">
+          </label>
+          <label class="field">Округление итога
+            <select id="set-rounding">
+              <option value="1">Без округления</option>
+              <option value="100">До рубля</option>
+              <option value="1000">До 10 ₽</option>
+            </select>
+          </label>
+          <label class="field">Минимальное время сеанса, минут
+            <input id="set-min-minutes" type="number" min="0" max="240" step="5">
+          </label>
+          <label class="field">Часовой пояс клуба
+            <select id="set-tz">
+              <option value="120">Калининград (UTC+2)</option>
+              <option value="180">Москва (UTC+3)</option>
+              <option value="240">Самара (UTC+4)</option>
+              <option value="300">Екатеринбург (UTC+5)</option>
+              <option value="360">Омск (UTC+6)</option>
+              <option value="420">Красноярск (UTC+7)</option>
+              <option value="480">Иркутск (UTC+8)</option>
+              <option value="540">Якутск (UTC+9)</option>
+              <option value="600">Владивосток (UTC+10)</option>
+              <option value="660">Магадан (UTC+11)</option>
+              <option value="720">Камчатка (UTC+12)</option>
+            </select>
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="save-club-btn" class="primary">Сохранить настройки клуба</button>
+        </div>
+      </div>
+      <div class="settings-card">
         <h3>Управление светом — реле Tuya / MOES</h3>
         <p class="hint">
           Ключи берутся из облачного проекта на
@@ -195,6 +394,10 @@
     </section>
   </main>
 
+  <div id="modal-overlay" class="modal-overlay" hidden>
+    <div id="modal" class="modal"></div>
+  </div>
+  <datalist id="clients-datalist"></datalist>
   <div id="toast" class="toast" hidden></div>
   <script src="/static/app.js"></script>
 </body>

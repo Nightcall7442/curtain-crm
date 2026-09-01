@@ -15,6 +15,9 @@ export const JournalEvent = Object.freeze({
   USER_CREATED: "user_created",
   USER_UPDATED: "user_updated",
   SETTINGS_UPDATED: "settings_updated",
+  BOOKING_CREATED: "booking_created",
+  BOOKING_CANCELLED: "booking_cancelled",
+  CLIENT_CREATED: "client_created",
 });
 
 /**
