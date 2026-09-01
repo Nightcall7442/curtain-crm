@@ -1,4 +1,6 @@
 import {
+  areaM2FromCm,
+  CatalogKind,
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
   OrderItemKind,
@@ -7,7 +9,7 @@ import {
   Priority,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +23,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle } from '../components/Card';
+import { CatalogPicker } from '../components/CatalogPicker';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
@@ -36,23 +39,39 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * компьютеру ради ввода заказа — ровно тот шаг, из-за которого данные
  * попадают в систему вечером и по памяти.
  *
- * Форма НАМЕРЕННО короче панельной. Сервер требует всего три вещи: имя
- * клиента, телефон и хотя бы одну позицию; остальное необязательно и
- * дозаполняется в панели. Переносить на экран телефона все двадцать полей
- * позиции — верный способ, чтобы ей не пользовались.
+ * Позиция заказа здесь настолько же подробная, что и в веб-панели: продавец
+ * заполняет карниз, тюль, антимоскитную сетку и аксессуары на месте, у
+ * клиента, — а не восстанавливает их по памяти вечером за компьютером.
  *
  * Филиал не спрашивается: сервер берёт основной филиал сотрудника. Если он
  * не задан, придёт понятный отказ — выдумывать выбор из филиалов, к которым
  * продавец не привязан, незачем.
  */
 
+/** Один аксессуар позиции: держатель, султанчик, бубон, сачак и т.д. */
+interface AccessoryDraft {
+  readonly id: number;
+  readonly name: string;
+  readonly quantity: string;
+  readonly code: string;
+}
+
+const emptyAccessory = (id: number): AccessoryDraft => ({ id, name: '', quantity: '1', code: '' });
+
 /** Позиция заказа в форме. Идентификатор нужен только для ключа списка. */
 interface DraftItem {
   readonly id: number;
   readonly kind: OrderItemKind;
   readonly model: string;
-  readonly dimensions: string;
+  readonly heightCm: string;
+  readonly widthCm: string;
   readonly quantity: string;
+  /** Код карниза/тюля с этикетки — справочника для них нет. */
+  readonly cornice: string;
+  readonly corniceRotation: string;
+  readonly tulle: string;
+  readonly hasProtection: boolean;
+  readonly accessories: readonly AccessoryDraft[];
   readonly comment: string;
 }
 
@@ -60,8 +79,14 @@ const emptyItem = (id: number): DraftItem => ({
   id,
   kind: OrderItemKind.WINDOW,
   model: '',
-  dimensions: '',
+  heightCm: '',
+  widthCm: '',
   quantity: '1',
+  cornice: '',
+  corniceRotation: '',
+  tulle: '',
+  hasProtection: false,
+  accessories: [],
   comment: '',
 });
 
@@ -80,6 +105,33 @@ export function OrderCreateScreen(): ReactElement {
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [showErrors, setShowErrors] = useState(false);
 
+  const catalog = trpc.catalog.list.useQuery({});
+
+  /** Справочники, сгруппированные по виду — как в веб-панели. */
+  const byKind = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of catalog.data ?? []) {
+      const bucket = map.get(entry.kind) ?? [];
+      bucket.push(entry.name);
+      map.set(entry.kind, bucket);
+    }
+    return map;
+  }, [catalog.data]);
+
+  /**
+   * Аксессуары — из двух справочников сразу: «Сачак» такой же аксессуар,
+   * как держатель или бубон, просто из другого списка (как в веб-панели).
+   */
+  const accessoryOptions = useMemo(() => {
+    const names = new Set([
+      ...(byKind.get(CatalogKind.ACCESSORY) ?? []),
+      ...(byKind.get(CatalogKind.SACHAK) ?? []),
+    ]);
+    return Array.from(names);
+  }, [byKind]);
+
+  const modelOptions = byKind.get(CatalogKind.CURTAIN_MODEL) ?? [];
+
   const create = trpc.orders.create.useMutation({
     async onSuccess(order) {
       await utils.orders.list.invalidate();
@@ -95,6 +147,25 @@ export function OrderCreateScreen(): ReactElement {
   const updateItem = (id: number, patch: Partial<DraftItem>): void => {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  };
+
+  const updateAccessory = (
+    itemId: number,
+    accessoryId: number,
+    patch: Partial<AccessoryDraft>,
+  ): void => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id !== itemId
+          ? item
+          : {
+              ...item,
+              accessories: item.accessories.map((accessory) =>
+                accessory.id === accessoryId ? { ...accessory, ...patch } : accessory,
+              ),
+            },
+      ),
     );
   };
 
@@ -117,7 +188,23 @@ export function OrderCreateScreen(): ReactElement {
         kind: item.kind,
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
-        ...(item.dimensions.trim() === '' ? {} : { dimensions: item.dimensions.trim() }),
+        ...(item.heightCm.trim() !== '' && item.widthCm.trim() !== ''
+          ? {
+              heightCm: Number.parseFloat(item.heightCm.replace(',', '.')),
+              widthCm: Number.parseFloat(item.widthCm.replace(',', '.')),
+            }
+          : {}),
+        ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
+        ...(item.corniceRotation.trim() === '' ? {} : { corniceRotation: item.corniceRotation.trim() }),
+        ...(item.tulle.trim() === '' ? {} : { tulle: item.tulle.trim() }),
+        hasProtection: item.hasProtection,
+        accessories: item.accessories
+          .filter((accessory) => accessory.name.trim() !== '')
+          .map((accessory) => ({
+            name: accessory.name.trim(),
+            quantity: Math.max(1, Number.parseInt(accessory.quantity, 10) || 1),
+            code: accessory.code.trim() === '' ? null : accessory.code.trim(),
+          })),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
       })),
     });
@@ -219,90 +306,238 @@ export function OrderCreateScreen(): ReactElement {
           </View>
         </Card>
 
-        {items.map((item, index) => (
-          <Card key={item.id}>
-            <CardTitle
-              title={`Позиция ${(index + 1).toString()}`}
-              icon="window"
-              action={
-                items.length > 1 ? (
+        {items.map((item, index) => {
+          const widthNum = Number.parseFloat(item.widthCm.replace(',', '.'));
+          const heightNum = Number.parseFloat(item.heightCm.replace(',', '.'));
+          const area =
+            Number.isFinite(widthNum) && Number.isFinite(heightNum) && widthNum > 0 && heightNum > 0
+              ? areaM2FromCm(widthNum, heightNum)
+              : null;
+
+          return (
+            <Card key={item.id}>
+              <CardTitle
+                title={`Позиция ${(index + 1).toString()}`}
+                icon="window"
+                action={
+                  items.length > 1 ? (
+                    <Pressable
+                      onPress={() => {
+                        setItems((current) => current.filter((entry) => entry.id !== item.id));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Удалить позицию ${(index + 1).toString()}`}
+                      hitSlop={8}
+                    >
+                      {({ pressed }) => (
+                        <Text style={[styles.remove, pressed ? styles.pressed : null]}>Удалить</Text>
+                      )}
+                    </Pressable>
+                  ) : undefined
+                }
+              />
+
+              <Field label="Что шьём">
+                <ChipSelect
+                  value={item.kind}
+                  onChange={(kind) => {
+                    updateItem(item.id, { kind });
+                  }}
+                  options={ORDER_ITEM_KINDS.map((value) => ({
+                    value,
+                    label: t(ORDER_ITEM_KIND_LABELS, value),
+                  }))}
+                />
+              </Field>
+
+              <Field label="Модель">
+                <CatalogPicker
+                  value={item.model}
+                  placeholder="Не выбрана"
+                  options={modelOptions}
+                  sheetTitle="Модель"
+                  onChange={(model) => {
+                    updateItem(item.id, { model });
+                  }}
+                />
+              </Field>
+
+              <View style={styles.money}>
+                <View style={styles.moneyItem}>
+                  <Field label="Высота, см">
+                    <Input
+                      value={item.heightCm}
+                      onChangeText={(heightCm) => {
+                        updateItem(item.id, { heightCm });
+                      }}
+                      keyboardType="numeric"
+                      placeholder="200"
+                    />
+                  </Field>
+                </View>
+                <View style={styles.moneyItem}>
+                  <Field
+                    label="Ширина, см"
+                    hint={area === null ? undefined : `Площадь: ${area.toFixed(2)} м²`}
+                  >
+                    <Input
+                      value={item.widthCm}
+                      onChangeText={(widthCm) => {
+                        updateItem(item.id, { widthCm });
+                      }}
+                      keyboardType="numeric"
+                      placeholder="150"
+                    />
+                  </Field>
+                </View>
+              </View>
+
+              <Field label="Количество">
+                <Input
+                  value={item.quantity}
+                  onChangeText={(quantity) => {
+                    updateItem(item.id, { quantity });
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="1"
+                />
+              </Field>
+
+              <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
+                <Input
+                  value={item.cornice}
+                  onChangeText={(cornice) => {
+                    updateItem(item.id, { cornice });
+                  }}
+                  placeholder="Например: К-104"
+                />
+              </Field>
+
+              <Field label="Поворот карниза">
+                <Input
+                  value={item.corniceRotation}
+                  onChangeText={(corniceRotation) => {
+                    updateItem(item.id, { corniceRotation });
+                  }}
+                  placeholder="Левый, правый, П-образный"
+                />
+              </Field>
+
+              <Field label="Тюль, код" hint="Код с этикетки — справочника нет">
+                <Input
+                  value={item.tulle}
+                  onChangeText={(tulle) => {
+                    updateItem(item.id, { tulle });
+                  }}
+                  placeholder="Например: Т-22"
+                />
+              </Field>
+
+              <Pressable
+                onPress={() => {
+                  updateItem(item.id, { hasProtection: !item.hasProtection });
+                }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: item.hasProtection }}
+                style={styles.protectionRow}
+                hitSlop={4}
+              >
+                <View style={[styles.checkbox, item.hasProtection ? styles.checkboxChecked : null]}>
+                  {item.hasProtection && (
+                    <Icon name="completed" size={14} color={colors.onAccent} />
+                  )}
+                </View>
+                <Text style={styles.protectionLabel}>Нужна антимоскитная сетка</Text>
+              </Pressable>
+
+              <View style={styles.accessories}>
+                <View style={styles.accessoriesHeader}>
+                  <Text style={styles.accessoriesTitle}>Аксессуары</Text>
                   <Pressable
                     onPress={() => {
-                      setItems((current) => current.filter((entry) => entry.id !== item.id));
+                      const nextId =
+                        item.accessories.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
+                      updateItem(item.id, { accessories: [...item.accessories, emptyAccessory(nextId)] });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Удалить позицию ${(index + 1).toString()}`}
                     hitSlop={8}
                   >
                     {({ pressed }) => (
-                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>Удалить</Text>
+                      <Text style={[styles.addAccessory, pressed ? styles.pressed : null]}>
+                        + Добавить
+                      </Text>
                     )}
                   </Pressable>
-                ) : undefined
-              }
-            />
+                </View>
 
-            <Field label="Что шьём">
-              <ChipSelect
-                value={item.kind}
-                onChange={(kind) => {
-                  updateItem(item.id, { kind });
-                }}
-                options={ORDER_ITEM_KINDS.map((value) => ({
-                  value,
-                  label: t(ORDER_ITEM_KIND_LABELS, value),
-                }))}
-              />
-            </Field>
-
-            <Field label="Модель">
-              <Input
-                value={item.model}
-                onChangeText={(model) => {
-                  updateItem(item.id, { model });
-                }}
-                placeholder="Например, «Римская штора»"
-              />
-            </Field>
-
-            <View style={styles.money}>
-              <View style={styles.moneyItem}>
-                <Field label="Размер" hint="Ширина на высоту, см">
-                  <Input
-                    value={item.dimensions}
-                    onChangeText={(dimensions) => {
-                      updateItem(item.id, { dimensions });
-                    }}
-                    placeholder="150x200"
-                  />
-                </Field>
+                {item.accessories.length === 0 ? (
+                  <Text style={styles.accessoriesHint}>
+                    Держатели, султанчики, бубоны, обхваты, сачак — по одному, с количеством и кодом
+                  </Text>
+                ) : (
+                  item.accessories.map((accessory) => (
+                    <View key={accessory.id} style={styles.accessoryRow}>
+                      <View style={styles.accessoryName}>
+                        <CatalogPicker
+                          value={accessory.name}
+                          placeholder="Аксессуар"
+                          options={accessoryOptions}
+                          sheetTitle="Аксессуар"
+                          onChange={(name) => {
+                            updateAccessory(item.id, accessory.id, { name });
+                          }}
+                        />
+                      </View>
+                      <View style={styles.accessoryQuantity}>
+                        <Input
+                          value={accessory.quantity}
+                          onChangeText={(quantity) => {
+                            updateAccessory(item.id, accessory.id, { quantity });
+                          }}
+                          keyboardType="number-pad"
+                          placeholder="1"
+                        />
+                      </View>
+                      <View style={styles.accessoryCode}>
+                        <Input
+                          value={accessory.code}
+                          onChangeText={(code) => {
+                            updateAccessory(item.id, accessory.id, { code });
+                          }}
+                          placeholder="Код"
+                        />
+                      </View>
+                      <Pressable
+                        onPress={() => {
+                          updateItem(item.id, {
+                            accessories: item.accessories.filter((entry) => entry.id !== accessory.id),
+                          });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Удалить аксессуар"
+                        hitSlop={8}
+                        style={styles.accessoryRemove}
+                      >
+                        <Icon name="remove" size={18} color={colors.danger} />
+                      </Pressable>
+                    </View>
+                  ))
+                )}
               </View>
-              <View style={styles.quantityItem}>
-                <Field label="Кол-во">
-                  <Input
-                    value={item.quantity}
-                    onChangeText={(quantity) => {
-                      updateItem(item.id, { quantity });
-                    }}
-                    keyboardType="number-pad"
-                    placeholder="1"
-                  />
-                </Field>
-              </View>
-            </View>
 
-            <Field label="Комментарий">
-              <Input
-                value={item.comment}
-                onChangeText={(comment) => {
-                  updateItem(item.id, { comment });
-                }}
-                placeholder="Что важно помнить по этой позиции"
-                multiline
-              />
-            </Field>
-          </Card>
-        ))}
+              <Field label="Комментарий">
+                <Input
+                  value={item.comment}
+                  onChangeText={(comment) => {
+                    updateItem(item.id, { comment });
+                  }}
+                  placeholder="Что важно помнить по этой позиции"
+                  multiline
+                />
+              </Field>
+            </Card>
+          );
+        })}
 
         <Pressable
           onPress={() => {
@@ -404,15 +639,79 @@ const styles = StyleSheet.create({
   moneyItem: {
     flex: 1,
   },
-  quantityItem: {
-    width: 96,
-  },
   remove: {
     ...typography.caption,
     color: colors.danger,
   },
   pressed: {
     opacity: opacity.pressed,
+  },
+  protectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: radius.sm,
+    borderWidth: hairline * 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  protectionLabel: {
+    ...typography.caption,
+    color: colors.textPrimary,
+  },
+  accessories: {
+    marginBottom: spacing.lg,
+  },
+  accessoriesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  accessoriesTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  addAccessory: {
+    ...typography.caption,
+    color: colors.accentStrong,
+    fontWeight: '600',
+    marginLeft: 'auto',
+  },
+  accessoriesHint: {
+    ...typography.footnote,
+    color: colors.textMuted,
+  },
+  accessoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  accessoryName: {
+    flex: 1,
+  },
+  accessoryQuantity: {
+    width: 56,
+  },
+  accessoryCode: {
+    width: 84,
+  },
+  accessoryRemove: {
+    width: 32,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addItem: {
     flexDirection: 'row',

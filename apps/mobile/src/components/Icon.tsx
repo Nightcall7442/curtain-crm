@@ -60,6 +60,7 @@ export type IconName =
   | 'window'
   | 'priority'
   | 'logout'
+  | 'remove'
   /* Состояния и события уведомлений */
   | 'assigned'
   | 'statusChanged'
@@ -104,6 +105,7 @@ const GLYPHS: Readonly<Record<IconName, IoniconName>> = {
   window: 'grid',
   priority: 'flash',
   logout: 'log-out',
+  remove: 'trash-outline',
 
   assigned: 'add-circle',
   statusChanged: 'swap-horizontal',
