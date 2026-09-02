@@ -36,6 +36,7 @@ import {
 import {
   ORDER_STATUS_LABELS_RU,
   OrderStatus,
+  OrderType,
   Role,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -501,6 +502,137 @@ async function run(db: Database): Promise<void> {
   check(
     'history: у отклонения сохранена причина',
     history.some((entry) => entry.toStatus === OrderStatus.QC_FAILED && entry.comment !== null),
+  );
+
+  /* ------------------ 3a. Готовые шторы: продажа мимо цеха --------------- */
+
+  /*
+   * Таблица переходов — чистая функция, и то, что у готовых штор есть свои
+   * два перехода, уже проверено юнит-тестом. Здесь проверяется другое, чего
+   * без базы не проверить: `changeOrderStatus` читает `order_type` ИЗ СТРОКИ
+   * заказа (`SELECT ... FOR UPDATE`), а не получает его аргументом, — и
+   * значит короткая дорога открывается ровно тем заказам, у которых этот тип
+   * действительно записан, а не тем, кому его приписал вызывающий код.
+   *
+   * Обратная половина проверки важнее прямой: у колонки `order_type`
+   * умолчание `custom`, и обычный пошив обязан упереться в те же переходы
+   * как в несуществующие. Пока это держится только на умолчании колонки,
+   * ошибка в миграции открыла бы цеху дорогу в обход всех этапов молча.
+   */
+  const makeReadyMadeOrder = async (suffix: string, phone: string) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} Готовые ${suffix}`,
+        clientPhone: phone,
+        createdBy: seller.id,
+        orderType: OrderType.READY_MADE,
+        workPrice: '900000.00',
+      })
+      .returning();
+
+    if (row === undefined) throw new Error(`заказ готовых штор (${suffix}) не создан`);
+    return row;
+  };
+
+  const readyDirect = await makeReadyMadeOrder('прямая', '+998901112244');
+  check(
+    'ready_made: тип заказа сохранён в базе',
+    readyDirect.orderType === OrderType.READY_MADE,
+    readyDirect.orderType,
+  );
+
+  await db.transaction(async (tx) => {
+    await changeOrderStatus(tx, {
+      orderId: readyDirect.id,
+      toStatus: OrderStatus.COMPLETED,
+      actor: sellerActor,
+      comment: 'Продано без установки',
+    });
+  });
+
+  const [soldDirect] = await db.select().from(orders).where(eq(orders.id, readyDirect.id));
+  check(
+    'ready_made: продажа без установки закрывает заказ сразу',
+    soldDirect?.status === OrderStatus.COMPLETED,
+    soldDirect?.status ?? 'null',
+  );
+  check('ready_made: completed_at проставлен', soldDirect?.completedAt != null);
+
+  const readyHistory = await db
+    .select()
+    .from(orderStatusHistory)
+    .where(eq(orderStatusHistory.orderId, readyDirect.id));
+
+  check(
+    'ready_made: скачок мимо цеха записан в историю',
+    readyHistory.some(
+      (entry) => entry.fromStatus === OrderStatus.NEW && entry.toStatus === OrderStatus.COMPLETED,
+    ),
+    `${readyHistory.length.toString()} записей`,
+  );
+
+  const readyInstall = await makeReadyMadeOrder('с установкой', '+998901112255');
+
+  await db.transaction(async (tx) => {
+    await changeOrderStatus(tx, {
+      orderId: readyInstall.id,
+      toStatus: OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+      actor: sellerActor,
+      comment: 'Продано, требуется установка',
+    });
+  });
+
+  const [sentToInstall] = await db.select().from(orders).where(eq(orders.id, readyInstall.id));
+  check(
+    'ready_made: продажа с установкой уходит на назначение установщика',
+    sentToInstall?.status === OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+    sentToInstall?.status ?? 'null',
+  );
+
+  const [customDraft] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Пошив без обхода`,
+      clientPhone: '+998901112266',
+      createdBy: seller.id,
+    })
+    .returning();
+
+  if (customDraft === undefined) throw new Error('заказ пошива не создан');
+
+  check(
+    'ready_made: у заказа без явного типа умолчание — пошив',
+    customDraft.orderType === OrderType.CUSTOM,
+    customDraft.orderType,
+  );
+
+  await expectRejectedWith(
+    'ready_made: пошиву переход «Новый → Выполнен» недоступен',
+    () =>
+      db.transaction(async (tx) => {
+        await changeOrderStatus(tx, {
+          orderId: customDraft.id,
+          toStatus: OrderStatus.COMPLETED,
+          actor: adminActor,
+        });
+      }),
+    (message) => message.includes('нельзя перейти'),
+  );
+
+  await expectRejectedWith(
+    'ready_made: пошив не перепрыгивает цех к установке',
+    () =>
+      db.transaction(async (tx) => {
+        await changeOrderStatus(tx, {
+          orderId: customDraft.id,
+          toStatus: OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+          actor: adminActor,
+        });
+      }),
+    (message) => message.includes('нельзя перейти'),
   );
 
   /* --------------------------- 4. Смены ---------------------------------- */
