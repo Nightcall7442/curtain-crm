@@ -13,7 +13,10 @@ FROM node:22-alpine
 
 # `tini` как PID 1: без него Node не получает SIGTERM от `docker stop`
 # и контейнер убивается по таймауту, не закрыв пул подключений к БД.
-RUN apk add --no-cache tini
+#
+# `su-exec` нужен точке входа: она стартует от root, чтобы выставить права
+# на смонтированный том, и тут же спускается к пользователю `node`.
+RUN apk add --no-cache tini su-exec
 
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
@@ -36,13 +39,18 @@ RUN pnpm install --frozen-lockfile --filter @curtain-crm/api...
 COPY packages/ packages/
 COPY apps/api/ apps/api/
 
-# Каталог хранилища создаём заранее и отдаём пользователю `node`: в compose
-# сюда монтируется том, и без прав на запись первая же загрузка фото упадёт.
+# Каталог хранилища создаётся заранее — но одного этого мало: платформа
+# монтирует том ПОВЕРХ него уже после сборки, со своим владельцем, и права
+# отсюда до рабочего каталога не доживают. Настоящий `chown` делает точка
+# входа, единственное место, которое выполняется после монтирования.
 RUN mkdir -p /app/storage && chown -R node:node /app/storage
 
-# Не от root: процесс, до которого дотягивается загрузка файлов из интернета,
-# не должен иметь права хозяйничать в контейнере.
-USER node
+COPY apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# `USER node` здесь НЕТ намеренно: контейнер стартует от root, чтобы точка
+# входа могла выставить права на том, и сразу спускается к `node` через
+# `su-exec`. Приложение root'ом не выполняется ни секунды.
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
@@ -55,7 +63,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 # API запускается через `tsx`, как и локально: рабочие пакеты монорепозитория
 # подключены исходниками (`"main": "./src/index.ts"`), и компиляция API
