@@ -50,6 +50,20 @@
       "when": 1788280963560,
       "tag": "0006_orange_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788359708003,
+      "tag": "0007_scheme_type_per_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788359792999,
+      "tag": "0008_superb_ultimates",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   calculateHourly,
   calculateKpi,
   calculatePayroll,
+  calculatePerOrder,
   payableRoles,
   type PayrollInputs,
   type PayrollSchemeParams,
@@ -184,6 +185,48 @@ describe('calculateCommission', () => {
   });
 });
 
+describe('calculatePerOrder', () => {
+  const perOrderScheme = scheme({
+    type: PayrollSchemeType.PER_ORDER,
+    rate: parseMoney('50000'),
+  });
+
+  it('платит ставку за каждый закрытый заказ', () => {
+    const result = calculatePerOrder(perOrderScheme, inputs({ completedOrders: 7 }));
+
+    expect(result.amount).toBe(parseMoney('350000'));
+  });
+
+  /*
+   * Главное отличие от `commission` и причина, по которой тип вообще
+   * появился: владелец не хотел, чтобы продавец боролся за крупный заказ
+   * вместо того, чтобы вести каждый. Проверяем именно это — сумма заказов
+   * на начисление не влияет.
+   */
+  it('не зависит от суммы заказов', () => {
+    const cheap = calculatePerOrder(
+      perOrderScheme,
+      inputs({ completedOrders: 3, completedOrdersAmount: parseMoney('900000') }),
+    );
+    const expensive = calculatePerOrder(
+      perOrderScheme,
+      inputs({ completedOrders: 3, completedOrdersAmount: parseMoney('90000000') }),
+    );
+
+    expect(cheap.amount).toBe(expensive.amount);
+  });
+
+  it('без закрытых заказов начисления нет', () => {
+    expect(calculatePerOrder(perOrderScheme, NO_INPUTS).amount).toBe(0);
+  });
+
+  it('падает, если ставка не задана', () => {
+    expect(() =>
+      calculatePerOrder(scheme({ type: PayrollSchemeType.PER_ORDER }), NO_INPUTS),
+    ).toThrow(TRPCError);
+  });
+});
+
 describe('calculatePayroll', () => {
   it('направляет расчёт в функцию, соответствующую типу схемы', () => {
     expect(calculatePayroll(scheme({ baseAmount: parseMoney('100') }), NO_INPUTS).amount).toBe(
@@ -196,6 +239,13 @@ describe('calculatePayroll', () => {
         inputs({ workedHours: 2 }),
       ).amount,
     ).toBe(parseMoney('2000'));
+
+    expect(
+      calculatePayroll(
+        scheme({ type: PayrollSchemeType.PER_ORDER, rate: parseMoney('50000') }),
+        inputs({ completedOrders: 2 }),
+      ).amount,
+    ).toBe(parseMoney('100000'));
   });
 });
 

@@ -19,11 +19,16 @@ import { payrollRecordStatusEnum, payrollSchemeTypeEnum, roleEnum } from './enum
 import { users } from './users.schema';
 
 /**
- * Схемы начисления зарплаты — по одной активной на роль.
+ * Схемы начисления зарплаты — по одной активной на пару «сотрудник + роль».
  *
- * Схема настраивается данными, а не кодом: добавить новую модель оплаты для
- * роли можно из веб-панели, не трогая `payroll.service.ts`. Сотрудник с
- * несколькими ролями получает начисление по каждой своей схеме отдельно.
+ * Схема принадлежит человеку, а не должности: опытная швея и новенькая
+ * работают в одной роли, но на разных условиях, и раньше эта разница
+ * не выражалась ничем — схема была одна на всю роль.
+ *
+ * Роль в схеме осталась: у сотрудника с двумя ролями две схемы, и в расчёте
+ * видно, сколько принесла каждая. Схема настраивается данными, а не кодом:
+ * условия конкретного человека меняются из веб-панели, `payroll.service.ts`
+ * при этом не трогают.
  *
  * Набор обязательных полей зависит от `type` — все поля nullable, а
  * согласованность обеспечивают check-констрейнт ниже и
@@ -33,6 +38,12 @@ export const payrollSchemes = pgTable(
   'payroll_schemes',
   {
     id: serial('id').primaryKey(),
+
+    // restrict: схема — первичный документ расчёта, и сотрудников система
+    // не удаляет (увольнение — это деактивация).
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
 
     role: roleEnum('role').notNull(),
     type: payrollSchemeTypeEnum('type').notNull(),
@@ -61,12 +72,28 @@ export const payrollSchemes = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    // Активная схема у роли ровно одна — иначе расчёт стал бы недетерминированным.
-    uniqueIndex('payroll_schemes_single_active_per_role')
-      .on(table.role)
+    /*
+      Активная схема у пары «сотрудник + роль» ровно одна.
+
+      Раньше индекс стоял на одной роли, и это было то же правило, только
+      для всей роли сразу. Теперь у каждого свои условия, но двух активных
+      схем на одну его роль по-прежнему быть не может — иначе расчёт стал бы
+      недетерминированным: неизвестно, по какой ставке считать.
+    */
+    uniqueIndex('payroll_schemes_single_active_per_user_role')
+      .on(table.userId, table.role)
       .where(sql`${table.isActive}`),
+    index('payroll_schemes_user_idx').on(table.userId, table.effectiveFrom),
     index('payroll_schemes_role_idx').on(table.role, table.effectiveFrom),
 
+    /*
+      Ветка `per_order` сравнивает тип КАК ТЕКСТ, остальные — как значение
+      перечисления. Это не небрежность: `per_order` добавлен в тип отдельной
+      миграцией, а PostgreSQL запрещает использовать свежее значение enum в
+      той же транзакции, где оно заведено (55P04). Drizzle применяет все
+      миграции одной транзакцией, поэтому литерал здесь пришлось увести
+      из-под проверки типа — приведение к тексту делает ровно это.
+    */
     check(
       'payroll_schemes_fields_match_type',
       sql`(${table.type} = 'fixed' and ${table.baseAmount} is not null)
@@ -74,7 +101,8 @@ export const payrollSchemes = pgTable(
        or (${table.type} = 'kpi' and ${table.baseAmount} is not null
             and ${table.rate} is not null
             and ${table.kpiTarget} is not null and ${table.kpiTarget} > 0)
-       or (${table.type} = 'commission' and ${table.commissionPercent} is not null)`,
+       or (${table.type} = 'commission' and ${table.commissionPercent} is not null)
+       or (${table.type}::text = 'per_order' and ${table.rate} is not null)`,
     ),
     check(
       'payroll_schemes_amounts_non_negative',

@@ -369,18 +369,16 @@ export default function PayrollPage(): ReactElement {
 
       <Card>
         <CardHeader
-          title="Схемы начисления по ролям"
+          title="Условия оплаты сотрудников"
           action={
-            isCeo && (
-              <Button
-                onClick={() => {
-                  setSchemeOpen(true);
-                }}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
-                Настроить схему
-              </Button>
-            )
+            <Button
+              onClick={() => {
+                setSchemeOpen(true);
+              }}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+              Настроить условия
+            </Button>
           }
         />
         <CardBody>
@@ -390,9 +388,10 @@ export default function PayrollPage(): ReactElement {
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {(schemes.data ?? []).map((scheme) => (
                 <li key={scheme.id} className="rounded border border-subtle bg-base/40 p-3">
-                  <p className="text-caption font-medium text-primary">
-                    {ROLE_LABELS_RU[scheme.role]}
+                  <p className="truncate text-caption font-medium text-primary" title={scheme.userFullName}>
+                    {scheme.userFullName}
                   </p>
+                  <p className="text-footnote text-muted">{ROLE_LABELS_RU[scheme.role]}</p>
                   <p className="mt-0.5 text-footnote text-accent">
                     {PAYROLL_SCHEME_TYPE_LABELS_RU[scheme.type]}
                   </p>

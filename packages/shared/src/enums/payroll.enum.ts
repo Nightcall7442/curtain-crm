@@ -5,14 +5,23 @@ import type { Translated } from '../i18n/locale';
 /**
  * Типы схем начисления зарплаты.
  *
- * Схема привязана к роли, а не к сотруднику: у мастера-замерщика может быть
- * процент от заказа, у швеи — сдельная ставка, у админа — оклад. Один сотрудник
- * с несколькими ролями получает начисление по каждой своей схеме.
+ * Схема принадлежит КОНКРЕТНОМУ сотруднику в конкретной его роли: у опытной
+ * швеи ставка выше, чем у новенькой, хотя роль одна. Раньше схема была одна
+ * на всю роль, и разница в опыте не выражалась вовсе.
+ *
+ * Роль в схеме остаётся: у человека с двумя ролями две схемы, и в расчёте
+ * видно, сколько принесла каждая — замер отдельно, пошив отдельно.
  *
  * Набор обязательных полей зависит от типа — см. `payroll.service.ts`, где на
  * каждый тип написана отдельная чистая функция расчёта.
  */
-export const PAYROLL_SCHEME_TYPES = ['fixed', 'hourly', 'kpi', 'commission'] as const;
+export const PAYROLL_SCHEME_TYPES = [
+  'fixed',
+  'hourly',
+  'kpi',
+  'commission',
+  'per_order',
+] as const;
 
 export type PayrollSchemeType = (typeof PAYROLL_SCHEME_TYPES)[number];
 
@@ -23,8 +32,16 @@ export const PayrollSchemeType = {
   HOURLY: 'hourly',
   /** Оклад + премия за выполнение KPI: `base_amount` + `rate` * (факт / `kpi_target`). */
   KPI: 'kpi',
-  /** Процент от суммы закрытых заказов: `commission_percent`. */
+  /**
+   * Процент от суммы закрытых заказов: `commission_percent`.
+   *
+   * Оставлен как возможность, но продавцу по решению владельца назначается
+   * `per_order`: процент от суммы заставлял торговаться за крупный заказ,
+   * а не за каждый.
+   */
   COMMISSION: 'commission',
+  /** Фиксированная сумма (`rate`) за каждый закрытый заказ сотрудника. */
+  PER_ORDER: 'per_order',
 } as const satisfies Record<string, PayrollSchemeType>;
 
 export const payrollSchemeTypeSchema = z.enum(PAYROLL_SCHEME_TYPES);
@@ -35,12 +52,14 @@ export const PAYROLL_SCHEME_TYPE_LABELS: Translated<PayrollSchemeType> = {
     hourly: 'Почасовая',
     kpi: 'Оклад + KPI',
     commission: 'Процент от заказов',
+    per_order: 'Фикс за заказ',
   },
   uz: {
     fixed: 'Maosh',
     hourly: 'Soatbay',
     kpi: 'Maosh + KPI',
     commission: 'Buyurtmalardan foiz',
+    per_order: 'Har buyurtma uchun belgilangan summa',
   },
 };
 
@@ -57,6 +76,7 @@ export const PAYROLL_SCHEME_REQUIRED_FIELDS: Readonly<
   hourly: ['rate'],
   kpi: ['baseAmount', 'rate', 'kpiTarget'],
   commission: ['commissionPercent'],
+  per_order: ['rate'],
 };
 
 /* -------------------------------------------------------------------------- */

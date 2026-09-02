@@ -15,6 +15,7 @@ import {
   PayrollSchemeType,
   percentOfMoney,
   Role,
+  ROLE_LABELS_RU,
   sumMoney,
   type MoneyMinor,
   type PayrollSchemeType as PayrollSchemeTypeName,
@@ -196,6 +197,29 @@ export function calculateCommission(
 }
 
 /**
+ * Фиксированная сумма за каждый закрытый заказ.
+ *
+ * Отличается от `commission` тем, что не зависит от суммы заказа: продавец
+ * получает одинаково за дорогой и дешёвый. Так решил владелец — процент
+ * заставлял торговаться за крупный заказ вместо того, чтобы вести каждый.
+ */
+export function calculatePerOrder(
+  scheme: PayrollSchemeParams,
+  inputs: PayrollInputs,
+): PayrollCalculation {
+  if (scheme.rate === null) throw missingField(PayrollSchemeType.PER_ORDER, 'rate');
+
+  const orders = Math.max(0, inputs.completedOrders);
+  const amount = multiplyMoney(scheme.rate, orders);
+
+  return {
+    amount,
+    kpiPercent: null,
+    breakdown: [{ label: `Заказов: ${orders.toString()} × ставка`, amount }],
+  };
+}
+
+/**
  * Диспетчер по типу схемы.
  *
  * Switch без `default`: при добавлении нового типа в
@@ -215,6 +239,8 @@ export function calculatePayroll(
       return calculateKpi(scheme, inputs);
     case PayrollSchemeType.COMMISSION:
       return calculateCommission(scheme, inputs);
+    case PayrollSchemeType.PER_ORDER:
+      return calculatePerOrder(scheme, inputs);
   }
 }
 
@@ -309,19 +335,31 @@ export async function gatherPayrollInputs(
 /*                            Расчёт и сохранение                             */
 /* -------------------------------------------------------------------------- */
 
-/** Действующая схема начисления для роли. */
+/**
+ * Действующая схема начисления сотрудника в этой роли.
+ *
+ * Схема ищется по паре «сотрудник + роль», а не по одной роли: у каждого
+ * свои условия, и общей схемы «для всех швей» больше не существует. Если
+ * условия человеку не завели, расчёт отказывается считать, а не подставляет
+ * чужую ставку — молча начислить по средней хуже, чем не начислить вовсе.
+ */
 export async function findActiveScheme(
   executor: DbExecutor,
+  userId: number,
   role: RoleName,
 ): Promise<PayrollScheme> {
   const scheme = await executor.query.payrollSchemes.findFirst({
-    where: and(eq(payrollSchemes.role, role), eq(payrollSchemes.isActive, true)),
+    where: and(
+      eq(payrollSchemes.userId, userId),
+      eq(payrollSchemes.role, role),
+      eq(payrollSchemes.isActive, true),
+    ),
   });
 
   if (scheme === undefined) {
     throw new TRPCError({
       code: 'NOT_FOUND',
-      message: `Для роли «${role}» не задана схема начисления зарплаты`,
+      message: `Сотруднику не заданы условия оплаты в роли «${ROLE_LABELS_RU[role]}»`,
     });
   }
 
@@ -343,7 +381,7 @@ export async function calculateForUserRole(
   role: RoleName,
   period: Period,
 ): Promise<CalculatedPayroll> {
-  const scheme = await findActiveScheme(executor, role);
+  const scheme = await findActiveScheme(executor, userId, role);
   const inputs = await gatherPayrollInputs(executor, userId, role, period);
   const calculation = calculatePayroll(toSchemeParams(scheme), inputs);
 

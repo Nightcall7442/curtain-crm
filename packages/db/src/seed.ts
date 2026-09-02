@@ -18,7 +18,6 @@ import {
   PurchaseCategory,
   PurchaseUnit,
   Role,
-  ROLES,
   type PayrollSchemeType as PayrollSchemeTypeValue,
   type Role as RoleValue,
 } from '@curtain-crm/shared';
@@ -228,29 +227,55 @@ async function seed(): Promise<void> {
 
       /* --- Схемы начисления зарплаты -------------------------------------- */
 
+      /*
+        Условия оплаты принадлежат сотруднику, а не роли, поэтому сид больше
+        не может завести «схему для швей» — заводить не на кого, пока швей
+        нет. Здесь он раздаёт КАЖДОМУ активному сотруднику условия по
+        шаблону его роли, и только тем, у кого их ещё нет.
+
+        Так сид остаётся идемпотентным и полезным в обоих случаях: на пустой
+        базе он оснащает директора, а на населённой — доводит условия тем,
+        кого завели позже. Ставки в шаблонах ориентировочные: настоящие
+        руководство проставляет каждому в панели.
+      */
       const effectiveFrom = envOrDefault('SEED_PAYROLL_EFFECTIVE_FROM', '2026-01-01');
+      const templates = new Map(SEED_PAYROLL_SCHEMES.map((scheme) => [scheme.role, scheme]));
       let createdSchemes = 0;
 
-      for (const scheme of SEED_PAYROLL_SCHEMES) {
+      const staffRoles = await tx
+        .select({ userId: userRoles.userId, role: userRoles.role })
+        .from(userRoles)
+        .innerJoin(users, eq(users.id, userRoles.userId))
+        .where(eq(users.isActive, true));
+
+      for (const entry of staffRoles) {
+        const template = templates.get(entry.role);
+        if (template === undefined) continue;
+
         const existing = await tx.query.payrollSchemes.findFirst({
-          where: and(eq(payrollSchemes.role, scheme.role), eq(payrollSchemes.isActive, true)),
+          where: and(
+            eq(payrollSchemes.userId, entry.userId),
+            eq(payrollSchemes.role, entry.role),
+            eq(payrollSchemes.isActive, true),
+          ),
         });
         if (existing !== undefined) continue;
 
         await tx.insert(payrollSchemes).values({
-          role: scheme.role,
-          type: scheme.type,
-          baseAmount: scheme.baseAmount ?? null,
-          rate: scheme.rate ?? null,
-          kpiTarget: scheme.kpiTarget ?? null,
-          commissionPercent: scheme.commissionPercent ?? null,
+          userId: entry.userId,
+          role: template.role,
+          type: template.type,
+          baseAmount: template.baseAmount ?? null,
+          rate: template.rate ?? null,
+          kpiTarget: template.kpiTarget ?? null,
+          commissionPercent: template.commissionPercent ?? null,
           effectiveFrom,
           createdBy: ceoId,
         });
         createdSchemes += 1;
       }
       log(
-        `Схемы зарплаты: создано ${createdSchemes.toString()} из ${ROLES.length.toString()} ролей`,
+        `Условия оплаты: создано ${createdSchemes.toString()} из ${staffRoles.length.toString()} пар «сотрудник + роль»`,
       );
     });
 

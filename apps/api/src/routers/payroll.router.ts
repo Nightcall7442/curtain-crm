@@ -7,6 +7,7 @@ import {
   payrollSchemeTypeSchema,
   PAYROLL_SCHEME_REQUIRED_FIELDS,
   PayrollRecordStatus,
+  ROLE_LABELS_RU,
   roleSchema,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
@@ -15,7 +16,7 @@ import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText, periodSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
-import { ceoProcedure, managementProcedure } from '../middleware/roleGuard.middleware';
+import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import { notifyPayroll } from '../services/notifications.service';
 import { calculateForUserRole, payableRoles, saveDraft } from '../services/payroll.service';
@@ -26,11 +27,13 @@ import { router } from '../trpc';
  * Зарплата: схемы начисления и расчёты по периодам.
  *
  * Права доступа:
- *  - `schemes.list`, `calculate`, `list` — руководство (CEO, админ):
- *    админ считает ведомость, но не утверждает её;
- *  - `schemes.upsert`, `approve`, `approveMany`, `markPaid` — ТОЛЬКО CEO:
- *    ставки и факт выплаты — зона директора;
+ *  - всё, кроме `my`, — руководство (CEO и админ). Директор передал админу
+ *    и назначение условий, и утверждение, и отметку о выплате: раньше
+ *    каждый месяц упирался в директора лично;
  *  - `my` — любой вошедший сотрудник, только свои начисления.
+ *
+ * Условия оплаты принадлежат КОНКРЕТНОМУ сотруднику в конкретной его роли,
+ * а не роли целиком: у опытной швеи ставка выше, чем у новенькой.
  *
  * Утверждённые и выплаченные записи не пересчитываются: в
  * `payroll_records.scheme_snapshot` лежит снимок параметров схемы на момент
@@ -38,27 +41,64 @@ import { router } from '../trpc';
  */
 
 const schemesRouter = router({
-  list: managementProcedure
-    .input(z.object({ includeInactive: z.boolean().default(false) }).default({}))
-    .query(async ({ ctx, input }) =>
-      ctx.db
-        .select()
-        .from(payrollSchemes)
-        .where(input.includeInactive ? undefined : eq(payrollSchemes.isActive, true))
-        .orderBy(asc(payrollSchemes.role), desc(payrollSchemes.effectiveFrom)),
-    ),
-
   /**
-   * Заведение или замена схемы начисления для роли.
+   * Схемы с именами сотрудников.
    *
-   * Действующая схема у роли одна: старая деактивируется, новая создаётся.
-   * Схемы не правятся на месте — иначе перерасчёт черновика за прошлый месяц
-   * дал бы другой результат, чем исходный, без единого следа.
+   * Имя присоединяется здесь, а не подтягивается страницей отдельно: список
+   * условий без фамилий читать невозможно, а второй запрос за именами
+   * означал бы, что список и подписи к нему могут разойтись.
    */
-  upsert: ceoProcedure
+  list: managementProcedure
     .input(
       z
         .object({
+          includeInactive: z.boolean().default(false),
+          userId: idSchema.optional(),
+        })
+        .default({}),
+    )
+    .query(async ({ ctx, input }) =>
+      ctx.db
+        .select({
+          id: payrollSchemes.id,
+          userId: payrollSchemes.userId,
+          userFullName: users.fullName,
+          role: payrollSchemes.role,
+          type: payrollSchemes.type,
+          baseAmount: payrollSchemes.baseAmount,
+          rate: payrollSchemes.rate,
+          kpiTarget: payrollSchemes.kpiTarget,
+          commissionPercent: payrollSchemes.commissionPercent,
+          isActive: payrollSchemes.isActive,
+          effectiveFrom: payrollSchemes.effectiveFrom,
+        })
+        .from(payrollSchemes)
+        .innerJoin(users, eq(users.id, payrollSchemes.userId))
+        .where(
+          and(
+            ...(input.includeInactive ? [] : [eq(payrollSchemes.isActive, true)]),
+            ...(input.userId === undefined ? [] : [eq(payrollSchemes.userId, input.userId)]),
+          ),
+        )
+        .orderBy(asc(users.fullName), asc(payrollSchemes.role), desc(payrollSchemes.effectiveFrom)),
+    ),
+
+  /**
+   * Заведение или замена условий оплаты СОТРУДНИКУ в одной его роли.
+   *
+   * Действующая схема у пары «сотрудник + роль» одна: старая деактивируется,
+   * новая создаётся. Схемы не правятся на месте — иначе перерасчёт черновика
+   * за прошлый месяц дал бы другой результат, чем исходный, без единого следа.
+   *
+   * Роль проверяется: назначить швее условия установщика нельзя — она по ним
+   * ничего не заработает, потому что заказов в этой роли у неё не будет,
+   * и ошибку заметят только в день выплаты.
+   */
+  upsert: managementProcedure
+    .input(
+      z
+        .object({
+          userId: idSchema,
           role: roleSchema,
           type: payrollSchemeTypeSchema,
           baseAmount: moneySchema.optional(),
@@ -83,14 +123,41 @@ const schemesRouter = router({
     )
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
+        const [holdsRole] = await tx
+          .select({ role: userRoles.role })
+          .from(userRoles)
+          .innerJoin(users, eq(users.id, userRoles.userId))
+          .where(
+            and(
+              eq(userRoles.userId, input.userId),
+              eq(userRoles.role, input.role),
+              eq(users.isActive, true),
+            ),
+          )
+          .limit(1);
+
+        if (holdsRole === undefined) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `У сотрудника нет роли «${ROLE_LABELS_RU[input.role]}» — условия по ней не нужны`,
+          });
+        }
+
         await tx
           .update(payrollSchemes)
           .set({ isActive: false })
-          .where(and(eq(payrollSchemes.role, input.role), eq(payrollSchemes.isActive, true)));
+          .where(
+            and(
+              eq(payrollSchemes.userId, input.userId),
+              eq(payrollSchemes.role, input.role),
+              eq(payrollSchemes.isActive, true),
+            ),
+          );
 
         const [created] = await tx
           .insert(payrollSchemes)
           .values({
+            userId: input.userId,
             role: input.role,
             type: input.type,
             baseAmount:
@@ -265,7 +332,7 @@ export const payrollRouter = router({
     ),
 
   /** Утверждение расчёта. После утверждения пересчёт запрещён. */
-  approve: ceoProcedure
+  approve: managementProcedure
     .input(z.object({ id: idSchema, comment: optionalText(1000) }))
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
@@ -327,7 +394,7 @@ export const payrollRouter = router({
    * отчёт — как у `orders.changeStatusBatch`, и по той же причине: тихо
    * проглоченный отказ в зарплатной ведомости хуже явного.
    */
-  approveMany: ceoProcedure
+  approveMany: managementProcedure
     .input(z.object({ ids: z.array(idSchema).min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const results: {
@@ -398,7 +465,7 @@ export const payrollRouter = router({
     }),
 
   /** Отметка о выплате. Сумма может отличаться от расчётной — с комментарием. */
-  markPaid: ceoProcedure
+  markPaid: managementProcedure
     .input(
       z.object({
         id: idSchema,
