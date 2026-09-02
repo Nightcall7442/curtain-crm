@@ -10,6 +10,7 @@ import {
   calculatePayroll,
   calculatePerOrder,
   payableRoles,
+  withStageFees,
   type PayrollInputs,
   type PayrollSchemeParams,
 } from './payroll.service';
@@ -25,6 +26,7 @@ const NO_INPUTS: PayrollInputs = {
   workedHours: 0,
   completedOrders: 0,
   completedOrdersAmount: 0,
+  stageFeesAmount: 0,
 };
 
 const inputs = (partial: Partial<PayrollInputs>): PayrollInputs => ({ ...NO_INPUTS, ...partial });
@@ -227,6 +229,52 @@ describe('calculatePerOrder', () => {
   });
 });
 
+describe('withStageFees', () => {
+  const base = calculateFixed(scheme({ baseAmount: parseMoney('5000000') }));
+
+  it('добавляет сдельные к начислению по схеме', () => {
+    const result = withStageFees(base, inputs({ stageFeesAmount: parseMoney('700000') }));
+
+    expect(result.amount).toBe(parseMoney('5700000'));
+  });
+
+  /*
+   * Ради этого строка и отдельная: у схемы `commission` сотрудник получит и
+   * процент от заказа, и расценку за свой этап того же заказа. Владелец так
+   * решил, но в ведомости это обязано быть различимо.
+   */
+  it('показывает сдельные отдельной строкой, не сливая их с начислением схемы', () => {
+    const result = withStageFees(base, inputs({ stageFeesAmount: parseMoney('700000') }));
+
+    expect(result.breakdown).toHaveLength(2);
+    expect(result.breakdown[0]?.amount).toBe(parseMoney('5000000'));
+    expect(result.breakdown[1]?.amount).toBe(parseMoney('700000'));
+  });
+
+  it('при нуле не засоряет расшифровку пустой строкой', () => {
+    const result = withStageFees(base, NO_INPUTS);
+
+    expect(result).toBe(base);
+    expect(result.breakdown).toHaveLength(1);
+  });
+
+  it('не трогает процент выполнения KPI', () => {
+    const kpi = calculateKpi(
+      scheme({
+        type: PayrollSchemeType.KPI,
+        baseAmount: parseMoney('1000000'),
+        rate: parseMoney('500000'),
+        kpiTarget: 10,
+      }),
+      inputs({ completedOrders: 5 }),
+    );
+
+    expect(withStageFees(kpi, inputs({ stageFeesAmount: parseMoney('100000') })).kpiPercent).toBe(
+      50,
+    );
+  });
+});
+
 describe('calculatePayroll', () => {
   it('направляет расчёт в функцию, соответствующую типу схемы', () => {
     expect(calculatePayroll(scheme({ baseAmount: parseMoney('100') }), NO_INPUTS).amount).toBe(
@@ -246,6 +294,15 @@ describe('calculatePayroll', () => {
         inputs({ completedOrders: 2 }),
       ).amount,
     ).toBe(parseMoney('100000'));
+  });
+
+  it('прибавляет сдельные к результату любой схемы', () => {
+    const result = calculatePayroll(
+      scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('30000') }),
+      inputs({ workedHours: 10, stageFeesAmount: parseMoney('250000') }),
+    );
+
+    expect(result.amount).toBe(parseMoney('550000'));
   });
 });
 

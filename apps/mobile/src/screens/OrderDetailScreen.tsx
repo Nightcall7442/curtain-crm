@@ -1,12 +1,14 @@
 import {
   formatMoney,
   formatPhone,
+  ORDER_STAGE_FEE_LABELS,
   ORDER_STATUS_LABELS,
   ORDER_TYPE_LABELS,
   OrderType,
   parseMoney,
   Role,
   ROLE_LABELS,
+  stageFeesOfOrderType,
   TransitionKind,
   type OrderStatus,
 } from '@curtain-crm/shared';
@@ -117,6 +119,29 @@ export function OrderDetailScreen({
 
   const data = order.data;
 
+  /*
+    Расценки, которые видно этому сотруднику: скрытые пришли с сервера как
+    `null` — решает API, а не экран. У готовых штор из четырёх этапов
+    применима только установка.
+
+    Нули отсеиваются: у незаполненного этапа стоит ноль, и строка
+    «За пошив: 0 сум» читается исполнителем как «мне за это не заплатят»,
+    хотя означает «сумму ещё не внесли».
+  */
+  const stageFeeValue: Readonly<Record<string, string | null>> = {
+    measurement: data.measurementFee,
+    sewing: data.sewingFee,
+    qc: data.qcFee,
+    installation: data.installationFee,
+  };
+
+  const visibleStageFees = stageFeesOfOrderType(data.orderType)
+    .map((stage) => [stage, stageFeeValue[stage] ?? null] as const)
+    .filter(
+      (entry): entry is readonly [(typeof entry)[0], string] =>
+        entry[1] !== null && Number.parseFloat(entry[1]) > 0,
+    );
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Card>
@@ -174,6 +199,27 @@ export function OrderDetailScreen({
           />
           <Row label="Филиал" value={data.branch.name} />
         </View>
+
+        {/*
+          Расценки по этапам. Сервер вернул `null` вместо тех, что этому
+          сотруднику видеть не положено: швея увидит здесь одну строку —
+          свою, — а продавец и руководство все.
+
+          Ничего не выводим, если видимых нет: пустой заголовок «Расценки» у
+          исполнителя, которому сумму ещё не проставили, читается как «мне не
+          заплатят».
+        */}
+        {visibleStageFees.length > 0 && (
+          <View style={styles.details}>
+            {visibleStageFees.map(([stage, value]) => (
+              <Row
+                key={stage}
+                label={t(ORDER_STAGE_FEE_LABELS, stage)}
+                value={formatMoney(parseMoney(value))}
+              />
+            ))}
+          </View>
+        )}
 
         {data.installAddress !== null && (
           <Text style={styles.address}>{`📍 ${data.installAddress}`}</Text>

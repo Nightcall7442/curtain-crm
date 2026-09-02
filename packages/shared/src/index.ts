@@ -27,6 +27,7 @@ export * from './constants/calendar';
 export * from './constants/catalog';
 export * from './constants/rating';
 export * from './constants/personalBreak';
+export * from './constants/stageFee';
 
 /* Типы */
 export * from './types/orderItemAccessory';

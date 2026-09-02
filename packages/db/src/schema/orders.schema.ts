@@ -84,6 +84,29 @@ export const orders = pgTable(
     workPrice: numeric('work_price', { precision: 14, scale: 2 }).notNull().default('0'),
     deposit: numeric('deposit', { precision: 14, scale: 2 }).notNull().default('0'),
 
+    /* --- Сдельные расценки по этапам --------------------------------------- */
+
+    /*
+      Сколько получит исполнитель каждого этапа за ЭТОТ заказ.
+
+      Суммы назначаются вручную при приёме, а не выводятся формулой: сложность
+      заказа не выражается ни его ценой, ни площадью — два окна одинаковой
+      площади шьются по-разному, и знает об этом человек, а не расчёт.
+
+      Ноль — законное значение, а не «не заполнено»: у готовых штор нет ни
+      замера, ни пошива, а у заказа без монтажа нет установки. Поэтому поля
+      NOT NULL с умолчанием, а не nullable: «ещё не проставили» и «не платим
+      за этот этап» в деньгах означают одно и то же — ноль.
+    */
+    measurementFee: numeric('measurement_fee', { precision: 14, scale: 2 })
+      .notNull()
+      .default('0'),
+    sewingFee: numeric('sewing_fee', { precision: 14, scale: 2 }).notNull().default('0'),
+    qcFee: numeric('qc_fee', { precision: 14, scale: 2 }).notNull().default('0'),
+    installationFee: numeric('installation_fee', { precision: 14, scale: 2 })
+      .notNull()
+      .default('0'),
+
     /**
      * Остаток к оплате. Вычисляемая колонка: в `curtain-bot` это было обычное
      * поле, которое рассинхронизировалось при правке цены задним числом.
@@ -141,6 +164,13 @@ export const orders = pgTable(
     check('orders_client_phone_e164', sql`${table.clientPhone} ~ '^\\+998[0-9]{9}$'`),
     check('orders_work_price_non_negative', sql`${table.workPrice} >= 0`),
     check('orders_deposit_non_negative', sql`${table.deposit} >= 0`),
+    // Отрицательная расценка означала бы удержание с исполнителя за то, что
+    // он выполнил этап. Удержания в системе есть, но это другая сущность.
+    check(
+      'orders_stage_fees_non_negative',
+      sql`${table.measurementFee} >= 0 and ${table.sewingFee} >= 0
+          and ${table.qcFee} >= 0 and ${table.installationFee} >= 0`,
+    ),
     // Отменённый заказ обязан нести причину отмены.
     check(
       'orders_cancellation_reason_required',

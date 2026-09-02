@@ -146,6 +146,7 @@ export const AUDIT_ACTIONS = [
   'order.cancelled',
   'order.assignee_changed',
   'order.price_changed',
+  'order.stage_fees_changed',
 
   'purchase_item.created',
   'purchase_item.price_changed',

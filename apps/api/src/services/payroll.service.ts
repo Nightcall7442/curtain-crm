@@ -16,8 +16,10 @@ import {
   percentOfMoney,
   Role,
   ROLE_LABELS_RU,
+  stageFeeOfRole,
   sumMoney,
   type MoneyMinor,
+  type OrderStageFee,
   type PayrollSchemeType as PayrollSchemeTypeName,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -75,6 +77,15 @@ export interface PayrollInputs {
   readonly completedOrders: number;
   /** Сумма работ по этим заказам. */
   readonly completedOrdersAmount: MoneyMinor;
+  /**
+   * Сдельные расценки за этапы этих заказов, выполненные сотрудником.
+   *
+   * Начисляются СВЕРХ схемы, а не вместо неё: схема отвечает за «сколько
+   * человек получает вообще», расценки — за «сколько стоила именно эта
+   * работа». Комбинация «оклад + сдельные» — обычная для цеха, и запрещать
+   * её было бы решением за владельца.
+   */
+  readonly stageFeesAmount: MoneyMinor;
 }
 
 export interface PayrollLine {
@@ -220,6 +231,36 @@ export function calculatePerOrder(
 }
 
 /**
+ * Добавляет к начислению сдельные расценки за выполненные этапы.
+ *
+ * Отдельной строкой, а не слитой суммой: если у сотрудника схема
+ * `commission`, он получит и процент от заказа, и расценку за свой этап
+ * того же заказа. Это законно — так решил владелец, — но должно быть ВИДНО
+ * в расшифровке, чтобы двойная оплата была осознанным выбором, а не
+ * обнаружилась через полгода при разборе ведомости.
+ *
+ * При нуле строка не добавляется: пустая строка «Сдельно: 0» в каждой
+ * ведомости бухгалтера и директора — шум, за которым перестают замечать
+ * настоящие суммы.
+ */
+export function withStageFees(
+  calculation: PayrollCalculation,
+  inputs: PayrollInputs,
+): PayrollCalculation {
+  const fees = Math.max(0, inputs.stageFeesAmount);
+  if (fees === 0) return calculation;
+
+  return {
+    ...calculation,
+    amount: sumMoney([calculation.amount, fees]),
+    breakdown: [
+      ...calculation.breakdown,
+      { label: 'Сдельно за этапы заказов', amount: fees },
+    ],
+  };
+}
+
+/**
  * Диспетчер по типу схемы.
  *
  * Switch без `default`: при добавлении нового типа в
@@ -230,18 +271,22 @@ export function calculatePayroll(
   scheme: PayrollSchemeParams,
   inputs: PayrollInputs,
 ): PayrollCalculation {
-  switch (scheme.type) {
-    case PayrollSchemeType.FIXED:
-      return calculateFixed(scheme);
-    case PayrollSchemeType.HOURLY:
-      return calculateHourly(scheme, inputs);
-    case PayrollSchemeType.KPI:
-      return calculateKpi(scheme, inputs);
-    case PayrollSchemeType.COMMISSION:
-      return calculateCommission(scheme, inputs);
-    case PayrollSchemeType.PER_ORDER:
-      return calculatePerOrder(scheme, inputs);
-  }
+  const bySchemeType = (): PayrollCalculation => {
+    switch (scheme.type) {
+      case PayrollSchemeType.FIXED:
+        return calculateFixed(scheme);
+      case PayrollSchemeType.HOURLY:
+        return calculateHourly(scheme, inputs);
+      case PayrollSchemeType.KPI:
+        return calculateKpi(scheme, inputs);
+      case PayrollSchemeType.COMMISSION:
+        return calculateCommission(scheme, inputs);
+      case PayrollSchemeType.PER_ORDER:
+        return calculatePerOrder(scheme, inputs);
+    }
+  };
+
+  return withStageFees(bySchemeType(), inputs);
 }
 
 /** Приводит строку схемы из БД к числовым параметрам расчёта. */
@@ -278,13 +323,25 @@ const ORDER_ROLE_COLUMN = {
 const hasOrderAttribution = (role: RoleName): role is keyof typeof ORDER_ROLE_COLUMN =>
   role in ORDER_ROLE_COLUMN;
 
+/** Колонка со сдельной расценкой за этап, который выполняет эта роль. */
+const STAGE_FEE_COLUMN = {
+  measurement: orders.measurementFee,
+  sewing: orders.sewingFee,
+  qc: orders.qcFee,
+  installation: orders.installationFee,
+} as const satisfies Record<OrderStageFee, unknown>;
+
 /** Закрытые за период заказы, засчитанные сотруднику в данной роли. */
 export async function calculateCompletedOrders(
   executor: DbExecutor,
   userId: number,
   role: RoleName,
   bounds: PeriodBounds,
-): Promise<{ readonly count: number; readonly amount: MoneyMinor }> {
+): Promise<{
+  readonly count: number;
+  readonly amount: MoneyMinor;
+  readonly stageFees: MoneyMinor;
+}> {
   const periodFilter = and(
     eq(orders.status, OrderStatus.COMPLETED),
     isNotNull(orders.completedAt),
@@ -296,10 +353,24 @@ export async function calculateCompletedOrders(
     ? and(periodFilter, eq(ORDER_ROLE_COLUMN[role], userId))
     : periodFilter;
 
+  /*
+    Расценка достаётся тому, кто числится исполнителем этапа в закрытом
+    заказе. Роли без своего этапа — продавец, админ, директор, SMM — сдельных
+    не получают: у продавца оплата за заказ идёт по его собственной схеме, а
+    у руководства сдельной работы нет. Для них выражение остаётся нулём, а не
+    суммирует чужие расценки по всем заказам компании.
+  */
+  const stage = stageFeeOfRole(role);
+  const stageFeeSum =
+    stage === null
+      ? sql<string>`0`
+      : sql<string>`coalesce(sum(${STAGE_FEE_COLUMN[stage]}), 0)`;
+
   const [row] = await executor
     .select({
       count: sql<string>`count(*)`,
       amount: sql<string>`coalesce(sum(${orders.workPrice}), 0)`,
+      stageFees: stageFeeSum,
     })
     .from(orders)
     .where(where);
@@ -307,6 +378,7 @@ export async function calculateCompletedOrders(
   return {
     count: Number.parseInt(row?.count ?? '0', 10),
     amount: parseMoney(row?.amount ?? '0'),
+    stageFees: parseMoney(row?.stageFees ?? '0'),
   };
 }
 
@@ -328,6 +400,7 @@ export async function gatherPayrollInputs(
     workedHours,
     completedOrders: completed.count,
     completedOrdersAmount: completed.amount,
+    stageFeesAmount: completed.stageFees,
   };
 }
 
@@ -403,6 +476,7 @@ export async function calculateForUserRole(
         workedHours: inputs.workedHours,
         completedOrders: inputs.completedOrders,
         completedOrdersAmount: moneyToDecimalString(inputs.completedOrdersAmount),
+        stageFeesAmount: moneyToDecimalString(inputs.stageFeesAmount),
       },
     },
   };

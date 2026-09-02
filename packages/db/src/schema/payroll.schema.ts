@@ -133,6 +133,15 @@ export interface PayrollSchemeSnapshot {
     readonly workedHours: number;
     readonly completedOrders: number;
     readonly completedOrdersAmount: string;
+    /**
+     * Сдельные расценки за этапы этих заказов.
+     *
+     * Необязательное: в ведомостях, посчитанных до появления расценок, поля
+     * физически нет. Подставлять туда ноль при чтении честнее, чем менять
+     * старые снимки — снимок на то и снимок, что описывает расчёт таким,
+     * каким он был.
+     */
+    readonly stageFeesAmount?: string;
   };
 }
 

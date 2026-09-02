@@ -16,6 +16,7 @@ import {
   MAX_BATCH_ORDERS,
   moneyToDecimalString,
   ORDER_PHASES,
+  ORDER_STAGE_FEES,
   ORDER_STATUS_PHASE,
   orderItemAccessorySchema,
   OrderItemKind,
@@ -28,6 +29,7 @@ import {
   prioritySchema,
   TransitionKind,
   type OrderPhase,
+  type OrderStageFee,
   type Role,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
@@ -175,6 +177,116 @@ function toOrderItemValues(item: OrderItemInput, orderId: number, position: numb
 }
 
 /* -------------------------------------------------------------------------- */
+/*                        Сдельные расценки по этапам                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Сколько получит исполнитель каждого этапа за этот заказ.
+ *
+ * Продавец проставляет суммы при приёме, админ утверждает их вместе с самим
+ * заказом на проверке — отдельной кнопки «утвердить расценки» нет намеренно:
+ * это тот же самый шаг проверки, и разводить его на два действия значило бы
+ * получить заказы, утверждённые наполовину.
+ *
+ * Незаполненное поле — ноль, а не ошибка: у заказа без монтажа установки
+ * действительно нет, а забытую сумму руководство дописывает позже
+ * `setStageFees`. Заставлять продавца заполнять все четыре поля ради одного
+ * нужного — верный способ получить проставленные наугад числа.
+ */
+const stageFeesInputSchema = z.object({
+  measurementFee: moneySchema.default(0),
+  sewingFee: moneySchema.default(0),
+  qcFee: moneySchema.default(0),
+  installationFee: moneySchema.default(0),
+});
+
+/**
+ * Расценки в виде, пригодном и для создания заказа, и для точечной правки.
+ *
+ * `| undefined` у каждого поля выписано явно: при `exactOptionalPropertyTypes`
+ * `Partial<>` даёт «ключа нет», а из `setStageFees` приходит именно
+ * «ключ есть, значение `undefined`» — это разные типы.
+ */
+interface StageFeesInput {
+  readonly measurementFee?: number | undefined;
+  readonly sewingFee?: number | undefined;
+  readonly qcFee?: number | undefined;
+  readonly installationFee?: number | undefined;
+}
+
+/** Значения расценок для записи в БД. Пропущенные поля не трогаются. */
+function toStageFeeValues(input: StageFeesInput) {
+  const toColumn = (value: number | undefined) =>
+    value === undefined ? undefined : moneyToDecimalString(parseMoney(value));
+
+  return {
+    ...(toColumn(input.measurementFee) === undefined
+      ? {}
+      : { measurementFee: toColumn(input.measurementFee) }),
+    ...(toColumn(input.sewingFee) === undefined ? {} : { sewingFee: toColumn(input.sewingFee) }),
+    ...(toColumn(input.qcFee) === undefined ? {} : { qcFee: toColumn(input.qcFee) }),
+    ...(toColumn(input.installationFee) === undefined
+      ? {}
+      : { installationFee: toColumn(input.installationFee) }),
+  };
+}
+
+/** Колонка заказа, хранящая расценку этапа. */
+const STAGE_FEE_COLUMN = {
+  measurement: 'measurementFee',
+  sewing: 'sewingFee',
+  qc: 'qcFee',
+  installation: 'installationFee',
+} as const satisfies Record<OrderStageFee, keyof typeof orders.$inferSelect>;
+
+/** Колонка заказа с исполнителем этапа — по ней решается, чья это расценка. */
+const STAGE_EXECUTOR_COLUMN = {
+  measurement: 'masterId',
+  sewing: 'sewerId',
+  qc: 'qcId',
+  installation: 'installerId',
+} as const satisfies Record<OrderStageFee, keyof typeof orders.$inferSelect>;
+
+type StageFeeField = (typeof STAGE_FEE_COLUMN)[OrderStageFee];
+
+/** Заказ, у которого скрытые от сотрудника расценки заменены на `null`. */
+export type OrderWithVisibleFees<T> = Omit<T, StageFeeField> &
+  Readonly<Record<StageFeeField, string | null>>;
+
+/**
+ * Скрывает чужие расценки.
+ *
+ * Кто что видит, решил владелец: продавец видит все расценки заказа — он их
+ * и проставляет, — руководство тоже; исполнитель видит только свою. Швея не
+ * должна знать, сколько получит установщик: сравнение сумм между собой — это
+ * ссоры в цеху, а не прозрачность.
+ *
+ * Скрытое поле становится `null`, а не нулём: «не показываем» и «не платим»
+ * обязаны различаться, иначе интерфейс честно напишет исполнителю, что за
+ * его этап не платят ничего.
+ *
+ * Фильтрация здесь, а не в компонентах: скрытая в вёрстке сумма всё равно
+ * уехала бы клиенту в ответе tRPC.
+ */
+function maskStageFees<T extends typeof orders.$inferSelect>(
+  order: T,
+  user: { readonly id: number; readonly roles: readonly Role[] },
+): OrderWithVisibleFees<T> {
+  const seesEverything = isManagement(user.roles) || order.createdBy === user.id;
+
+  const visible = Object.fromEntries(
+    ORDER_STAGE_FEES.map((stage) => [
+      STAGE_FEE_COLUMN[stage],
+      seesEverything || order[STAGE_EXECUTOR_COLUMN[stage]] === user.id
+        ? order[STAGE_FEE_COLUMN[stage]]
+        : null,
+    ]),
+  ) as Record<StageFeeField, string | null>;
+
+  return { ...order, ...visible };
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                Видимость                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -287,7 +399,11 @@ export const ordersRouter = router({
         ctx.db.select({ value: count() }).from(orders).where(where),
       ]);
 
-      return toPage(rows, totalRow?.value ?? 0, input);
+      return toPage(
+        rows.map((row) => maskStageFees(row, ctx.user)),
+        totalRow?.value ?? 0,
+        input,
+      );
     }),
 
   /** Карточка заказа со всеми позициями и назначенными исполнителями. */
@@ -312,7 +428,7 @@ export const ordersRouter = router({
       }
       assertCanAccessOrder(order, ctx.user);
 
-      return order;
+      return maskStageFees(order, ctx.user);
     }),
 
   /**
@@ -339,6 +455,9 @@ export const ordersRouter = router({
 
         workPrice: moneySchema.default(0),
         deposit: moneySchema.default(0),
+
+        /** Сдельные расценки по этапам — сколько получит каждый исполнитель. */
+        stageFees: stageFeesInputSchema.default({}),
 
         items: z.array(orderItemInputSchema).min(1, 'Добавьте хотя бы одну позицию').max(50),
       }),
@@ -373,6 +492,7 @@ export const ordersRouter = router({
             priority: input.priority,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
             deposit: moneyToDecimalString(parseMoney(input.deposit)),
+            ...toStageFeeValues(input.stageFees),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -449,6 +569,11 @@ export const ordersRouter = router({
           comment: optionalText(500),
 
           needsInstallation: z.boolean(),
+          /**
+           * Расценка установщику. Единственная из четырёх, применимая к
+           * готовым шторам: ни замера, ни пошива, ни контроля здесь нет.
+           */
+          installationFee: moneySchema.default(0),
           /** Обязателен, если нужна установка; иначе заказ закрывается сразу. */
           installAddress: optionalText(500),
           installLatitude: z.number().min(-90).max(90).optional(),
@@ -490,6 +615,12 @@ export const ordersRouter = router({
             deadline: input.deadline ?? null,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
             deposit: moneyToDecimalString(parseMoney(input.deposit)),
+            // Продажа без монтажа установщику не достаётся никому, поэтому
+            // сумму в таком заказе не сохраняем, даже если её ввели и потом
+            // передумали ставить галочку.
+            ...toStageFeeValues({
+              installationFee: input.needsInstallation ? input.installationFee : 0,
+            }),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -631,7 +762,7 @@ export const ordersRouter = router({
         });
 
         const [updated] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
-        return updated ?? order;
+        return maskStageFees(updated ?? order, ctx.user);
       }),
     ),
 
@@ -657,7 +788,7 @@ export const ordersRouter = router({
             : { deposit: moneyToDecimalString(parseMoney(input.deposit)) }),
         };
 
-        if (Object.keys(patch).length === 0) return order;
+        if (Object.keys(patch).length === 0) return maskStageFees(order, ctx.user);
 
         const [updated] = await tx
           .update(orders)
@@ -681,7 +812,68 @@ export const ordersRouter = router({
           ipAddress: ctx.ipAddress,
         });
 
-        return updated;
+        return maskStageFees(updated, ctx.user);
+      }),
+    ),
+
+  /**
+   * Правка сдельных расценок по этапам.
+   *
+   * Отдельная процедура, а не поля в `setPrice`: это разные деньги с разными
+   * правами. `workPrice` — сколько платит клиент, расценки — сколько получает
+   * цех, и продавец, который вправе назвать цену клиенту, не должен
+   * переназначать чужую зарплату задним числом.
+   *
+   * Статусом не ограничена намеренно: заказ закрывают раньше, чем считают
+   * зарплату, и забытую сумму дописывают до конца месяца. Каждая правка
+   * попадает в `audit_log` с прежними значениями — этого достаточно, чтобы
+   * спор «мне обещали больше» решался записью, а не памятью.
+   */
+  setStageFees: managementProcedure
+    .input(
+      z.object({
+        id: idSchema,
+        measurementFee: moneySchema.optional(),
+        sewingFee: moneySchema.optional(),
+        qcFee: moneySchema.optional(),
+        installationFee: moneySchema.optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const order = await loadOrderForUpdate(tx, input.id);
+        const patch = toStageFeeValues(input);
+
+        if (Object.keys(patch).length === 0) return maskStageFees(order, ctx.user);
+
+        const [updated] = await tx
+          .update(orders)
+          .set({ ...patch, updatedAt: new Date() })
+          .where(eq(orders.id, order.id))
+          .returning();
+
+        if (updated === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'order.stage_fees_changed',
+          entityType: 'order',
+          entityId: order.id,
+          details: {
+            from: {
+              measurementFee: order.measurementFee,
+              sewingFee: order.sewingFee,
+              qcFee: order.qcFee,
+              installationFee: order.installationFee,
+            },
+            to: patch,
+          },
+          ipAddress: ctx.ipAddress,
+        });
+
+        return maskStageFees(updated, ctx.user);
       }),
     ),
 
@@ -707,16 +899,21 @@ export const ordersRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) =>
-      ctx.db.transaction(async (tx) =>
-        changeOrderStatus(tx, {
+      ctx.db.transaction(async (tx) => {
+        const result = await changeOrderStatus(tx, {
           orderId: input.id,
           toStatus: input.toStatus,
           actor: ctx.user,
           comment: input.comment ?? null,
           assigneeId: input.assigneeId ?? null,
           ipAddress: ctx.ipAddress,
-        }),
-      ),
+        });
+
+        // Переход возвращает заказ целиком — вместе с расценками всех этапов.
+        // Швея, отправившая работу на контроль, получила бы в ответе сумму
+        // установщика, даже не открывая карточку.
+        return { ...result, order: maskStageFees(result.order, ctx.user) };
+      }),
     ),
 
   /**

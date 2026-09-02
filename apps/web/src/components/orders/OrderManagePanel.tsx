@@ -6,6 +6,7 @@ import {
   parseMoney,
   ROLE_LABELS_RU,
   type AssignableRole,
+  type OrderType as OrderTypeName,
   type Role,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
@@ -14,13 +15,19 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
+import { StageFeesFields, toStageFeesInput, type StageFeesDraft } from './StageFeesFields';
+
 /**
  * Управление заказом: назначение исполнителей, цена и отмена.
  *
  * Панель показывается только руководству — но, как везде, это лишь удобство:
- * `orders.assign`, `orders.setPrice` и `orders.cancel` объявлены как
- * `managementProcedure`, и продавец получит `FORBIDDEN`, даже если доберётся
- * до кнопки.
+ * `orders.assign`, `orders.setPrice`, `orders.setStageFees` и `orders.cancel`
+ * объявлены как `managementProcedure`, и продавец получит `FORBIDDEN`, даже
+ * если доберётся до кнопки.
+ *
+ * Расценки исполнителям — отдельная кнопка, а не поля в «Изменить цену»:
+ * `workPrice` платит клиент, а расценки получает цех, и смешивать их в одном
+ * окне значило бы предлагать поправить чужую зарплату заодно с ценой.
  */
 
 const ASSIGNABLE: readonly { readonly role: AssignableRole }[] = [
@@ -32,20 +39,26 @@ export function OrderManagePanel({
   current,
   workPrice,
   deposit,
+  stageFees,
+  orderType,
   isClosed,
 }: {
   readonly orderId: number;
   readonly current: Readonly<Record<AssignableRole, number | null>>;
   readonly workPrice: string;
   readonly deposit: string;
+  readonly stageFees: StageFeesDraft;
+  readonly orderType: OrderTypeName;
   readonly isClosed: boolean;
 }): ReactElement {
   const utils = trpc.useUtils();
 
   const [priceOpen, setPriceOpen] = useState(false);
+  const [feesOpen, setFeesOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [nextWorkPrice, setNextWorkPrice] = useState(workPrice);
   const [nextDeposit, setNextDeposit] = useState(deposit);
+  const [nextFees, setNextFees] = useState(stageFees);
   const [reason, setReason] = useState('');
 
   const refresh = async (): Promise<void> => {
@@ -64,6 +77,12 @@ export function OrderManagePanel({
       await refresh();
     },
   });
+  const setStageFees = trpc.orders.setStageFees.useMutation({
+    async onSuccess() {
+      setFeesOpen(false);
+      await refresh();
+    },
+  });
   const cancel = trpc.orders.cancel.useMutation({
     async onSuccess() {
       setCancelOpen(false);
@@ -77,28 +96,47 @@ export function OrderManagePanel({
       <CardHeader
         title="Управление заказом"
         action={
-          !isClosed && (
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setNextWorkPrice(workPrice);
-                  setNextDeposit(deposit);
-                  setPriceOpen(true);
-                }}
-              >
-                Изменить цену
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  setCancelOpen(true);
-                }}
-              >
-                Отменить заказ
-              </Button>
-            </div>
-          )
+          <div className="flex gap-2">
+            {/*
+              Расценки правятся и у закрытого заказа — в отличие от цены и
+              отмены. Заказ закрывают раньше, чем считают зарплату, и
+              забытую сумму дописывают до конца месяца; иначе исполнитель
+              остался бы без денег из-за того, что кто-то поторопился нажать
+              «выполнено».
+            */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setNextFees(stageFees);
+                setFeesOpen(true);
+              }}
+            >
+              Расценки
+            </Button>
+
+            {!isClosed && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setNextWorkPrice(workPrice);
+                    setNextDeposit(deposit);
+                    setPriceOpen(true);
+                  }}
+                >
+                  Изменить цену
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setCancelOpen(true);
+                  }}
+                >
+                  Отменить заказ
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -192,6 +230,54 @@ export function OrderManagePanel({
           </p>
           <p className="text-overline text-muted">
             Остаток считает база, поле в форме — только предпросмотр.
+          </p>
+        </div>
+      </Modal>
+
+      {/* --- Расценки по этапам ------------------------------------------ */}
+      <Modal
+        open={feesOpen}
+        title="Расценки исполнителям"
+        onClose={() => {
+          setFeesOpen(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setFeesOpen(false);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              loading={setStageFees.isPending}
+              onClick={() => {
+                setStageFees.mutate({ id: orderId, ...toStageFeesInput(nextFees) });
+              }}
+            >
+              Сохранить
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormError message={setStageFees.error?.message ?? null} />
+
+          <StageFeesFields value={nextFees} onChange={setNextFees} orderType={orderType} />
+
+          <p className="text-footnote text-secondary">
+            {`Всего исполнителям: ${formatMoney(
+              parseMoney(toStageFeesInput(nextFees).measurementFee) +
+                parseMoney(toStageFeesInput(nextFees).sewingFee) +
+                parseMoney(toStageFeesInput(nextFees).qcFee) +
+                parseMoney(toStageFeesInput(nextFees).installationFee),
+            )}`}
+          </p>
+          <p className="text-overline text-muted">
+            Суммы попадут в зарплату исполнителей за месяц, в котором заказ
+            закрыт. Каждый видит только свою.
           </p>
         </div>
       </Modal>

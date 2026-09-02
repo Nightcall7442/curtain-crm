@@ -34,9 +34,11 @@ import {
   type Database,
 } from '@curtain-crm/db';
 import {
+  moneyToDecimalString,
   ORDER_STATUS_LABELS_RU,
   OrderStatus,
   OrderType,
+  parseMoney,
   Role,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -243,6 +245,11 @@ async function run(db: Database): Promise<void> {
       workPrice: '5000000.00',
       deposit: '2000000.00',
       deadline: '2026-12-31',
+      // Сдельные расценки: их получат исполнители этапов, когда заказ закроют.
+      measurementFee: '100000.00',
+      sewingFee: '400000.00',
+      qcFee: '50000.00',
+      installationFee: '250000.00',
     })
     .returning();
 
@@ -261,6 +268,15 @@ async function run(db: Database): Promise<void> {
 
   await expectRejected('orders: check не даёт отменить заказ без причины', () =>
     db.update(orders).set({ status: 'cancelled' }).where(eq(orders.id, order.id)),
+  );
+
+  /*
+    Отрицательная расценка означала бы удержание с исполнителя за то, что он
+    выполнил этап. Удержания в системе появятся, но это другая сущность —
+    сюда они не должны просачиваться через минус в поле формы.
+  */
+  await expectRejected('orders: check не даёт отрицательную расценку этапа', () =>
+    db.update(orders).set({ sewingFee: '-1.00' }).where(eq(orders.id, order.id)),
   );
 
   await db.insert(orderItems).values({
@@ -733,6 +749,25 @@ async function run(db: Database): Promise<void> {
 
   const inputs = await gatherPayrollInputs(db, sewer.id, Role.SEWER, period);
   check('payroll: исходные данные собраны', inputs.workedHours > 0);
+
+  /*
+    Сдельная расценка за этап попадает в зарплату исполнителю этого этапа —
+    швея получает `sewing_fee` заказа, который сама и шила. Проверяем именно
+    привязку: суммировать все расценки заказа каждому исполнителю — ошибка,
+    которая обнаружилась бы только при выплате.
+  */
+  check(
+    'payroll: расценка за пошив засчитана швее',
+    inputs.stageFeesAmount === parseMoney('400000'),
+    moneyToDecimalString(inputs.stageFeesAmount),
+  );
+
+  const sellerInputs = await gatherPayrollInputs(db, seller.id, Role.SELLER, period);
+  check(
+    'payroll: продавцу сдельные за этапы не начисляются',
+    sellerInputs.stageFeesAmount === 0,
+    moneyToDecimalString(sellerInputs.stageFeesAmount),
+  );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */
 

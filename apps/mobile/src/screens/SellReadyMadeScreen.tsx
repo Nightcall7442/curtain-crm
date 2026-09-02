@@ -47,6 +47,7 @@ export function SellReadyMadeScreen(): ReactElement {
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState<'no' | 'yes'>('no');
   const [installAddress, setInstallAddress] = useState('');
+  const [installationFee, setInstallationFee] = useState('');
   const [showErrors, setShowErrors] = useState(false);
 
   const sell = trpc.orders.sellReadyMade.useMutation({
@@ -81,7 +82,12 @@ export function SellReadyMadeScreen(): ReactElement {
       needsInstallation: needsInstallation === 'yes',
       ...(model.trim() === '' ? {} : { model: model.trim() }),
       ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
-      ...(needsInstallation === 'yes' ? { installAddress: installAddress.trim() } : {}),
+      ...(needsInstallation === 'yes'
+        ? {
+            installAddress: installAddress.trim(),
+            installationFee: toMoney(installationFee),
+          }
+        : {}),
     });
   };
 
@@ -186,19 +192,36 @@ export function SellReadyMadeScreen(): ReactElement {
           </Field>
 
           {needsInstallation === 'yes' ? (
-            <Field
-              label="Адрес установки"
-              required
-              error={showErrors ? errors.installAddress : undefined}
-            >
-              <Input
-                value={installAddress}
-                onChangeText={setInstallAddress}
-                placeholder="Улица, дом, квартира"
-                multiline
-                invalid={showErrors && errors.installAddress !== undefined}
-              />
-            </Field>
+            <>
+              <Field
+                label="Адрес установки"
+                required
+                error={showErrors ? errors.installAddress : undefined}
+              >
+                <Input
+                  value={installAddress}
+                  onChangeText={setInstallAddress}
+                  placeholder="Улица, дом, квартира"
+                  multiline
+                  invalid={showErrors && errors.installAddress !== undefined}
+                />
+              </Field>
+
+              {/*
+                Единственная из четырёх расценок, применимая к готовым шторам:
+                ни замера, ни пошива, ни контроля здесь нет. Стоит рядом с
+                адресом — оба поля появляются по одному ответу «да» и
+                описывают одну и ту же работу.
+              */}
+              <Field label="За установку, сум" hint="Сколько получит установщик">
+                <Input
+                  value={installationFee}
+                  onChangeText={setInstallationFee}
+                  placeholder="0"
+                  keyboardType="numeric"
+                />
+              </Field>
+            </>
           ) : (
             <Text style={styles.hint}>
               Заказ закроется сразу — цех и установщик в нём не участвуют.

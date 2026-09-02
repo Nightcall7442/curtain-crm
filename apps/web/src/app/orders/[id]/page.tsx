@@ -6,9 +6,11 @@ import {
   formatPhone,
   isTerminalStatus,
   ORDER_ITEM_KIND_LABELS_RU,
+  ORDER_STAGE_FEE_LABELS_RU,
   ORDER_STATUS_LABELS_RU,
   parseMoney,
   ROLE_LABELS_RU,
+  stageFeesOfOrderType,
   TransitionKind,
   type AssignableRole,
   type OrderStatus,
@@ -19,6 +21,7 @@ import { useParams } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
 
 import { OrderManagePanel } from '@/components/orders/OrderManagePanel';
+import { stageFeesFromOrder } from '@/components/orders/StageFeesFields';
 import { OrderPhotos } from '@/components/orders/OrderPhotos';
 import { OrderPurchases } from '@/components/orders/OrderPurchases';
 import { VoiceRecorder } from '@/components/orders/VoiceRecorder';
@@ -125,6 +128,22 @@ export default function OrderDetailPage(): ReactElement {
   }
 
   const data = order.data;
+
+  /*
+    Расценки, которые этому сотруднику видно и по которым есть что показать.
+
+    Скрытые пришли с сервера как `null` — решение принимает API, а не вёрстка:
+    спрятанная в разметке сумма всё равно уехала бы клиенту в ответе.
+
+    Нули отсеиваются: у заказов, заведённых до появления расценок, и у любого
+    незаполненного этапа стоит ноль, и строка «За пошив: 0 сум» читается
+    исполнителем как «мне за это не заплатят», хотя означает «сумму ещё не
+    внесли». Руководство видит нули там, где им место, — в окне правки.
+  */
+  const stageFeeDraft = stageFeesFromOrder(data);
+  const visibleStageFees = stageFeesOfOrderType(data.orderType)
+    .map((stage) => [stage, stageFeeDraft[stage]] as const)
+    .filter(([, value]) => value.length > 0 && Number.parseFloat(value) > 0);
 
   return (
     /*
@@ -299,8 +318,30 @@ export default function OrderDetailPage(): ReactElement {
           }}
           workPrice={data.workPrice}
           deposit={data.deposit}
+          stageFees={stageFeesFromOrder(data)}
+          orderType={data.orderType}
           isClosed={isTerminalStatus(data.status)}
         />
+      )}
+
+      {/*
+        Расценки по этапам: исполнитель увидит одну строку — свою, продавец и
+        руководство все. Что кому видно, решено сервером (см. выше).
+      */}
+      {visibleStageFees.length > 0 && (
+        <Card>
+          <CardHeader title="Расценки по этапам" />
+          <CardBody>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
+              {visibleStageFees.map(([stage, value]) => (
+                <MoneyItem key={stage} label={ORDER_STAGE_FEE_LABELS_RU[stage]} value={value} />
+              ))}
+            </dl>
+            <p className="mt-3 text-overline text-muted">
+              Начисляется в зарплату за месяц, в котором заказ закрыт.
+            </p>
+          </CardBody>
+        </Card>
       )}
 
       {/*
