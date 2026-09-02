@@ -533,7 +533,11 @@ export const ordersRouter = router({
           ipAddress: ctx.ipAddress,
         });
 
-        return order;
+        // Автор заказа и так видит все расценки, так что здесь маскировка
+        // ничего не скрывает. Она стоит ради инварианта: заказ не покидает
+        // роутер в обход `maskStageFees`. Одно исключение «здесь-то можно» —
+        // и следующий, кто скопирует этот `return`, унесёт чужие суммы.
+        return maskStageFees(order, ctx.user);
       });
     }),
 
@@ -676,7 +680,7 @@ export const ordersRouter = router({
           ipAddress: ctx.ipAddress,
         });
 
-        return order;
+        return maskStageFees(order, ctx.user);
       });
     }),
 
