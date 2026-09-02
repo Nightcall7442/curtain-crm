@@ -259,11 +259,17 @@ export function OrdersView({
    */
   const bulkStatus =
     checkedRows.length > 0 &&
-    checkedRows.every((row) => row.status === checkedRows[0]?.status)
+    checkedRows.every((row) => row.status === checkedRows[0]?.status) &&
+    // ...и в одном ТИПЕ: у готовых штор часть переходов своя, и общая кнопка
+    // над смешанным выбором снова означала бы для разных заказов разное.
+    checkedRows.every((row) => row.orderType === checkedRows[0]?.orderType)
       ? (checkedRows[0]?.status ?? null)
       : null;
 
-  const bulkActions = bulkStatus === null ? [] : orderRowActions(bulkStatus, roles, locale);
+  const bulkActions =
+    bulkStatus === null
+      ? []
+      : orderRowActions(bulkStatus, roles, locale, checkedRows[0]?.orderType);
 
   const clearChecked = (): void => {
     setChecked(new Set());
@@ -336,7 +342,7 @@ export function OrdersView({
       // Цифры запускают действия активной строки в том же порядке, в каком
       // они нарисованы: 1 — кнопка, дальше пункты меню сверху вниз.
       if (event.key >= '1' && event.key <= '9') {
-        const actions = orderRowActions(active.status, roles, locale);
+        const actions = orderRowActions(active.status, roles, locale, active.orderType);
         const action = actions[Number.parseInt(event.key, 10) - 1];
         if (action === undefined) return;
 
@@ -692,6 +698,7 @@ export function OrdersView({
                 status={row.status}
                 roles={roles}
                 locale={locale}
+                orderType={row.orderType}
                 onPick={(action) => {
                   runAction({ orders: [toActionOrder(row)], action });
                 }}

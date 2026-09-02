@@ -39,7 +39,9 @@ export function TaskListScreen(): ReactElement {
       .map((order) => ({
         order,
         // Отмену исключаем: «отменить заказ» — не задача исполнителя.
-        actions: availableTransitions(order.status, roles).filter(
+        // Тип заказа передаём: у готовых штор часть переходов своя, и без
+        // него список действий разошёлся бы с тем, что разрешает сервер.
+        actions: availableTransitions(order.status, roles, order.orderType).filter(
           (transition) => transition.kind !== TransitionKind.CANCEL,
         ),
       }))

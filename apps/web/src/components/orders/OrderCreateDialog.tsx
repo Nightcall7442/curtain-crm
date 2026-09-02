@@ -7,7 +7,8 @@ import {
   ORDER_ITEM_KINDS,
   OrderItemKind,
   PRIORITIES,
-  type Priority,
+  Priority,
+  type Priority as PriorityName,
   PRIORITY_LABELS_RU,
 } from '@curtain-crm/shared';
 import { Plus, Trash2 } from 'lucide-react';
@@ -107,7 +108,7 @@ export function OrderCreateDialog({
   const [clientComment, setClientComment] = useState('');
   const [installAddress, setInstallAddress] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [priority, setPriority] = useState<Priority>('normal');
+  const [priority, setPriority] = useState<PriorityName>(Priority.NORMAL);
   const [branchId, setBranchId] = useState('');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
@@ -131,7 +132,7 @@ export function OrderCreateDialog({
     setClientComment('');
     setInstallAddress('');
     setDeadline('');
-    setPriority('normal');
+    setPriority(Priority.NORMAL);
     setWorkPrice('');
     setDeposit('');
     setItems([emptyItem()]);
@@ -349,7 +350,7 @@ export function OrderCreateDialog({
               <Select
                 value={priority}
                 onChange={(event) => {
-                  setPriority(event.target.value as Priority);
+                  setPriority(event.target.value as PriorityName);
                 }}
                 options={PRIORITIES.map((value) => ({
                   value,

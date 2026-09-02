@@ -2,11 +2,13 @@
 
 import {
   availableTransitions,
+  OrderType,
   primaryOrderAction,
   transitionLabel,
   TransitionKind,
   type Locale,
   type OrderStatus,
+  type OrderType as OrderTypeName,
   type Role,
 } from '@curtain-crm/shared';
 import { ChevronDown } from 'lucide-react';
@@ -46,9 +48,14 @@ export function orderRowActions(
   status: OrderStatus,
   roles: readonly Role[],
   locale: Locale = 'ru',
+  /**
+   * Тип заказа. Часть переходов существует только у готовых штор, и без
+   * него список действий строки разошёлся бы с тем, что разрешает сервер.
+   */
+  orderType: OrderTypeName = OrderType.CUSTOM,
 ): readonly OrderAction[] {
-  const all = availableTransitions(status, roles);
-  const primary = primaryOrderAction(status, roles, locale);
+  const all = availableTransitions(status, roles, orderType);
+  const primary = primaryOrderAction(status, roles, locale, orderType);
 
   const ordered =
     primary === null
@@ -67,18 +74,20 @@ export function OrderRowActions({
   status,
   roles,
   locale,
+  orderType = OrderType.CUSTOM,
   onPick,
 }: {
   readonly status: OrderStatus;
   readonly roles: readonly Role[];
   readonly locale: Locale;
+  readonly orderType?: OrderTypeName;
   readonly onPick: (action: OrderAction) => void;
 }): ReactElement | null {
   const [menuOpen, setMenuOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const primary = primaryOrderAction(status, roles, locale);
-  const actions = orderRowActions(status, roles, locale);
+  const primary = primaryOrderAction(status, roles, locale, orderType);
+  const actions = orderRowActions(status, roles, locale, orderType);
 
   /*
     Меню закрывается по нажатию мимо и по Escape.

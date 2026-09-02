@@ -3,6 +3,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import {
   ORDER_STATUS_LABELS,
+  ORDER_TYPE_LABELS,
   OrderType,
   PRESENCE_STATUS_LABELS,
   PRIORITY_LABELS,
@@ -114,8 +115,9 @@ export function OrderTypeBadge({
 }: {
   readonly orderType: OrderTypeName;
 }): ReactElement | null {
+  const { t } = useLocale();
   if (orderType !== OrderType.READY_MADE) return null;
-  return <Badge tone="accent">Готовые шторы</Badge>;
+  return <Badge tone="accent">{t(ORDER_TYPE_LABELS, orderType)}</Badge>;
 }
 
 const PRESENCE_TONE: Readonly<Record<PresenceStatus, Tone>> = {

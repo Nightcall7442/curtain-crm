@@ -6,7 +6,8 @@ import {
   PHOTO_STAGE_UPLOADER_ROLES,
   PHOTO_STAGES,
   type OrderStatus,
-  type PhotoStage,
+  PhotoStage,
+  type PhotoStage as PhotoStageName,
 } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
@@ -51,7 +52,7 @@ export function OrderPhotoUpload({
   const roles = user?.roles ?? [];
 
   const utils = trpc.useUtils();
-  const [stage, setStage] = useState<PhotoStage>('general');
+  const [stage, setStage] = useState<PhotoStageName>(PhotoStage.GENERAL);
 
   const photos = trpc.orderPhotos.listByOrder.useQuery({ orderId });
 

@@ -18,6 +18,7 @@ import {
   ORDER_PHASES,
   ORDER_STATUS_PHASE,
   orderItemAccessorySchema,
+  OrderItemKind,
   orderItemKindSchema,
   orderStatusSchema,
   parseDimensions,
@@ -503,7 +504,7 @@ export const ordersRouter = router({
         await tx.insert(orderItems).values([
           toOrderItemValues(
             {
-              kind: 'other',
+              kind: OrderItemKind.OTHER,
               materials: [],
               materialOptions: [],
               hasProtection: false,

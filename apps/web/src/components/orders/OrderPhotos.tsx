@@ -9,7 +9,8 @@ import {
   PHOTO_STAGE_UPLOADER_ROLES,
   PHOTO_STAGES,
   type OrderStatus,
-  type PhotoStage,
+  PhotoStage,
+  type PhotoStage as PhotoStageName,
 } from '@curtain-crm/shared';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { useRef, useState, type ReactElement } from 'react';
@@ -46,7 +47,7 @@ export function OrderPhotos({
   const utils = trpc.useUtils();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [stage, setStage] = useState<PhotoStage>('general');
+  const [stage, setStage] = useState<PhotoStageName>(PhotoStage.GENERAL);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const photos = trpc.orderPhotos.listByOrder.useQuery({ orderId });
@@ -135,7 +136,7 @@ export function OrderPhotos({
                 <Select
                   value={stage}
                   onChange={(event) => {
-                    setStage(event.target.value as PhotoStage);
+                    setStage(event.target.value as PhotoStageName);
                   }}
                   options={allowedStages.map((value) => ({
                     value,

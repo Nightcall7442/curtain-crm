@@ -471,7 +471,7 @@ function resolveAutoAssignment(
   const isQcDecision = toStatus === OrderStatus.QC_PASSED || toStatus === OrderStatus.QC_FAILED;
 
   if (isQcDecision && order.qcId === null && actor.roles.includes(Role.QC)) {
-    return { role: 'qc', userId: actor.id };
+    return { role: Role.QC, userId: actor.id };
   }
 
   return null;

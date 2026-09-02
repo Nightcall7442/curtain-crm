@@ -7,8 +7,10 @@ import {
   PURCHASE_CATEGORY_LABELS_RU,
   PURCHASE_UNIT_LABELS_RU,
   PURCHASE_UNITS,
-  type PurchaseCategory,
-  type PurchaseUnit,
+  PurchaseCategory,
+  type PurchaseCategory as PurchaseCategoryName,
+  PurchaseUnit,
+  type PurchaseUnit as PurchaseUnitName,
 } from '@curtain-crm/shared';
 import { EyeOff, Eye, Package, Pencil, Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
@@ -30,9 +32,9 @@ export function PurchaseItemManager(): ReactElement {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
-  const [unit, setUnit] = useState<PurchaseUnit>('m');
+  const [unit, setUnit] = useState<PurchaseUnitName>(PurchaseUnit.METER);
   const [price, setPrice] = useState('');
-  const [category, setCategory] = useState<PurchaseCategory>('fabric');
+  const [category, setCategory] = useState<PurchaseCategoryName>(PurchaseCategory.FABRIC);
 
   const utils = trpc.useUtils();
   const list = trpc.purchases.items.list.useQuery({ includeInactive: true });
@@ -81,8 +83,8 @@ export function PurchaseItemManager(): ReactElement {
               setEditingId(null);
               setName('');
               setPrice('');
-              setUnit('m');
-              setCategory('fabric');
+              setUnit(PurchaseUnit.METER);
+              setCategory(PurchaseCategory.FABRIC);
               setOpen(true);
             }}
           >
@@ -245,7 +247,7 @@ export function PurchaseItemManager(): ReactElement {
               <Select
                 value={category}
                 onChange={(event) => {
-                  setCategory(event.target.value as PurchaseCategory);
+                  setCategory(event.target.value as PurchaseCategoryName);
                 }}
                 options={PURCHASE_CATEGORIES.map((value) => ({
                   value,
@@ -258,7 +260,7 @@ export function PurchaseItemManager(): ReactElement {
               <Select
                 value={unit}
                 onChange={(event) => {
-                  setUnit(event.target.value as PurchaseUnit);
+                  setUnit(event.target.value as PurchaseUnitName);
                 }}
                 options={PURCHASE_UNITS.map((value) => ({
                   value,

@@ -2,7 +2,10 @@ import {
   formatMoney,
   formatPhone,
   ORDER_STATUS_LABELS,
+  ORDER_TYPE_LABELS,
+  OrderType,
   parseMoney,
+  Role,
   ROLE_LABELS,
   TransitionKind,
   type OrderStatus,
@@ -123,6 +126,18 @@ export function OrderDetailScreen({
           </Text>
           <Pill text={t(ORDER_STATUS_LABELS, data.status)} tone="info" />
         </View>
+
+        {/*
+          Готовые шторы помечаются явно: у такого заказа нет ни замера, ни
+          пошива, и продавец, открывший карточку, должен видеть это сразу —
+          иначе он ждёт от неё этапов, которых у неё не будет. Пошив метки
+          не получает: это обычный случай, а не особенность.
+        */}
+        {data.orderType === OrderType.READY_MADE && (
+          <View style={styles.typeRow}>
+            <Pill text={t(ORDER_TYPE_LABELS, data.orderType)} tone="positive" />
+          </View>
+        )}
 
         <Text style={styles.client}>{data.clientName}</Text>
 
@@ -321,10 +336,13 @@ export function OrderDetailScreen({
       {/* --- Исполнители --------------------------------------------------- */}
       <Card>
         <CardTitle title="Исполнители" icon="people" />
-        <Row label={t(ROLE_LABELS, 'master')} value={data.master?.fullName ?? 'не назначен'} />
-        <Row label={t(ROLE_LABELS, 'sewer')} value={data.sewer?.fullName ?? 'не назначена'} />
-        <Row label={t(ROLE_LABELS, 'qc')} value={data.qc?.fullName ?? 'не назначен'} />
-        <Row label={t(ROLE_LABELS, 'installer')} value={data.installer?.fullName ?? 'не назначен'} />
+        <Row label={t(ROLE_LABELS, Role.MASTER)} value={data.master?.fullName ?? 'не назначен'} />
+        <Row label={t(ROLE_LABELS, Role.SEWER)} value={data.sewer?.fullName ?? 'не назначена'} />
+        <Row label={t(ROLE_LABELS, Role.QC)} value={data.qc?.fullName ?? 'не назначен'} />
+        <Row
+          label={t(ROLE_LABELS, Role.INSTALLER)}
+          value={data.installer?.fullName ?? 'не назначен'}
+        />
       </Card>
 
       {/* --- Комментарии ---------------------------------------------------- */}
@@ -471,6 +489,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  typeRow: {
+    flexDirection: 'row',
+    marginTop: spacing.sm,
   },
   orderNumber: {
     fontSize: 18,
