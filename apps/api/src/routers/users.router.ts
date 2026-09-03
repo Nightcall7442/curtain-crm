@@ -201,6 +201,54 @@ async function assertNotLastCeo(executor: DbExecutor, userId: number): Promise<v
   }
 }
 
+/**
+ * Замена фото сотрудника: общая часть загрузки своего и корпоративного.
+ *
+ * Прежний файл удаляется. Без этого хранилище прирастало бы при каждой
+ * смене фото ещё одним снимком, на который никто не ссылается.
+ */
+async function replaceAvatar(
+  executor: DbExecutor,
+  userId: number,
+  file: z.infer<typeof base64FileSchema>,
+): Promise<void> {
+  const env = getEnv();
+  const body = decodeBase64Payload(file, {
+    allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
+    maxBytes: env.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+  });
+
+  const [before] = await executor
+    .select({ avatarStorageKey: users.avatarStorageKey })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const storage = getStorage();
+  const stored = await storage.upload({
+    key: buildStorageKey(["avatars", userId.toString()], file.mimeType),
+    body,
+    mimeType: file.mimeType,
+  });
+
+  try {
+    await executor
+      .update(users)
+      .set({ avatarStorageKey: stored.key, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  } catch (error) {
+    // Ссылку в БД поставить не удалось — убираем загруженный файл,
+    // иначе он останется в хранилище навсегда и ничем не будет виден.
+    await storage.delete(stored.key).catch(() => undefined);
+    throw error;
+  }
+
+  const previousKey = before?.avatarStorageKey ?? null;
+  if (previousKey !== null && previousKey !== stored.key) {
+    await storage.delete(previousKey).catch(() => undefined);
+  }
+}
+
 export const usersRouter = router({
   /** Список сотрудников с фильтрами. Для раздела «Рабочие» веб-панели. */
   list: managementProcedure
@@ -302,55 +350,53 @@ export const usersRouter = router({
         .orderBy(asc(users.fullName));
     }),
 
-  /** Карточка сотрудника. Свой профиль доступен любому, чужой — руководству. */
   /**
    * Загрузка собственного фото.
    *
-   * Только своё: чужие фото не меняет даже директор — это личные данные,
-   * а не кадровый атрибут вроде должности. Прежний файл удаляется, иначе
-   * при каждой смене фото хранилище прирастало бы ещё одним снимком,
-   * на который никто не ссылается.
+   * Сотрудник меняет только своё. Корпоративный портрет за него ставит
+   * руководство процедурой `setAvatar` — почему это разные права,
+   * объяснено в её комментарии.
    */
   uploadAvatar: protectedProcedure
     .input(z.object({ file: base64FileSchema }))
     .mutation(async ({ ctx, input }) => {
-      const env = getEnv();
-      const body = decodeBase64Payload(input.file, {
-        allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
-        maxBytes: env.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
-      });
-
-      const [before] = await ctx.db
-        .select({ avatarStorageKey: users.avatarStorageKey })
-        .from(users)
-        .where(eq(users.id, ctx.user.id))
-        .limit(1);
-
-      const storage = getStorage();
-      const stored = await storage.upload({
-        key: buildStorageKey(['avatars', ctx.user.id.toString()], input.file.mimeType),
-        body,
-        mimeType: input.file.mimeType,
-      });
-
-      try {
-        await ctx.db
-          .update(users)
-          .set({ avatarStorageKey: stored.key, updatedAt: new Date() })
-          .where(eq(users.id, ctx.user.id));
-      } catch (error) {
-        // Ссылку в БД поставить не удалось — убираем загруженный файл,
-        // иначе он останется в хранилище навсегда и ничем не будет виден.
-        await storage.delete(stored.key).catch(() => undefined);
-        throw error;
-      }
-
-      const previousKey = before?.avatarStorageKey ?? null;
-      if (previousKey !== null && previousKey !== stored.key) {
-        await storage.delete(previousKey).catch(() => undefined);
-      }
-
+      await replaceAvatar(ctx.db, ctx.user.id, input.file);
       return loadUserOrThrow(ctx.db, ctx.user.id);
+    }),
+
+  /**
+   * Корпоративное фото сотрудника, которое ставит руководство.
+   *
+   * Раньше чужое фото не менял даже директор: снимок считался личными
+   * данными. Практика оказалась другой — компания снимает весь штат разом,
+   * в фирменном поло и на общем фоне, и полученные портреты некому
+   * загрузить, кроме кадровика: у швеи файла с её портретом нет, а
+   * рассылать людям их же фотографии, чтобы каждый загрузил свою, — работа
+   * ради соблюдения формальности.
+   *
+   * Поэтому право разделено: своё фото ставит сотрудник, корпоративное —
+   * руководство, и каждая такая замена попадает в audit_log с именем того,
+   * кто её сделал. Тихой подмены не выйдет.
+   */
+  setAvatar: managementProcedure
+    .input(z.object({ userId: idSchema, file: base64FileSchema }))
+    .mutation(async ({ ctx, input }) => {
+      // Существование проверяем ДО загрузки: иначе файл несуществующего
+      // сотрудника осел бы в хранилище, и убрать его было бы некому.
+      const target = await loadUserOrThrow(ctx.db, input.userId);
+
+      await replaceAvatar(ctx.db, input.userId, input.file);
+
+      await recordAudit(ctx.db, {
+        actorId: ctx.user.id,
+        action: "user.avatar_changed",
+        entityType: "user",
+        entityId: input.userId,
+        details: { fullName: target.fullName },
+        ipAddress: ctx.ipAddress,
+      });
+
+      return loadUserOrThrow(ctx.db, input.userId);
     }),
 
   /** Удаление собственного фото: снова показываются инициалы. */
@@ -374,6 +420,7 @@ export const usersRouter = router({
     return loadUserOrThrow(ctx.db, ctx.user.id);
   }),
 
+  /** Карточка сотрудника. Свой профиль доступен любому, чужой — руководству. */
   byId: protectedProcedure
     .input(z.object({ id: idSchema }))
     .query(async ({ ctx, input }) => {

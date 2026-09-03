@@ -130,6 +130,7 @@ export const AUDIT_ACTIONS = [
   'user.deactivated',
   'user.activated',
   'user.password_reset',
+  'user.avatar_changed',
   'user.role_granted',
   'user.role_revoked',
   'user.branches_changed',
