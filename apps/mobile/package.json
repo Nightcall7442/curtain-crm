@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@curtain-crm/config": "workspace:*",
+    "@expo/ngrok": "^4.1.0",
     "@types/react": "~19.2.18",
     "eslint": "^9.18.0",
     "typescript": "^6.0.3"
