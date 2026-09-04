@@ -1,6 +1,11 @@
 import type { ReactElement, ReactNode } from 'react';
 import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Mono, IBM_Plex_Sans, Instrument_Serif } from 'next/font/google';
+import {
+  IBM_Plex_Mono,
+  IBM_Plex_Sans,
+  Instrument_Serif,
+  Playfair_Display,
+} from 'next/font/google';
 
 import { Shell } from '@/components/layout/Shell';
 import { Providers } from '@/components/providers/Providers';
@@ -47,6 +52,25 @@ const instrumentSerif = Instrument_Serif({
   display: 'swap',
 });
 
+/**
+ * Название фирмы на экране входа — и больше нигде.
+ *
+ * Отдельный шрифт заведён не ради разнообразия. Instrument Serif — узкая
+ * контрастная антиква нового рисунка, рядом с плашечным знаком она читалась
+ * современно там, где нужен классический вид. Playfair Display — старая
+ * школа: широкие засечки, спокойные пропорции.
+ *
+ * Кириллица у него есть, в отличие от Instrument Serif, — но подменять им
+ * `--font-display` целиком не стали: это перекрасило бы заголовки во всей
+ * панели, а разговор был про одну надпись.
+ */
+const playfair = Playfair_Display({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['500'],
+  variable: '--font-wordmark',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'Design House — CRM',
   description: 'Система учёта мастерской по пошиву и установке штор',
@@ -73,7 +97,7 @@ export default function RootLayout({
   return (
     <html
       lang="ru"
-      className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable}`}
+      className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable} ${playfair.variable}`}
     >
       <head>
         {/*

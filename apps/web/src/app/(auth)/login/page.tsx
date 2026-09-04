@@ -87,7 +87,7 @@ export default function LoginPage(): ReactElement {
             }}
           />
           <span className="flex flex-col">
-            <span className="font-display text-title tracking-[0.01em]">Parda Bozor</span>
+            <span className="font-wordmark text-title tracking-[0.02em]">Parda Bozor</span>
             <span className="text-overline tracking-[0.05em] text-base/55">
               шторы премиум класса
             </span>
@@ -145,7 +145,7 @@ export default function LoginPage(): ReactElement {
                 maskRepeat: 'no-repeat',
               }}
             />
-            <span className="font-display text-display">Parda Bozor</span>
+            <span className="font-wordmark text-display tracking-[0.02em]">Parda Bozor</span>
           </div>
 
           <div className="flex flex-col gap-2">

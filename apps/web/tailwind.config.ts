@@ -126,6 +126,8 @@ const config: Config = {
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
         /** Фирменные места: экран входа, заголовки разделов. Не для таблиц. */
         display: ['var(--font-display)', 'Georgia', 'serif'],
+        /** Название фирмы на экране входа. Классическая антиква, только там. */
+        wordmark: ['var(--font-wordmark)', 'Georgia', 'serif'],
       },
 
       boxShadow: {
