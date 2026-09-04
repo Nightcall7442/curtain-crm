@@ -8,6 +8,8 @@
  * поэтому код не должен сравниваться с этими строками напрямую.
  */
 
+import { z } from 'zod';
+
 import type { Translated } from '../i18n/locale';
 
 /** Виды справочников характеристик заказа. */
@@ -140,6 +142,9 @@ export const PURCHASE_CATEGORIES = [
 ] as const;
 
 export type PurchaseCategory = (typeof PURCHASE_CATEGORIES)[number];
+
+/** Схема категории — нужна входам процедур (закупка, розничный прайс). */
+export const purchaseCategorySchema = z.enum(PURCHASE_CATEGORIES);
 
 export const PurchaseCategory = {
   FABRIC: 'fabric',

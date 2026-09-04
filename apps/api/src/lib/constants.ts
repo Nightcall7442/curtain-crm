@@ -149,6 +149,13 @@ export const AUDIT_ACTIONS = [
   'order.price_changed',
   'order.stage_fees_changed',
 
+  'retail_item.created',
+  'retail_item.updated',
+  'retail_item.activated',
+  'retail_item.deactivated',
+  'retail_item.stock_changed',
+  'retail_sale.created',
+
   'purchase_item.created',
   'purchase_item.price_changed',
   'purchase_item.deactivated',

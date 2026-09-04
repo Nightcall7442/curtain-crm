@@ -14,6 +14,7 @@ import { ratingRouter } from './rating.router';
 import { reportsRouter } from './reports.router';
 import { shiftsRouter } from './shifts.router';
 import { smmRouter } from './smm.router';
+import { retailRouter } from './retail.router';
 import { personalWorksRouter } from './personalWorks.router';
 import { tasksRouter } from './tasks.router';
 import { usersRouter } from './users.router';
@@ -48,6 +49,7 @@ export const appRouter = router({
   smm: smmRouter,
   tasks: tasksRouter,
   personalWorks: personalWorksRouter,
+  retail: retailRouter,
   dayOff: dayOffRouter,
 });
 
