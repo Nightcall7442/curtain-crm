@@ -7,7 +7,7 @@ import {
 
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon } from '../components/Icon';
@@ -84,7 +84,24 @@ export function WorkScreen(): ReactElement {
 
   return (
     <View style={styles.container}>
-      <View style={styles.filters}>
+      {/*
+        Фильтры прокручиваются по горизонтали.
+
+        Раньше это был обычный ряд: четыре чипа не влезали в ширину телефона,
+        «Поручения» обрезались краем экрана, и добраться до них было нечем —
+        ряд выглядел застывшим. Ширина зависит и от длины подписи со
+        счётчиком («Поручения (12)»), и от системного размера шрифта, так
+        что «подобрать отступы, чтобы влезло» — не решение: при следующей
+        вкладке или крупном шрифте всё повторится.
+      */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        // Ряд занимает высоту по содержимому, иначе ScrollView растянется
+        // на весь экран и заберёт прокрутку у списка заказов.
+        style={styles.filtersScroll}
+        contentContainerStyle={styles.filters}
+      >
         {FILTERS.map((entry) => {
           const isActive = entry.key === filter;
           const label =
@@ -107,7 +124,7 @@ export function WorkScreen(): ReactElement {
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {filter === 'tasks' ? (
         <FlatList
@@ -214,8 +231,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // `flexGrow: 0` обязателен: без него ScrollView займёт всю оставшуюся
+  // высоту экрана и список заказов окажется под ним.
+  filtersScroll: {
+    flexGrow: 0,
+  },
   filters: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,

@@ -28,12 +28,6 @@ import {
 import { trpc } from '@/lib/trpc';
 import { formatQuantity } from '@/lib/utils';
 
-import {
-  emptyStageFees,
-  StageFeesFields,
-  toStageFeesInput,
-  type StageFeesDraft,
-} from './StageFeesFields';
 
 /**
  * Создание заказа.
@@ -119,7 +113,6 @@ export function OrderCreateDialog({
   const [branchId, setBranchId] = useState('');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
-  const [stageFees, setStageFees] = useState<StageFeesDraft>(emptyStageFees);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
 
   const utils = trpc.useUtils();
@@ -143,7 +136,6 @@ export function OrderCreateDialog({
     setPriority(Priority.NORMAL);
     setWorkPrice('');
     setDeposit('');
-    setStageFees(emptyStageFees());
     setItems([emptyItem()]);
     create.reset();
   };
@@ -216,7 +208,6 @@ export function OrderCreateDialog({
       ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
-      stageFees: toStageFeesInput(stageFees),
       items: items.map((item) => ({
         kind: item.kind,
         ...(item.model.length > 0 ? { model: item.model } : {}),
@@ -391,17 +382,6 @@ export function OrderCreateDialog({
               />
             </Field>
           </div>
-        </section>
-
-        {/* --- Расценки по этапам ---------------------------------------- */}
-        <section>
-          <h3 className="mb-2 text-callout font-semibold">Расценки исполнителям</h3>
-          <p className="text-footnote text-muted mb-3">
-            Сколько получит каждый за свой этап этого заказа. Пустое поле —
-            ноль; сумму можно проставить и позже. Исполнитель видит только
-            свою.
-          </p>
-          <StageFeesFields value={stageFees} onChange={setStageFees} errors={errors} />
         </section>
 
         {/* --- Позиции --------------------------------------------------- */}

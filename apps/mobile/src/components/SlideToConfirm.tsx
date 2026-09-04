@@ -55,11 +55,41 @@ export function SlideToConfirm({
 
   const responder = useRef(
     PanResponder.create({
+      /*
+        Бегунок забирает касание сразу, ещё до движения.
+
+        Раньше жест перехватывался только по `onMoveShouldSetPanResponder`,
+        то есть после того, как палец уже проехал несколько пикселей. Но
+        компонент лежит внутри вертикального ScrollView, и та за это время
+        успевала объявить жест своим — протяжка срывалась на середине или
+        не начиналась вовсе.
+      */
+      onStartShouldSetPanResponder: () => !state.current.disabled && !state.current.busy,
+      onStartShouldSetPanResponderCapture: () => !state.current.disabled && !state.current.busy,
+
+      /*
+        Порог сравнивает горизонталь с вертикалью, а не с числом.
+
+        Было `Math.abs(gesture.dy) < 14`: палец, ведущий вбок по дуге,
+        выходил за эти четырнадцать пикселей на середине дорожки, и жест
+        обрывался. Человек при этом видел, что бегунок «залипает».
+      */
       onMoveShouldSetPanResponder: (_event, gesture) =>
         !state.current.disabled &&
         !state.current.busy &&
-        Math.abs(gesture.dx) > 6 &&
-        Math.abs(gesture.dy) < 14,
+        Math.abs(gesture.dx) > 4 &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy),
+
+      /*
+        Начатую протяжку не отдаём никому.
+
+        Без этого ScrollView вправе отобрать жест по ходу движения —
+        достаточно чуть повести палец вниз, и смена не откроется, хотя
+        человек дотянул до конца.
+      */
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+
       onPanResponderMove: (_event, gesture) => {
         const max = Math.max(0, trackWidth.current - THUMB - PAD * 2);
         current.current = Math.max(0, Math.min(max, gesture.dx));
@@ -105,6 +135,10 @@ export function SlideToConfirm({
       <Text style={styles.label}>{label}</Text>
       <Animated.View
         style={[styles.thumb, { transform: [{ translateX: pos }] }]}
+        // Палец редко попадает точно в кружок: смену отмечают на ходу, часто
+        // в перчатках. Область захвата шире самого бегунка, но не на всю
+        // дорожку — иначе касание любой её точки уже тянуло бы ползунок.
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 24 }}
         {...responder.panHandlers}
       >
         {busy ? (

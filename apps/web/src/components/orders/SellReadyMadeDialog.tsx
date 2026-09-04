@@ -36,7 +36,6 @@ export function SellReadyMadeDialog({
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState(false);
   const [installAddress, setInstallAddress] = useState('');
-  const [installationFee, setInstallationFee] = useState('');
 
   const utils = trpc.useUtils();
 
@@ -58,7 +57,6 @@ export function SellReadyMadeDialog({
     setComment('');
     setNeedsInstallation(false);
     setInstallAddress('');
-    setInstallationFee('');
     sell.reset();
   };
 
@@ -77,7 +75,6 @@ export function SellReadyMadeDialog({
       ...(needsInstallation
         ? {
             installAddress: installAddress.trim(),
-            installationFee: Number.parseFloat(installationFee.replace(',', '.')) || 0,
           }
         : {}),
     });
@@ -222,27 +219,6 @@ export function SellReadyMadeDialog({
                   }}
                   placeholder="г. Ташкент, Мирабадский р-н, ул. …"
                   invalid={errors['installAddress'] !== undefined}
-                />
-              </Field>
-
-              {/*
-                Единственная из четырёх расценок, применимая к готовым шторам:
-                ни замера, ни пошива, ни контроля здесь нет. Показываем её
-                вместе с адресом — оба поля появляются по одной галочке и
-                описывают одну и ту же работу.
-              */}
-              <Field
-                label="За установку, сум"
-                hint="Сколько получит установщик"
-                error={errors['installationFee']}
-              >
-                <Input
-                  inputMode="decimal"
-                  value={installationFee}
-                  onChange={(event) => {
-                    setInstallationFee(event.target.value);
-                  }}
-                  placeholder="0"
                 />
               </Field>
             </div>

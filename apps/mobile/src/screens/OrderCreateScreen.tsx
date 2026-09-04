@@ -26,12 +26,6 @@ import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
-import {
-  emptyStageFees,
-  StageFeeFields,
-  toStageFeesInput,
-  type StageFeeDraft,
-} from '../components/StageFeeFields';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -108,7 +102,6 @@ export function OrderCreateScreen(): ReactElement {
   const [deadline, setDeadline] = useState('');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
-  const [stageFees, setStageFees] = useState<StageFeeDraft>(emptyStageFees);
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [showErrors, setShowErrors] = useState(false);
 
@@ -191,7 +184,6 @@ export function OrderCreateScreen(): ReactElement {
       ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
       workPrice: toMoney(workPrice),
       deposit: toMoney(deposit),
-      stageFees: toStageFeesInput(stageFees),
       items: items.map((item) => ({
         kind: item.kind,
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
@@ -314,14 +306,6 @@ export function OrderCreateScreen(): ReactElement {
           </View>
         </Card>
 
-        <Card>
-          <CardTitle title="Расценки исполнителям" icon="payroll" />
-          <Text style={styles.hint}>
-            Сколько получит каждый за свой этап. Пустое поле — ноль, сумму
-            можно проставить позже. Исполнитель видит только свою.
-          </Text>
-          <StageFeeFields value={stageFees} onChange={setStageFees} />
-        </Card>
 
         {items.map((item, index) => {
           const widthNum = Number.parseFloat(item.widthCm.replace(',', '.'));

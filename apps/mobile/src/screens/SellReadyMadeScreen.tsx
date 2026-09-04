@@ -47,7 +47,6 @@ export function SellReadyMadeScreen(): ReactElement {
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState<'no' | 'yes'>('no');
   const [installAddress, setInstallAddress] = useState('');
-  const [installationFee, setInstallationFee] = useState('');
   const [showErrors, setShowErrors] = useState(false);
 
   const sell = trpc.orders.sellReadyMade.useMutation({
@@ -85,7 +84,6 @@ export function SellReadyMadeScreen(): ReactElement {
       ...(needsInstallation === 'yes'
         ? {
             installAddress: installAddress.trim(),
-            installationFee: toMoney(installationFee),
           }
         : {}),
     });
@@ -204,21 +202,6 @@ export function SellReadyMadeScreen(): ReactElement {
                   placeholder="Улица, дом, квартира"
                   multiline
                   invalid={showErrors && errors.installAddress !== undefined}
-                />
-              </Field>
-
-              {/*
-                Единственная из четырёх расценок, применимая к готовым шторам:
-                ни замера, ни пошива, ни контроля здесь нет. Стоит рядом с
-                адресом — оба поля появляются по одному ответу «да» и
-                описывают одну и ту же работу.
-              */}
-              <Field label="За установку, сум" hint="Сколько получит установщик">
-                <Input
-                  value={installationFee}
-                  onChangeText={setInstallationFee}
-                  placeholder="0"
-                  keyboardType="numeric"
                 />
               </Field>
             </>

@@ -183,22 +183,13 @@ function toOrderItemValues(item: OrderItemInput, orderId: number, position: numb
 /**
  * Сколько получит исполнитель каждого этапа за этот заказ.
  *
- * Продавец проставляет суммы при приёме, админ утверждает их вместе с самим
- * заказом на проверке — отдельной кнопки «утвердить расценки» нет намеренно:
- * это тот же самый шаг проверки, и разводить его на два действия значило бы
- * получить заказы, утверждённые наполовину.
+ * Назначает ТОЛЬКО руководство и только процедурой `setStageFees`. При
+ * создании заказа расценок нет: продавец их не вводит и не видит — сколько
+ * получает цех, к приёму заказа отношения не имеет.
  *
  * Незаполненное поле — ноль, а не ошибка: у заказа без монтажа установки
- * действительно нет, а забытую сумму руководство дописывает позже
- * `setStageFees`. Заставлять продавца заполнять все четыре поля ради одного
- * нужного — верный способ получить проставленные наугад числа.
+ * действительно нет, а забытую сумму руководство дописывает позже.
  */
-const stageFeesInputSchema = z.object({
-  measurementFee: moneySchema.default(0),
-  sewingFee: moneySchema.default(0),
-  qcFee: moneySchema.default(0),
-  installationFee: moneySchema.default(0),
-});
 
 /**
  * Расценки в виде, пригодном и для создания заказа, и для точечной правки.
@@ -256,10 +247,14 @@ export type OrderWithVisibleFees<T> = Omit<T, StageFeeField> &
 /**
  * Скрывает чужие расценки.
  *
- * Кто что видит, решил владелец: продавец видит все расценки заказа — он их
- * и проставляет, — руководство тоже; исполнитель видит только свою. Швея не
- * должна знать, сколько получит установщик: сравнение сумм между собой — это
- * ссоры в цеху, а не прозрачность.
+ * Кто что видит, решил владелец: все расценки заказа — только руководство
+ * (CEO и админ); исполнитель видит свою и ничью больше. Продавец не видит
+ * ни одной, хотя заказ завёл он: сколько получает цех — не его дело.
+ *
+ * Раньше продавец видел все — он же их и проставлял при приёме. Владелец
+ * это отменил: расценки назначает руководство, и продавцу они не показыва-
+ * ются даже в собственном заказе. Поэтому `createdBy` здесь больше не при
+ * чём — проверять его было бы возвратом прежнего правила.
  *
  * Скрытое поле становится `null`, а не нулём: «не показываем» и «не платим»
  * обязаны различаться, иначе интерфейс честно напишет исполнителю, что за
@@ -272,7 +267,7 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   order: T,
   user: { readonly id: number; readonly roles: readonly Role[] },
 ): OrderWithVisibleFees<T> {
-  const seesEverything = isManagement(user.roles) || order.createdBy === user.id;
+  const seesEverything = isManagement(user.roles);
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
@@ -456,8 +451,18 @@ export const ordersRouter = router({
         workPrice: moneySchema.default(0),
         deposit: moneySchema.default(0),
 
-        /** Сдельные расценки по этапам — сколько получит каждый исполнитель. */
-        stageFees: stageFeesInputSchema.default({}),
+        /*
+          Расценок здесь нет намеренно.
+
+          Сначала их вписывал продавец при приёме, а руководство утверждало.
+          Владелец решил иначе: сколько получает цех — дело CEO и админа, и
+          продавцу этого знать не нужно. Поле убрано из ВХОДА процедуры, а не
+          спрятано в форме: иначе достаточно было бы отправить запрос мимо
+          интерфейса, чтобы назначить чужую зарплату.
+
+          Проставляет суммы руководство отдельной процедурой `setStageFees`,
+          у неё свой guard.
+        */
 
         items: z.array(orderItemInputSchema).min(1, 'Добавьте хотя бы одну позицию').max(50),
       }),
@@ -492,7 +497,6 @@ export const ordersRouter = router({
             priority: input.priority,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
             deposit: moneyToDecimalString(parseMoney(input.deposit)),
-            ...toStageFeeValues(input.stageFees),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -573,11 +577,8 @@ export const ordersRouter = router({
           comment: optionalText(500),
 
           needsInstallation: z.boolean(),
-          /**
-           * Расценка установщику. Единственная из четырёх, применимая к
-           * готовым шторам: ни замера, ни пошива, ни контроля здесь нет.
-           */
-          installationFee: moneySchema.default(0),
+          /* Расценки установщику здесь нет — её назначает руководство,
+             см. комментарий в `create`. */
           /** Обязателен, если нужна установка; иначе заказ закрывается сразу. */
           installAddress: optionalText(500),
           installLatitude: z.number().min(-90).max(90).optional(),
@@ -619,12 +620,6 @@ export const ordersRouter = router({
             deadline: input.deadline ?? null,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
             deposit: moneyToDecimalString(parseMoney(input.deposit)),
-            // Продажа без монтажа установщику не достаётся никому, поэтому
-            // сумму в таком заказе не сохраняем, даже если её ввели и потом
-            // передумали ставить галочку.
-            ...toStageFeeValues({
-              installationFee: input.needsInstallation ? input.installationFee : 0,
-            }),
             createdBy: ctx.user.id,
           })
           .returning();
