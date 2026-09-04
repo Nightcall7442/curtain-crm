@@ -20,6 +20,7 @@ export type RootStackParamList = {
   CashDesk: undefined;
   SaleDetail: { saleId: number };
   TaskDetail: { taskId: number };
+  PurchasePrices: undefined;
 
   /*
     Экраны руководителя. Отдельной вкладки им не дали намеренно: нижняя

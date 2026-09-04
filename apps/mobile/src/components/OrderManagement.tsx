@@ -17,7 +17,7 @@ import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
-import { Card, CardTitle, Skeleton } from './Card';
+import { Card, CardTitle, Row, Skeleton } from './Card';
 import { Field, Input } from './Field';
 
 /**
@@ -120,8 +120,51 @@ export function OrderManagement({
     onError: fail('Не удалось назначить исполнителя'),
   });
 
+  /*
+    Себестоимость и маржа считаются сервером по закупкам этого заказа.
+    Управленческие цифры он отдаёт только руководству — здесь блок и так
+    показывается лишь ему, но решает это `purchases.orderCost`, а не экран.
+  */
+  const economics = trpc.purchases.orderCost.useQuery({ orderId });
+
   return (
     <>
+      {/* --- Деньги по заказу ------------------------------------------------ */}
+      <Card>
+        <CardTitle title="Экономика заказа" icon="payroll" />
+
+        {economics.data === undefined ? (
+          <Skeleton rows={2} />
+        ) : (
+          <>
+            <Row label="Работа" value={economics.data.revenueFormatted ?? '—'} />
+            <Row
+              label={`Закупки (${economics.data.purchaseLines.toString()})`}
+              value={economics.data.costFormatted}
+            />
+            {/*
+              Наценки как отдельного поля в системе нет и не будет: она не
+              хранится, а считается — выручка минус закупки по этому заказу.
+              Процент показывается рядом с суммой, потому что «сто тысяч»
+              и «сто тысяч из миллиона» — разные новости.
+            */}
+            <Row
+              label="Маржа"
+              value={
+                economics.data.marginFormatted === null
+                  ? '—'
+                  : economics.data.marginPercent === null
+                    ? economics.data.marginFormatted
+                    : `${economics.data.marginFormatted} · ${economics.data.marginPercent.toString()} %`
+              }
+              valueColor={
+                (economics.data.marginMinor ?? 0) < 0 ? colors.danger : colors.textPrimary
+              }
+            />
+          </>
+        )}
+      </Card>
+
       {/* --- Исполнители ---------------------------------------------------- */}
       <Card>
         <CardTitle title="Назначение" icon="people" />

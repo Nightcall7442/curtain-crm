@@ -470,6 +470,18 @@ function StatTile({
 function WorkshopSummary(): ReactElement {
   const dashboard = trpc.reports.dashboard.useQuery({});
 
+  /*
+    Деньги отдельным запросом: выручку за месяц дашборд знает, а
+    себестоимость и маржу считает только `reports.finance` — по закупкам,
+    списанным на закрытые заказы. Без них «выручка за месяц» на первом
+    экране отвечала бы лишь на половину вопроса.
+  */
+  const now = new Date();
+  const finance = trpc.reports.finance.useQuery({
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+  });
+
   if (dashboard.data === undefined) {
     return (
       <Card>
@@ -489,6 +501,26 @@ function WorkshopSummary(): ReactElement {
       <Row label="На смене" value={`${data.employeesOnShift.toString()} чел.`} />
       <Row label="В производстве" value={attention.toString()} />
       <Row label="Выручка за месяц" value={data.revenueThisMonthFormatted} />
+
+      {/*
+        Маржа рядом с выручкой, а не вместо неё: выручка говорит, сколько
+        сделали, маржа — сколько на этом осталось. Процент нужен потому, что
+        одна и та же сумма при разной выручке означает разное.
+
+        Себестоимость отдельной строкой не показана: на первом экране важен
+        итог, а разбор по закупкам живёт в карточке конкретного заказа.
+      */}
+      {finance.data !== undefined && (
+        <Row
+          label="Маржа за месяц"
+          value={
+            finance.data.marginPercent === null
+              ? finance.data.marginFormatted
+              : `${finance.data.marginFormatted} · ${finance.data.marginPercent.toString()} %`
+          }
+          valueColor={finance.data.marginMinor < 0 ? colors.danger : colors.textPrimary}
+        />
+      )}
     </Card>
   );
 }

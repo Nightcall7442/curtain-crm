@@ -17,7 +17,8 @@ type ManagementRoute =
   | 'DayOffApprovals'
   | 'PayrollApprovals'
   | 'TaskAssign'
-  | 'RetailStock';
+  | 'RetailStock'
+  | 'PurchasePrices';
 
 /**
  * Раздел руководителя.
@@ -97,6 +98,13 @@ export function ManagementScreen(): ReactElement {
       title: 'Витрина',
       hint: 'Прайс, остатки и чужие чеки',
       badge: items.data?.length ?? null,
+    },
+    {
+      route: 'PurchasePrices',
+      icon: 'payroll',
+      title: 'Закупочные цены',
+      hint: 'Почём мы покупаем — влияет на маржу',
+      badge: null,
     },
   ];
 

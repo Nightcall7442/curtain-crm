@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
 import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
+import { PurchasePricesScreen } from '../screens/PurchasePricesScreen';
 import { CashDeskScreen } from '../screens/CashDeskScreen';
 import { DayOffScreen } from '../screens/DayOffScreen';
 import { DayOffApprovalsScreen } from '../screens/DayOffApprovalsScreen';
@@ -124,6 +125,11 @@ export function RootNavigator(): ReactElement {
         name="TaskDetail"
         component={TaskDetailScreen}
         options={{ title: 'Поручение' }}
+      />
+      <Stack.Screen
+        name="PurchasePrices"
+        component={PurchasePricesScreen}
+        options={{ title: 'Закупочные цены' }}
       />
     </Stack.Navigator>
   );
