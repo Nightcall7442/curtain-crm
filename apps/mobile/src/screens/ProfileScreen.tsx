@@ -4,7 +4,6 @@ import {
   LOCALE_INFO,
   LOCALES,
   ORDER_STATUS_LABELS,
-  ROLE_LABELS,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import Constants from 'expo-constants';
@@ -20,7 +19,7 @@ import {
   View,
 } from 'react-native';
 
-import { Card, CardTitle, Empty, ListCard, ListRow, Pill, SectionHeader } from '../components/Card';
+import { Card, CardTitle, Empty, ListCard, ListRow, SectionHeader } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
@@ -235,14 +234,12 @@ export function ProfileScreen(): ReactElement {
         isPhotoBusy={uploadAvatar.isPending || removeAvatar.isPending}
       />
 
-      <Card>
-        <CardTitle title="Мои роли" icon="roles" />
-        <View style={styles.roles}>
-          {data.roles.map((role) => (
-            <Pill key={role} text={t(ROLE_LABELS, role)} tone="info" />
-          ))}
-        </View>
-      </Card>
+      {/*
+        Карточки «Мои роли» здесь нет по решению владельца: роль — понятие
+        системное (набор прав), а сотруднику про себя понятнее должность,
+        которая уже стоит в карточке выше. Две почти одинаковые строки
+        подряд («Продавец» и «Менеджер по продажам») только сбивали с толку.
+      */}
 
       <WeekAttendance days={weekDays} today={now.toISOString().slice(0, 10)} />
 
@@ -422,11 +419,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
-  },
-  roles: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
   },
   /**
    * Зарплата и смена — В СТОЛБИК, а не в ряд.

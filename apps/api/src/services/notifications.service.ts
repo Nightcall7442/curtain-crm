@@ -27,6 +27,8 @@ export interface NotificationDraft {
   readonly title: string;
   readonly body: string;
   readonly relatedOrderId?: number | null;
+  /** Расчёт зарплаты — по нему уведомление предлагает подтвердить получение. */
+  readonly relatedPayrollRecordId?: number | null;
 }
 
 /**
@@ -57,6 +59,7 @@ export async function createNotifications(
       title: draft.title,
       body: draft.body,
       relatedOrderId: draft.relatedOrderId ?? null,
+      relatedPayrollRecordId: draft.relatedPayrollRecordId ?? null,
     })),
   );
 
@@ -194,13 +197,24 @@ export async function notifyPayroll(
     readonly paid: boolean;
     readonly period: string;
     readonly amount: string;
+    /**
+     * Расчёт, к которому относится уведомление.
+     *
+     * Нужен для действия, а не для перехода: по уведомлению о выплате
+     * сотрудник подтверждает получение прямо из ленты, и кнопке надо знать,
+     * какой расчёт подтверждать.
+     */
+    readonly payrollRecordId: number;
   },
 ): Promise<void> {
   await createNotification(executor, {
     userId,
     type: params.paid ? NotificationType.PAYROLL_PAID : NotificationType.PAYROLL_APPROVED,
     title: params.paid ? `Зарплата за ${params.period} выплачена` : `Расчёт за ${params.period} утверждён`,
-    body: `Сумма: ${params.amount}`,
+    body: params.paid
+      ? `Сумма: ${params.amount}. Подтвердите, что деньги получили.`
+      : `Сумма: ${params.amount}`,
+    relatedPayrollRecordId: params.payrollRecordId,
   });
 }
 

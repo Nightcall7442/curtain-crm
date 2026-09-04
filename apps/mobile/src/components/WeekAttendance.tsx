@@ -75,13 +75,23 @@ export function WeekAttendance({
 }
 
 const styles = StyleSheet.create({
+  /*
+    Неделя собрана по центру, а не растянута на всю ширину карточки.
+
+    С `space-between` и `flex: 1` семь колонок разъезжались к краям, между
+    ними появлялись широкие промежутки, а подписи «Нет смены» переставали
+    помещаться в свою колонку и наезжали на соседнюю — полоса выглядела
+    сплошной строкой. Фиксированная ширина дня плюс центрирование держат
+    её компактной и одинаковой на любом экране.
+  */
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
   day: {
     alignItems: 'center',
-    flex: 1,
+    width: 44,
   },
   weekday: {
     ...typography.caption,

@@ -182,6 +182,19 @@ export const payrollRecords = pgTable(
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     paidAt: timestamp('paid_at', { withTimezone: true }),
 
+    /**
+     * Когда сотрудник подтвердил, что деньги получил.
+     *
+     * Отдельно от `paid_at`: «выплачено» — слова того, кто платил, а это —
+     * слова того, кому платили. Расхождение между ними и есть предмет
+     * спора, ради которого отметка заводится; свести их в одно поле значило
+     * бы стереть сам вопрос.
+     *
+     * Кто подтвердил, не хранится: подтвердить может только адресат
+     * расчёта, и вторая колонка повторяла бы `user_id`.
+     */
+    receiptConfirmedAt: timestamp('receipt_confirmed_at', { withTimezone: true }),
+
     comment: text('comment'),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -211,6 +224,12 @@ export const payrollRecords = pgTable(
     check(
       'payroll_records_paid_metadata',
       sql`${table.status} <> 'paid' or ${table.paidAt} is not null`,
+    ),
+    // Подтвердить получение можно только у выплаченного расчёта: иначе
+    // в базе появилось бы «деньги получил» по тому, что ещё не платили.
+    check(
+      'payroll_records_receipt_after_payment',
+      sql`${table.receiptConfirmedAt} is null or ${table.paidAt} is not null`,
     ),
   ],
 );

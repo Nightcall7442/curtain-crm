@@ -1,0 +1,4 @@
+ALTER TABLE "payroll_records" ADD COLUMN "receipt_confirmed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "notifications" ADD COLUMN "related_payroll_record_id" integer;--> statement-breakpoint
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_related_payroll_record_id_payroll_records_id_fk" FOREIGN KEY ("related_payroll_record_id") REFERENCES "public"."payroll_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payroll_records" ADD CONSTRAINT "payroll_records_receipt_after_payment" CHECK ("payroll_records"."receipt_confirmed_at" is null or "payroll_records"."paid_at" is not null);

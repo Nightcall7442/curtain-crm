@@ -51,16 +51,17 @@ export function ProfileCard({
     <Card>
       <View style={styles.container}>
         <View style={styles.details}>
+          {/*
+            Порядок полей задал владелец: имя, подразделение, должность,
+            стаж, табельный номер. Подразделение стоит вторым не случайно —
+            в цеху человека ищут сначала по участку, а уже потом по
+            должности.
+          */}
           <Field icon="person" label="Имя и фамилия" value={fullName} />
+          <Field icon="branch" label="Подразделение" value={t(DEPARTMENT_LABELS, department)} />
           <Field icon="jobTitle" label="Должность" value={jobTitle ?? 'Не указана'} />
           <Field icon="calendar" label="Стаж работы" value={formatTenure(hiredAt)} />
-          <Field icon="badge" label="Табельный номер" value={employeeCode ?? '—'} />
-          <Field
-            icon="branch"
-            label="Подразделение"
-            value={t(DEPARTMENT_LABELS, department)}
-            isLast
-          />
+          <Field icon="badge" label="Табельный номер" value={employeeCode ?? '—'} isLast />
         </View>
 
         <View style={styles.photoColumn}>

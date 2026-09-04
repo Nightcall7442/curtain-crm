@@ -12,6 +12,7 @@ import {
 
 import { notificationTypeEnum } from './enums';
 import { orders } from './orders.schema';
+import { payrollRecords } from './payroll.schema';
 import { users } from './users.schema';
 
 /**
@@ -41,6 +42,22 @@ export const notifications = pgTable(
     relatedOrderId: integer('related_order_id').references(() => orders.id, {
       onDelete: 'cascade',
     }),
+
+    /**
+     * Расчёт зарплаты, к которому относится уведомление.
+     *
+     * Нужен не для перехода, а для ДЕЙСТВИЯ: получив «зарплата выплачена»,
+     * сотрудник подтверждает получение прямо из уведомления, и кнопке надо
+     * знать, какой именно расчёт подтверждать. Без этой ссылки пришлось бы
+     * угадывать по периоду в тексте.
+     *
+     * cascade по той же причине, что и у заказа: подтверждать удалённый
+     * расчёт нечего.
+     */
+    relatedPayrollRecordId: integer('related_payroll_record_id').references(
+      () => payrollRecords.id,
+      { onDelete: 'cascade' },
+    ),
 
     isRead: boolean('is_read').notNull().default(false),
     readAt: timestamp('read_at', { withTimezone: true }),

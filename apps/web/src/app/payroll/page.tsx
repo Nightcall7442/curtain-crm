@@ -21,7 +21,7 @@ import { DataTable, type RowKey } from '@/components/ui/Table';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/components/providers/ToastProvider';
 import { trpc } from '@/lib/trpc';
-import { formatPercent } from '@/lib/utils';
+import { formatDate, formatPercent } from '@/lib/utils';
 
 /**
  * Зарплаты: расчёт, утверждение и выплата.
@@ -314,7 +314,30 @@ export default function PayrollPage(): ReactElement {
             {
               key: 'status',
               header: 'Статус',
-              render: (row) => <PayrollStatusBadge status={row.status} />,
+              /*
+                Под статусом — подтвердил ли сотрудник получение денег.
+
+                Это разные утверждения: «выплачено» говорит тот, кто платил,
+                «получил» — тот, кому платили. Расхождение между ними и есть
+                предмет спора, поэтому оно должно быть видно в одной строке,
+                а не выясняться разговором.
+              */
+              render: (row) => (
+                <span className="block">
+                  <PayrollStatusBadge status={row.status} />
+                  {row.status === PayrollRecordStatus.PAID && (
+                    <span
+                      className={`mt-1 block text-footnote ${
+                        row.receiptConfirmedAt === null ? 'text-muted' : 'text-positive'
+                      }`}
+                    >
+                      {row.receiptConfirmedAt === null
+                        ? 'Получение не подтверждено'
+                        : `Получил ${formatDate(row.receiptConfirmedAt)}`}
+                    </span>
+                  )}
+                </span>
+              ),
             },
             {
               key: 'actions',

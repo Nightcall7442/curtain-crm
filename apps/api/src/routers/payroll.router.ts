@@ -272,6 +272,9 @@ export const payrollRouter = router({
           status: payrollRecords.status,
           schemeSnapshot: payrollRecords.schemeSnapshot,
           comment: payrollRecords.comment,
+          // Подтверждение получения — рядом со статусом: «выплачено» и
+          // «получил» говорят разные люди, и руководству нужны оба.
+          receiptConfirmedAt: payrollRecords.receiptConfirmedAt,
         })
         .from(payrollRecords)
         .innerJoin(users, eq(users.id, payrollRecords.userId))
@@ -379,6 +382,7 @@ export const payrollRouter = router({
           paid: false,
           period: formatPeriod({ year: updated.periodYear, month: updated.periodMonth }),
           amount: formatMoney(parseMoney(updated.calculatedAmount)),
+          payrollRecordId: updated.id,
         });
 
         return updated;
@@ -448,6 +452,7 @@ export const payrollRouter = router({
               paid: false,
               period: formatPeriod({ year: updated.periodYear, month: updated.periodMonth }),
               amount: formatMoney(parseMoney(updated.calculatedAmount)),
+              payrollRecordId: updated.id,
             });
           });
 
@@ -526,9 +531,58 @@ export const payrollRouter = router({
           paid: true,
           period: formatPeriod({ year: updated.periodYear, month: updated.periodMonth }),
           amount: formatMoney(parseMoney(updated.paidAmount)),
+          payrollRecordId: updated.id,
         });
 
         return updated;
       }),
     ),
+
+  /**
+   * Сотрудник подтверждает, что деньги получил.
+   *
+   * Отметка отдельная от `paid_at`, и это главное в ней: «выплачено» —
+   * слова того, кто платил, а подтверждение — слова того, кому платили.
+   * Расхождение между ними и есть предмет спора, ради которого отметка
+   * заводится. Свести их в одно поле значило бы стереть сам вопрос.
+   *
+   * Подтверждает только адресат расчёта и только сам: руководство не может
+   * отметить получение за сотрудника — иначе подтверждение не значило бы
+   * ничего.
+   *
+   * Повторное подтверждение отбивается, а не проходит молча: нажатие на
+   * уже подтверждённый расчёт означает, что человек не увидел результата
+   * первого, и об этом честнее сказать.
+   */
+  confirmReceipt: protectedProcedure
+    .input(z.object({ id: idSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const record = await ctx.db.query.payrollRecords.findFirst({
+        where: eq(payrollRecords.id, input.id),
+      });
+
+      if (record === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Расчёт не найден' });
+      }
+      if (record.userId !== ctx.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Это расчёт другого сотрудника' });
+      }
+      if (record.status !== PayrollRecordStatus.PAID) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'Расчёт ещё не выплачен — подтверждать нечего',
+        });
+      }
+      if (record.receiptConfirmedAt !== null) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Получение уже подтверждено' });
+      }
+
+      const [updated] = await ctx.db
+        .update(payrollRecords)
+        .set({ receiptConfirmedAt: new Date(), updatedAt: new Date() })
+        .where(eq(payrollRecords.id, record.id))
+        .returning();
+
+      return updated ?? record;
+    }),
 });

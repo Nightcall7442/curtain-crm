@@ -1,12 +1,13 @@
 import {
   isImportantNotification,
+  PayrollRecordStatus,
   NOTIFICATION_TONES,
   type NotificationTone,
   type NotificationType,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState, type ReactElement } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon, NOTIFICATION_ICONS } from '../components/Icon';
@@ -54,6 +55,19 @@ export function NotificationsScreen(): ReactElement {
 
   const markAsRead = trpc.notifications.markAsRead.useMutation({ onSuccess: invalidate });
   const markAllAsRead = trpc.notifications.markAllAsRead.useMutation({ onSuccess: invalidate });
+
+  /*
+    Подтверждение получения зарплаты.
+
+    После успеха обновляется именно лента: состояние расчёта приходит
+    вместе с уведомлением, и без перезапроса кнопка осталась бы на месте.
+  */
+  const confirmReceipt = trpc.payroll.confirmReceipt.useMutation({
+    onSuccess: invalidate,
+    onError(error) {
+      Alert.alert('Не удалось подтвердить', error.message);
+    },
+  });
 
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
 
@@ -127,7 +141,13 @@ export function NotificationsScreen(): ReactElement {
             />
           )
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          // Отдельная константа, а не `item.relatedPayrollRecordId` по месту:
+          // сужение типа у `const` доживает до колбэка кнопки, у свойства —
+          // нет, и там пришлось бы приводить тип руками.
+          const payrollRecordId = item.relatedPayrollRecordId;
+
+          return (
           <Pressable
             onPress={() => {
               if (!item.isRead) markAsRead.mutate({ id: item.id });
@@ -151,12 +171,47 @@ export function NotificationsScreen(): ReactElement {
               <Text style={styles.text} numberOfLines={2}>
                 {item.body}
               </Text>
+
+              {/*
+                Подтверждение получения — прямо в уведомлении.
+
+                Сотрудник узнаёт о выплате здесь же, и требовать от него
+                пойти куда-то ещё ради одного нажатия значит получить
+                неподтверждённые расчёты. Кнопка появляется только у
+                выплаченного и ещё не подтверждённого расчёта.
+              */}
+              {payrollRecordId !== null &&
+                item.payrollStatus === PayrollRecordStatus.PAID &&
+                (item.payrollReceiptConfirmedAt === null ? (
+                  <Pressable
+                    onPress={() => {
+                      confirmReceipt.mutate({ id: payrollRecordId });
+                    }}
+                    disabled={confirmReceipt.isPending}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.confirm,
+                      pressed ? styles.confirmPressed : null,
+                    ]}
+                  >
+                    {confirmReceipt.isPending ? (
+                      <ActivityIndicator color={colors.onAccent} size="small" />
+                    ) : (
+                      <Text style={styles.confirmText}>Деньги получил</Text>
+                    )}
+                  </Pressable>
+                ) : (
+                  <Text style={styles.confirmed}>
+                    {`Получение подтверждено ${shortTime(item.payrollReceiptConfirmedAt)}`}
+                  </Text>
+                ))}
             </View>
 
             {/* Точка непрочитанного — справа, как в макете */}
             {!item.isRead && <View style={styles.dot} accessibilityLabel="Не прочитано" />}
           </Pressable>
-        )}
+          );
+        }}
       />
     </View>
   );
@@ -312,6 +367,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 17,
+  },
+  confirm: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmPressed: {
+    opacity: opacity.pressed,
+  },
+  confirmText: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.onAccent,
+  },
+  confirmed: {
+    ...typography.caption,
+    color: colors.positive,
+    marginTop: spacing.sm,
   },
   dot: {
     width: 8,

@@ -1,4 +1,4 @@
-import { notifications } from '@curtain-crm/db';
+import { notifications, payrollRecords } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -30,10 +30,34 @@ export const notificationsRouter = router({
         ? and(eq(notifications.userId, ctx.user.id), eq(notifications.isRead, false))
         : eq(notifications.userId, ctx.user.id);
 
+      /*
+        К уведомлению о зарплате подтягивается состояние самого расчёта.
+
+        По такому уведомлению сотрудник подтверждает получение прямо из
+        ленты, и кнопка должна знать, не подтверждено ли уже. Считать это
+        вторым запросом с телефона значило бы грузить всю ведомость ради
+        одного флага, а угадывать по тексту — гадать.
+
+        `leftJoin`, а не `innerJoin`: у подавляющего большинства уведомлений
+        расчёта нет, и внутреннее соединение вырезало бы их из ленты.
+      */
       const [items, [totalRow]] = await Promise.all([
         ctx.db
-          .select()
+          .select({
+            id: notifications.id,
+            type: notifications.type,
+            title: notifications.title,
+            body: notifications.body,
+            relatedOrderId: notifications.relatedOrderId,
+            relatedPayrollRecordId: notifications.relatedPayrollRecordId,
+            payrollReceiptConfirmedAt: payrollRecords.receiptConfirmedAt,
+            payrollStatus: payrollRecords.status,
+            isRead: notifications.isRead,
+            readAt: notifications.readAt,
+            createdAt: notifications.createdAt,
+          })
           .from(notifications)
+          .leftJoin(payrollRecords, eq(payrollRecords.id, notifications.relatedPayrollRecordId))
           .where(where)
           .orderBy(desc(notifications.createdAt))
           .limit(input.pageSize)

@@ -78,6 +78,13 @@
       "when": 1788520582691,
       "tag": "0010_personal_works",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788521531131,
+      "tag": "0011_payroll_receipt_confirmation",
+      "breakpoints": true
     }
   ]
 }

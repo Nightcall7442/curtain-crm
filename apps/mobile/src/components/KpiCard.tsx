@@ -1,10 +1,19 @@
 import { formatMoney, parseMoney } from '@curtain-crm/shared';
-import { StyleSheet, Text, View } from 'react-native';
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Empty, Progress } from './Card';
+import { Icon } from './Icon';
+
+/**
+ * Чем закрыта сумма, пока её не открыли.
+ *
+ * Длина примерно равна длине настоящей суммы: с более короткой маской
+ * карточка заметно дёргается в момент открытия.
+ */
+const MASKED_AMOUNT = '••• ••• сум';
 
 /**
  * Зарплата за период.
@@ -33,12 +42,50 @@ export function KpiCard({
 }): ReactElement {
   const percent = kpiPercent === null ? null : Number.parseFloat(kpiPercent);
 
+  /*
+    Суммы закрыты, пока сотрудник сам их не откроет.
+
+    Зарплату смотрят в цеху и в транспорте, где экран видит сосед, а
+    «сколько ты получаешь» — разговор, который человек заводит сам или не
+    заводит вовсе. Это не пароль: прятать сумму от владельца телефона
+    бессмысленно. Это заслонка от чужого взгляда, и снимается она одним
+    нажатием.
+
+    Состояние живёт в компоненте и сбрасывается при уходе с экрана — иначе
+    однажды открытая сумма осталась бы видимой до перезапуска приложения.
+  */
+  const [revealed, setRevealed] = useState(false);
+
+  const money = (value: string): string =>
+    revealed ? formatMoney(parseMoney(value)) : MASKED_AMOUNT;
+
   return (
     <Card style={styles.card}>
       <CardTitle
         title="Зарплата"
         icon="payroll"
-        action={<Text style={styles.period}>{periodLabel}</Text>}
+        action={
+          <View style={styles.titleAction}>
+            <Text style={styles.period}>{periodLabel}</Text>
+            {calculatedAmount !== null && (
+              <Pressable
+                onPress={() => {
+                  setRevealed((current) => !current);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={revealed ? 'Скрыть зарплату' : 'Показать зарплату'}
+                hitSlop={12}
+                style={({ pressed }) => (pressed ? styles.eyePressed : null)}
+              >
+                <Icon
+                  name={revealed ? 'eyeOff' : 'eye'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </Pressable>
+            )}
+          </View>
+        }
       />
 
       {isLoading ? (
@@ -53,9 +100,7 @@ export function KpiCard({
           {targetAmount !== null && (
             <>
               <Text style={styles.label}>Целевая зарплата</Text>
-              <Text style={styles.amountMuted}>
-                {formatMoney(parseMoney(targetAmount))}
-              </Text>
+              <Text style={styles.amountMuted}>{money(targetAmount)}</Text>
             </>
           )}
 
@@ -79,7 +124,7 @@ export function KpiCard({
 
           <View style={styles.totalBlock}>
             <Text style={styles.label}>Начислено</Text>
-            <Text style={styles.amount}>{formatMoney(parseMoney(calculatedAmount))}</Text>
+            <Text style={styles.amount}>{money(calculatedAmount)}</Text>
           </View>
         </>
       )}
@@ -94,6 +139,14 @@ const styles = StyleSheet.create({
   period: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  titleAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  eyePressed: {
+    opacity: 0.6,
   },
   label: {
     ...typography.caption,
