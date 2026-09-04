@@ -96,11 +96,18 @@ export function ProfileCard({
                   </View>
                 )}
 
-                {onPressPhoto !== undefined && !isPhotoBusy && (
-                  <Text style={styles.photoHint}>
-                    {avatarUrl === null ? 'Добавить фото' : 'Изменить'}
-                  </Text>
-                )}
+                {/*
+                  Подписи под фото нет.
+
+                  Стояло «Изменить» — владелец убрал: карточка про человека,
+                  а не про действие, и корпоративные снимки всё равно ставит
+                  кадровик из панели, а не каждый сам.
+
+                  Нажатие осталось рабочим: у кого есть право сменить фото,
+                  тот меняет его тапом по портрету. Подсказка о нём живёт в
+                  `accessibilityLabel` — её читает голосовой доступ, а экран
+                  не загромождает.
+                */}
               </View>
             )}
           </Pressable>
@@ -153,12 +160,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  photoHint: {
-    ...typography.caption,
-    color: colors.accent,
-    textAlign: 'center',
-    marginTop: spacing.xs,
   },
   container: {
     flexDirection: 'row',
