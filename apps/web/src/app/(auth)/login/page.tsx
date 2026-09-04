@@ -62,19 +62,30 @@ export default function LoginPage(): ReactElement {
         {/*
           Настоящий знак вместо монограммы «PB», которая стояла заглушкой.
 
-          Зелёная плашка под ним — не украшение и не подгонка под тему.
-          Знак белый и живёт на фирменном зелёном: так он выглядит на
-          вывеске и в макете. Цвет задан числом, а не токеном темы,
-          именно поэтому: тёмная тема переворачивает эту половину в
-          светлую, и знак, привязанный к фону секции, там пропал бы.
+          Знак не картинка, а маска, залитая цветом текста. Причина в теме:
+          файл белый, а тёмная тема переворачивает эту половину в светлую —
+          белый знак там исчезал бы. Плашка под ним эту беду лечила, но
+          выглядела наклейкой поверх драпировки. Маска решает то же самое
+          честно: знак живёт тем же цветом, что и заголовок рядом, и
+          переворачивается вместе с ним.
 
           «Parda Bozor» осталось строкой ниже: в самом файле только
           «Design House», полное имя складывается из двух частей.
         */}
-        <div className="relative flex flex-col items-start gap-3">
-          <span className="rounded-xl bg-[#14504A] px-6 py-5">
-            <img src="/logo.png" alt="Design House Parda Bozor" className="w-[168px]" />
-          </span>
+        <div className="relative flex flex-col items-start gap-4">
+          <span
+            role="img"
+            aria-label="Design House Parda Bozor"
+            className="block h-[115px] w-[180px] bg-current"
+            style={{
+              WebkitMaskImage: 'url(/logo.png)',
+              maskImage: 'url(/logo.png)',
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+            }}
+          />
           <span className="flex flex-col">
             <span className="font-display text-title tracking-[0.01em]">Parda Bozor</span>
             <span className="text-overline tracking-[0.05em] text-base/55">
@@ -112,12 +123,23 @@ export default function LoginPage(): ReactElement {
         <div className="flex w-full max-w-[380px] flex-col gap-7">
           {/*
             На узком экране фирменной половины нет — логотип возвращается
-            сюда, на той же зелёной плашке.
+            сюда. Той же маской: здесь фон светлый, и знак становится
+            тёмным сам, без отдельного файла под светлую тему.
           */}
           <div className="flex items-center gap-3 lg:hidden">
-            <span className="rounded-lg bg-[#14504A] px-3 py-2">
-              <img src="/logo.png" alt="Design House" className="h-7" />
-            </span>
+            <span
+              role="img"
+              aria-label="Design House"
+              className="block h-8 w-[50px] shrink-0 bg-current text-primary"
+              style={{
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+              }}
+            />
             <span className="font-display text-title">Parda Bozor</span>
           </div>
 
