@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, type ReactElement } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { BirthdayBoard } from '../components/BirthdayBoard';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
@@ -47,6 +48,8 @@ export function HomeScreen(): ReactElement {
   const orders = trpc.orders.list.useQuery({ page: 1, pageSize: 50 });
   const unread = trpc.notifications.unreadCount.useQuery();
   const rating = trpc.rating.me.useQuery({ scope: RatingScope.MONTH });
+  // Доска дней рождения внизу экрана: список коллег, у кого праздник близко.
+  const birthdays = trpc.users.birthdays.useQuery({ withinDays: 30 });
 
   /**
    * Счётчик просроченных — отдельным запросом, а не подсчётом по списку.
@@ -307,6 +310,18 @@ export function HomeScreen(): ReactElement {
           ))}
         </View>
       )}
+
+      {/*
+        Дни рождения — в самом низу, по решению владельца.
+
+        Место выбрано верно: экран открывают ради смены и заказов, и
+        поздравления не должны их оттеснять. Но и прятать их некуда — до
+        низа доходят, а рядом с просроченными заказами карточка с лицами
+        читается как передышка.
+      */}
+      <View style={styles.section}>
+        <BirthdayBoard people={birthdays.data ?? []} isLoading={birthdays.isLoading} />
+      </View>
     </ScrollView>
   );
 }
@@ -332,18 +347,25 @@ function greeting(): string {
 /**
  * Имя из ФИО.
  *
- * Берётся ПЕРВОЕ слово. В базе имя идёт первым — поле в карточке сотрудника
- * так и подписано, «Имя и фамилия», и демо-данные это подтверждают
- * («Малика Юсупова»). Прежняя версия брала второе слово в расчёте на порядок
- * «Фамилия Имя Отчество», и приветствие обращалось к человеку по фамилии:
- * «Доброй ночи, Юсупова!».
+ * Берётся ВТОРОЕ слово, потому что в базе порядок «Фамилия Имя». Это не
+ * догадка: штат перенесён из кадрового файла мастерской, где столбцы так и
+ * называются — `Familya`, затем `Ism`, — и записи выглядят как «Oktamova
+ * Aziza», «Rustamov Muzaffar».
+ *
+ * Раньше бралось первое слово: демо-данные были записаны наоборот («Малика
+ * Юсупова»), и по ним казалось, что имя идёт первым. С приходом настоящих
+ * сотрудников приложение начало здороваться по фамилии — «Доброй ночи,
+ * Oktamova!».
+ *
+ * Одно слово в ФИО — берём его: у человека без фамилии в базе имя всё
+ * равно единственное, что есть.
  */
 function firstName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter((part) => part.length > 0);
 
   // Пустое ФИО в базе технически возможно, а приветствие «Доброе утро, !»
   // выглядит как сбой. Нейтральное обращение честнее пустоты.
-  return parts[0] ?? 'коллега';
+  return parts[1] ?? parts[0] ?? 'коллега';
 }
 
 /**

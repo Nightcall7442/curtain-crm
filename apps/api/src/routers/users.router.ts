@@ -836,10 +836,35 @@ export const usersRouter = router({
     };
   }),
 
-  /** Ближайшие дни рождения. */
-  birthdays: managementProcedure
+  /**
+   * Ближайшие дни рождения — доска событий коллектива.
+   *
+   * Доступна ЛЮБОМУ вошедшему, а не только руководству: смысл дня рождения
+   * в том, чтобы коллеги поздравили, а список, который видит один директор,
+   * этого не даёт. Раньше процедура была управленческой — по ней строился
+   * виджет в панели, и на телефон сотрудника она не попадала.
+   *
+   * Возраст (`turningAge`) в ответе остаётся: он нужен панели руководства,
+   * где виден кадровику. На общей доске в приложении он не показывается —
+   * поздравить можно и не объявляя всему цеху, сколько человеку лет.
+   *
+   * Ссылка на фото подписывается здесь: сервис отдаёт ключ в хранилище, а
+   * подпись живёт недолго и не должна кешироваться вместе с данными.
+   */
+  birthdays: protectedProcedure
     .input(z.object({ withinDays: z.number().int().min(1).max(365).default(30) }).default({}))
-    .query(async ({ ctx, input }) => upcomingBirthdays(ctx.db, input.withinDays)),
+    .query(async ({ ctx, input }) => {
+      const rows = await upcomingBirthdays(ctx.db, input.withinDays);
+      const storage = getStorage();
+
+      return Promise.all(
+        rows.map(async (row) => ({
+          ...row,
+          avatarUrl:
+            row.avatarStorageKey === null ? null : await storage.getUrl(row.avatarStorageKey),
+        })),
+      );
+    }),
 
   /**
    * Выработка сотрудников за месяц: план, факт и начисленная зарплата.

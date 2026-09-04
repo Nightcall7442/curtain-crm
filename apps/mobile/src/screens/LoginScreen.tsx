@@ -50,9 +50,9 @@ export function LoginScreen(): ReactElement {
       >
         <View style={styles.brand}>
           <View style={styles.logo}>
-            <Text style={styles.logoText}>DH</Text>
+            <Text style={styles.logoText}>PB</Text>
           </View>
-          <Text style={styles.brandName}>DESIGN HOUSE</Text>
+          <Text style={styles.brandName}>PARDA BOZOR</Text>
           <Text style={styles.brandTagline}>шторы премиум класса</Text>
         </View>
 

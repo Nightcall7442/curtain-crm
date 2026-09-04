@@ -64,10 +64,10 @@ export default function LoginPage(): ReactElement {
             aria-hidden
             className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-title text-on-accent"
           >
-            DH
+            PB
           </span>
           <span className="flex flex-col">
-            <span className="font-display text-title tracking-[0.01em]">Design House</span>
+            <span className="font-display text-title tracking-[0.01em]">Parda Bozor</span>
             <span className="text-overline tracking-[0.05em] text-base/55">
               шторы премиум класса
             </span>
@@ -107,9 +107,9 @@ export default function LoginPage(): ReactElement {
               aria-hidden
               className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-title text-on-accent"
             >
-              DH
+              PB
             </span>
-            <span className="font-display text-title">Design House</span>
+            <span className="font-display text-title">Parda Bozor</span>
           </div>
 
           <div className="flex flex-col gap-2">

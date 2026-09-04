@@ -315,6 +315,8 @@ export interface UpcomingBirthday {
   readonly birthDate: string;
   readonly daysUntil: number;
   readonly turningAge: number | null;
+  /** Ключ файла в хранилище. Ссылку подписывает роутер. */
+  readonly avatarStorageKey: string | null;
 }
 
 /**
@@ -335,6 +337,7 @@ export async function upcomingBirthdays(
       fullName: users.fullName,
       jobTitle: users.jobTitle,
       birthDate: users.birthDate,
+      avatarStorageKey: users.avatarStorageKey,
     })
     .from(users)
     .where(eq(users.isActive, true));
@@ -356,6 +359,7 @@ export async function upcomingBirthdays(
           birthDate: row.birthDate,
           daysUntil,
           turningAge: age === null ? null : age + (daysUntil === 0 ? 0 : 1),
+          avatarStorageKey: row.avatarStorageKey,
         },
       ];
     })
