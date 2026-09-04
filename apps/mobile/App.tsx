@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { httpBatchLink } from '@trpc/client';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
@@ -84,6 +85,32 @@ export default function App(): ReactElement {
       </QueryClientProvider>
     </trpc.Provider>
   );
+}
+
+/**
+ * «Сохранить этот вход?» — вопрос после первого входа под этой учётной записью.
+ *
+ * Системный диалог, а не свой экран: вопрос всплывает ровно один раз на
+ * аккаунт, между вводом пароля и входом в приложение. Свой компонент ради
+ * такого пришлось бы вплетать в дерево навигации, которое в этот момент
+ * как раз перестраивается.
+ *
+ * Отказ — вариант по умолчанию: кнопка «Не сохранять» помечена `cancel`,
+ * и закрытие диалога системным жестом означает «нет». Согласие на живую
+ * сессию без пароля должно быть нажато явно.
+ */
+function confirmRememberAccount(fullName: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Сохранить этот вход?',
+      `${fullName} появится в списке быстрого входа — открывается долгим нажатием на «Профиль». Входить можно будет без пароля, с этого телефона.`,
+      [
+        { text: 'Не сохранять', style: 'cancel', onPress: () => { resolve(false); } },
+        { text: 'Сохранить', onPress: () => { resolve(true); } },
+      ],
+      { cancelable: true, onDismiss: () => { resolve(false); } },
+    );
+  });
 }
 
 /**
@@ -184,14 +211,35 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
       });
-      // Аккаунт попадает в список быстрого переключения только после входа
-      // ПАРОЛЕМ на этом устройстве — чужой сюда не добавить.
-      await accountStorage.remember({
-        userId: result.user.id,
-        fullName: result.user.fullName,
-        phone: result.user.phone,
-        refreshToken: result.refreshToken,
-      });
+
+      /*
+        Спрашиваем, сохранять ли вход, — и только потом пускаем в приложение.
+
+        Молча запоминать нельзя: телефон бывает чужой, а сохранённый вход
+        это живая сессия, которую потом откроют одним нажатием без пароля.
+        Решение принимает тот, кто только что ввёл пароль.
+
+        Вопрос задаётся ДО `setUser`, пока на экране ещё вход: после него
+        дерево навигации перестроится, и диалог всплыл бы поверх чужого
+        экрана, без всякой связи с тем, что человек делал.
+
+        Второй раз не спрашиваем: если аккаунт уже в списке, согласие
+        получено раньше и переспрашивать при каждом входе — навязчиво.
+      */
+      const saved = await accountStorage.list();
+      if (!saved.some((account) => account.userId === result.user.id)) {
+        const shouldRemember = await confirmRememberAccount(result.user.fullName);
+
+        if (shouldRemember) {
+          await accountStorage.remember({
+            userId: result.user.id,
+            fullName: result.user.fullName,
+            phone: result.user.phone,
+            refreshToken: result.refreshToken,
+          });
+        }
+      }
+
       setUser(result.user);
     },
     [loginMutation],
