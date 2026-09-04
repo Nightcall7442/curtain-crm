@@ -135,7 +135,7 @@ export default function LoginPage(): ReactElement {
             <span
               role="img"
               aria-label="Design House"
-              className="block h-14 w-[88px] shrink-0 bg-current text-primary"
+              className="block h-28 w-[176px] shrink-0 bg-current text-primary"
               style={{
                 WebkitMaskImage: 'url(/logo.png)',
                 maskImage: 'url(/logo.png)',
@@ -145,7 +145,7 @@ export default function LoginPage(): ReactElement {
                 maskRepeat: 'no-repeat',
               }}
             />
-            <span className="font-display text-title">Parda Bozor</span>
+            <span className="font-display text-display">Parda Bozor</span>
           </div>
 
           <div className="flex flex-col gap-2">
