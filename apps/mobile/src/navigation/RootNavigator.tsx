@@ -8,6 +8,7 @@ import { PurchasePricesScreen } from '../screens/PurchasePricesScreen';
 import { CashDeskScreen } from '../screens/CashDeskScreen';
 import { DayOffScreen } from '../screens/DayOffScreen';
 import { DayOffApprovalsScreen } from '../screens/DayOffApprovalsScreen';
+import { EmployeesScreen } from '../screens/EmployeesScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ManagementScreen } from '../screens/ManagementScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
@@ -130,6 +131,11 @@ export function RootNavigator(): ReactElement {
         name="PurchasePrices"
         component={PurchasePricesScreen}
         options={{ title: 'Закупочные цены' }}
+      />
+      <Stack.Screen
+        name="Employees"
+        component={EmployeesScreen}
+        options={{ title: 'Сотрудники' }}
       />
     </Stack.Navigator>
   );

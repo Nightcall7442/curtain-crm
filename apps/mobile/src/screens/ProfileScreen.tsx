@@ -25,7 +25,7 @@ import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
 import { ShiftInfoCard } from '../components/ShiftInfoCard';
 import { WeekAttendance, type WeekDay } from '../components/WeekAttendance';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, useIsCeo } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -44,6 +44,7 @@ export function ProfileScreen(): ReactElement {
   const { locale, setLocale, t } = useLocale();
   const navigation = useNavigation();
   const { user, signOut } = useAuth();
+  const isCeo = useIsCeo();
 
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -366,6 +367,27 @@ export function ProfileScreen(): ReactElement {
             navigation.navigate('DayOff');
           }}
         />
+        {/*
+          Кадры — последним пунктом перед выходом и только директору.
+
+          Не «Руководство»: там сменные дела — отгулы, зарплата, поручения,
+          — а приём и увольнение человек делает редко и обдуманно. Место
+          перед выходом и подходит редкому действию: до него надо долистать.
+
+          Именно директору, а не всему руководству: `users.create`,
+          `setActive` и выдача ролей закрыты `ceoProcedure`, и админу этот
+          пункт обещал бы право, которого у него нет.
+        */}
+        {isCeo && (
+          <ListRow
+            icon="people"
+            label="Сотрудники"
+            onPress={() => {
+              navigation.navigate('Employees');
+            }}
+          />
+        )}
+
         <ListRow
           icon="logout"
           label="Выйти из аккаунта"

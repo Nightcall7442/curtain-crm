@@ -1,4 +1,4 @@
-import { isManagement, type Role } from '@curtain-crm/shared';
+import { isManagement, Role } from '@curtain-crm/shared';
 import { createContext, useContext } from 'react';
 
 /**
@@ -57,4 +57,17 @@ export function useAuth(): AuthState {
 export function useIsManagement(): boolean {
   const { user } = useAuth();
   return isManagement(user?.roles ?? []);
+}
+
+/**
+ * Директор — и только он.
+ *
+ * Отличается от `useIsManagement`: админ сюда не входит. Кадровые действия
+ * (принять, отключить, выдать роль) закрыты на сервере `ceoProcedure`, и
+ * показывать админу раздел, который ему откажет, значило бы обещать
+ * несуществующее право.
+ */
+export function useIsCeo(): boolean {
+  const { user } = useAuth();
+  return (user?.roles ?? []).includes(Role.CEO);
 }
