@@ -18,6 +18,7 @@ export type RootStackParamList = {
   DayOff: undefined;
   PersonalWorkCreate: undefined;
   CashDesk: undefined;
+  SaleDetail: { saleId: number };
 };
 
 export type RootStackScreenProps<TRoute extends keyof RootStackParamList> =

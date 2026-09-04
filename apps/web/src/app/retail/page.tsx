@@ -42,6 +42,15 @@ export default function RetailPage(): ReactElement {
   const [category, setCategory] = useState<PurchaseCategory>('other');
   const [price, setPrice] = useState('');
 
+  /**
+   * Открытый чек. `null` — окно закрыто.
+   *
+   * Чек до сих пор нельзя было открыть: в таблице стояли продавец и итог,
+   * а что именно продано — нигде. Процедура `sales.byId` для этого была с
+   * самого начала, вызывать её было некому.
+   */
+  const [openSaleId, setOpenSaleId] = useState<number | null>(null);
+
   /** Позиция, которой добавляют приход. `null` — окно закрыто. */
   const [stocking, setStocking] = useState<{ id: number; name: string } | null>(null);
   const [stockDelta, setStockDelta] = useState('');
@@ -49,6 +58,11 @@ export default function RetailPage(): ReactElement {
 
   const items = trpc.retail.items.list.useQuery({ includeInactive: true });
   const sales = trpc.retail.sales.list.useQuery({ page: 1, pageSize: 10 });
+
+  const openSale = trpc.retail.sales.byId.useQuery(
+    { id: openSaleId ?? 0 },
+    { enabled: openSaleId !== null },
+  );
 
   const refresh = (): void => {
     void utils.retail.items.list.invalidate();
@@ -263,7 +277,28 @@ export default function RetailPage(): ReactElement {
           rows={sales.data?.items ?? []}
           rowKey={(row) => row.id}
           emptyMessage="Чеков пока нет"
+          onRowClick={(row) => {
+            setOpenSaleId(row.id);
+          }}
+          rowHref={(row) => `Открыть чек №${row.id.toString()}`}
           columns={[
+            {
+              key: 'number',
+              header: 'Чек',
+              sortValue: (row) => row.id,
+              /*
+                Номер чека — его же `id`. Отдельного «человеческого» номера
+                у чеков нет и заводить его не за чем: чек не живёт вне
+                системы, его не диктуют по телефону и не ищут в бумагах,
+                как заказ. А вот назвать его в разговоре («посмотри чек
+                четырнадцать») нужно — для этого хватает и `id`.
+              */
+              render: (row) => (
+                <span className="font-mono text-caption text-secondary">
+                  {`№${row.id.toString()}`}
+                </span>
+              ),
+            },
             { key: 'seller', header: 'Продавец', render: (row) => row.sellerName },
             {
               key: 'client',
@@ -440,6 +475,85 @@ export default function RetailPage(): ReactElement {
           </Field>
         </div>
       </Modal>
+
+      {/* --- Чек целиком --------------------------------------------------- */}
+      <Modal
+        open={openSaleId !== null}
+        title={openSaleId === null ? '' : `Чек №${openSaleId.toString()}`}
+        onClose={() => {
+          setOpenSaleId(null);
+        }}
+        footer={
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setOpenSaleId(null);
+            }}
+          >
+            Закрыть
+          </Button>
+        }
+      >
+        {openSale.data === undefined ? (
+          <p className="text-caption text-muted">Загружаем чек…</p>
+        ) : (
+          <div className="space-y-4">
+            <dl className="grid grid-cols-2 gap-3">
+              <SaleFact label="Клиент" value={openSale.data.clientName ?? '—'} />
+              <SaleFact label="Телефон" value={openSale.data.clientPhone ?? '—'} />
+              {openSale.data.comment !== null && (
+                <SaleFact label="Комментарий" value={openSale.data.comment} />
+              )}
+            </dl>
+
+            <ul className="divide-y divide-subtle border-y border-subtle">
+              {openSale.data.lines.map((line) => (
+                <li key={line.id} className="flex items-baseline justify-between gap-3 py-2">
+                  <span className="min-w-0">
+                    <span className="block text-body text-primary">{line.itemName}</span>
+                    {/*
+                      Количество и цена показываются рядом с итогом строки, а
+                      не вместо него: продавец пробивает метры и штуки, и
+                      «сколько взяли» — первое, что потом проверяют по чеку.
+                    */}
+                    <span className="block text-footnote text-muted">
+                      {`${Number.parseFloat(line.quantity).toString()} ${
+                        PURCHASE_UNIT_LABELS_RU[line.unit]
+                      } × ${formatMoney(parseMoney(line.unitPrice))}`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-body text-primary">
+                    {formatMoney(parseMoney(line.lineTotal ?? '0'))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex items-baseline justify-between">
+              <span className="text-caption text-secondary">Итого</span>
+              <span className="font-mono text-title text-primary">
+                {formatMoney(parseMoney(openSale.data.total))}
+              </span>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/** Поле шапки чека: подпись и значение. */
+function SaleFact({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}): ReactElement {
+  return (
+    <div>
+      <dt className="text-overline uppercase tracking-[0.08em] text-muted">{label}</dt>
+      <dd className="text-body text-primary">{value}</dd>
     </div>
   );
 }

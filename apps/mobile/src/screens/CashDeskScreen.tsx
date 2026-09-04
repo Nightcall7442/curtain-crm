@@ -256,6 +256,8 @@ export function CashDeskScreen(): ReactElement {
             </Card>
           </>
         )}
+
+        <MySales />
       </ScrollView>
 
       {/*
@@ -303,9 +305,73 @@ export function CashDeskScreen(): ReactElement {
   );
 }
 
+/**
+ * Свои чеки продавца — последние продажи с этой кассы.
+ *
+ * Раньше пробитый чек исчезал: приложение показывало «Продано» и всё. Ни
+ * посмотреть, что именно ушло, ни свериться с клиентом, который вернулся
+ * через час, было нечем — хотя `sales.mine` на сервере есть с самого
+ * начала и до сих пор только сбрасывался после продажи.
+ *
+ * Пять последних, а не все: касса — экран продажи, а не журнал. Кому нужен
+ * полный список, тот смотрит его в панели.
+ */
+function MySales(): ReactElement | null {
+  const navigation = useNavigation();
+  const sales = trpc.retail.sales.mine.useQuery({ page: 1, pageSize: 5 });
+
+  const rows = sales.data?.items ?? [];
+  // Пустую карточку не показываем: у нового продавца она была бы просто
+  // шумом под формой, которую он ещё не заполнил.
+  if (rows.length === 0) return null;
+
+  return (
+    <Card>
+      <CardTitle title="Мои чеки" icon="paid" />
+
+      {rows.map((sale) => (
+        <Pressable
+          key={sale.id}
+          onPress={() => {
+            navigation.navigate('SaleDetail', { saleId: sale.id });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть чек №${sale.id.toString()}`}
+          style={({ pressed }) => [styles.saleRow, pressed ? styles.salePressed : null]}
+        >
+          <View style={styles.itemText}>
+            <Text style={styles.itemName}>{`Чек №${sale.id.toString()}`}</Text>
+            <Text style={styles.itemMeta}>
+              {`${sale.clientName ?? 'Без имени'} · позиций: ${sale.lines}`}
+            </Text>
+          </View>
+          <Text style={styles.saleTotal}>{formatMoney(parseMoney(sale.total))}</Text>
+          <Icon name="chevron" size={16} color={colors.textMuted} />
+        </Pressable>
+      ))}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+  },
+  saleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 52,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
+  },
+  salePressed: {
+    opacity: opacity.pressed,
+  },
+  saleTotal: {
+    ...typography.value,
+    color: colors.textPrimary,
   },
   center: {
     flex: 1,

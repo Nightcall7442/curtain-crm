@@ -10,6 +10,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
 import { RatingScreen } from '../screens/RatingScreen';
+import { SaleDetailScreen } from '../screens/SaleDetailScreen';
 import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { colors } from '../theme';
@@ -82,6 +83,11 @@ export function RootNavigator(): ReactElement {
         name="CashDesk"
         component={CashDeskScreen}
         options={{ title: 'Касса' }}
+      />
+      <Stack.Screen
+        name="SaleDetail"
+        component={SaleDetailScreen}
+        options={{ title: 'Чек' }}
       />
     </Stack.Navigator>
   );
