@@ -1,0 +1,1 @@
+ALTER TYPE "public"."notification_type" ADD VALUE 'task_replied' BEFORE 'task_cancelled';

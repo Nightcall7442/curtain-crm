@@ -10,6 +10,7 @@ import { orderStatusHistory } from './orderStatusHistory.schema';
 import { orderInstallationTeam, orderItems, orders } from './orders.schema';
 import { payrollRecords, payrollSchemes } from './payroll.schema';
 import { purchaseItems, purchases } from './purchases.schema';
+import { taskMessages } from './taskMessages.schema';
 import { tasks } from './tasks.schema';
 import { dayOffRequests } from './dayOffRequests.schema';
 import { shifts } from './shifts.schema';
@@ -224,7 +225,8 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
  * У поручения два человека — адресат и автор; обе связи смотрят в `users`,
  * поэтому пары разводит `relationName`.
  */
-export const tasksRelations = relations(tasks, ({ one }) => ({
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  messages: many(taskMessages),
   assignee: one(users, {
     fields: [tasks.assigneeId],
     references: [users.id],
@@ -235,6 +237,12 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
     references: [users.id],
     relationName: 'taskCreator',
   }),
+}));
+
+/** Переписка по поручению: автор реплики нужен в ленте у каждой строки. */
+export const taskMessagesRelations = relations(taskMessages, ({ one }) => ({
+  task: one(tasks, { fields: [taskMessages.taskId], references: [tasks.id] }),
+  author: one(users, { fields: [taskMessages.authorId], references: [users.id] }),
 }));
 
 export const dayOffRequestsRelations = relations(dayOffRequests, ({ one }) => ({

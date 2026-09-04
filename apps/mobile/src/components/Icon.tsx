@@ -169,6 +169,7 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   payroll_paid: 'paid',
   task_assigned: 'work',
   task_completed: 'completed',
+  task_replied: 'comment',
   task_cancelled: 'cancelled',
   role_changed: 'roleChanged',
   day_off_requested: 'dayOffRequested',

@@ -4,20 +4,34 @@ import {
   MAX_TASK_TITLE_LENGTH,
   TaskStatus,
   taskStatusSchema,
+  type Role,
 } from '@curtain-crm/shared';
-import { tasks, users } from '@curtain-crm/db';
+import { taskMessages, tasks, users } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
-import { idSchema, nonEmptyString, optionalText, reasonSchema } from '../lib/schemas';
+import { ALLOWED_TASK_ATTACHMENT_MIME_TYPES, getEnv } from '../lib/constants';
+import {
+  base64FileSchema,
+  idSchema,
+  nonEmptyString,
+  optionalText,
+  reasonSchema,
+} from '../lib/schemas';
 import { recordAudit } from '../services/audit.service';
+import {
+  buildStorageKey,
+  decodeBase64Payload,
+  getStorage,
+} from '../services/storage.service';
 import {
   notifyTaskAssigned,
   notifyTaskCancelled,
   notifyTaskCompleted,
+  notifyTaskReplied,
 } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -130,6 +144,155 @@ export const tasksRouter = router({
 
     return rows;
   }),
+
+  /**
+   * Одно поручение целиком: сроки, автор и переписка.
+   *
+   * Раньше поручение существовало только строкой в списке: заголовок, срок,
+   * кнопка «Выполнено». Ни открыть его, ни спросить «а что именно не так»
+   * было нельзя — уточнения шли голосом и в системе не оставались.
+   *
+   * Видят адресат, автор и руководство. Чужое поручение закрыто: лента
+   * переписки — это разговор двоих о работе, а не общая доска.
+   */
+  byId: protectedProcedure
+    .input(z.object({ id: idSchema }))
+    .query(async ({ ctx, input }) => {
+      const task = await ctx.db.query.tasks.findFirst({
+        where: eq(tasks.id, input.id),
+        with: {
+          assignee: { columns: { id: true, fullName: true } },
+          creator: { columns: { id: true, fullName: true } },
+          messages: {
+            with: { author: { columns: { id: true, fullName: true } } },
+            orderBy: (message, { asc: ascending }) => [ascending(message.createdAt)],
+          },
+        },
+      });
+
+      if (task === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Поручение не найдено' });
+      }
+
+      assertCanSeeTask(task, ctx.user);
+
+      /*
+        Ссылки подписываются на каждое чтение и живут недолго — так же, как
+        у фото заказа. Хранить готовый адрес в базе нельзя: он протух бы
+        раньше, чем понадобился.
+      */
+      const storage = getStorage();
+      const messages = await Promise.all(
+        task.messages.map(async (message) => ({
+          ...message,
+          url:
+            message.storageKey === null
+              ? null
+              : await storage.getUrl(message.storageKey),
+        })),
+      );
+
+      return { ...task, messages };
+    }),
+
+  /**
+   * Реплика по поручению: текст, файл или и то и другое.
+   *
+   * Одна процедура на обе стороны. Руководитель прикладывает фото брака,
+   * исполнитель отвечает фотографией результата — это один и тот же жест,
+   * и разводить его на «вложение» и «отчёт» значило бы писать дважды одно.
+   *
+   * Пустая реплика отклоняется здесь и не проходит check-констрейнт в базе:
+   * сообщение без текста и без файла — сбой, а не сообщение.
+   */
+  reply: protectedProcedure
+    .input(
+      z
+        .object({
+          taskId: idSchema,
+          body: optionalText(MAX_TASK_DETAILS_LENGTH),
+          file: base64FileSchema.optional(),
+        })
+        .refine((value) => value.body !== undefined || value.file !== undefined, {
+          message: 'Напишите сообщение или приложите файл',
+          path: ['body'],
+        }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const task = await ctx.db.query.tasks.findFirst({ where: eq(tasks.id, input.taskId) });
+      if (task === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Поручение не найдено' });
+      }
+      assertCanSeeTask(task, ctx.user);
+
+      const storage = getStorage();
+      let stored: { readonly key: string; readonly size: number } | null = null;
+
+      if (input.file !== undefined) {
+        const env = getEnv();
+        const body = decodeBase64Payload(input.file, {
+          allowedMimeTypes: ALLOWED_TASK_ATTACHMENT_MIME_TYPES,
+          maxBytes: env.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+        });
+
+        const uploaded = await storage.upload({
+          key: buildStorageKey(['tasks', task.id.toString()], input.file.mimeType),
+          body,
+          mimeType: input.file.mimeType,
+        });
+        stored = { key: uploaded.key, size: body.byteLength };
+      }
+
+      try {
+        const [created] = await ctx.db
+          .insert(taskMessages)
+          .values({
+            taskId: task.id,
+            authorId: ctx.user.id,
+            body: input.body ?? null,
+            storageKey: stored?.key ?? null,
+            originalFileName: input.file?.fileName ?? null,
+            mimeType: input.file?.mimeType ?? null,
+            sizeBytes: stored?.size ?? null,
+          })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Не удалось сохранить сообщение',
+          });
+        }
+
+        /*
+          Уведомляем вторую сторону, а не всех участников: в поручении их
+          ровно двое. Себе уведомление не шлём — человек только что это и
+          написал.
+        */
+        const recipientId =
+          ctx.user.id === task.assigneeId ? task.createdBy : task.assigneeId;
+
+        if (recipientId !== ctx.user.id) {
+          await notifyTaskReplied(ctx.db, {
+            recipientId,
+            taskId: task.id,
+            taskTitle: task.title,
+            authorName: ctx.user.fullName,
+            preview: input.body ?? 'Приложен файл',
+          });
+        }
+
+        return {
+          ...created,
+          url: created.storageKey === null ? null : await storage.getUrl(created.storageKey),
+        };
+      } catch (error) {
+        // Запись не удалась — убираем загруженный файл, чтобы хранилище не
+        // копило мусор от неудачных попыток. Тот же приём, что у фото заказа.
+        if (stored !== null) await storage.delete(stored.key).catch(() => undefined);
+        throw error;
+      }
+    }),
 
   /** Все поручения — для руководства. */
   list: managementProcedure
@@ -259,3 +422,23 @@ export const tasksRouter = router({
       }),
     ),
 });
+
+/**
+ * Кому видно поручение: адресату, автору и руководству.
+ *
+ * Отдельная функция, а не строчка в каждой процедуре: правило одно и то же
+ * для карточки и для переписки, и разъехаться они не должны. Руководство
+ * проходит всегда — оно и так видит весь список.
+ */
+function assertCanSeeTask(
+  task: { readonly assigneeId: number; readonly createdBy: number },
+  user: { readonly id: number; readonly roles: readonly Role[] },
+): void {
+  if (isManagement(user.roles)) return;
+  if (task.assigneeId === user.id || task.createdBy === user.id) return;
+
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'Это поручение выдано другому сотруднику',
+  });
+}

@@ -46,6 +46,8 @@ export const NOTIFICATION_TYPES = [
   'task_assigned',
   /** Сотрудник отметил поручение выполненным (адресат — автор поручения). */
   'task_completed',
+  /** Ответ по поручению — от исполнителя автору или наоборот. */
+  'task_replied',
   /** Доп. работу отменило руководство. */
   'task_cancelled',
   /** Сотрудник запросил выходные — видит руководство. */
@@ -74,6 +76,7 @@ export const NotificationType = {
   ROLE_CHANGED: 'role_changed',
   TASK_ASSIGNED: 'task_assigned',
   TASK_COMPLETED: 'task_completed',
+  TASK_REPLIED: 'task_replied',
   TASK_CANCELLED: 'task_cancelled',
   DAY_OFF_REQUESTED: 'day_off_requested',
   DAY_OFF_APPROVED: 'day_off_approved',
@@ -115,6 +118,8 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   // Доп. работа — прямая просьба руководителя: заметнее рядового хода заказа.
   task_assigned: 'warning',
   task_completed: 'accent',
+  // Ответ по поручению — разговор о работе, рядовое событие.
+  task_replied: 'info',
   task_cancelled: 'neutral',
   // Запрос ждёт решения руководства — заметнее рядовой сводки, как поручение.
   day_off_requested: 'warning',

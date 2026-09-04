@@ -311,6 +311,30 @@ export async function notifyTaskCompleted(
   });
 }
 
+/**
+ * Ответ по поручению — второй стороне.
+ *
+ * Адресат один: в поручении участвуют ровно двое, автор и исполнитель.
+ * Кто написал, тому уведомление не идёт — он только что это и сделал.
+ */
+export async function notifyTaskReplied(
+  executor: DbExecutor,
+  params: {
+    readonly recipientId: number;
+    readonly taskId: number;
+    readonly taskTitle: string;
+    readonly authorName: string;
+    readonly preview: string;
+  },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: params.recipientId,
+    type: NotificationType.TASK_REPLIED,
+    title: `Ответ по поручению «${params.taskTitle}»`,
+    body: `${params.authorName}: ${params.preview}`,
+  });
+}
+
 /** Доп. работу отменило руководство — узнаёт адресат. */
 export async function notifyTaskCancelled(
   executor: DbExecutor,
