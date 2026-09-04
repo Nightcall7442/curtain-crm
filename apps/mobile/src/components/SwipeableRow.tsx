@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   under: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: radius.lg,
     overflow: 'hidden',
     flexDirection: 'row',

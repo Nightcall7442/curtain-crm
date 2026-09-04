@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "scheme": "designhouse",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#14504A"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -52,13 +47,20 @@
         }
       ],
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Микрофон нужен для голосовых комментариев к заказу."
         }
       ],
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#14504A"
+        }
+      ]
     ],
     "web": {
       "bundler": "metro",

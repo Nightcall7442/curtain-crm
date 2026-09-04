@@ -12,7 +12,6 @@ import { authFetch, isUnauthorized, setSessionExpiredHandler } from './src/lib/a
 import { tokenStorage } from './src/lib/storage';
 import { resolveApiUrl, trpc } from './src/lib/trpc';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { colors } from './src/theme';
 
 /**
  * Корень приложения: провайдеры, клиент tRPC и состояние аутентификации.
@@ -63,7 +62,19 @@ export default function App(): ReactElement {
         <LocaleProvider>
           <SafeAreaProvider>
             <AuthGate>
-              <StatusBar style="light" backgroundColor={colors.header} />
+              {/*
+                Цвет фона строке состояния больше не задаётся.
+
+                В SDK 57 `expo-status-bar` лишился `backgroundColor`: Android
+                перешёл на edge-to-edge, и под строкой состояния рисует само
+                содержимое. Здесь это ровно то, что нужно — сверху либо
+                хвойная шапка навигации (`headerStyle` в обоих навигаторах),
+                либо подложка приветствия на главной, и обе того же цвета.
+
+                `style="light"` остаётся: он про цвет часов и значков, а не
+                про фон, и его никто не отменял.
+              */}
+              <StatusBar style="light" />
               <NavigationContainer>
                 <RootNavigator />
               </NavigationContainer>

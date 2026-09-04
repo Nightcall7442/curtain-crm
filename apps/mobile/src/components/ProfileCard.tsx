@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   photoOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

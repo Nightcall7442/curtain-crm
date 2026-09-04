@@ -1,4 +1,11 @@
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+} from 'expo-audio';
 // Новый классовый API файловой системы (SDK 54). Устаревший вход `/legacy`
 // не подошёл — он раздаёт исходники, и их проверял бы наш строгий tsc.
 import { File } from 'expo-file-system';
@@ -16,8 +23,13 @@ import { colors, radius, spacing, typography, opacity } from '../theme';
  * Сервер (`orderComments.addVoice`) и плеер в веб-панели существовали с самого
  * начала — записывать было нечем ни здесь, ни там.
  *
- * `expo-av` пишет в m4a на обоих платформах (пресет `HIGH_QUALITY`), а его
+ * `expo-audio` пишет в m4a на обоих платформах (пресет `HIGH_QUALITY`), а его
  * mime-тип `audio/mp4` входит в белый список сервера.
+ *
+ * Раньше здесь был `expo-av`. Его убрали из SDK 55, и переезд был не выбором,
+ * а условием обновления. API изменился по сути, а не по названиям: вместо
+ * объектов, которые создаются и выгружаются вручную, — хуки, живущие вместе
+ * с компонентом. Поэтому запись и плеер ниже устроены иначе, чем раньше.
  */
 
 /** Столько же, сколько разрешает сервер (`MAX_VOICE_DURATION_SECONDS`). */
@@ -38,7 +50,16 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  /*
+    Диктофон живёт вместе с компонентом, а не создаётся на каждую запись.
+
+    Так устроен `expo-audio`: `useAudioRecorder` возвращает один объект на всё
+    время жизни экрана, а начало и конец записи — это вызовы на нём. Прежний
+    `expo-av` создавал объект записи заново и требовал выгружать его руками;
+    здесь выгрузку делает сам хук.
+  */
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef(0);
 
@@ -51,13 +72,18 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     },
   });
 
-  /** Если экран закрыли во время записи — освобождаем микрофон. */
+  /**
+   * Если экран закрыли во время записи — останавливаем.
+   *
+   * Сам диктофон выгружать не нужно: этим занимается хук. А вот таймер и
+   * незавершённую запись он не знает — микрофон остался бы занятым.
+   */
   useEffect(
     () => () => {
       if (timerRef.current !== null) clearInterval(timerRef.current);
-      void recordingRef.current?.stopAndUnloadAsync().catch(() => undefined);
+      void recorder.stop().catch(() => undefined);
     },
-    [],
+    [recorder],
   );
 
   const stopTimer = (): void => {
@@ -66,7 +92,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
   };
 
   const start = async (): Promise<void> => {
-    const permission = await Audio.requestPermissionsAsync();
+    const permission = await requestRecordingPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Нет доступа', 'Разрешите доступ к микрофону в настройках телефона.');
       return;
@@ -74,13 +100,15 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
 
     try {
       // На iOS без этого запись идёт в «тихом» режиме и получается пустой,
-      // а динамик после воспроизведения остаётся приглушённым.
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      // а динамик после воспроизведения остаётся приглушённым. В `expo-audio`
+      // поля назвали без суффикса iOS, смысл прежний.
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets['HIGH_QUALITY'],
-      );
-      recordingRef.current = recording;
+      // Подготовка и старт разделены: `record()` не ждёт готовности, и без
+      // `prepareToRecordAsync` первые доли секунды речи теряются.
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+
       elapsedRef.current = 0;
       setElapsed(0);
       setIsRecording(true);
@@ -99,8 +127,6 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
   };
 
   const finish = async (shouldSend: boolean): Promise<void> => {
-    const recording = recordingRef.current;
-    recordingRef.current = null;
     stopTimer();
     setIsRecording(false);
 
@@ -108,12 +134,13 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     elapsedRef.current = 0;
     setElapsed(0);
 
-    if (recording === null) return;
+    await recorder.stop().catch(() => undefined);
+    // Возвращаем звуковой режим: иначе на iOS динамик остаётся приглушённым
+    // и следующее голосовое сообщение слушают, недоумевая, почему тихо.
+    await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
 
-    await recording.stopAndUnloadAsync().catch(() => undefined);
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => undefined);
-
-    const uri = recording.getURI();
+    // Путь появляется только после остановки — до неё файла ещё нет.
+    const uri = recorder.uri;
     const removeTemp = (target: string): void => {
       try {
         new File(target).delete();
@@ -199,8 +226,13 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
 /**
  * Плеер одной записи.
  *
- * Звук выгружается при уходе с экрана: без этого запись продолжает играть
- * поверх следующего экрана, а на Android ещё и удерживает аудиофокус.
+ * Звук выгружается при уходе с экрана — этим занимается сам `useAudioPlayer`.
+ * Раньше выгрузку приходилось писать руками, иначе запись продолжала играть
+ * поверх следующего экрана и удерживала аудиофокус на Android.
+ *
+ * Плеер создаётся сразу, а не по первому нажатию: в `expo-audio` он живёт
+ * хуком, и «создать при клике» означало бы условный вызов хука. Загрузку это
+ * не ускоряет и не замедляет — источник подтягивается лениво самим плеером.
  */
 export function VoiceCommentPlayer({
   url,
@@ -209,52 +241,35 @@ export function VoiceCommentPlayer({
   readonly url: string | null;
   readonly durationSeconds: number | null;
 }): ReactElement {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const player = useAudioPlayer(url ?? undefined);
+  const status = useAudioPlayerStatus(player);
 
-  useEffect(
-    () => () => {
-      void soundRef.current?.unloadAsync().catch(() => undefined);
-    },
-    [],
-  );
+  /*
+    Дослушанную запись перематываем в начало.
 
-  const toggle = async (): Promise<void> => {
+    Без этого повторное нажатие ничего не играет: позиция стоит в конце, и
+    плеер считает, что играть больше нечего.
+  */
+  useEffect(() => {
+    if (status.didJustFinish) void player.seekTo(0).catch(() => undefined);
+  }, [status.didJustFinish, player]);
+
+  const toggle = (): void => {
     if (url === null) return;
 
-    const existing = soundRef.current;
-    if (existing !== null) {
-      if (isPlaying) await existing.pauseAsync().catch(() => undefined);
-      else await existing.playAsync().catch(() => undefined);
-      setIsPlaying(!isPlaying);
+    if (status.playing) {
+      player.pause();
       return;
     }
 
-    setIsLoading(true);
-    try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-      soundRef.current = sound;
-      setIsPlaying(true);
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) return;
-        if (status.didJustFinish) {
-          setIsPlaying(false);
-          // Перематываем в начало: иначе повторное нажатие ничего не играет,
-          // потому что позиция стоит в конце.
-          void sound.setPositionAsync(0).catch(() => undefined);
-        }
+    // Режим звука выставляем перед проигрыванием: на iOS в «тихом» положении
+    // переключателя запись иначе не слышна вовсе.
+    void setAudioModeAsync({ playsInSilentMode: true })
+      .catch(() => undefined)
+      .then(() => {
+        player.play();
       });
-    } catch {
-      Alert.alert('Не удалось воспроизвести', 'Запись недоступна.');
-    } finally {
-      setIsLoading(false);
-    }
   };
-
-  const uri = url ?? '';
 
   if (url === null) {
     return <Text style={styles.unavailable}>🎤 Запись недоступна</Text>;
@@ -262,15 +277,15 @@ export function VoiceCommentPlayer({
 
   return (
     <Pressable
-      onPress={() => void toggle()}
+      onPress={toggle}
       style={({ pressed }) => [styles.player, pressed ? styles.pressed : null]}
       accessibilityRole="button"
-      accessibilityLabel={isPlaying ? 'Пауза' : 'Воспроизвести голосовое сообщение'}
+      accessibilityLabel={status.playing ? 'Пауза' : 'Воспроизвести голосовое сообщение'}
     >
-      {isLoading ? (
+      {status.isBuffering ? (
         <ActivityIndicator color={colors.accent} size="small" />
       ) : (
-        <Text style={styles.playerGlyph}>{isPlaying ? '⏸' : '▶'}</Text>
+        <Text style={styles.playerGlyph}>{status.playing ? '⏸' : '▶'}</Text>
       )}
       <Text style={styles.playerText}>
         {durationSeconds === null ? 'Голосовое сообщение' : formatSeconds(durationSeconds)}
