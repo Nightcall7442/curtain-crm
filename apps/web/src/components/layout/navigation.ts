@@ -13,6 +13,7 @@ import {
   Settings,
   Trophy,
   Users,
+  Store,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -87,6 +88,7 @@ export const NAVIGATION: readonly NavItem[] = [
       { href: '/employees/timesheet', label: 'Табель', roles: MANAGEMENT_ROLES },
     ],
   },
+  { href: '/retail', label: 'Касса', icon: Store, roles: MANAGEMENT_ROLES },
   { href: '/payroll', label: 'Зарплаты', icon: Wallet, roles: MANAGEMENT_ROLES },
   { href: '/rating', label: 'Рейтинг', icon: Trophy, roles: MANAGEMENT_ROLES },
   { href: '/reports', label: 'Отчёты', icon: BarChart3, roles: MANAGEMENT_ROLES },

@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
 import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
+import { CashDeskScreen } from '../screens/CashDeskScreen';
 import { DayOffScreen } from '../screens/DayOffScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
@@ -76,6 +77,11 @@ export function RootNavigator(): ReactElement {
         name="PersonalWorkCreate"
         component={PersonalWorkCreateScreen}
         options={{ title: 'Личная работа' }}
+      />
+      <Stack.Screen
+        name="CashDesk"
+        component={CashDeskScreen}
+        options={{ title: 'Касса' }}
       />
     </Stack.Navigator>
   );

@@ -238,6 +238,32 @@ export function WorkScreen(): ReactElement {
         </View>
       )}
 
+      {/*
+        Касса — отдельной строкой под приёмом заказа.
+
+        Рядом с «Новым заказом» её ставить нельзя: заказ и чек — разные по
+        весу события, а две одинаковые кнопки в ряд заставляют читать
+        подписи вместо того, чтобы нажимать не глядя.
+      */}
+      {canCreate && (
+        <View style={styles.createRow}>
+          <Pressable
+            onPress={() => {
+              navigation.navigate('CashDesk');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.createSecondary,
+              styles.createFlex,
+              pressed ? styles.createPressed : null,
+            ]}
+          >
+            <Icon name="paid" size={18} color={colors.accentStrong} />
+            <Text style={styles.createSecondaryText}>Касса — тюль и аксессуары</Text>
+          </Pressable>
+        </View>
+      )}
+
       <FlatList
         data={items}
         keyExtractor={(item) => item.id.toString()}
