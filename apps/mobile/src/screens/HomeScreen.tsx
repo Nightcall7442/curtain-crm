@@ -12,11 +12,11 @@ import { useMemo, type ReactElement } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BirthdayBoard } from '../components/BirthdayBoard';
-import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
+import { Card, CardTitle, Empty, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
@@ -25,8 +25,12 @@ import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../th
  * Главный экран: что нужно сотруднику в первые пять секунд после запуска.
  *
  * Открыта ли смена, где он в рейтинге, сколько заказов на нём и что горит по
- * срокам. Сводных показателей компании здесь нет — они в веб-панели у
- * руководства, рядовому сотруднику важны только его собственные задачи.
+ * срокам. Рядовому сотруднику важны только его собственные задачи, и ничего
+ * сверх них он здесь не видит.
+ *
+ * Руководителю сверху добавляется сводка по цеху. Он открывает приложение с
+ * другим вопросом — не «что у меня», а «всё ли идёт», — и ответ на него
+ * должен быть первым, без прокрутки.
  *
  * Раскладка собрана по макету: тёмно-зелёная шапка с приветствием, поверх неё
  * приподнятая карточка смены, ниже плитки показателей 2×2. Плитки «Клиенты» и
@@ -39,6 +43,7 @@ export function HomeScreen(): ReactElement {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const isManager = useIsManagement();
 
   const utils = trpc.useUtils();
   // Тот же ключ, что и на экране профиля: снимок берётся из общего кеша.
@@ -159,8 +164,28 @@ export function HomeScreen(): ReactElement {
         </View>
       </View>
 
-      {/* Карточка смены заезжает на подложку */}
-      <View style={styles.overlap}>
+      {/*
+        Сводка по цеху — только руководству и первой карточкой.
+
+        Директор открывает приложение не за своей сменой, а с вопросом «что
+        в цеху»: сколько заказов в работе, сколько людей на месте, сколько
+        денег за месяц. Ниже своей смены этот вопрос требовал бы прокрутки
+        каждое утро.
+      */}
+      {isManager && (
+        <View style={styles.overlap}>
+          <WorkshopSummary />
+        </View>
+      )}
+
+      {/*
+        Карточка смены заезжает на подложку — но только когда она первая.
+
+        У `overlap` отрицательный верхний отступ: он и есть тот наезд на
+        хвойную шапку. Повесить его на обе карточки нельзя — вторая
+        наехала бы уже на первую.
+      */}
+      <View style={isManager ? styles.afterOverlap : styles.overlap}>
         <Card>
           <CardTitle title="Текущая смена" />
 
@@ -432,6 +457,42 @@ function StatTile({
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Сводка по цеху для руководителя.
+ *
+ * Три числа, а не двенадцать: заказы в работе, люди на смене и выручка за
+ * месяц. Полный дашборд с динамикой по неделям — работа для большого
+ * экрана; здесь нужен ответ на утренний вопрос «всё ли идёт», а не разбор.
+ *
+ * Просроченные вынесены отдельной строкой и красным: это единственное в
+ * сводке, что требует действия сегодня.
+ */
+function WorkshopSummary(): ReactElement {
+  const dashboard = trpc.reports.dashboard.useQuery({});
+
+  if (dashboard.data === undefined) {
+    return (
+      <Card>
+        <Skeleton rows={2} />
+      </Card>
+    );
+  }
+
+  const { data } = dashboard;
+  const attention = data.productionStages.reduce((sum, stage) => sum + stage.count, 0);
+
+  return (
+    <Card>
+      <CardTitle title="Цех сегодня" icon="branch" />
+
+      <Row label="Заказов в работе" value={data.activeOrders.toString()} />
+      <Row label="На смене" value={`${data.employeesOnShift.toString()} чел.`} />
+      <Row label="В производстве" value={attention.toString()} />
+      <Row label="Выручка за месяц" value={data.revenueThisMonthFormatted} />
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   content: {
     paddingBottom: tabBarSpace,
@@ -503,6 +564,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     // Ровно столько, чтобы карточка легла на хвойную подложку.
     marginTop: -(spacing.xl + spacing.sm),
+    marginBottom: -spacing.sm,
+  },
+  /** Обычная карточка в потоке — для той, что идёт следом за наехавшей. */
+  afterOverlap: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
     marginBottom: -spacing.sm,
   },
   shiftDetails: {
