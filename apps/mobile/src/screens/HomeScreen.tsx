@@ -9,7 +9,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, type ReactElement } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
@@ -40,6 +40,9 @@ export function HomeScreen(): ReactElement {
   const { user } = useAuth();
 
   const utils = trpc.useUtils();
+  // Тот же ключ, что и на экране профиля: снимок берётся из общего кеша.
+  const profile = trpc.users.byId.useQuery({ id: user?.id ?? 0 }, { enabled: user !== null });
+  const avatarUrl = profile.data?.avatarUrl ?? null;
   const shift = trpc.shifts.current.useQuery();
   const orders = trpc.orders.list.useQuery({ page: 1, pageSize: 50 });
   const unread = trpc.notifications.unreadCount.useQuery();
@@ -124,9 +127,32 @@ export function HomeScreen(): ReactElement {
             </Text>
             <Text style={styles.heroHint}>Хорошего рабочего дня!</Text>
           </View>
-          <View style={styles.avatar} accessibilityElementsHidden>
-            <Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>
-          </View>
+          {/*
+            Фото сотрудника и вход в профиль.
+
+            Раньше здесь была глухая плашка с инициалами: фото у людей есть,
+            а в шапке его не было видно, и нажатие ничего не делало — до
+            профиля приходилось идти через нижнюю панель. Теперь это кнопка,
+            и она же показывает снимок.
+
+            Профиль запрашивается тем же ключом, что и на экране профиля,
+            поэтому второго обращения к серверу не будет: react-query отдаст
+            уже загруженное.
+          */}
+          <Pressable
+            onPress={() => {
+              navigation.navigate('Profile');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Мой профиль"
+            style={({ pressed }) => [styles.avatar, pressed ? styles.avatarPressed : null]}
+          >
+            {avatarUrl === null ? (
+              <Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>
+            ) : (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarPhoto} resizeMode="cover" />
+            )}
+          </Pressable>
         </View>
       </View>
 
@@ -434,6 +460,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
+    // Обрезает фото по кругу — без этого снимок торчал бы за рамкой углами.
+    overflow: 'hidden',
+  },
+  avatarPressed: {
+    opacity: opacity.pressed,
+  },
+  // Снимок кладётся под скруглённую рамку: `overflow` на самой кнопке
+  // обрезает его по кругу, поэтому отдельная обёртка не нужна.
+  avatarPhoto: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     color: colors.headerText,

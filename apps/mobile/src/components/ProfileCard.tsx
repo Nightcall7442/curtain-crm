@@ -19,14 +19,6 @@ import { Icon, type IconName } from './Icon';
  * галереей — забота экрана.
  */
 
-/**
- * Соотношение сторон рамки фото — формат корпоративной съёмки (309×433).
- *
- * Рамка повторяет формат снимка, чтобы `cover` ничего не срезал: у портрета
- * голова начинается почти у верхнего края, и даже несколько срезанных
- * пикселей видно сразу.
- */
-const PHOTO_ASPECT_RATIO = 309 / 433;
 export function ProfileCard({
   fullName,
   jobTitle,
@@ -222,7 +214,7 @@ const styles = StyleSheet.create({
       взялось число, и не даст молча вернуть обрезку, поправив высоту
       «на глаз» ради вёрстки.
     */
-    aspectRatio: PHOTO_ASPECT_RATIO,
+    aspectRatio: 309 / 433,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceMuted,
   },

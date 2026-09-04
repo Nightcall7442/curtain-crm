@@ -39,7 +39,14 @@ export type TabParamList = {
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace ReactNavigation {
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    interface RootParamList extends RootStackParamList {}
+    /*
+      Вкладки включены наравне со стеком.
+
+      React Navigation умеет переходить на вкладку из экрана, лежащего
+      внутри неё, — `navigate('Profile')` с любого экрана работает. Но пока
+      здесь был только `RootStackParamList`, компилятор о вкладках не знал
+      и такой переход не пропускал, хотя в рантайме он законен.
+    */
+    interface RootParamList extends RootStackParamList, TabParamList {}
   }
 }
