@@ -31,8 +31,22 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
  * `10.0.2.2` вместо `127.0.0.1`.
  *
  * В сборке адрес берётся из `extra.apiUrl` в `app.json`.
+ *
+ * Выше всего — переменная `EXPO_PUBLIC_API_URL`. Она нужна, чтобы запустить
+ * приложение против другого сервера, не трогая `app.json`: например,
+ * открыть его в браузере на локальном API, пока `extra.apiUrl` показывает
+ * на прод. Правка общего конфига ради разовой проверки рано или поздно
+ * уезжает в коммит и переключает всех.
  */
 export function resolveApiUrl(): string {
+  /*
+    Читается именно так — обращением к конкретному ключу, а не перебором
+    `process.env`. Metro подставляет значения `EXPO_PUBLIC_*` на этапе
+    сборки текстом, и динамический доступ он подставить не может.
+  */
+  const fromEnv = process.env['EXPO_PUBLIC_API_URL'];
+  if (typeof fromEnv === 'string' && fromEnv.length > 0) return fromEnv;
+
   // `expoConfig.extra` типизирован как `Record<string, any>`, поэтому
   // значение сначала приводится к `unknown` и сужается проверкой:
   // иначе любая опечатка в `app.json` попала бы в код как `any`.
