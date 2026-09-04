@@ -126,7 +126,7 @@ export default function LoginPage(): ReactElement {
             сюда. Той же маской: здесь фон светлый, и знак становится
             тёмным сам, без отдельного файла под светлую тему.
           */}
-          <div className="flex items-center gap-3 lg:hidden">
+          <div className="flex items-center justify-center gap-3 lg:hidden">
             <span
               role="img"
               aria-label="Design House"
