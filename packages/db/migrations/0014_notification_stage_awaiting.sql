@@ -1,0 +1,1 @@
+ALTER TYPE "public"."notification_type" ADD VALUE 'order_stage_awaiting' BEFORE 'order_status_changed';

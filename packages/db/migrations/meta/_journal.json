@@ -99,6 +99,13 @@
       "when": 1788550001847,
       "tag": "0013_order_cutting_fee",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788550276158,
+      "tag": "0014_notification_stage_awaiting",
+      "breakpoints": true
     }
   ]
 }

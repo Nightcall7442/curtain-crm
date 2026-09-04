@@ -10,6 +10,16 @@ import { z } from 'zod';
 export const NOTIFICATION_TYPES = [
   /** Заказ назначен сотруднику (замер, пошив, контроль, установка). */
   'order_assigned',
+  /**
+   * Этап заказа ждёт исполнителя — приходит всем, кто может его взять.
+   *
+   * Отличается от `order_assigned` тем, что заказ ещё ничей. Админ перевёл
+   * его на этап, исполнителя не назначил, и заказ лежит в общем пуле цеха.
+   * Раньше об этом не узнавал никто: уведомления шли только уже назначенным
+   * участникам, и работа ждала, пока кто-нибудь сам не откроет приложение
+   * и не заглянет в список.
+   */
+  'order_stage_awaiting',
   /** Изменился статус заказа, в котором сотрудник участвует. */
   'order_status_changed',
   /** Заказ возвращён на предыдущий этап (откат). */
@@ -50,6 +60,7 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const NotificationType = {
   ORDER_ASSIGNED: 'order_assigned',
+  ORDER_STAGE_AWAITING: 'order_stage_awaiting',
   ORDER_STATUS_CHANGED: 'order_status_changed',
   ORDER_ROLLED_BACK: 'order_rolled_back',
   ORDER_REJECTED_TO_CEO: 'order_rejected_to_ceo',
@@ -88,6 +99,8 @@ export type NotificationTone = 'accent' | 'info' | 'warning' | 'danger' | 'neutr
 
 export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationTone>> = {
   order_assigned: 'info',
+  // Работа стоит и ждёт, пока её кто-то возьмёт: заметнее рядового хода.
+  order_stage_awaiting: 'warning',
   order_status_changed: 'info',
   order_rolled_back: 'danger',
   order_rejected_to_ceo: 'warning',
@@ -123,6 +136,8 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
   NotificationType.ORDER_ROLLED_BACK,
   NotificationType.ORDER_REJECTED_TO_CEO,
   NotificationType.ORDER_CANCELLED,
+  // Заказ лежит и ждёт исполнителя: пока никто не возьмёт, работа стоит.
+  NotificationType.ORDER_STAGE_AWAITING,
   // Доп. работа — прямая просьба руководителя сделать что-то, а не сводка.
   NotificationType.TASK_ASSIGNED,
   // Запрос на выходные ждёт решения — без действия руководства так и повиснет.

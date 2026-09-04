@@ -1,4 +1,4 @@
-import { notifications, type DbExecutor } from '@curtain-crm/db';
+import { notifications, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
   NotificationType,
   ORDER_STATUS_LABELS_RU,
@@ -7,13 +7,15 @@ import {
   type NotificationType as NotificationTypeName,
   type Role,
 } from '@curtain-crm/shared';
+import { and, eq } from 'drizzle-orm';
 
 /**
  * Внутренние уведомления сотрудников.
  *
- * Правило адресации: сотрудник получает уведомление ТОЛЬКО о своих задачах —
- * заказ назначен ему, сменился статус этапа, за который он отвечает,
- * скорректирована его смена. Рассылки «всем подряд» здесь нет намеренно:
+ * Правило адресации: сотрудник получает уведомление ТОЛЬКО о том, что касается
+ * его работы — заказ назначен ему, сменился статус этапа, за который он
+ * отвечает, скорректирована его смена, либо на его этапе лежит свободный
+ * заказ, который он вправе взять. Рассылки «всем подряд» здесь нет намеренно:
  * лента, в которой 90 % чужого, перестаёт читаться.
  *
  * Все функции принимают `DbExecutor`, поэтому вызываются внутри той же
@@ -98,6 +100,49 @@ export async function notifyOrderAssigned(
     body: `Вам назначен заказ клиента «${order.clientName}» как «${ROLE_LABELS_RU[role]}»`,
     relatedOrderId: order.orderId,
   });
+}
+
+/**
+ * Этап заказа ждёт исполнителя — сообщаем тем, чья это работа.
+ *
+ * Пока исполнитель не назначен, заказ на этапе ничей, и узнать о нём было
+ * неоткуда: уведомления шли только уже назначенным участникам. Заказ лежал,
+ * пока кто-нибудь сам не откроет список и не заглянет в него.
+ *
+ * Текст НЕ обещает «возьми в работу». Взять заказ сам сотрудник по
+ * большинству этапов не может: переход в «В пошиве» и «Назначен установщик»
+ * требует назначенного исполнителя, а назначает руководство. Уведомление
+ * говорит ровно то, что есть: работа появилась и ждёт назначения — можно
+ * подойти и попросить её себе.
+ *
+ * Адресаты — только действующие сотрудники нужной роли: уволенному звать
+ * незачем, а роль берётся из той же таблицы, по которой сервер решает, кому
+ * этап принадлежит.
+ */
+export async function notifyStageAwaitingExecutor(
+  executor: DbExecutor,
+  order: OrderNotificationContext,
+  role: Role,
+  excludeUserId: number,
+): Promise<void> {
+  const candidates = await executor
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(userRoles, eq(userRoles.userId, users.id))
+    .where(and(eq(userRoles.role, role), eq(users.isActive, true)));
+
+  await createNotifications(
+    executor,
+    candidates
+      .filter((candidate) => candidate.id !== excludeUserId)
+      .map((candidate) => ({
+        userId: candidate.id,
+        type: NotificationType.ORDER_STAGE_AWAITING,
+        title: `Заказ ${order.orderNumber} ждёт исполнителя`,
+        body: `Клиент «${order.clientName}», этап «${ROLE_LABELS_RU[role]}». Исполнитель ещё не назначен.`,
+        relatedOrderId: order.orderId,
+      })),
+  );
 }
 
 /**

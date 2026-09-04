@@ -155,6 +155,8 @@ export function Icon({
  */
 export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = {
   order_assigned: 'assigned',
+  // Заказ ещё ничей и ждёт: срок, а не назначение.
+  order_stage_awaiting: 'deadline',
   order_status_changed: 'statusChanged',
   order_rolled_back: 'rolledBack',
   order_rejected_to_ceo: 'escalated',

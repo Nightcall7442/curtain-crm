@@ -25,7 +25,11 @@ import { TRPCError } from '@trpc/server';
 import { and, eq } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
-import { notifyOrderAssigned, notifyOrderStatusChanged } from './notifications.service';
+import {
+  notifyOrderAssigned,
+  notifyOrderStatusChanged,
+  notifyStageAwaitingExecutor,
+} from './notifications.service';
 import type { AuthenticatedUser } from '../types';
 
 /**
@@ -83,6 +87,20 @@ const STATUS_OWNER: Readonly<Partial<Record<OrderStatusName, AssignableRole>>> =
   [OrderStatus.PENDING_QC]: Role.QC,
   [OrderStatus.QC_FAILED]: Role.QC,
   [OrderStatus.QC_PASSED]: Role.QC,
+  /*
+    «Ждёт назначения установщика» этой таблицы не знал — и зря.
+
+    У пошива и контроля статус ожидания есть, у установки его не было, хотя
+    смысл тот же: заказ готов, установщик ещё не назначен. Из-за пропуска
+    установщики не получали уведомления о свободной работе (оно рассылается
+    как раз по этой таблице) и не могли даже открыть такой заказ, чтобы
+    посмотреть адрес и объём.
+
+    Двигать заказ дальше по-прежнему вправе только руководство: переход
+    «Назначить установщика» назван в `ORDER_TRANSITIONS` ролями админа и
+    директора, и эта строка на него не влияет.
+  */
+  [OrderStatus.PENDING_INSTALLATION_ASSIGNMENT]: Role.INSTALLER,
   [OrderStatus.INSTALLATION_ASSIGNED]: Role.INSTALLER,
   [OrderStatus.INSTALLATION_IN_PROGRESS]: Role.INSTALLER,
   [OrderStatus.INSTALLATION_DONE]: Role.INSTALLER,
@@ -380,17 +398,35 @@ export async function changeOrderStatus(
   /* 8. Уведомления участникам, кроме инициатора. */
   const recipients = collectOrderParticipants(updated).filter((id) => id !== actor.id);
 
-  await notifyOrderStatusChanged(
-    executor,
-    { orderId: updated.id, orderNumber: orderLabel(updated), clientName: updated.clientName },
-    recipients,
-    {
-      toStatus,
-      isRollback: wasRollback,
-      comment: comment.length > 0 ? comment : null,
-      actorName: actor.fullName,
-    },
-  );
+  const context = {
+    orderId: updated.id,
+    orderNumber: orderLabel(updated),
+    clientName: updated.clientName,
+  };
+
+  await notifyOrderStatusChanged(executor, context, recipients, {
+    toStatus,
+    isRollback: wasRollback,
+    comment: comment.length > 0 ? comment : null,
+    actorName: actor.fullName,
+  });
+
+  /*
+    9. Свободный этап — зовём тех, кто может его взять.
+
+    Уведомления выше уходят участникам заказа, а на этапе без назначенного
+    исполнителя участников этой роли нет вовсе: админ перевёл заказ в
+    «ждёт назначения швеи» — и об этом не узнала ни одна швея. Заказ лежал,
+    пока кто-нибудь сам не откроет список и не заглянет в пул.
+
+    Условие ровно то же, по которому `assertCanTouchOrder` пускает в пул
+    постороннего: у статуса есть роль-владелец, а исполнитель не назначен.
+    Разъехаться эти два места не могут — оба читают `STATUS_OWNER`.
+  */
+  const awaitingRole = STATUS_OWNER[toStatus];
+  if (awaitingRole !== undefined && assigneeOf(updated, awaitingRole) === null) {
+    await notifyStageAwaitingExecutor(executor, context, awaitingRole, actor.id);
+  }
 
   return { order: updated, fromStatus, toStatus, wasRollback };
 }
