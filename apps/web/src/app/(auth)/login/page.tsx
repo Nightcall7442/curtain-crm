@@ -125,12 +125,17 @@ export default function LoginPage(): ReactElement {
             На узком экране фирменной половины нет — логотип возвращается
             сюда. Той же маской: здесь фон светлый, и знак становится
             тёмным сам, без отдельного файла под светлую тему.
+
+            Знак и название стоят столбиком, а не в строку. В строке они
+            читались как одна длинная надпись, где «Design House» —
+            приставка к «Parda Bozor»; столбиком видно, что это знак и
+            подпись под ним.
           */}
-          <div className="flex items-center justify-center gap-3 lg:hidden">
+          <div className="flex flex-col items-center gap-2 lg:hidden">
             <span
               role="img"
               aria-label="Design House"
-              className="block h-8 w-[50px] shrink-0 bg-current text-primary"
+              className="block h-14 w-[88px] shrink-0 bg-current text-primary"
               style={{
                 WebkitMaskImage: 'url(/logo.png)',
                 maskImage: 'url(/logo.png)',
