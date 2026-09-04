@@ -6,11 +6,13 @@ import { useState, type ReactElement } from 'react';
 
 import { AccountSwitcher } from '../components/AccountSwitcher';
 import { Icon, type IconName } from '../components/Icon';
+import { AttendanceScreen } from '../screens/AttendanceScreen';
 import { CheckInOutScreen } from '../screens/CheckInOutScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { WorkScreen } from '../screens/WorkScreen';
+import { useIsCeo } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, radius } from '../theme';
 import type { TabParamList } from '../types';
@@ -46,6 +48,7 @@ export function TabNavigator(): ReactElement {
 
   /** Открыт ли список сохранённых входов. Живёт здесь — жест на вкладке. */
   const [isSwitcherOpen, setSwitcherOpen] = useState(false);
+  const isCeo = useIsCeo();
 
   return (
     <>
@@ -107,11 +110,22 @@ export function TabNavigator(): ReactElement {
           tabBarIcon: ({ color }) => <TabGlyph name="work" color={color} />,
         }}
       />
+      {/*
+        Средняя вкладка у директора показывает другое.
+
+        Сам он смену не открывает — свайп отметки и кольцо таймера на его
+        экране были занятым местом. Вместо них явка цеха: кто пришёл, во
+        сколько, кто сейчас на месте и кто на перерыве.
+
+        Вкладка та же самая, а не добавленная рядом: панель одна на всех, и
+        шестая кнопка ради одного человека сделала бы её разной у разных
+        людей. Меняется только содержимое и подпись.
+      */}
       <Tab.Screen
         name="CheckInOut"
-        component={CheckInOutScreen}
+        component={isCeo ? AttendanceScreen : CheckInOutScreen}
         options={{
-          title: 'Смена',
+          title: isCeo ? 'Явка' : 'Смена',
           tabBarIcon: () => <CheckInGlyph />,
         }}
       />
