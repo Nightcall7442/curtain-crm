@@ -26,10 +26,12 @@ import {
 
 import { BottomSheet } from '../components/BottomSheet';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
+import { OrderManagement } from '../components/OrderManagement';
 import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { Stepper } from '../components/Stepper';
 import { VoiceCommentPlayer, VoiceRecorderButton } from '../components/VoiceComment';
+import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -54,6 +56,8 @@ export function OrderDetailScreen({
   const [reason, setReason] = useState('');
   const [comment, setComment] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const isManager = useIsManagement();
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
@@ -390,6 +394,34 @@ export function OrderDetailScreen({
           value={data.installer?.fullName ?? 'не назначен'}
         />
       </Card>
+
+      {/*
+        Управление заказом — только руководству.
+
+        Стоит после «Исполнителей» и перед комментариями: сначала админ
+        видит, кто на заказе и что с ним, и только потом меняет назначение,
+        цену и расценки. Обратный порядок звал бы править не глядя.
+      */}
+      {isManager && (
+        <OrderManagement
+          orderId={orderId}
+          orderType={data.orderType}
+          workPrice={data.workPrice}
+          deposit={data.deposit}
+          fees={{
+            measurementFee: data.measurementFee,
+            sewingFee: data.sewingFee,
+            qcFee: data.qcFee,
+            installationFee: data.installationFee,
+          }}
+          assignees={{
+            [Role.MASTER]: data.master,
+            [Role.SEWER]: data.sewer,
+            [Role.QC]: data.qc,
+            [Role.INSTALLER]: data.installer,
+          }}
+        />
+      )}
 
       {/* --- Комментарии ---------------------------------------------------- */}
       <Card>

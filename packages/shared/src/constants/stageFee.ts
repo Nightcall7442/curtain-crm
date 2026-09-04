@@ -50,12 +50,21 @@ export const ORDER_STAGE_FEE_LABELS_RU = ORDER_STAGE_FEE_LABELS.ru;
  * закрытый заказ, — а не сдельной строкой в самом заказе. Иначе одна и та же
  * работа оплачивалась бы дважды из двух разных мест.
  */
-export const ORDER_STAGE_FEE_ROLE: Readonly<Record<OrderStageFee, RoleName>> = {
+export const ORDER_STAGE_FEE_ROLE = {
   measurement: Role.MASTER,
   sewing: Role.SEWER,
   qc: Role.QC,
   installation: Role.INSTALLER,
-};
+  /*
+    `as const satisfies` вместо аннотации типом.
+
+    Аннотация расширяла значения до всех восьми ролей системы, и вызов
+    `orders.assign` с ролью этапа не проходил проверку: процедура принимает
+    только четыре назначаемые роли, а тип обещал ей и директора, и продавца.
+    `satisfies` сохраняет прежнее ограничение — ключом остаётся этап,
+    значением роль, — но оставляет значения такими, какие они есть.
+  */
+} as const satisfies Readonly<Record<OrderStageFee, RoleName>>;
 
 /** Этап, за который платят сотруднику этой роли. `null` — роль сдельной оплаты не получает. */
 export function stageFeeOfRole(role: RoleName): OrderStageFee | null {
