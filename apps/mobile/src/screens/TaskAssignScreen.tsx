@@ -1,4 +1,5 @@
 import { formatIsoDate, TASK_STATUS_LABELS, type TaskStatus } from '@curtain-crm/shared';
+import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
 export function TaskAssignScreen(): ReactElement {
   const { t } = useLocale();
   const utils = trpc.useUtils();
+  const navigation = useNavigation();
 
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
@@ -173,14 +175,26 @@ export function TaskAssignScreen(): ReactElement {
             tasks.data.items.map((task) => (
               <View key={task.id}>
                 <View style={styles.taskRow}>
-                  <View style={styles.taskText}>
+                  {/*
+                    Строка открывает поручение: руководителю нужно видеть, что
+                    ответил исполнитель и что он приложил. Без этого выданная
+                    задача была для автора такой же немой, как для адресата.
+                  */}
+                  <Pressable
+                    onPress={() => {
+                      navigation.navigate('TaskDetail', { taskId: task.id });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Открыть поручение «${task.title}»`}
+                    style={({ pressed }) => [styles.taskText, pressed ? styles.pressed : null]}
+                  >
                     <Text style={styles.taskTitle}>{task.title}</Text>
                     <Text style={styles.taskMeta}>
                       {`${task.assignee.fullName}${
                         task.dueDate === null ? '' : ` · до ${formatIsoDate(task.dueDate)}`
                       }`}
                     </Text>
-                  </View>
+                  </Pressable>
 
                   <Pill text={t(TASK_STATUS_LABELS, task.status)} tone={toneOf(task.status)} />
 

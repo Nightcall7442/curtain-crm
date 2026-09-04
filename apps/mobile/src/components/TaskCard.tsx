@@ -5,7 +5,8 @@ import {
   TaskStatus,
   type TaskStatus as TaskStatusName,
 } from '@curtain-crm/shared';
-import { useState, type ReactElement } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import type { ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
@@ -20,8 +21,14 @@ import { Icon } from './Icon';
  * Доп. работа в списке «Работа → Доп работы».
  *
  * Открытое поручение закрывается одной кнопкой-галочкой прямо из списка:
- * отдельного экрана у поручения нет намеренно — весь его смысл помещается
- * в карточку, а лишний переход только отдаляет «сделал» от «отметил».
+ * лишний переход отдалял бы «сделал» от «отметил», а это самое частое
+ * действие.
+ *
+ * Нажатие на саму карточку открывает поручение целиком. Раньше оно только
+ * разворачивало описание, и на этом всё заканчивалось: приложить фото или
+ * спросить «что именно не так» было негде. Теперь описание и переписка
+ * живут на отдельном экране, а карточка осталась быстрым способом закрыть
+ * задачу, не открывая её.
  */
 export function TaskCard({
   task,
@@ -37,7 +44,7 @@ export function TaskCard({
 }): ReactElement {
   const { t } = useLocale();
   const utils = trpc.useUtils();
-  const [expanded, setExpanded] = useState(false);
+  const navigation = useNavigation();
 
   const complete = trpc.tasks.complete.useMutation({
     async onSuccess() {
@@ -55,10 +62,10 @@ export function TaskCard({
   return (
     <Pressable
       onPress={() => {
-        // Разворачивает описание; у поручений без описания жест ни к чему.
-        if (task.details !== null) setExpanded((current) => !current);
+        navigation.navigate('TaskDetail', { taskId: task.id });
       }}
-      accessibilityRole={task.details === null ? undefined : 'button'}
+      accessibilityRole="button"
+      accessibilityLabel={`Открыть поручение «${task.title}»`}
       style={[styles.card, !isOpen && styles.cardClosed]}
     >
       <View style={styles.header}>
@@ -88,8 +95,12 @@ export function TaskCard({
         )}
       </View>
 
+      {/*
+        Две строки, без разворота: полное описание теперь на своём экране,
+        и карточка обещает ровно то, что делает по нажатию, — открыть его.
+      */}
       {task.details !== null && (
-        <Text style={styles.details} numberOfLines={expanded ? undefined : 2}>
+        <Text style={styles.details} numberOfLines={2}>
           {task.details}
         </Text>
       )}

@@ -17,6 +17,7 @@ import { OrderCreateScreen } from '../screens/OrderCreateScreen';
 import { RatingScreen } from '../screens/RatingScreen';
 import { SaleDetailScreen } from '../screens/SaleDetailScreen';
 import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
+import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types';
@@ -118,6 +119,11 @@ export function RootNavigator(): ReactElement {
         name="RetailStock"
         component={RetailStockScreen}
         options={{ title: 'Витрина' }}
+      />
+      <Stack.Screen
+        name="TaskDetail"
+        component={TaskDetailScreen}
+        options={{ title: 'Поручение' }}
       />
     </Stack.Navigator>
   );
