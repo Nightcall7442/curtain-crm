@@ -210,6 +210,38 @@ export const retailRouter = router({
       )
       .mutation(async ({ ctx, input }) =>
         ctx.db.transaction(async (tx) => {
+          /*
+            Списание в минус отсекается ЗДЕСЬ, а не только проверкой в базе.
+
+            Ограничение `retail_items_stock_non_negative` остаток защищало и
+            раньше — данные испортить было нельзя. Но срабатывало оно уже
+            внутри транзакции, и наружу шла ошибка Postgres пятисотым кодом:
+            кладовщик видел текст про «нарушение ограничения-проверки»
+            вместо «на витрине столько нет».
+
+            Условие в `where` не подошло бы: тогда «товара не хватило» и
+            «товара вообще нет» вернули бы одинаковое «не найдено», а это
+            разные новости.
+          */
+          const current = await tx.query.retailItems.findFirst({
+            where: eq(retailItems.id, input.id),
+            columns: { name: true, stockQuantity: true },
+          });
+
+          if (current === undefined) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Товар не найден' });
+          }
+
+          const stock = parseFloat(current.stockQuantity);
+          if (stock + input.quantity < 0) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: `«${current.name}»: на витрине ${stock.toString()}, списать ${Math.abs(
+                input.quantity,
+              ).toString()} нельзя.`,
+            });
+          }
+
           const [updated] = await tx
             .update(retailItems)
             .set({
