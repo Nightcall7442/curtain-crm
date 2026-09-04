@@ -410,6 +410,7 @@ export function OrderDetailScreen({
           deposit={data.deposit}
           fees={{
             measurementFee: data.measurementFee,
+            cuttingFee: data.cuttingFee,
             sewingFee: data.sewingFee,
             qcFee: data.qcFee,
             installationFee: data.installationFee,

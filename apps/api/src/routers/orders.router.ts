@@ -200,6 +200,7 @@ function toOrderItemValues(item: OrderItemInput, orderId: number, position: numb
  */
 interface StageFeesInput {
   readonly measurementFee?: number | undefined;
+  readonly cuttingFee?: number | undefined;
   readonly sewingFee?: number | undefined;
   readonly qcFee?: number | undefined;
   readonly installationFee?: number | undefined;
@@ -214,6 +215,7 @@ function toStageFeeValues(input: StageFeesInput) {
     ...(toColumn(input.measurementFee) === undefined
       ? {}
       : { measurementFee: toColumn(input.measurementFee) }),
+    ...(toColumn(input.cuttingFee) === undefined ? {} : { cuttingFee: toColumn(input.cuttingFee) }),
     ...(toColumn(input.sewingFee) === undefined ? {} : { sewingFee: toColumn(input.sewingFee) }),
     ...(toColumn(input.qcFee) === undefined ? {} : { qcFee: toColumn(input.qcFee) }),
     ...(toColumn(input.installationFee) === undefined
@@ -225,6 +227,7 @@ function toStageFeeValues(input: StageFeesInput) {
 /** Колонка заказа, хранящая расценку этапа. */
 const STAGE_FEE_COLUMN = {
   measurement: 'measurementFee',
+  cutting: 'cuttingFee',
   sewing: 'sewingFee',
   qc: 'qcFee',
   installation: 'installationFee',
@@ -233,6 +236,9 @@ const STAGE_FEE_COLUMN = {
 /** Колонка заказа с исполнителем этапа — по ней решается, чья это расценка. */
 const STAGE_EXECUTOR_COLUMN = {
   measurement: 'masterId',
+  // У раскроя своего исполнителя нет: закройщика в штате пока нет, и
+  // раскраивает та же швея. Поэтому и расценку за раскрой видит она.
+  cutting: 'sewerId',
   sewing: 'sewerId',
   qc: 'qcId',
   installation: 'installerId',
@@ -833,6 +839,7 @@ export const ordersRouter = router({
       z.object({
         id: idSchema,
         measurementFee: moneySchema.optional(),
+        cuttingFee: moneySchema.optional(),
         sewingFee: moneySchema.optional(),
         qcFee: moneySchema.optional(),
         installationFee: moneySchema.optional(),

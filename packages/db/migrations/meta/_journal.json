@@ -92,6 +92,13 @@
       "when": 1788522831355,
       "tag": "0012_retail_cash_desk",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788550001847,
+      "tag": "0013_order_cutting_fee",
+      "breakpoints": true
     }
   ]
 }

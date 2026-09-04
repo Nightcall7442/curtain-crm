@@ -16,7 +16,7 @@ import {
   percentOfMoney,
   Role,
   ROLE_LABELS_RU,
-  stageFeeOfRole,
+  stageFeesOfRole,
   sumMoney,
   type MoneyMinor,
   type OrderStageFee,
@@ -326,6 +326,7 @@ const hasOrderAttribution = (role: RoleName): role is keyof typeof ORDER_ROLE_CO
 /** Колонка со сдельной расценкой за этап, который выполняет эта роль. */
 const STAGE_FEE_COLUMN = {
   measurement: orders.measurementFee,
+  cutting: orders.cuttingFee,
   sewing: orders.sewingFee,
   qc: orders.qcFee,
   installation: orders.installationFee,
@@ -360,11 +361,18 @@ export async function calculateCompletedOrders(
     у руководства сдельной работы нет. Для них выражение остаётся нулём, а не
     суммирует чужие расценки по всем заказам компании.
   */
-  const stage = stageFeeOfRole(role);
+  /*
+    Этапов у роли может быть несколько: пока нет закройщика, швея получает и
+    за раскрой, и за пошив. Суммируются все её этапы, а не первый попавшийся.
+  */
+  const stages = stageFeesOfRole(role);
   const stageFeeSum =
-    stage === null
+    stages.length === 0
       ? sql<string>`0`
-      : sql<string>`coalesce(sum(${STAGE_FEE_COLUMN[stage]}), 0)`;
+      : sql<string>`coalesce(${sql.join(
+          stages.map((stage) => sql`sum(${STAGE_FEE_COLUMN[stage]})`),
+          sql` + `,
+        )}, 0)`;
 
   const [row] = await executor
     .select({

@@ -101,6 +101,18 @@ export const orders = pgTable(
     measurementFee: numeric('measurement_fee', { precision: 14, scale: 2 })
       .notNull()
       .default('0'),
+    /**
+     * За раскрой ткани.
+     *
+     * Пятый этап конвейера, который до сих пор шёл бесплатно: «Раскрой» стоял
+     * в `PRODUCTION_STAGES` с самого начала, а расценки у него не было — за
+     * эту работу не платили никому.
+     *
+     * Своего исполнителя у этапа нет: закройщика в штате пока нет, и
+     * раскраивает швея. Поэтому сумма достаётся тому же человеку, что и за
+     * пошив, — привязка живёт в `ORDER_STAGE_FEE_ROLE`.
+     */
+    cuttingFee: numeric('cutting_fee', { precision: 14, scale: 2 }).notNull().default('0'),
     sewingFee: numeric('sewing_fee', { precision: 14, scale: 2 }).notNull().default('0'),
     qcFee: numeric('qc_fee', { precision: 14, scale: 2 }).notNull().default('0'),
     installationFee: numeric('installation_fee', { precision: 14, scale: 2 })
@@ -168,8 +180,9 @@ export const orders = pgTable(
     // он выполнил этап. Удержания в системе есть, но это другая сущность.
     check(
       'orders_stage_fees_non_negative',
-      sql`${table.measurementFee} >= 0 and ${table.sewingFee} >= 0
-          and ${table.qcFee} >= 0 and ${table.installationFee} >= 0`,
+      sql`${table.measurementFee} >= 0 and ${table.cuttingFee} >= 0
+          and ${table.sewingFee} >= 0 and ${table.qcFee} >= 0
+          and ${table.installationFee} >= 0`,
     ),
     // Отменённый заказ обязан нести причину отмены.
     check(

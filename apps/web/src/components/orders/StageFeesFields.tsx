@@ -28,6 +28,7 @@ export type StageFeesDraft = Readonly<Record<OrderStageFee, string>>;
 
 export const emptyStageFees = (): StageFeesDraft => ({
   measurement: '',
+  cutting: '',
   sewing: '',
   qc: '',
   installation: '',
@@ -39,12 +40,14 @@ const amountOf = (raw: string): number => Number.parseFloat(raw.replace(',', '.'
 /** Приводит черновик к полям процедур `orders.create` и `orders.setStageFees`. */
 export function toStageFeesInput(draft: StageFeesDraft): {
   readonly measurementFee: number;
+  readonly cuttingFee: number;
   readonly sewingFee: number;
   readonly qcFee: number;
   readonly installationFee: number;
 } {
   return {
     measurementFee: amountOf(draft.measurement),
+    cuttingFee: amountOf(draft.cutting),
     sewingFee: amountOf(draft.sewing),
     qcFee: amountOf(draft.qc),
     installationFee: amountOf(draft.installation),
@@ -54,6 +57,7 @@ export function toStageFeesInput(draft: StageFeesDraft): {
 /** Заполняет черновик значениями из заказа. `null` — расценка скрыта от нас. */
 export function stageFeesFromOrder(order: {
   readonly measurementFee: string | null;
+  readonly cuttingFee: string | null;
   readonly sewingFee: string | null;
   readonly qcFee: string | null;
   readonly installationFee: string | null;
@@ -63,6 +67,7 @@ export function stageFeesFromOrder(order: {
 
   return {
     measurement: shown(order.measurementFee),
+    cutting: shown(order.cuttingFee),
     sewing: shown(order.sewingFee),
     qc: shown(order.qcFee),
     installation: shown(order.installationFee),
@@ -71,6 +76,7 @@ export function stageFeesFromOrder(order: {
 
 const ERROR_FIELD: Readonly<Record<OrderStageFee, string>> = {
   measurement: 'measurementFee',
+  cutting: 'cuttingFee',
   sewing: 'sewingFee',
   qc: 'qcFee',
   installation: 'installationFee',

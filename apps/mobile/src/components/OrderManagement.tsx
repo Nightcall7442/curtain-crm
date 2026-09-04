@@ -38,12 +38,13 @@ import { Field, Input } from './Field';
  */
 
 /** Колонка суммы, приходящая с сервера для каждого этапа. */
-const FEE_FIELD: Readonly<Record<OrderStageFee, 'measurementFee' | 'sewingFee' | 'qcFee' | 'installationFee'>> = {
+const FEE_FIELD = {
   measurement: 'measurementFee',
+  cutting: 'cuttingFee',
   sewing: 'sewingFee',
   qc: 'qcFee',
   installation: 'installationFee',
-};
+} as const satisfies Readonly<Record<OrderStageFee, string>>;
 
 export function OrderManagement({
   orderId,

@@ -15,12 +15,24 @@ import { Role, type Role as RoleName } from '../enums/role.enum';
  * Привязку к колонкам таблицы знает только API — это деталь хранения.
  */
 
-export const ORDER_STAGE_FEES = ['measurement', 'sewing', 'qc', 'installation'] as const;
+/**
+ * Порядок — производственный, а не алфавитный: замер, раскрой, пошив,
+ * контроль, установка. По нему рисуются поля во всех формах, и заказ в них
+ * читается так же, как проходит цех.
+ */
+export const ORDER_STAGE_FEES = [
+  'measurement',
+  'cutting',
+  'sewing',
+  'qc',
+  'installation',
+] as const;
 
 export type OrderStageFee = (typeof ORDER_STAGE_FEES)[number];
 
 export const OrderStageFee = {
   MEASUREMENT: 'measurement',
+  CUTTING: 'cutting',
   SEWING: 'sewing',
   QC: 'qc',
   INSTALLATION: 'installation',
@@ -29,12 +41,14 @@ export const OrderStageFee = {
 export const ORDER_STAGE_FEE_LABELS: Translated<OrderStageFee> = {
   ru: {
     measurement: 'За замер',
+    cutting: 'За раскрой',
     sewing: 'За пошив',
     qc: 'За контроль качества',
     installation: 'За установку',
   },
   uz: {
     measurement: "O'lchov uchun",
+    cutting: 'Bichish uchun',
     sewing: 'Tikuv uchun',
     qc: 'Sifat nazorati uchun',
     installation: "O'rnatish uchun",
@@ -52,6 +66,19 @@ export const ORDER_STAGE_FEE_LABELS_RU = ORDER_STAGE_FEE_LABELS.ru;
  */
 export const ORDER_STAGE_FEE_ROLE = {
   measurement: Role.MASTER,
+  /*
+    Раскрой числится за швеёй — временно и осознанно.
+
+    Закройщика в штате пока нет, раскраивает та же швея, что потом шьёт.
+    Заводить роль под несуществующую должность значило бы раздать её тем же
+    людям и получить пустой уровень доступа.
+
+    Когда закройщик появится: добавить роль в `ROLES`, поменять здесь одну
+    строку и колонку исполнителя в `STAGE_EXECUTOR_COLUMN` на сервере.
+    Расценка, суммы в закрытых заказах и расчёт зарплаты переживут это без
+    правок — они читают эту таблицу, а не знают роли наизусть.
+  */
+  cutting: Role.SEWER,
   sewing: Role.SEWER,
   qc: Role.QC,
   installation: Role.INSTALLER,
@@ -66,11 +93,17 @@ export const ORDER_STAGE_FEE_ROLE = {
   */
 } as const satisfies Readonly<Record<OrderStageFee, RoleName>>;
 
-/** Этап, за который платят сотруднику этой роли. `null` — роль сдельной оплаты не получает. */
-export function stageFeeOfRole(role: RoleName): OrderStageFee | null {
-  return (
-    ORDER_STAGE_FEES.find((stage) => ORDER_STAGE_FEE_ROLE[stage] === role) ?? null
-  );
+/**
+ * Этапы, за которые платят сотруднику этой роли. Пустой список — роль
+ * сдельной оплаты не получает.
+ *
+ * Список, а не один этап: пока нет закройщика, швея получает и за раскрой, и
+ * за пошив. Прежняя версия возвращала первый подошедший этап, и с появлением
+ * раскроя швея молча потеряла бы половину сдельных — `find` вернул бы
+ * «раскрой» и остановился, а «пошив» в расчёт бы не попал.
+ */
+export function stageFeesOfRole(role: RoleName): readonly OrderStageFee[] {
+  return ORDER_STAGE_FEES.filter((stage) => ORDER_STAGE_FEE_ROLE[stage] === role);
 }
 
 /**
