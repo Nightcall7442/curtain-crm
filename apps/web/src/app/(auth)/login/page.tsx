@@ -59,12 +59,21 @@ export default function LoginPage(): ReactElement {
           ))}
         </div>
 
-        <div className="relative flex items-center gap-3">
-          <span
-            aria-hidden
-            className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-title text-on-accent"
-          >
-            PB
+        {/*
+          Настоящий знак вместо монограммы «PB», которая стояла заглушкой.
+
+          Зелёная плашка под ним — не украшение и не подгонка под тему.
+          Знак белый и живёт на фирменном зелёном: так он выглядит на
+          вывеске и в макете. Цвет задан числом, а не токеном темы,
+          именно поэтому: тёмная тема переворачивает эту половину в
+          светлую, и знак, привязанный к фону секции, там пропал бы.
+
+          «Parda Bozor» осталось строкой ниже: в самом файле только
+          «Design House», полное имя складывается из двух частей.
+        */}
+        <div className="relative flex flex-col items-start gap-3">
+          <span className="rounded-xl bg-[#14504A] px-6 py-5">
+            <img src="/logo.png" alt="Design House Parda Bozor" className="w-[168px]" />
           </span>
           <span className="flex flex-col">
             <span className="font-display text-title tracking-[0.01em]">Parda Bozor</span>
@@ -101,13 +110,13 @@ export default function LoginPage(): ReactElement {
       {/* --- Форма --------------------------------------------------------- */}
       <section className="flex items-center justify-center px-6 py-14 sm:px-16">
         <div className="flex w-full max-w-[380px] flex-col gap-7">
-          {/* На узком экране фирменной половины нет — логотип возвращается сюда. */}
+          {/*
+            На узком экране фирменной половины нет — логотип возвращается
+            сюда, на той же зелёной плашке.
+          */}
           <div className="flex items-center gap-3 lg:hidden">
-            <span
-              aria-hidden
-              className="grid h-10 w-10 place-items-center rounded-lg bg-accent font-display text-title text-on-accent"
-            >
-              PB
+            <span className="rounded-lg bg-[#14504A] px-3 py-2">
+              <img src="/logo.png" alt="Design House" className="h-7" />
             </span>
             <span className="font-display text-title">Parda Bozor</span>
           </div>

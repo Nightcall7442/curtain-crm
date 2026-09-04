@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -49,9 +50,28 @@ export function LoginScreen(): ReactElement {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.brand}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>PB</Text>
-          </View>
+          {/*
+            Настоящий логотип, а не монограмма «PB», которая стояла здесь
+            заглушкой. Файл белый на прозрачном фоне — зелёную подложку даёт
+            сам экран, поэтому одна и та же картинка годится и сюда, и на
+            любой другой хвойный фон.
+
+            «PARDA BOZOR» остаётся отдельной строкой ниже: в самом файле
+            только «DESIGN HOUSE», а вместе они и составляют полный знак.
+          */}
+          <Image
+            /*
+              `require`, а не `import`: так Metro отдаёт файл из бандла, и
+              другого способа сослаться на картинку в React Native нет.
+              Правила ниже про обычный код, здесь они не по адресу.
+            */
+            // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+            source={require('../../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityRole="image"
+            accessibilityLabel="Design House Parda Bozor"
+          />
           <Text style={styles.brandName}>PARDA BOZOR</Text>
           <Text style={styles.brandTagline}>шторы премиум класса</Text>
         </View>
@@ -134,18 +154,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   logo: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    color: colors.headerText,
-    fontSize: 22,
-    fontWeight: '700',
+    /*
+      Высота числом, а не через `aspectRatio`: тот работает не везде.
+      Экран открывается и в браузере (Metro собирает и веб-сборку), а там
+      рамка взяла родную высоту файла — 399 вместо 133, и знак повис
+      посреди пустого поля, оторвавшись от названия под ним.
+
+      133 — это 208 в пропорции файла 626×399. При `contain` знак и так не
+      исказится, но рамка должна совпадать с ним, иначе отступы поедут.
+    */
+    width: 208,
+    height: 133,
   },
   brandName: {
     color: colors.headerText,
