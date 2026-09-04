@@ -64,7 +64,17 @@ export function EmployeesScreen(): ReactElement {
   const [newPassword, setNewPassword] = useState('');
   const [newRoles, setNewRoles] = useState<readonly Role[]>([]);
 
-  const employees = trpc.users.list.useQuery({ page: 1, pageSize: 200 });
+  /*
+    Сто — потолок сервера (`MAX_PAGE_SIZE`), а не круглое число «на глаз».
+    Просил двести — процедура отвечала ошибкой валидации, и экран показывал
+    её текстом вместо списка.
+
+    Постраничности здесь нет намеренно: в фирме восемнадцать человек, и
+    листалка ради одной страницы только мешала бы. Когда штат перевалит за
+    сотню, список молча обрежется — тогда и появится подгрузка, вместе с
+    настоящей нуждой в ней.
+  */
+  const employees = trpc.users.list.useQuery({ page: 1, pageSize: 100 });
   const branches = trpc.branches.list.useQuery();
 
   const refresh = async (): Promise<void> => {
