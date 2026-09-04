@@ -16,6 +16,7 @@ export type RootStackParamList = {
   OrderCreate: undefined;
   SellReadyMade: undefined;
   DayOff: undefined;
+  PersonalWorkCreate: undefined;
 };
 
 export type RootStackScreenProps<TRoute extends keyof RootStackParamList> =

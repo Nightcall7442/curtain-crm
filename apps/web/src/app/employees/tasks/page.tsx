@@ -20,7 +20,7 @@ import { trpc } from '@/lib/trpc';
 import { formatDate } from '@/lib/utils';
 
 /**
- * Поручения — дополнительная работа мимо конвейера заказов.
+ * Доп работы (в коде — tasks) — дополнительная работа мимо конвейера заказов.
  *
  * Руководитель видит здесь все поручения мастерской: кто, что и к какому
  * сроку. Выдаются поручения из списка сотрудников (кнопка в строке —
@@ -31,7 +31,7 @@ export default function EmployeeTasksPage(): ReactElement {
   const toast = useToast();
 
   const [status, setStatus] = useState<TaskStatusName | ''>(TaskStatus.OPEN);
-  /** Поручение, ожидающее причину отмены. `null` — окно закрыто. */
+  /** Доп. работа, ожидающее причину отмены. `null` — окно закрыто. */
   const [cancelling, setCancelling] = useState<{ id: number; title: string } | null>(null);
   const [reason, setReason] = useState('');
 
@@ -44,7 +44,7 @@ export default function EmployeeTasksPage(): ReactElement {
 
   const complete = trpc.tasks.complete.useMutation({
     onSuccess() {
-      toast.success('Поручение закрыто');
+      toast.success('Доп. работа закрыта');
       refresh();
     },
     onError(error) {
@@ -56,7 +56,7 @@ export default function EmployeeTasksPage(): ReactElement {
     onSuccess() {
       setCancelling(null);
       setReason('');
-      toast.success('Поручение отменено', 'Сотрудник получит уведомление');
+      toast.success('Доп. работа отменена', 'Сотрудник получит уведомление');
       refresh();
     },
     onError(error) {
@@ -80,7 +80,7 @@ export default function EmployeeTasksPage(): ReactElement {
   return (
     <Card>
       <CardHeader
-        title="Поручения"
+        title="Доп работы"
         action={
           <FilterBar>
             <Select
@@ -156,12 +156,12 @@ export default function EmployeeTasksPage(): ReactElement {
         emptyMessage={
           status === TaskStatus.OPEN
             ? 'Открытых поручений нет'
-            : 'Поручений с таким статусом нет'
+            : 'Доп. работ с таким статусом нет'
         }
         columns={[
           {
             key: 'title',
-            header: 'Поручение',
+            header: 'Доп. работа',
             render: (row) => (
               <span className="block max-w-[26rem]">
                 <span className="block text-primary">{row.title}</span>

@@ -36,7 +36,7 @@ export const NOTIFICATION_TYPES = [
   'task_assigned',
   /** Сотрудник отметил поручение выполненным (адресат — автор поручения). */
   'task_completed',
-  /** Поручение отменено руководителем. */
+  /** Доп. работу отменило руководство. */
   'task_cancelled',
   /** Сотрудник запросил выходные — видит руководство. */
   'day_off_requested',
@@ -99,7 +99,7 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   payroll_approved: 'accent',
   payroll_paid: 'accent',
   role_changed: 'warning',
-  // Поручение — прямая просьба руководителя: заметнее рядового хода заказа.
+  // Доп. работа — прямая просьба руководителя: заметнее рядового хода заказа.
   task_assigned: 'warning',
   task_completed: 'accent',
   task_cancelled: 'neutral',
@@ -123,7 +123,7 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
   NotificationType.ORDER_ROLLED_BACK,
   NotificationType.ORDER_REJECTED_TO_CEO,
   NotificationType.ORDER_CANCELLED,
-  // Поручение — прямая просьба руководителя сделать что-то, а не сводка.
+  // Доп. работа — прямая просьба руководителя сделать что-то, а не сводка.
   NotificationType.TASK_ASSIGNED,
   // Запрос на выходные ждёт решения — без действия руководства так и повиснет.
   NotificationType.DAY_OFF_REQUESTED,

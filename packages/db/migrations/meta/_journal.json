@@ -71,6 +71,13 @@
       "when": 1788370319117,
       "tag": "0009_order_stage_fees",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788520582691,
+      "tag": "0010_personal_works",
+      "breakpoints": true
     }
   ]
 }

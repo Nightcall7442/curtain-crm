@@ -77,11 +77,11 @@ export function EmployeeActions({
       setTaskTitle('');
       setTaskDetails('');
       setTaskDue('');
-      toast.success('Поручение отправлено', `${employee.fullName} получит уведомление`);
+      toast.success('Доп. работа отправлена', `${employee.fullName} получит уведомление`);
       void utils.tasks.list.invalidate();
     },
     onError(error) {
-      toast.error('Поручение не создано', error.message);
+      toast.error('Доп. работа не создана', error.message);
     },
   });
 
@@ -106,7 +106,7 @@ export function EmployeeActions({
 
       <Modal
         open={taskOpen}
-        title={`Поручение: ${employee.fullName}`}
+        title={`Доп. работа: ${employee.fullName}`}
         onClose={() => {
           setTaskOpen(false);
         }}

@@ -20,6 +20,7 @@ export * from './enums/notificationType.enum';
 export * from './enums/payroll.enum';
 export * from './enums/staff.enum';
 export * from './enums/task.enum';
+export * from './enums/personalWork.enum';
 export * from './enums/dayOff.enum';
 
 /* Константы */

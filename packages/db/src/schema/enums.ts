@@ -7,6 +7,7 @@ import {
   ORDER_ITEM_KINDS,
   ORDER_STATUSES,
   ORDER_TYPES,
+  PERSONAL_WORK_STATUSES,
   PAYROLL_RECORD_STATUSES,
   PAYROLL_SCHEME_TYPES,
   PHOTO_STAGES,
@@ -40,6 +41,7 @@ export const payrollRecordStatusEnum = pgEnum('payroll_record_status', PAYROLL_R
 export const purchaseUnitEnum = pgEnum('purchase_unit', PURCHASE_UNITS);
 export const purchaseCategoryEnum = pgEnum('purchase_category', PURCHASE_CATEGORIES);
 export const taskStatusEnum = pgEnum('task_status', TASK_STATUSES);
+export const personalWorkStatusEnum = pgEnum('personal_work_status', PERSONAL_WORK_STATUSES);
 export const dayOffStatusEnum = pgEnum('day_off_status', DAY_OFF_STATUSES);
 export const catalogKindEnum = pgEnum('catalog_kind', CATALOG_KINDS);
 export const departmentEnum = pgEnum('department', DEPARTMENTS);

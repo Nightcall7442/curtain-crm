@@ -219,7 +219,7 @@ export async function notifyRoleChanged(
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 Поручения                                  */
+/*                               Доп работы                                  */
 /* -------------------------------------------------------------------------- */
 
 /** Руководитель дал сотруднику поручение. */
@@ -247,12 +247,12 @@ export async function notifyTaskCompleted(
   await createNotification(executor, {
     userId: creatorId,
     type: NotificationType.TASK_COMPLETED,
-    title: 'Поручение выполнено',
+    title: 'Доп. работа выполнена',
     body: `${params.assigneeName}: «${params.title}»`,
   });
 }
 
-/** Поручение отменено руководителем — узнаёт адресат. */
+/** Доп. работу отменило руководство — узнаёт адресат. */
 export async function notifyTaskCancelled(
   executor: DbExecutor,
   assigneeId: number,
@@ -261,7 +261,7 @@ export async function notifyTaskCancelled(
   await createNotification(executor, {
     userId: assigneeId,
     type: NotificationType.TASK_CANCELLED,
-    title: 'Поручение отменено',
+    title: 'Доп. работа отменена',
     body: `«${params.title}» — ${params.reason}`,
   });
 }

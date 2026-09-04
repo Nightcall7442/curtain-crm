@@ -16,6 +16,7 @@ export * from './orderPhotos.schema';
 export * from './orderComments.schema';
 export * from './shifts.schema';
 export * from './personalBreaks.schema';
+export * from './personalWorks.schema';
 export * from './catalog.schema';
 export * from './purchases.schema';
 export * from './tasks.schema';

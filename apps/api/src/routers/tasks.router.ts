@@ -22,7 +22,7 @@ import {
 import { router } from '../trpc';
 
 /**
- * Поручения — дополнительная работа мимо конвейера заказов.
+ * Доп работы (в коде — tasks) — дополнительная работа мимо конвейера заказов.
  *
  * Права доступа:
  *  - `create`, `list`, `cancel` — руководство (CEO, админ): поручения выдаёт
@@ -75,7 +75,7 @@ export const tasksRouter = router({
           .returning();
 
         if (created === undefined) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Поручение не создано' });
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Доп. работа не создана' });
         }
 
         await recordAudit(tx, {
@@ -178,7 +178,7 @@ export const tasksRouter = router({
         });
 
         if (task === undefined) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Поручение не найдено' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Доп. работа не найдена' });
         }
 
         const isOwn = task.assigneeId === ctx.user.id;
@@ -186,12 +186,12 @@ export const tasksRouter = router({
         if (!isOwn && !isBoss) {
           throw new TRPCError({
             code: 'FORBIDDEN',
-            message: 'Поручение закреплено за другим сотрудником',
+            message: 'Доп. работа закреплена за другим сотрудником',
           });
         }
 
         if (task.status !== TaskStatus.OPEN) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Поручение уже закрыто' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'Доп. работа уже закрыта' });
         }
 
         const [updated] = await tx
@@ -229,10 +229,10 @@ export const tasksRouter = router({
         const task = await tx.query.tasks.findFirst({ where: eq(tasks.id, input.id) });
 
         if (task === undefined) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Поручение не найдено' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Доп. работа не найдена' });
         }
         if (task.status !== TaskStatus.OPEN) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Поручение уже закрыто' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'Доп. работа уже закрыта' });
         }
 
         const [updated] = await tx

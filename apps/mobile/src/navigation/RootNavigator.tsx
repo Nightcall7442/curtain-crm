@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
+import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
 import { DayOffScreen } from '../screens/DayOffScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
@@ -70,6 +71,11 @@ export function RootNavigator(): ReactElement {
         name="DayOff"
         component={DayOffScreen}
         options={{ title: 'Запрос на выходные' }}
+      />
+      <Stack.Screen
+        name="PersonalWorkCreate"
+        component={PersonalWorkCreateScreen}
+        options={{ title: 'Личная работа' }}
       />
     </Stack.Navigator>
   );

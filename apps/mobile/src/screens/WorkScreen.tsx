@@ -11,6 +11,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon } from '../components/Icon';
+import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { OrderCard } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
 import { useAuth } from '../hooks/useAuth';
@@ -18,9 +19,9 @@ import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
- * Работа сотрудника: его заказы И поручения от руководства.
+ * Работа сотрудника: его заказы И доп работы от руководства.
  *
- * Заказы — этапы конвейера, где сотрудник исполнитель; поручения —
+ * Заказы — этапы конвейера, где сотрудник исполнитель; доп работы —
  * дополнительная работа мимо конвейера («съезди за тканью»), которую выдаёт
  * директор или админ. Оба списка живут в одной вкладке: у сотрудника одно
  * место, где лежит вся его работа.
@@ -30,13 +31,14 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
  * подобрав параметры, невозможно.
  */
 
-type Filter = 'active' | 'all' | 'overdue' | 'tasks';
+type Filter = 'active' | 'all' | 'overdue' | 'tasks' | 'personal';
 
 const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
   { key: 'active', label: 'В работе' },
   { key: 'overdue', label: 'Просрочены' },
   { key: 'all', label: 'Все' },
-  { key: 'tasks', label: 'Поручения' },
+  { key: 'tasks', label: 'Доп работы' },
+  { key: 'personal', label: 'Личные' },
 ];
 
 export function WorkScreen(): ReactElement {
@@ -59,15 +61,22 @@ export function WorkScreen(): ReactElement {
       pageSize: 50,
       includeArchived: filter === 'all',
     },
-    { enabled: filter !== 'tasks' },
+    { enabled: filter !== 'tasks' && filter !== 'personal' },
   );
 
   /**
-   * Поручения запрашиваются всегда, а не только на своей вкладке: счётчик
-   * на чипе — единственное место, откуда сотрудник узнаёт о новом поручении,
+   * Доп работы запрашиваются всегда, а не только на своей вкладке: счётчик
+   * на чипе — единственное место, откуда сотрудник узнаёт о новой доп. работе,
    * не заходя в уведомления.
    */
   const tasksQuery = trpc.tasks.my.useQuery();
+
+  /*
+    Личные работы — то, что сотрудник шьёт себе в цеху. Список свой у
+    каждого: руководство видит сводку в панели, а здесь человек ведёт
+    только собственные записи.
+  */
+  const personalQuery = trpc.personalWorks.my.useQuery({}, { enabled: filter === 'personal' });
   const openTasks = (tasksQuery.data ?? []).filter(
     (task) => task.status === TaskStatus.OPEN,
   );
@@ -88,9 +97,9 @@ export function WorkScreen(): ReactElement {
         Фильтры прокручиваются по горизонтали.
 
         Раньше это был обычный ряд: четыре чипа не влезали в ширину телефона,
-        «Поручения» обрезались краем экрана, и добраться до них было нечем —
+        «Доп работы» обрезались краем экрана, и добраться до них было нечем —
         ряд выглядел застывшим. Ширина зависит и от длины подписи со
-        счётчиком («Поручения (12)»), и от системного размера шрифта, так
+        счётчиком («Доп работы (12)»), и от системного размера шрифта, так
         что «подобрать отступы, чтобы влезло» — не решение: при следующей
         вкладке или крупном шрифте всё повторится.
       */}
@@ -142,12 +151,56 @@ export function WorkScreen(): ReactElement {
               <ErrorState />
             ) : (
               <Empty
-                message="Поручений нет"
+                message="Доп. работ нет"
                 hint="Здесь появляются задания от директора или администратора"
               />
             )
           }
           renderItem={({ item }) => <TaskCard task={item} />}
+        />
+      ) : filter === 'personal' ? (
+        <FlatList
+          data={personalQuery.data ?? []}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+          refreshing={personalQuery.isFetching && !personalQuery.isLoading}
+          onRefresh={() => {
+            void personalQuery.refetch();
+          }}
+          /*
+            Кнопка «Добавить» — заголовком списка, а не отдельной строкой
+            над ним: тогда она уезжает вместе с прокруткой и не занимает
+            экран, когда работ накопилось много.
+          */
+          ListHeaderComponent={
+            <Pressable
+              onPress={() => {
+                navigation.navigate('PersonalWorkCreate');
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.create,
+                styles.personalCreate,
+                pressed ? styles.createPressed : null,
+              ]}
+            >
+              <Icon name="assigned" size={18} color={colors.onAccent} />
+              <Text style={styles.createText}>Записать личную работу</Text>
+            </Pressable>
+          }
+          ListEmptyComponent={
+            personalQuery.isLoading ? (
+              <Skeleton />
+            ) : personalQuery.isError ? (
+              <ErrorState />
+            ) : (
+              <Empty
+                message="Личных работ нет"
+                hint="Шьёте что-то себе на оборудовании цеха — запишите, чтобы было видно занятость"
+              />
+            )
+          }
+          renderItem={({ item }) => <PersonalWorkCard work={item} />}
         />
       ) : (
       <>
@@ -301,6 +354,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accentSoft,
     backgroundColor: colors.surface,
+  },
+  // Кнопка внутри списка: нижний отступ отделяет её от первой карточки.
+  personalCreate: {
+    marginBottom: spacing.md,
   },
   createPressed: {
     opacity: opacity.pressed,
