@@ -11,7 +11,8 @@ import {
   type PurchaseUnit,
 } from '@curtain-crm/shared';
 import { Package, Plus } from 'lucide-react';
-import { useState, type ReactElement } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState, type ReactElement } from 'react';
 
 import { useToast } from '@/components/providers/ToastProvider';
 import { Badge } from '@/components/ui/Badge';
@@ -33,6 +34,36 @@ import { trpc } from '@/lib/trpc';
  * тем же полем с минусом, и обе операции попадают в журнал действий.
  */
 export default function RetailPage(): ReactElement {
+  return (
+    // `useSearchParams()` выключает статическую отрисовку страницы целиком,
+    // поэтому чтение адреса вынесено под собственную границу Suspense —
+    // тот же приём, что на страницах заказов и сотрудников.
+    <Suspense fallback={<RetailInner />}>
+      <RetailFromUrl />
+    </Suspense>
+  );
+}
+
+/**
+ * `?sale=3` — ссылка на конкретный чек.
+ *
+ * Нужна, чтобы на чек можно было сослаться: из журнала действий, из
+ * переписки, из закладки. Без адреса чек открывался только руками из
+ * таблицы, и сказать «открой чек три» было нечем, кроме слов.
+ */
+function RetailFromUrl(): ReactElement {
+  const params = useSearchParams();
+  const raw = params.get('sale');
+  const saleId = raw === null ? null : Number.parseInt(raw, 10);
+
+  return <RetailInner initialSaleId={Number.isInteger(saleId) ? saleId : null} />;
+}
+
+function RetailInner({
+  initialSaleId = null,
+}: {
+  readonly initialSaleId?: number | null;
+} = {}): ReactElement {
   const toast = useToast();
   const utils = trpc.useUtils();
 
@@ -49,7 +80,7 @@ export default function RetailPage(): ReactElement {
    * а что именно продано — нигде. Процедура `sales.byId` для этого была с
    * самого начала, вызывать её было некому.
    */
-  const [openSaleId, setOpenSaleId] = useState<number | null>(null);
+  const [openSaleId, setOpenSaleId] = useState<number | null>(initialSaleId);
 
   /** Позиция, которой добавляют приход. `null` — окно закрыто. */
   const [stocking, setStocking] = useState<{ id: number; name: string } | null>(null);

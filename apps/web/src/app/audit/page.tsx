@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
 
 import { AuditDetails } from '@/components/audit/AuditDetails';
@@ -31,6 +32,22 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   payroll_scheme: 'Схема оплаты',
   payroll_record: 'Расчёт зарплаты',
   catalog_item: 'Справочник',
+  day_off_request: 'Заявка на отгул',
+  task: 'Поручение',
+  retail_item: 'Товар витрины',
+  retail_sale: 'Чек',
+};
+
+/**
+ * Куда ведёт запись журнала.
+ *
+ * Не у всякой сущности есть свой экран: филиал и схему оплаты открыть
+ * негде, и ссылка вела бы в никуда. Поэтому список белый, а не «строим
+ * адрес из типа»: пока страницы нет, запись остаётся текстом.
+ */
+const ENTITY_HREFS: Readonly<Record<string, (id: number) => string>> = {
+  order: (id) => `/orders/${id.toString()}`,
+  retail_sale: (id) => `/retail?sale=${id.toString()}`,
 };
 
 /**
@@ -69,6 +86,17 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'order.cancelled': 'Заказ отменён',
   'order.assignee_changed': 'Исполнитель изменён',
   'order.price_changed': 'Цена изменена',
+  'order.stage_fees_changed': 'Расценки по этапам изменены',
+
+  'retail_item.created': 'Товар витрины создан',
+  'retail_item.updated': 'Товар витрины изменён',
+  'retail_item.stock_changed': 'Остаток на витрине изменён',
+  'retail_item.activated': 'Товар возвращён на витрину',
+  'retail_item.deactivated': 'Товар снят с витрины',
+  'retail_sale.created': 'Чек пробит',
+
+  'task.created': 'Поручение выдано',
+  'user.avatar_changed': 'Фото сотрудника изменено',
 
   'purchase_item.created': 'Товар закупки создан',
   'purchase_item.price_changed': 'Цена товара изменена',
@@ -187,10 +215,20 @@ export default function AuditPage(): ReactElement {
           {
             key: 'entity',
             header: 'Объект',
-            render: (row) =>
-              `${ENTITY_LABELS_RU[row.entityType] ?? row.entityType}${
+            render: (row) => {
+              const label = `${ENTITY_LABELS_RU[row.entityType] ?? row.entityType}${
                 row.entityId === null ? '' : ` #${row.entityId.toString()}`
-              }`,
+              }`;
+
+              const buildHref = ENTITY_HREFS[row.entityType];
+              if (buildHref === undefined || row.entityId === null) return label;
+
+              return (
+                <Link href={buildHref(row.entityId)} className="text-accent hover:underline">
+                  {label}
+                </Link>
+              );
+            },
           },
           {
             key: 'details',
