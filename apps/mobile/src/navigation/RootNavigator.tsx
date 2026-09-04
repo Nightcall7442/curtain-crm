@@ -6,7 +6,12 @@ import { useAuth } from '../hooks/useAuth';
 import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
 import { CashDeskScreen } from '../screens/CashDeskScreen';
 import { DayOffScreen } from '../screens/DayOffScreen';
+import { DayOffApprovalsScreen } from '../screens/DayOffApprovalsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { ManagementScreen } from '../screens/ManagementScreen';
+import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
+import { RetailStockScreen } from '../screens/RetailStockScreen';
+import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
 import { RatingScreen } from '../screens/RatingScreen';
@@ -88,6 +93,31 @@ export function RootNavigator(): ReactElement {
         name="SaleDetail"
         component={SaleDetailScreen}
         options={{ title: 'Чек' }}
+      />
+      <Stack.Screen
+        name="Management"
+        component={ManagementScreen}
+        options={{ title: 'Руководство' }}
+      />
+      <Stack.Screen
+        name="DayOffApprovals"
+        component={DayOffApprovalsScreen}
+        options={{ title: 'Отгулы' }}
+      />
+      <Stack.Screen
+        name="PayrollApprovals"
+        component={PayrollApprovalsScreen}
+        options={{ title: 'Зарплата' }}
+      />
+      <Stack.Screen
+        name="TaskAssign"
+        component={TaskAssignScreen}
+        options={{ title: 'Поручения' }}
+      />
+      <Stack.Screen
+        name="RetailStock"
+        component={RetailStockScreen}
+        options={{ title: 'Витрина' }}
       />
     </Stack.Navigator>
   );

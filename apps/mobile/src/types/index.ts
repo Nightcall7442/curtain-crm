@@ -19,6 +19,17 @@ export type RootStackParamList = {
   PersonalWorkCreate: undefined;
   CashDesk: undefined;
   SaleDetail: { saleId: number };
+
+  /*
+    Экраны руководителя. Отдельной вкладки им не дали намеренно: нижняя
+    панель одна на всех, и пятая вкладка, видимая двоим из восемнадцати,
+    сделала бы её разной у разных людей.
+  */
+  Management: undefined;
+  DayOffApprovals: undefined;
+  PayrollApprovals: undefined;
+  TaskAssign: undefined;
+  RetailStock: undefined;
 };
 
 export type RootStackScreenProps<TRoute extends keyof RootStackParamList> =

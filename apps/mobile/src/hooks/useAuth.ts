@@ -1,4 +1,4 @@
-import type { Role } from '@curtain-crm/shared';
+import { isManagement, type Role } from '@curtain-crm/shared';
 import { createContext, useContext } from 'react';
 
 /**
@@ -36,4 +36,17 @@ export function useAuth(): AuthState {
     throw new Error('useAuth должен вызываться внутри AuthContext.Provider');
   }
   return context;
+}
+
+/**
+ * Директор или администратор.
+ *
+ * Скрытие кнопок по этой проверке — удобство, а не защита: каждая
+ * управленческая процедура закрыта `managementProcedure` на сервере и
+ * откажет тому, кто дотянется до неё в обход интерфейса. Экран лишь не
+ * показывает того, что всё равно не сработает.
+ */
+export function useIsManagement(): boolean {
+  const { user } = useAuth();
+  return isManagement(user?.roles ?? []);
 }

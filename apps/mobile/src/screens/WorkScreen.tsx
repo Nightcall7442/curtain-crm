@@ -14,7 +14,7 @@ import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { OrderCard } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
@@ -54,6 +54,7 @@ export function WorkScreen(): ReactElement {
    * Но показывать кнопку, которая заведомо откажет, незачем.
    */
   const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
+  const isManager = useIsManagement();
 
   const query = trpc.orders.list.useQuery(
     {
@@ -260,6 +261,33 @@ export function WorkScreen(): ReactElement {
           >
             <Icon name="paid" size={18} color={colors.accentStrong} />
             <Text style={styles.createSecondaryText}>Касса — тюль и аксессуары</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/*
+        Вход в раздел руководителя.
+
+        Отдельной вкладки ему не дали: нижняя панель одна на всех, и пятая
+        вкладка, видимая двоим из восемнадцати, сделала бы её разной у
+        разных людей. Кнопка здесь — «Работа» и так экран, с которого
+        руководитель начинает день.
+      */}
+      {isManager && (
+        <View style={styles.createRow}>
+          <Pressable
+            onPress={() => {
+              navigation.navigate('Management');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.createSecondary,
+              styles.createFlex,
+              pressed ? styles.createPressed : null,
+            ]}
+          >
+            <Icon name="roles" size={18} color={colors.accentStrong} />
+            <Text style={styles.createSecondaryText}>Руководство</Text>
           </Pressable>
         </View>
       )}
