@@ -22,6 +22,9 @@ import * as SecureStore from 'expo-secure-store';
 const ACCESS_TOKEN_KEY = 'curtain_crm_access_token';
 const REFRESH_TOKEN_KEY = 'curtain_crm_refresh_token';
 
+/** Чья сейчас сессия. Нужен, чтобы обновлять его запись в списке аккаунтов. */
+const CURRENT_USER_KEY = 'curtain_crm_current_user_id';
+
 /**
  * Access-токен, продублированный в памяти.
  *
@@ -73,6 +76,26 @@ export const tokenStorage = {
       writeSecure(ACCESS_TOKEN_KEY, tokens.accessToken),
       writeSecure(REFRESH_TOKEN_KEY, tokens.refreshToken),
     ]);
+
+    /*
+      Запись в списке аккаунтов идёт следом — обязательно.
+
+      Токены меняются не только при входе: `authFetch` сам обновляет их,
+      когда access истёк, и refresh при этом РОТИРУЕТСЯ. Без этой строки
+      сохранённая запись осталась бы со старым токеном, а сервер считает
+      повторное предъявление старого кражей и гасит человеку все
+      устройства. То есть быстрый вход, полежав сутки, выкидывал бы
+      сотрудника отовсюду.
+
+      Обновляется именно тот аккаунт, под которым сейчас работают: его id
+      лежит рядом с токенами и переживает перезапуск приложения.
+    */
+    await syncCurrentAccountToken(tokens.refreshToken);
+  },
+
+  /** Запоминает, чья это сессия: нужно, чтобы обновлять его запись в списке. */
+  async setCurrentUserId(userId: number): Promise<void> {
+    await writeSecure(CURRENT_USER_KEY, userId.toString());
   },
 
   getRefreshToken: (): Promise<string | null> => readSecure(REFRESH_TOKEN_KEY),
@@ -82,6 +105,114 @@ export const tokenStorage = {
     await Promise.all([
       writeSecure(ACCESS_TOKEN_KEY, null),
       writeSecure(REFRESH_TOKEN_KEY, null),
+      writeSecure(CURRENT_USER_KEY, null),
     ]);
+  },
+};
+
+/* -------------------------------------------------------------------------- */
+/*                         Сохранённые учётные записи                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Аккаунты, которыми уже входили с этого телефона.
+ *
+ * Нужны директору: он держит один рабочий телефон и должен уметь встать за
+ * место продавца или проверить, что видит швея, не вспоминая паролей.
+ * Долгое нажатие на вкладку «Профиль» показывает этот список, и вход
+ * происходит по сохранённому refresh-токену — мгновенно.
+ *
+ * Лежит в том же защищённом хранилище, что и токен текущей сессии. Это
+ * сознательный компромисс: телефон с несколькими живыми сессиями опаснее
+ * телефона с одной. Ограничения, которые делают его приемлемым:
+ *  - список пополняется ТОЛЬКО тем, кто уже вошёл паролем на этом
+ *    устройстве, — чужой аккаунт сюда не попадёт;
+ *  - выход из аккаунта убирает его из списка: сервер гасит refresh-токен,
+ *    и хранить мёртвую запись незачем;
+ *  - паролей здесь нет вовсе, только токены, которые сервер умеет отозвать.
+ *
+ * ВАЖНО про ротацию. Сервер меняет refresh-токен при каждом обновлении и
+ * считает повторное предъявление старого признаком кражи — гасит СЕССИИ
+ * СОТРУДНИКУ ЦЕЛИКОМ. Поэтому после каждого переключения новую пару
+ * обязательно записывают сюда обратно: сохранённый однажды токен —
+ * одноразовый.
+ */
+
+const ACCOUNTS_KEY = 'curtain_crm_saved_accounts';
+
+export interface SavedAccount {
+  readonly userId: number;
+  readonly fullName: string;
+  readonly phone: string;
+  /** Одноразовый: сервер выдаёт новый при каждом использовании. */
+  readonly refreshToken: string;
+}
+
+const readAccounts = async (): Promise<readonly SavedAccount[]> => {
+  const raw = await readSecure(ACCOUNTS_KEY);
+  if (raw === null) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    // Хранилище переживает обновления приложения, и формат записи мог
+    // измениться. Строки без обязательных полей молча отбрасываются:
+    // «сломанный список аккаунтов» не повод не пустить человека в приложение.
+    return parsed.filter((item): item is SavedAccount => {
+      if (typeof item !== 'object' || item === null) return false;
+      const candidate = item as Partial<SavedAccount>;
+      return (
+        typeof candidate.userId === 'number' &&
+        typeof candidate.fullName === 'string' &&
+        typeof candidate.phone === 'string' &&
+        typeof candidate.refreshToken === 'string'
+      );
+    });
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Обновляет токен текущего аккаунта в списке.
+ *
+ * Вызывается из `tokenStorage.save()` — единственного места, через которое
+ * проходит любая новая пара токенов, откуда бы она ни пришла: вход паролем,
+ * переключение аккаунта или молчаливое обновление в `authFetch`. Держать эту
+ * синхронизацию в трёх местах значило бы однажды забыть про одно из них.
+ */
+async function syncCurrentAccountToken(refreshToken: string): Promise<void> {
+  const raw = await readSecure(CURRENT_USER_KEY);
+  if (raw === null) return;
+
+  const userId = Number.parseInt(raw, 10);
+  if (!Number.isInteger(userId)) return;
+
+  const accounts = await readAccounts();
+  const current = accounts.find((item) => item.userId === userId);
+  // Аккаунта в списке нет — значит из него вышли; воскрешать не нужно.
+  if (current === undefined) return;
+
+  const updated = accounts.map((item) =>
+    item.userId === userId ? { ...item, refreshToken } : item,
+  );
+  await writeSecure(ACCOUNTS_KEY, JSON.stringify(updated));
+}
+
+export const accountStorage = {
+  list: readAccounts,
+
+  /** Запоминает аккаунт или обновляет его токен после переключения. */
+  async remember(account: SavedAccount): Promise<void> {
+    const rest = (await readAccounts()).filter((item) => item.userId !== account.userId);
+    // Последний вошедший — первым в списке: к нему возвращаются чаще всего.
+    await writeSecure(ACCOUNTS_KEY, JSON.stringify([account, ...rest]));
+  },
+
+  /** Убирает аккаунт: вышли из него или его токен больше не принимают. */
+  async forget(userId: number): Promise<void> {
+    const rest = (await readAccounts()).filter((item) => item.userId !== userId);
+    await writeSecure(ACCOUNTS_KEY, rest.length === 0 ? null : JSON.stringify(rest));
   },
 };

@@ -2,8 +2,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
+import { AccountSwitcher } from '../components/AccountSwitcher';
 import { Icon, type IconName } from '../components/Icon';
 import { CheckInOutScreen } from '../screens/CheckInOutScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -43,7 +44,11 @@ export function TabNavigator(): ReactElement {
     refetchInterval: 60_000,
   });
 
+  /** Открыт ли список сохранённых входов. Живёт здесь — жест на вкладке. */
+  const [isSwitcherOpen, setSwitcherOpen] = useState(false);
+
   return (
+    <>
     <Tab.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: colors.header },
@@ -122,9 +127,22 @@ export function TabNavigator(): ReactElement {
           tabBarBadgeStyle: styles.badge,
         }}
       />
+      {/*
+        Долгое нажатие на «Профиль» открывает сохранённые входы.
+
+        Жест, а не пункт меню: переключение аккаунтов нужно одному человеку
+        в фирме — директору, который встаёт за место продавца или смотрит,
+        что видит швея. Видимая кнопка задавала бы всем остальным вопрос,
+        чьи это имена и можно ли туда нажимать.
+      */}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
+        listeners={{
+          tabLongPress: () => {
+            setSwitcherOpen(true);
+          },
+        }}
         options={{
           title: 'Мой профиль',
           tabBarLabel: 'Профиль',
@@ -132,6 +150,14 @@ export function TabNavigator(): ReactElement {
         }}
       />
     </Tab.Navigator>
+
+    <AccountSwitcher
+      visible={isSwitcherOpen}
+      onClose={() => {
+        setSwitcherOpen(false);
+      }}
+    />
+    </>
   );
 }
 

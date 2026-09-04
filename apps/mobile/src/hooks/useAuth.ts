@@ -23,6 +23,14 @@ export interface AuthState {
   readonly isRestoring: boolean;
   readonly signIn: (phone: string, password: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
+  /**
+   * Мгновенный вход в сохранённый аккаунт — без пароля, по его токену.
+   *
+   * Бросает исключение, если сервер токен не принял: он мог истечь, а
+   * аккаунт — быть отключён. Вызывающий показывает сообщение и убирает
+   * запись из списка.
+   */
+  readonly switchAccount: (userId: number) => Promise<void>;
   /** Ошибка последней попытки входа — сообщение с сервера, на русском. */
   readonly signInError: string | null;
   readonly isSigningIn: boolean;
