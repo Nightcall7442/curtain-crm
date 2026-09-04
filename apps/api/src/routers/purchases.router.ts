@@ -40,7 +40,19 @@ const categorySchema = z.enum(PURCHASE_CATEGORIES);
 const purchaseProcedure = roleProcedure(Role.CEO, Role.ADMIN, Role.MASTER, Role.SEWER);
 
 const itemsRouter = router({
-  list: protectedProcedure
+  /**
+   * Прайс закупок — тем, кто закупает, а не всем вошедшим.
+   *
+   * Был `protectedProcedure`: почём фирма берёт ткань, знал любой сотрудник,
+   * включая продавца и установщика. Это расходилось с остальной системой,
+   * которая прячет и заработок соседа, и маржу заказа: по закупочной цене и
+   * цене для клиента наценка считается в уме за секунду.
+   *
+   * Роли те же, что у `purchases.add`, и это не совпадение: мастер и швея
+   * проводят закупку по заказу и указывают фактическую цену — им нужно
+   * видеть, от чего отталкиваться. Остальным прайс для работы не нужен.
+   */
+  list: purchaseProcedure
     .input(
       z
         .object({
