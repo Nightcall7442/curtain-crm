@@ -86,8 +86,17 @@ export default function LoginPage(): ReactElement {
               maskRepeat: 'no-repeat',
             }}
           />
-          <span className="flex flex-col">
-            <span className="font-wordmark text-title tracking-[0.02em]">Parda Bozor</span>
+          {/*
+            Название набрано как в мобильном приложении: прописные,
+            гротеск, широкая разрядка. Антиква тут стояла классическая и
+            дорогая сама по себе, но спорила со знаком над ней — он
+            плашечный и тяжёлый, и тонкие засечки под ним читались как
+            надпись от другой фирмы.
+          */}
+          <span className="flex flex-col gap-1">
+            <span className="text-subhead font-semibold uppercase tracking-[0.26em]">
+              Parda Bozor
+            </span>
             <span className="text-overline tracking-[0.05em] text-base/55">
               шторы премиум класса
             </span>
@@ -145,7 +154,12 @@ export default function LoginPage(): ReactElement {
                 maskRepeat: 'no-repeat',
               }}
             />
-            <span className="font-wordmark text-display tracking-[0.02em]">Parda Bozor</span>
+            <span className="text-subhead font-semibold uppercase tracking-[0.26em] text-primary">
+              Parda Bozor
+            </span>
+            <span className="text-overline tracking-[0.05em] text-muted">
+              шторы премиум класса
+            </span>
           </div>
 
           <div className="flex flex-col gap-2">
