@@ -31,6 +31,14 @@ export interface AuthState {
    * запись из списка.
    */
   readonly switchAccount: (userId: number) => Promise<void>;
+  /**
+   * Уйти на экран входа, НЕ гася текущую сессию.
+   *
+   * Отличие от `signOut`: сервер о выходе не узнаёт и запись в списке
+   * быстрого входа остаётся живой. Без этого второй аккаунт добавить было
+   * нечем — обычный выход стирает предыдущий, и список никогда не набирался.
+   */
+  readonly addAccount: () => Promise<void>;
   /** Ошибка последней попытки входа — сообщение с сервера, на русском. */
   readonly signInError: string | null;
   readonly isSigningIn: boolean;

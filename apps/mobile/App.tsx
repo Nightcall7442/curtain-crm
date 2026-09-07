@@ -144,6 +144,25 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
     }
   }, [utils, user]);
 
+  /**
+   * Уйти на экран входа, оставив текущую сессию живой.
+   *
+   * Так добавляют второй аккаунт. Обычный выход для этого не годится: он
+   * гасит refresh-токен на сервере и убирает запись из быстрого входа —
+   * то есть каждый новый вход стирал бы предыдущий, и список никогда бы не
+   * набрался. Здесь сервер о выходе не узнаёт, токен остаётся действующим и
+   * лежит в сохранённой записи.
+   *
+   * Вызывать можно только когда текущий аккаунт УЖЕ сохранён: иначе человек
+   * уйдёт на экран входа и вернётся к себе только паролем. Проверку делает
+   * `AccountSwitcher` — единственное место, откуда это доступно.
+   */
+  const addAccount = useCallback(async (): Promise<void> => {
+    await tokenStorage.clear();
+    setUser(null);
+    queryClient.clear();
+  }, [queryClient]);
+
   /** Восстановление сессии при запуске. */
   useEffect(() => {
     let cancelled = false;
@@ -310,10 +329,20 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
       signIn,
       signOut,
       switchAccount,
+      addAccount,
       signInError: loginMutation.error?.message ?? null,
       isSigningIn: loginMutation.isPending,
     }),
-    [user, isRestoring, signIn, signOut, switchAccount, loginMutation.error, loginMutation.isPending],
+    [
+      user,
+      isRestoring,
+      signIn,
+      signOut,
+      switchAccount,
+      addAccount,
+      loginMutation.error,
+      loginMutation.isPending,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
