@@ -4,6 +4,7 @@ import {
   IBM_Plex_Mono,
   IBM_Plex_Sans,
   Instrument_Serif,
+  Playfair_Display,
 } from 'next/font/google';
 
 import { Shell } from '@/components/layout/Shell';
@@ -51,6 +52,26 @@ const instrumentSerif = Instrument_Serif({
   display: 'swap',
 });
 
+/**
+ * Заголовки публичного лендинга — единственное место, где заголовки массово
+ * набраны русским и узбекским текстом, а не отдельными словами на латинице.
+ * `--font-display` (Instrument Serif) для этого не годится совсем: у него
+ * нет кириллицы, и каждый такой заголовок молча падал бы на Georgia из
+ * запасного набора — тот самый плоский, ничем не примечательный шрифт,
+ * который и выдаёт нетронутую вёрстку.
+ *
+ * Playfair Display кириллицу несёт. Отдельная переменная, а не замена
+ * `--font-display`: тот уже стоит на экране входа и в шапке панели, и его
+ * смена ради одной новой страницы перекрасила бы заголовки везде, где
+ * сейчас показывается латиница по-английски, — а разговор был про лендинг.
+ */
+const playfairDisplay = Playfair_Display({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['600'],
+  variable: '--font-editorial',
+  display: 'swap',
+});
+
 
 export const metadata: Metadata = {
   title: 'Design House — CRM',
@@ -78,7 +99,7 @@ export default function RootLayout({
   return (
     <html
       lang="ru"
-      className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable}`}
+      className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable} ${playfairDisplay.variable}`}
     >
       <head>
         {/*

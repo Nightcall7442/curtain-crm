@@ -52,7 +52,7 @@ import {
   staffSummary,
   upcomingBirthdays,
 } from '../services/staff.service';
-import { router } from '../trpc';
+import { baseProcedure, router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
 /**
@@ -250,6 +250,45 @@ async function replaceAvatar(
 }
 
 export const usersRouter = router({
+  /**
+   * Команда для публичного лендинга — витрина, не справочник.
+   *
+   * `baseProcedure`: страницу открывает клиент, который ещё никуда не вошёл.
+   * Именно поэтому поля здесь выбраны руками, а не переиспользован `loadUsers`
+   * — тот тащит телефон, роли и филиалы, и одна забытая строчка в разметке
+   * лендинга превратила бы личные номера сотрудников в публичные данные.
+   * Наружу идут только имя, должность-подпись и фото.
+   *
+   * Показываются только те, у кого есть фотография: карточка без снимка на
+   * витрине выглядит забытой, а не скромной.
+   */
+  publicTeam: baseProcedure.query(async ({ ctx }) => {
+    const storage = getStorage();
+
+    const rows = await ctx.db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+        jobTitle: users.jobTitle,
+        department: users.department,
+        avatarStorageKey: users.avatarStorageKey,
+      })
+      .from(users)
+      .where(and(eq(users.isActive, true), sql`${users.avatarStorageKey} is not null`))
+      .orderBy(asc(users.hiredAt));
+
+    return Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        fullName: row.fullName,
+        jobTitle: row.jobTitle,
+        department: row.department,
+        // `avatarStorageKey` проверен в `where` — здесь он точно не null.
+        avatarUrl: await storage.getUrl(row.avatarStorageKey as string),
+      })),
+    );
+  }),
+
   /** Список сотрудников с фильтрами. Для раздела «Рабочие» веб-панели. */
   list: managementProcedure
     .input(

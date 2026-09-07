@@ -30,8 +30,9 @@ export default function LoginPage(): ReactElement {
     onSuccess(data) {
       tokenStorage.save({ accessToken: data.accessToken, refreshToken: data.refreshToken });
       // `replace`, а не `push`: возврат «назад» на экран входа после успешного
-      // входа только путает.
-      router.replace('/');
+      // входа только путает. Ведёт в `/dashboard`, а не в корень: там теперь
+      // публичный лендинг, а не панель.
+      router.replace('/dashboard');
     },
   });
 

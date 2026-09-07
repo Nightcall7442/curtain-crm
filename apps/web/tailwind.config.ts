@@ -126,6 +126,8 @@ const config: Config = {
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
         /** Фирменные места: экран входа, заголовки разделов. Не для таблиц. */
         display: ['var(--font-display)', 'Georgia', 'serif'],
+        /** Заголовки публичного лендинга — несёт кириллицу, `display` нет. */
+        editorial: ['var(--font-editorial)', 'Georgia', 'serif'],
       },
 
       boxShadow: {

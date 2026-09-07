@@ -72,7 +72,7 @@ const ALL_ROLES: readonly RoleName[] = [
  * строки меню под «скоро» — слишком дорогая цена за напоминание.
  */
 export const NAVIGATION: readonly NavItem[] = [
-  { href: '/', label: 'Главная', icon: LayoutGrid, roles: ALL_ROLES, exact: true },
+  { href: '/dashboard', label: 'Главная', icon: LayoutGrid, roles: ALL_ROLES, exact: true },
   { href: '/orders', label: 'Заказы', icon: ClipboardList, roles: ALL_ROLES },
   {
     href: '/employees',
@@ -127,7 +127,7 @@ export function isNavItemActive(item: Pick<NavItem, 'href' | 'exact'>, pathname:
 
 /** Заголовок страницы по адресу — показывается в шапке. */
 export function pageTitle(pathname: string): string {
-  if (pathname === '/') return 'Главная панель';
+  if (pathname === '/dashboard') return 'Главная панель';
 
   for (const item of NAVIGATION) {
     const child = item.children?.find((entry) => entry.href === pathname);

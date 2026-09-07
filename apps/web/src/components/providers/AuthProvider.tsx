@@ -40,14 +40,25 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const LOGIN_PATH = '/login';
 
+/**
+ * Публичные страницы: свои — без сотрудника, без токена.
+ *
+ * Корень — витрина для клиентов, а не панель: домен теперь открывает её,
+ * а не экран заказов. Запрашивать `auth.me` там незачем — гость не вошёл
+ * и не собирается, и редирект на `/login` увёл бы его с рекламной страницы
+ * ровно за то, что он её открыл.
+ */
+const PUBLIC_ROUTES = new Set(['/', LOGIN_PATH]);
+
 export function AuthProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const router = useRouter();
   const pathname = usePathname();
-  const isLoginPage = pathname === LOGIN_PATH;
+  const isPublicPage = PUBLIC_ROUTES.has(pathname);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
-    // На экране входа запрашивать профиль незачем — токена ещё нет.
-    enabled: !isLoginPage,
+    // На публичных страницах запрашивать профиль незачем — токена ещё нет
+    // или он вообще не нужен для того, что там показано.
+    enabled: !isPublicPage,
     retry: false,
     staleTime: 60_000,
   });
@@ -80,13 +91,13 @@ export function AuthProvider({ children }: { readonly children: ReactNode }): Re
 
   /** Неаутентифицированного пользователя уводим на вход. */
   useEffect(() => {
-    if (isLoginPage) return;
+    if (isPublicPage) return;
     if (meQuery.isLoading) return;
 
     if (meQuery.isError || meQuery.data === null) {
       router.replace(LOGIN_PATH);
     }
-  }, [isLoginPage, meQuery.isError, meQuery.isLoading, meQuery.data, router]);
+  }, [isPublicPage, meQuery.isError, meQuery.isLoading, meQuery.data, router]);
 
   const value = useMemo<AuthContextValue>(() => {
     const user = meQuery.data ?? null;
@@ -94,12 +105,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }): Re
 
     return {
       user,
-      isLoading: !isLoginPage && meQuery.isLoading,
+      isLoading: !isPublicPage && meQuery.isLoading,
       isManagement: isManagement(roles),
       hasRole: (...required: readonly Role[]) => required.some((role) => roles.includes(role)),
       logout,
     };
-  }, [isLoginPage, logout, meQuery.data, meQuery.isLoading]);
+  }, [isPublicPage, logout, meQuery.data, meQuery.isLoading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
