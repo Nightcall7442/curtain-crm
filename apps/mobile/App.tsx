@@ -163,6 +163,34 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
     queryClient.clear();
   }, [queryClient]);
 
+  /**
+   * Вход директора под сотрудником — без его пароля.
+   *
+   * Сессию выдаёт сервер: право проверяется там (`ceoProcedure`) и там же
+   * пишется в журнал. Здесь остаётся только принять выданную пару токенов
+   * тем же путём, что и обычный вход.
+   *
+   * Возврат к себе обеспечивает `AccountSwitcher`: он сохраняет запись
+   * директора ДО вызова, пока его refresh-токен ещё под рукой.
+   */
+  const impersonate = useCallback(
+    async (userId: number): Promise<void> => {
+      const session = await utils.client.auth.impersonate.mutate({ userId });
+
+      await tokenStorage.setCurrentUserId(session.user.id);
+      await tokenStorage.save({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+      });
+
+      // Кеш предыдущего сотрудника обязан уйти целиком: иначе новый экран
+      // на мгновение покажет чужие заказы и чужую зарплату.
+      queryClient.clear();
+      setUser(session.user);
+    },
+    [utils, queryClient],
+  );
+
   /** Восстановление сессии при запуске. */
   useEffect(() => {
     let cancelled = false;
@@ -330,6 +358,7 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
       signOut,
       switchAccount,
       addAccount,
+      impersonate,
       signInError: loginMutation.error?.message ?? null,
       isSigningIn: loginMutation.isPending,
     }),
@@ -340,6 +369,7 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
       signOut,
       switchAccount,
       addAccount,
+      impersonate,
       loginMutation.error,
       loginMutation.isPending,
     ],

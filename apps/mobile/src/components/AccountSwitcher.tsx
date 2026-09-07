@@ -1,29 +1,44 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, useIsCeo } from '../hooks/useAuth';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { accountStorage, tokenStorage, type SavedAccount } from '../lib/storage';
+import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, typography } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
 
 /**
- * Быстрое переключение между аккаунтами этого телефона.
+ * Переключение между сотрудниками — вертикальная лента кругов.
  *
  * Открывается долгим нажатием на вкладку «Профиль». Жест намеренно
  * непубличный: это инструмент директора, который встаёт за место продавца
  * или смотрит, что видит швея, — а не кнопка, которую рядовой сотрудник
  * найдёт случайно и начнёт гадать, чьи это имена.
  *
- * Вид — вертикальная лента кругов, как переключатель аккаунтов в соцсетях:
- * лицо (пока инициалы) крупнее имени, потому что узнают по нему, а читают
- * имя только при сомнении. Текущий аккаунт стоит первым, обведён кольцом и
- * не нажимается.
+ * Два разных списка за одним жестом:
+ *  - ДИРЕКТОРУ показываются ВСЕ работающие сотрудники, независимо от того,
+ *    входил ли кто-то с этого телефона. Сессию выдаёт сервер по
+ *    `auth.impersonate` — пароли сотрудников для этого не нужны и не
+ *    спрашиваются. Каждый такой вход попадает в журнал;
+ *  - ОСТАЛЬНЫМ — только те аккаунты, которыми уже входили паролем с этого
+ *    телефона и согласились сохранить. Чужую учётную запись рядовой
+ *    сотрудник открыть не может, и скрытие тут ни при чём: `impersonate`
+ *    откажет любому, кроме директора.
  *
- * Пароля не спрашивает: вход идёт по сохранённому токену. Список читается
- * при каждом открытии, а не хранится в состоянии: между открытиями человек
- * мог войти в новый аккаунт или выйти из старого.
+ * Лицо крупнее имени: узнают по фото, а имя читают только при сомнении.
+ * Фото может не загрузиться (ссылка подписана и истекает) — тогда круг
+ * показывает инициалы, и это не ошибка.
  */
 export function AccountSwitcher({
   visible,
@@ -32,10 +47,24 @@ export function AccountSwitcher({
   readonly visible: boolean;
   readonly onClose: () => void;
 }): ReactElement {
-  const { user, switchAccount, addAccount } = useAuth();
+  const { user, switchAccount, addAccount, impersonate } = useAuth();
+  const isCeo = useIsCeo();
 
   const [accounts, setAccounts] = useState<readonly SavedAccount[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  /* Список сотрудников нужен только директору и только пока шторка открыта:
+     держать его загруженным ради жеста, который делают раз в день, незачем. */
+  const staff = trpc.users.list.useQuery(
+    { page: 1, pageSize: 100, isActive: true },
+    { enabled: visible && isCeo },
+  );
+
+  /** Своё фото: в списке сотрудников директор есть, остальных там нет. */
+  const me = trpc.users.byId.useQuery(
+    { id: user?.id ?? 0 },
+    { enabled: visible && !isCeo && user !== null },
+  );
 
   const reload = useCallback(async (): Promise<void> => {
     setAccounts(await accountStorage.list());
@@ -46,16 +75,17 @@ export function AccountSwitcher({
     void reload();
   }, [visible, reload]);
 
-  /** Есть ли у текущей сессии сохранённая запись — от этого зависит «+». */
-  const isCurrentSaved = accounts.some((account) => account.userId === user?.id);
-  const others = accounts.filter((account) => account.userId !== user?.id);
+  const staffRows = staff.data?.items ?? [];
+  const myAvatarUrl =
+    (isCeo ? staffRows.find((row) => row.id === user?.id)?.avatarUrl : me.data?.avatarUrl) ?? null;
 
   /**
-   * Сохраняет ТЕКУЩИЙ вход.
+   * Сохраняет ТЕКУЩИЙ вход, чтобы к нему можно было вернуться без пароля.
    *
-   * Нужен потому, что согласие спрашивается один раз — при входе паролем, — и
-   * тот, кто тогда отказался (или вошёл до появления этой возможности), иначе
-   * не имеет способа передумать, не выходя из аккаунта.
+   * Директору вызывается молча перед входом под сотрудником: спрашивать
+   * согласие на сохранение своей же сессии на своём телефоне — лишний шаг
+   * ровно там, где человек уже нажал на круг сотрудника. Без этой записи
+   * он вернулся бы к себе только паролем.
    */
   const saveCurrent = useCallback(async (): Promise<boolean> => {
     const refreshToken = await tokenStorage.getRefreshToken();
@@ -69,15 +99,17 @@ export function AccountSwitcher({
       fullName: user.fullName,
       phone: user.phone,
       refreshToken,
+      avatarUrl: myAvatarUrl,
     });
     await reload();
     return true;
-  }, [user, reload]);
+  }, [user, myAvatarUrl, reload]);
 
-  const handleSwitch = (account: SavedAccount): void => {
-    setBusyId(account.userId);
+  /** Общий хвост для обоих способов входа: звук, закрытие, разбор отказа. */
+  const run = (userId: number, action: Promise<void>, onFail: () => void): void => {
+    setBusyId(userId);
 
-    switchAccount(account.userId)
+    action
       .then(() => {
         notifySuccess();
         onClose();
@@ -86,17 +118,33 @@ export function AccountSwitcher({
         notifyError();
         Alert.alert(
           'Не удалось войти',
-          error instanceof Error
-            ? error.message
-            : 'Сохранённый вход больше не действует — войдите паролем',
+          error instanceof Error ? error.message : 'Попробуйте ещё раз',
         );
-        // Запись мог убрать `switchAccount`: перечитываем, чтобы список не
-        // показывал круг, который заведомо не сработает.
-        void reload();
+        onFail();
       })
       .finally(() => {
         setBusyId(null);
       });
+  };
+
+  /** Директор: вход под сотрудником по разрешению сервера. */
+  const handleImpersonate = (userId: number): void => {
+    run(
+      userId,
+      // Свою запись сохраняем ДО обращения к серверу: после переключения
+      // refresh-токен директора из памяти уже не достать.
+      saveCurrent().then(() => impersonate(userId)),
+      () => undefined,
+    );
+  };
+
+  /** Остальные: вход по сохранённому токену. */
+  const handleSwitch = (account: SavedAccount): void => {
+    run(account.userId, switchAccount(account.userId), () => {
+      // Запись мог убрать `switchAccount`: перечитываем, чтобы список не
+      // показывал круг, который заведомо не сработает.
+      void reload();
+    });
   };
 
   /*
@@ -108,6 +156,8 @@ export function AccountSwitcher({
     экран входа и вернётся к себе только паролем.
   */
   const handleAdd = (): void => {
+    const isCurrentSaved = accounts.some((account) => account.userId === user?.id);
+
     if (!isCurrentSaved) {
       Alert.alert(
         'Сначала сохраните этот вход',
@@ -141,63 +191,146 @@ export function AccountSwitcher({
     );
   };
 
+  /* Единый вид строки для обоих списков: у директора — все сотрудники,
+     у остальных — сохранённые входы. Текущий человек в списке не
+     дублируется: он уже стоит сверху, кругом с кольцом. */
+  const rows: readonly Row[] = isCeo
+    ? staffRows
+        .filter((row) => row.id !== user?.id)
+        .map((row) => ({
+          userId: row.id,
+          fullName: row.fullName,
+          avatarUrl: row.avatarUrl,
+          jobTitle: row.jobTitle,
+          onPress: () => {
+            handleImpersonate(row.id);
+          },
+        }))
+    : accounts
+        .filter((account) => account.userId !== user?.id)
+        .map((account) => ({
+          userId: account.userId,
+          fullName: account.fullName,
+          avatarUrl: account.avatarUrl ?? null,
+          jobTitle: null,
+          onPress: () => {
+            handleSwitch(account);
+          },
+        }));
+
   return (
     <BottomSheet visible={visible} title="Аккаунты" onClose={onClose}>
       <ScrollView contentContainerStyle={styles.column} style={styles.scroll}>
         {user !== null ? (
           <View style={styles.item}>
-            <View style={[styles.circle, styles.circleCurrent]}>
-              <Text style={styles.initials}>{initials(user.fullName)}</Text>
-            </View>
+            <Face fullName={user.fullName} avatarUrl={myAvatarUrl} isCurrent />
             <Text style={styles.name} numberOfLines={1}>
               {user.fullName}
             </Text>
-            <Text style={styles.caption}>{isCurrentSaved ? 'вы' : 'вход не сохранён'}</Text>
+            <Text style={styles.caption}>вы</Text>
           </View>
         ) : null}
 
-        {others.map((account) => (
+        {isCeo && staff.isLoading ? <ActivityIndicator color={colors.accent} /> : null}
+
+        {rows.map((row) => (
           <Pressable
-            key={account.userId}
-            onPress={() => {
-              handleSwitch(account);
-            }}
+            key={row.userId}
+            onPress={row.onPress}
             disabled={busyId !== null}
             accessibilityRole="button"
-            accessibilityLabel={`Войти как ${account.fullName}`}
+            accessibilityLabel={`Войти как ${row.fullName}`}
             style={({ pressed }) => [styles.item, pressed ? styles.pressed : null]}
           >
-            <View style={styles.circle}>
-              {busyId === account.userId ? (
+            {busyId === row.userId ? (
+              <View style={styles.circle}>
                 <ActivityIndicator color={colors.accent} size="small" />
-              ) : (
-                <Text style={styles.initials}>{initials(account.fullName)}</Text>
-              )}
-            </View>
+              </View>
+            ) : (
+              <Face fullName={row.fullName} avatarUrl={row.avatarUrl} isCurrent={false} />
+            )}
+
             <Text style={styles.name} numberOfLines={1}>
-              {account.fullName}
+              {row.fullName}
             </Text>
+            {row.jobTitle === null ? null : (
+              <Text style={styles.caption} numberOfLines={1}>
+                {row.jobTitle}
+              </Text>
+            )}
           </Pressable>
         ))}
 
-        <Pressable
-          onPress={handleAdd}
-          disabled={busyId !== null}
-          accessibilityRole="button"
-          accessibilityLabel="Добавить аккаунт"
-          style={({ pressed }) => [styles.item, pressed ? styles.pressed : null]}
-        >
-          <View style={[styles.circle, styles.circleAdd]}>
-            <Text style={styles.plus}>+</Text>
-          </View>
-          <Text style={styles.name}>Добавить</Text>
-        </Pressable>
+        {/* Директору «Добавить» не нужно: у него и так весь цех перед глазами. */}
+        {isCeo ? null : (
+          <Pressable
+            onPress={handleAdd}
+            disabled={busyId !== null}
+            accessibilityRole="button"
+            accessibilityLabel="Добавить аккаунт"
+            style={({ pressed }) => [styles.item, pressed ? styles.pressed : null]}
+          >
+            <View style={[styles.circle, styles.circleAdd]}>
+              <Text style={styles.plus}>+</Text>
+            </View>
+            <Text style={styles.name}>Добавить</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <Text style={styles.hint}>
-        Вход без пароля, с этого телефона. Выход из аккаунта убирает его отсюда.
+        {isCeo
+          ? 'Вход под сотрудником — без его пароля. Каждый такой вход записывается в журнал.'
+          : 'Вход без пароля, с этого телефона. Выход из аккаунта убирает его отсюда.'}
       </Text>
     </BottomSheet>
+  );
+}
+
+interface Row {
+  readonly userId: number;
+  readonly fullName: string;
+  readonly avatarUrl: string | null;
+  readonly jobTitle: string | null;
+  readonly onPress: () => void;
+}
+
+/**
+ * Круг с лицом.
+ *
+ * Ссылка на фото подписана и истекает, а сохранённая запись переживает
+ * сутки — поэтому неудача загрузки это обычный случай, а не ошибка:
+ * молча возвращаемся к инициалам.
+ */
+function Face({
+  fullName,
+  avatarUrl,
+  isCurrent,
+}: {
+  readonly fullName: string;
+  readonly avatarUrl: string | null;
+  readonly isCurrent: boolean;
+}): ReactElement {
+  const [failed, setFailed] = useState(false);
+  const ring = isCurrent ? styles.circleCurrent : null;
+
+  if (avatarUrl === null || failed) {
+    return (
+      <View style={[styles.circle, ring]}>
+        <Text style={styles.initials}>{initials(fullName)}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: avatarUrl }}
+      style={[styles.circle, ring]}
+      onError={() => {
+        setFailed(true);
+      }}
+      accessibilityIgnoresInvertColors
+    />
   );
 }
 
@@ -213,8 +346,8 @@ function initials(fullName: string): string {
 const CIRCLE = 68;
 
 const styles = StyleSheet.create({
-  /* Ограничение высоты: с пятью аккаунтами лента иначе вытеснила бы
-     подсказку и «Добавить» за край экрана. */
+  /* Ограничение высоты: со всем цехом лента иначе вытеснила бы подсказку
+     за край экрана. */
   scroll: {
     maxHeight: 420,
   },
@@ -270,6 +403,7 @@ const styles = StyleSheet.create({
   caption: {
     ...typography.caption,
     color: colors.textMuted,
+    textAlign: 'center',
   },
   hint: {
     ...typography.caption,

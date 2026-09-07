@@ -70,6 +70,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'user.deactivated': 'Сотрудник отключён',
   'user.activated': 'Сотрудник включён',
   'user.password_reset': 'Пароль сброшен',
+  'user.impersonated': 'Вход под сотрудником',
   'user.role_granted': 'Роль выдана',
   'user.role_revoked': 'Роль снята',
   'user.branches_changed': 'Филиалы изменены',

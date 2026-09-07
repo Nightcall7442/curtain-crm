@@ -13,6 +13,7 @@ import { and, eq, isNull, lt, or } from 'drizzle-orm';
 
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from '../lib/jwt';
 import { loadAuthenticatedUser } from '../context';
+import { recordAudit } from './audit.service';
 import type { AuthenticatedUser } from '../types';
 
 /**
@@ -105,6 +106,78 @@ export async function login(db: Database, input: LoginInput): Promise<AuthResult
 
   const tokens = await issueTokens(db, account.id, input.userAgent ?? null);
   return { ...tokens, user };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                          Вход директора под сотрудником                    */
+/* -------------------------------------------------------------------------- */
+
+export interface ImpersonateInput {
+  readonly actorId: number;
+  readonly targetUserId: number;
+  readonly userAgent?: string | null;
+  readonly ipAddress?: string | null;
+}
+
+/**
+ * Выдаёт директору полноценную сессию сотрудника — без его пароля.
+ *
+ * Нужно в цехе: директор держит один телефон и должен уметь встать за место
+ * продавца или проверить, что видит швея, не собирая с людей пароли. Пароль,
+ * названный вслух, потом знают все; выданная сессия отзывается.
+ *
+ * Три вещи делают это приемлемым, и убирать их нельзя:
+ *  - процедура закрыта `ceoProcedure`: право есть у владельца, и только;
+ *  - каждый такой вход попадает в журнал с именем сотрудника — «кто
+ *    выписал заказ» остаётся восстановимым, даже когда в системе директор
+ *    под чужим именем;
+ *  - `lastLoginAt` сотруднику НЕ обновляется: это не его вход, и поле не
+ *    должно лгать о том, когда человек последний раз заходил сам.
+ *
+ * Пароль сотрудника при этом не раскрывается и не меняется: выдаётся только
+ * пара токенов, которую сотрудник гасит выходом со всех устройств.
+ */
+export async function impersonate(db: Database, input: ImpersonateInput): Promise<AuthResult> {
+  if (input.actorId === input.targetUserId) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Вы и так вошли под собой' });
+  }
+
+  const target = await db.query.users.findFirst({
+    where: eq(users.id, input.targetUserId),
+    columns: { id: true, fullName: true, isActive: true },
+  });
+
+  if (target === undefined) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден' });
+  }
+
+  if (!target.isActive) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Учётная запись деактивирована — войти под ней нельзя',
+    });
+  }
+
+  const user = await loadAuthenticatedUser(db, target.id);
+  if (user === null) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден' });
+  }
+
+  // Запись в журнал и выпуск токенов — одной транзакцией: сессия без следа
+  // в журнале ровно то, чего эта запись и не должна допускать.
+  return db.transaction(async (tx) => {
+    await recordAudit(tx, {
+      actorId: input.actorId,
+      action: 'user.impersonated',
+      entityType: 'user',
+      entityId: target.id,
+      details: { targetFullName: target.fullName },
+      ipAddress: input.ipAddress ?? null,
+    });
+
+    const tokens = await issueTokens(tx, target.id, input.userAgent ?? null);
+    return { ...tokens, user };
+  });
 }
 
 /* -------------------------------------------------------------------------- */

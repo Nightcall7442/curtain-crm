@@ -39,6 +39,14 @@ export interface AuthState {
    * нечем — обычный выход стирает предыдущий, и список никогда не набирался.
    */
   readonly addAccount: () => Promise<void>;
+  /**
+   * Войти под сотрудником без его пароля. Только для директора.
+   *
+   * Сессию выдаёт сервер (`auth.impersonate`, закрыт `ceoProcedure`) и
+   * записывает это в журнал. Скрытие кнопки в интерфейсе — удобство, а не
+   * защита: вызов у остальных откажет.
+   */
+  readonly impersonate: (userId: number) => Promise<void>;
   /** Ошибка последней попытки входа — сообщение с сервера, на русском. */
   readonly signInError: string | null;
   readonly isSigningIn: boolean;

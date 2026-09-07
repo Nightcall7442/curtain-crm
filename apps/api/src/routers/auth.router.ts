@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
 import { protectedProcedure } from '../middleware/auth.middleware';
-import { passwordSchema, phoneSchema } from '../lib/schemas';
+import { ceoProcedure } from '../middleware/roleGuard.middleware';
+import { idSchema, passwordSchema, phoneSchema } from '../lib/schemas';
 import {
   changeOwnPassword,
+  impersonate,
   login,
   logout,
   refreshSession,
@@ -82,6 +84,24 @@ export const authRouter = router({
 
   /** Текущий сотрудник: профиль, роли, филиалы. */
   me: protectedProcedure.query(({ ctx }) => ctx.user),
+
+  /**
+   * Вход директора под сотрудником — без его пароля.
+   *
+   * `ceoProcedure`, а не `managementProcedure`: администратор и так способен
+   * почти на всё в заказах, но выдавать себя за человека — право владельца.
+   * Каждый вызов пишется в журнал (`user.impersonated`).
+   */
+  impersonate: ceoProcedure
+    .input(z.object({ userId: idSchema }))
+    .mutation(async ({ ctx, input }) =>
+      impersonate(ctx.db, {
+        actorId: ctx.user.id,
+        targetUserId: input.userId,
+        userAgent: ctx.userAgent,
+        ipAddress: ctx.ipAddress,
+      }),
+    ),
 
   /** Выход с текущего устройства. */
   logout: protectedProcedure
