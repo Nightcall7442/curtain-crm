@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { httpBatchLink } from '@trpc/client';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
@@ -100,6 +100,16 @@ export default function App(): ReactElement {
  * сессию без пароля должно быть нажато явно.
  */
 function confirmRememberAccount(fullName: string): Promise<boolean> {
+  /*
+    В браузере вопрос не задаётся, и ответ считается отказом.
+
+    `Alert.alert` на вебе не показывает ничего и ни одну кнопку не нажимает —
+    обещание висело бы вечно, а вместе с ним и вход: экран так и оставался
+    бы формой логина после успешного ответа сервера. Веб-сборка нужна для
+    проверки вёрстки, быстрый вход там и не нужен.
+  */
+  if (Platform.OS === 'web') return Promise.resolve(false);
+
   return new Promise((resolve) => {
     Alert.alert(
       'Сохранить этот вход?',

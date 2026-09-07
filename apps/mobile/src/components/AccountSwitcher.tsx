@@ -1,44 +1,41 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth, useIsCeo } from '../hooks/useAuth';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { accountStorage, tokenStorage, type SavedAccount } from '../lib/storage';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography } from '../theme';
 
-import { BottomSheet } from './BottomSheet';
+import { Avatar } from './Avatar';
 
 /**
- * Переключение между сотрудниками — вертикальная лента кругов.
+ * Переключение между сотрудниками — столбик кругов над вкладкой «Профиль».
  *
- * Открывается долгим нажатием на вкладку «Профиль». Жест намеренно
- * непубличный: это инструмент директора, который встаёт за место продавца
- * или смотрит, что видит швея, — а не кнопка, которую рядовой сотрудник
- * найдёт случайно и начнёт гадать, чьи это имена.
+ * Всплывает по долгому нажатию на эту вкладку и растёт вверх от неё, оттуда
+ * же, где палец. Шторки, заголовка и подписей здесь нет намеренно: людей
+ * узнают по лицу, а всё остальное закрывало бы экран ради списка, который
+ * смотрят две секунды. Нажатие мимо кругов закрывает столбик.
  *
  * Два разных списка за одним жестом:
  *  - ДИРЕКТОРУ показываются ВСЕ работающие сотрудники, независимо от того,
- *    входил ли кто-то с этого телефона. Сессию выдаёт сервер по
- *    `auth.impersonate` — пароли сотрудников для этого не нужны и не
- *    спрашиваются. Каждый такой вход попадает в журнал;
- *  - ОСТАЛЬНЫМ — только те аккаунты, которыми уже входили паролем с этого
+ *    входил ли кто-то с этого телефона. Сессию выдаёт сервер
+ *    (`auth.impersonate`), пароли сотрудников для этого не нужны, и каждый
+ *    такой вход попадает в журнал;
+ *  - ОСТАЛЬНЫМ — только аккаунты, которыми уже входили паролем с этого
  *    телефона и согласились сохранить. Чужую учётную запись рядовой
  *    сотрудник открыть не может, и скрытие тут ни при чём: `impersonate`
  *    откажет любому, кроме директора.
- *
- * Лицо крупнее имени: узнают по фото, а имя читают только при сомнении.
- * Фото может не загрузиться (ссылка подписана и истекает) — тогда круг
- * показывает инициалы, и это не ошибка.
  */
 export function AccountSwitcher({
   visible,
@@ -46,14 +43,15 @@ export function AccountSwitcher({
 }: {
   readonly visible: boolean;
   readonly onClose: () => void;
-}): ReactElement {
+}): ReactElement | null {
   const { user, switchAccount, addAccount, impersonate } = useAuth();
   const isCeo = useIsCeo();
+  const insets = useSafeAreaInsets();
 
   const [accounts, setAccounts] = useState<readonly SavedAccount[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  /* Список сотрудников нужен только директору и только пока шторка открыта:
+  /* Список сотрудников нужен только директору и только пока столбик открыт:
      держать его загруженным ради жеста, который делают раз в день, незачем. */
   const staff = trpc.users.list.useQuery(
     { page: 1, pageSize: 100, isActive: true },
@@ -66,14 +64,26 @@ export function AccountSwitcher({
     { enabled: visible && !isCeo && user !== null },
   );
 
+  const appear = useRef(new Animated.Value(0)).current;
+
   const reload = useCallback(async (): Promise<void> => {
     setAccounts(await accountStorage.list());
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      appear.setValue(0);
+      return;
+    }
+
     void reload();
-  }, [visible, reload]);
+    Animated.spring(appear, {
+      toValue: 1,
+      useNativeDriver: true,
+      bounciness: 6,
+      speed: 18,
+    }).start();
+  }, [visible, reload, appear]);
 
   const staffRows = staff.data?.items ?? [];
   const myAvatarUrl =
@@ -105,7 +115,7 @@ export function AccountSwitcher({
     return true;
   }, [user, myAvatarUrl, reload]);
 
-  /** Общий хвост для обоих способов входа: звук, закрытие, разбор отказа. */
+  /** Общий хвост для обоих способов входа: отклик, закрытие, разбор отказа. */
   const run = (userId: number, action: Promise<void>, onFail: () => void): void => {
     setBusyId(userId);
 
@@ -125,26 +135,6 @@ export function AccountSwitcher({
       .finally(() => {
         setBusyId(null);
       });
-  };
-
-  /** Директор: вход под сотрудником по разрешению сервера. */
-  const handleImpersonate = (userId: number): void => {
-    run(
-      userId,
-      // Свою запись сохраняем ДО обращения к серверу: после переключения
-      // refresh-токен директора из памяти уже не достать.
-      saveCurrent().then(() => impersonate(userId)),
-      () => undefined,
-    );
-  };
-
-  /** Остальные: вход по сохранённому токену. */
-  const handleSwitch = (account: SavedAccount): void => {
-    run(account.userId, switchAccount(account.userId), () => {
-      // Запись мог убрать `switchAccount`: перечитываем, чтобы список не
-      // показывал круг, который заведомо не сработает.
-      void reload();
-    });
   };
 
   /*
@@ -191,9 +181,8 @@ export function AccountSwitcher({
     );
   };
 
-  /* Единый вид строки для обоих списков: у директора — все сотрудники,
-     у остальных — сохранённые входы. Текущий человек в списке не
-     дублируется: он уже стоит сверху, кругом с кольцом. */
+  /* Один вид строки для обоих списков. Себя в столбик не кладём: под собой
+     не переключаются, а лишний круг занимает место остальных. */
   const rows: readonly Row[] = isCeo
     ? staffRows
         .filter((row) => row.id !== user?.id)
@@ -201,9 +190,14 @@ export function AccountSwitcher({
           userId: row.id,
           fullName: row.fullName,
           avatarUrl: row.avatarUrl,
-          jobTitle: row.jobTitle,
           onPress: () => {
-            handleImpersonate(row.id);
+            run(
+              row.id,
+              // Свою запись сохраняем ДО обращения к серверу: после
+              // переключения refresh-токен директора уже не достать.
+              saveCurrent().then(() => impersonate(row.id)),
+              () => undefined,
+            );
           },
         }))
     : accounts
@@ -212,78 +206,97 @@ export function AccountSwitcher({
           userId: account.userId,
           fullName: account.fullName,
           avatarUrl: account.avatarUrl ?? null,
-          jobTitle: null,
           onPress: () => {
-            handleSwitch(account);
+            run(account.userId, switchAccount(account.userId), () => {
+              // Запись мог убрать `switchAccount`: перечитываем, чтобы не
+              // показывать круг, который заведомо не сработает.
+              void reload();
+            });
           },
         }));
 
+  if (!visible) return null;
+
   return (
-    <BottomSheet visible={visible} title="Аккаунты" onClose={onClose}>
-      <ScrollView contentContainerStyle={styles.column} style={styles.scroll}>
-        {user !== null ? (
-          <View style={styles.item}>
-            <Face fullName={user.fullName} avatarUrl={myAvatarUrl} isCurrent />
-            <Text style={styles.name} numberOfLines={1}>
-              {user.fullName}
-            </Text>
-            <Text style={styles.caption}>вы</Text>
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {/* Прозрачный перехватчик: нажатие мимо кругов закрывает столбик. */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Закрыть"
+      />
+
+      <Animated.View
+        style={[
+          styles.column,
+          {
+            // Столбик начинается над панелью вкладок, а не под ней: панель
+            // плавает с отступом от края, и её высоту нужно прибавить.
+            bottom: Math.max(insets.bottom, 10) + TAB_BAR_HEIGHT + spacing.sm,
+            opacity: appear,
+            transform: [
+              {
+                translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }),
+              },
+            ],
+          },
+        ]}
+      >
+        {staff.isLoading ? (
+          <View style={styles.circleShell}>
+            <ActivityIndicator color={colors.accent} />
           </View>
         ) : null}
 
-        {isCeo && staff.isLoading ? <ActivityIndicator color={colors.accent} /> : null}
+        {/* Столбик растёт вверх, поэтому при переполнении прокрутка
+            прижимает список к низу — к тем, кто ближе к пальцу. */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {rows.map((row) => (
+            <Pressable
+              key={row.userId}
+              onPress={row.onPress}
+              disabled={busyId !== null}
+              accessibilityRole="button"
+              accessibilityLabel={`Войти как ${row.fullName}`}
+              style={styles.circleShell}
+            >
+              {busyId === row.userId ? (
+                <View style={styles.busy}>
+                  <ActivityIndicator color={colors.accent} size="small" />
+                </View>
+              ) : (
+                <Avatar
+                  uri={row.avatarUrl}
+                  size={CIRCLE}
+                  style={styles.circle}
+                  fallback={<Text style={styles.initials}>{initials(row.fullName)}</Text>}
+                />
+              )}
+            </Pressable>
+          ))}
 
-        {rows.map((row) => (
-          <Pressable
-            key={row.userId}
-            onPress={row.onPress}
-            disabled={busyId !== null}
-            accessibilityRole="button"
-            accessibilityLabel={`Войти как ${row.fullName}`}
-            style={({ pressed }) => [styles.item, pressed ? styles.pressed : null]}
-          >
-            {busyId === row.userId ? (
-              <View style={styles.circle}>
-                <ActivityIndicator color={colors.accent} size="small" />
+          {/* Директору «Добавить» не нужно: у него и так весь цех в столбике. */}
+          {isCeo ? null : (
+            <Pressable
+              onPress={handleAdd}
+              disabled={busyId !== null}
+              accessibilityRole="button"
+              accessibilityLabel="Добавить аккаунт"
+              style={styles.circleShell}
+            >
+              <View style={[styles.circle, styles.circleAdd]}>
+                <Text style={styles.plus}>+</Text>
               </View>
-            ) : (
-              <Face fullName={row.fullName} avatarUrl={row.avatarUrl} isCurrent={false} />
-            )}
-
-            <Text style={styles.name} numberOfLines={1}>
-              {row.fullName}
-            </Text>
-            {row.jobTitle === null ? null : (
-              <Text style={styles.caption} numberOfLines={1}>
-                {row.jobTitle}
-              </Text>
-            )}
-          </Pressable>
-        ))}
-
-        {/* Директору «Добавить» не нужно: у него и так весь цех перед глазами. */}
-        {isCeo ? null : (
-          <Pressable
-            onPress={handleAdd}
-            disabled={busyId !== null}
-            accessibilityRole="button"
-            accessibilityLabel="Добавить аккаунт"
-            style={({ pressed }) => [styles.item, pressed ? styles.pressed : null]}
-          >
-            <View style={[styles.circle, styles.circleAdd]}>
-              <Text style={styles.plus}>+</Text>
-            </View>
-            <Text style={styles.name}>Добавить</Text>
-          </Pressable>
-        )}
-      </ScrollView>
-
-      <Text style={styles.hint}>
-        {isCeo
-          ? 'Вход под сотрудником — без его пароля. Каждый такой вход записывается в журнал.'
-          : 'Вход без пароля, с этого телефона. Выход из аккаунта убирает его отсюда.'}
-      </Text>
-    </BottomSheet>
+            </Pressable>
+          )}
+        </ScrollView>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -291,47 +304,7 @@ interface Row {
   readonly userId: number;
   readonly fullName: string;
   readonly avatarUrl: string | null;
-  readonly jobTitle: string | null;
   readonly onPress: () => void;
-}
-
-/**
- * Круг с лицом.
- *
- * Ссылка на фото подписана и истекает, а сохранённая запись переживает
- * сутки — поэтому неудача загрузки это обычный случай, а не ошибка:
- * молча возвращаемся к инициалам.
- */
-function Face({
-  fullName,
-  avatarUrl,
-  isCurrent,
-}: {
-  readonly fullName: string;
-  readonly avatarUrl: string | null;
-  readonly isCurrent: boolean;
-}): ReactElement {
-  const [failed, setFailed] = useState(false);
-  const ring = isCurrent ? styles.circleCurrent : null;
-
-  if (avatarUrl === null || failed) {
-    return (
-      <View style={[styles.circle, ring]}>
-        <Text style={styles.initials}>{initials(fullName)}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <Image
-      source={{ uri: avatarUrl }}
-      style={[styles.circle, ring]}
-      onError={() => {
-        setFailed(true);
-      }}
-      accessibilityIgnoresInvertColors
-    />
-  );
 }
 
 function initials(fullName: string): string {
@@ -343,72 +316,73 @@ function initials(fullName: string): string {
     .join('');
 }
 
-const CIRCLE = 68;
+const CIRCLE = 56;
+
+/** Высота плавающей панели вкладок — от неё столбик и отсчитывается. */
+const TAB_BAR_HEIGHT = 64;
 
 const styles = StyleSheet.create({
-  /* Ограничение высоты: со всем цехом лента иначе вытеснила бы подсказку
-     за край экрана. */
+  column: {
+    position: 'absolute',
+    // Над вкладкой «Профиль» — она крайняя справа.
+    right: spacing.lg,
+    alignItems: 'center',
+  },
+  /* Столбик не должен упираться в шапку: с большим цехом список
+     прокручивается, а не уползает под приветствие. */
   scroll: {
     maxHeight: 420,
   },
-  column: {
+  scrollContent: {
     alignItems: 'center',
-    gap: spacing.lg,
-    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    // Список прижат к низу: при переполнении первыми видны ближние к пальцу.
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
-  item: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    alignSelf: 'stretch',
-  },
-  pressed: {
-    opacity: opacity.pressed,
+  circleShell: {
+    // Радиус нужен и подложке, а не только фото: тень повторяет форму
+    // элемента, и без него вокруг каждого лица лежал бы белый прямоугольник.
+    borderRadius: radius.pill,
+    // Тень поверх любого фона: круги лежат на содержимом экрана, и без неё
+    // светлое фото на светлой карточке теряет край.
+    shadowColor: '#0A1A13',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   circle: {
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+    // Белый ободок отделяет круг от того, что под ним.
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  busy: {
     width: CIRCLE,
     height: CIRCLE,
     borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  /* Кольцо у текущего — тем же цветом, что и активная вкладка: «вы здесь». */
-  circleCurrent: {
-    borderWidth: 3,
-    borderColor: colors.accentBright,
-  },
   circleAdd: {
+    width: CIRCLE,
+    height: CIRCLE,
     backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   initials: {
     ...typography.sectionTitle,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.accent,
   },
   plus: {
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 30,
     color: colors.textSecondary,
-  },
-  name: {
-    ...typography.body,
-    color: colors.textPrimary,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  caption: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  hint: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: spacing.md,
-    textAlign: 'center',
   },
 });

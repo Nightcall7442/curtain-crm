@@ -9,8 +9,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, type ReactElement } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { Avatar } from '../components/Avatar';
 import { BirthdayBoard } from '../components/BirthdayBoard';
 import { Card, CardTitle, Empty, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
@@ -153,13 +154,14 @@ export function HomeScreen(): ReactElement {
             }}
             accessibilityRole="button"
             accessibilityLabel="Мой профиль"
-            style={({ pressed }) => [styles.avatar, pressed ? styles.avatarPressed : null]}
+            style={({ pressed }) => (pressed ? styles.avatarPressed : null)}
           >
-            {avatarUrl === null ? (
-              <Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>
-            ) : (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarPhoto} resizeMode="cover" />
-            )}
+            <Avatar
+              uri={avatarUrl}
+              size={44}
+              style={styles.avatar}
+              fallback={<Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>}
+            />
           </Pressable>
         </View>
       </View>
@@ -580,12 +582,6 @@ const styles = StyleSheet.create({
   },
   avatarPressed: {
     opacity: opacity.pressed,
-  },
-  // Снимок кладётся под скруглённую рамку: `overflow` на самой кнопке
-  // обрезает его по кругу, поэтому отдельная обёртка не нужна.
-  avatarPhoto: {
-    width: '100%',
-    height: '100%',
   },
   avatarText: {
     color: colors.headerText,
