@@ -643,6 +643,14 @@
     .marquee-track {
       animation: none;
     }
+
+    .hero-enter {
+      animation-duration: 1ms;
+    }
+
+    .hero-kenburns {
+      animation: none;
+    }
   }
 
   /**
@@ -674,10 +682,52 @@
    * запуска JS секция ниже экрана и так не видна, а если скрипт по какой-то
    * причине не запустится, `<noscript>`-переопределение ниже возвращает
    * обычную видимость: спрятанный навсегда текст хуже отсутствия анимации.
+   *
+   * `useScrollReveal` вдобавок ставит подстраховку по таймеру: браузер
+   * ставит на паузу `requestAnimationFrame` у вкладок, открытых в фоне
+   * (например, ссылку открыли в новой вкладке и не переключились на неё
+   * сразу) — без подстраховки анимация, которая должна была запуститься по
+   * прокрутке, не запускалась бы никогда, и текст оставался бы невидимым.
    */
   .reveal-item {
     opacity: 0;
     transform: translateY(28px);
+  }
+
+  /**
+   * Появление героя и «дыхание» его фона — то, что видно СРАЗУ, без единой
+   * прокрутки. Поэтому это чистый CSS, а не `animejs`: анимация на
+   * `transform`/`opacity` через `@keyframes` идёт по композитному потоку
+   * браузера и не останавливается вместе с `requestAnimationFrame` в
+   * свёрнутой или фоновой вкладке — а первый экран обязан появиться, даже
+   * если ссылку открыли в фоновой вкладке и не сразу в неё заглянули.
+   */
+  .hero-enter {
+    animation: hero-enter 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes hero-enter {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .hero-kenburns {
+    animation: hero-kenburns 18s ease-in-out infinite alternate;
+  }
+
+  @keyframes hero-kenburns {
+    from {
+      transform: scale(1);
+    }
+    to {
+      transform: scale(1.06);
+    }
   }
 
   /**

@@ -104,26 +104,55 @@ function useScrollReveal(options?: {
       return;
     }
 
+    let revealed = false;
+    const reveal = (): void => {
+      if (revealed) return;
+      revealed = true;
+      clearTimeout(fallbackTimer);
+      observer.disconnect();
+
+      animate(items, {
+        opacity: [0, 1],
+        translateY: [28, 0],
+        duration: 800,
+        delay: stagger(staggerMs),
+        ease,
+      });
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        if (entry === undefined || !entry.isIntersecting) return;
-
-        animate(items, {
-          opacity: [0, 1],
-          translateY: [28, 0],
-          duration: 800,
-          delay: stagger(staggerMs),
-          ease,
-        });
-        observer.disconnect();
+        if (entry?.isIntersecting === true) reveal();
       },
       { threshold: 0.15 },
     );
-
     observer.observe(root);
+
+    /*
+      Подстраховка по таймеру, без анимации: просто ставит конечные значения.
+
+      `IntersectionObserver` сам по себе не пострадал бы от фоновой вкладки —
+      он не зависит от `requestAnimationFrame`. Но АНИМАЦИЯ, которую он
+      запускает, зависит, и в браузере, поставившем rAF вкладки на паузу
+      (та же история, что и у героя, только здесь секция ждёт прокрутки, а
+      не появляется сразу), твин заморозился бы на первом кадре — опять
+      невидимый текст, только теперь ниже по странице. Пять секунд — заведомо
+      больше, чем нужно настоящему проявлению по прокрутке.
+    */
+    const fallbackTimer = window.setTimeout(() => {
+      if (revealed) return;
+      revealed = true;
+      observer.disconnect();
+      for (const item of items) {
+        item.style.opacity = '1';
+        item.style.transform = 'none';
+      }
+    }, 5000);
+
     return () => {
       observer.disconnect();
+      clearTimeout(fallbackTimer);
     };
   }, [staggerMs, ease]);
 
@@ -242,53 +271,32 @@ const NAV_LINKS = [
  * прокрутке: он и так на экране в первый момент, дожидаться пересечения
  * с областью видимости здесь не нужно и не сработало бы.
  */
+/**
+ * Задержка запуска для N-го элемента героя, строкой для `animationDelay`.
+ * Считается один раз при рендере — это обычное свойство разметки, а не
+ * состояние, которое нужно применять эффектом.
+ */
+const heroDelay = (index: number): string => `${(150 + index * 120).toString()}ms`;
+
 function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
-  const rootRef = useRef<HTMLElement | null>(null);
-  const imageRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const root = rootRef.current;
-    const imageWrap = imageRef.current;
-    if (root === null) return;
-
-    const items = root.querySelectorAll<HTMLElement>('.reveal-item');
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (reduceMotion) {
-      utils.set(items, { opacity: 1, translateY: 0 });
-      return;
-    }
-
-    animate(items, {
-      opacity: [0, 1],
-      translateY: [24, 0],
-      duration: 900,
-      delay: stagger(120, { start: 150 }),
-      ease: 'outQuad',
-    });
-
-    // Медленное «дыхание» фотографии — классический приём витрины интерьера:
-    // кадр не статичен, но движение настолько плавное, что не отвлекает от
-    // заголовка. `alternate` без ограничения повторов — эффект длится, пока
-    // человек на странице, а не заканчивается через одну итерацию.
-    if (imageWrap !== null) {
-      animate(imageWrap, {
-        scale: [1, 1.06],
-        duration: 16000,
-        direction: 'alternate',
-        loop: true,
-        ease: 'inOutSine',
-      });
-    }
-  }, []);
-
   return (
-    <section
-      id="top"
-      ref={rootRef}
-      className="relative flex min-h-[680px] items-center overflow-hidden"
-    >
-      <div ref={imageRef} className="absolute inset-0">
+    <section id="top" className="relative flex min-h-[680px] items-center overflow-hidden">
+      {/*
+        Появление героя и «дыхание» фона — чистый CSS (`.hero-enter`,
+        `.hero-kenburns` в globals.css), а не `animejs`.
+
+        Это единственное место на странице, которое видно СРАЗУ, без единой
+        прокрутки, и полагаться здесь на `requestAnimationFrame` рискованно:
+        браузер ставит его на паузу во вкладках, открытых в фоне — например,
+        ссылку открыли средней кнопкой мыши и не сразу переключились на неё.
+        `animejs`-анимация в такой вкладке замерла бы на невидимом первом
+        кадре и осталась бы такой, даже когда на вкладку наконец посмотрят.
+        CSS-анимация на `transform`/`opacity` идёт по композитному потоку и
+        такой паузы не замечает — ровно поэтому ниже по странице, где
+        появление ждёт прокрутки (а значит, вкладка уже открыта и активна),
+        используется `animejs` без этой оговорки.
+      */}
+      <div className="hero-kenburns absolute inset-0">
         <Image
           src={unsplash(PHOTOS.hero, 1600)}
           alt={copy.heroImageAlt}
@@ -303,17 +311,29 @@ function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
       <div className="absolute inset-0 bg-gradient-to-r from-[rgb(11_20_16_/_0.86)] via-[rgb(11_20_16_/_0.58)] to-[rgb(11_20_16_/_0.18)]" />
 
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-7 px-6 py-24">
-        <span className="reveal-item text-overline font-semibold uppercase tracking-[0.22em] text-white/70">
+        <span
+          className="hero-enter text-overline font-semibold uppercase tracking-[0.22em] text-white/70"
+          style={{ animationDelay: heroDelay(0) }}
+        >
           {copy.heroEyebrow}
         </span>
-        <h1 className="reveal-item max-w-3xl font-editorial text-[42px] leading-[1.08] tracking-[-0.01em] text-white sm:text-[58px] lg:text-[66px]">
+        <h1
+          className="hero-enter max-w-3xl font-editorial text-[42px] leading-[1.08] tracking-[-0.01em] text-white sm:text-[58px] lg:text-[66px]"
+          style={{ animationDelay: heroDelay(1) }}
+        >
           {copy.heroTitle}
         </h1>
-        <p className="reveal-item max-w-xl text-body leading-relaxed text-white/80">
+        <p
+          className="hero-enter max-w-xl text-body leading-relaxed text-white/80"
+          style={{ animationDelay: heroDelay(2) }}
+        >
           {copy.heroSubtitle}
         </p>
 
-        <div className="reveal-item mt-2 flex flex-wrap items-center gap-4">
+        <div
+          className="hero-enter mt-2 flex flex-wrap items-center gap-4"
+          style={{ animationDelay: heroDelay(3) }}
+        >
           <a
             href="#contact"
             className="pressable rounded-tile bg-accent-bright px-6 py-3 text-caption font-semibold text-on-accent shadow-glow"
