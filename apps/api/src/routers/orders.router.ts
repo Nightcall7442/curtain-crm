@@ -578,9 +578,25 @@ export const ordersRouter = router({
           workPrice: moneySchema.default(0),
           deposit: moneySchema.default(0),
 
-          model: optionalText(200),
-          quantity: z.number().int().positive().max(1000).default(1),
-          comment: optionalText(500),
+          /**
+           * Позиции продажи.
+           *
+           * Раньше здесь было одно поле «модель» на весь заказ: считалось,
+           * что готовые шторы отдают комплектом. На деле в одну продажу
+           * попадает и комплект, и тюль, и карниз — и всё это уезжало в
+           * одну строку текстом, после чего в отчёте нельзя было понять,
+           * что именно продано.
+           */
+          items: z
+            .array(
+              z.object({
+                model: optionalText(200),
+                quantity: z.number().int().positive().max(1000).default(1),
+                comment: optionalText(500),
+              }),
+            )
+            .min(1, 'Добавьте хотя бы одну позицию')
+            .max(20, 'Слишком много позиций в одной продаже'),
 
           needsInstallation: z.boolean(),
           /* Расценки установщику здесь нет — её назначает руководство,
@@ -637,22 +653,24 @@ export const ordersRouter = router({
           });
         }
 
-        await tx.insert(orderItems).values([
-          toOrderItemValues(
-            {
-              kind: OrderItemKind.OTHER,
-              materials: [],
-              materialOptions: [],
-              hasProtection: false,
-              accessories: [],
-              quantity: input.quantity,
-              ...(input.model === undefined ? {} : { model: input.model }),
-              ...(input.comment === undefined ? {} : { comment: input.comment }),
-            },
-            created.id,
-            0,
+        await tx.insert(orderItems).values(
+          input.items.map((item, index) =>
+            toOrderItemValues(
+              {
+                kind: OrderItemKind.OTHER,
+                materials: [],
+                materialOptions: [],
+                hasProtection: false,
+                accessories: [],
+                quantity: item.quantity,
+                ...(item.model === undefined ? {} : { model: item.model }),
+                ...(item.comment === undefined ? {} : { comment: item.comment }),
+              },
+              created.id,
+              index,
+            ),
           ),
-        ]);
+        );
 
         await tx.insert(orderStatusHistory).values({
           orderId: created.id,

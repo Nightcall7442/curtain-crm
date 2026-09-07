@@ -68,10 +68,16 @@ export function SellReadyMadeDialog({
       clientPhone: clientPhone.trim(),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
-      quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
       needsInstallation,
-      ...(model.trim().length > 0 ? { model: model.trim() } : {}),
-      ...(comment.trim().length > 0 ? { comment: comment.trim() } : {}),
+      /* Одна позиция: несколько строк в продаже набирают в мобильном
+         приложении, за кассой. Здесь форма осталась прежней. */
+      items: [
+        {
+          quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
+          ...(model.trim().length > 0 ? { model: model.trim() } : {}),
+          ...(comment.trim().length > 0 ? { comment: comment.trim() } : {}),
+        },
+      ],
       ...(needsInstallation
         ? {
             installAddress: installAddress.trim(),

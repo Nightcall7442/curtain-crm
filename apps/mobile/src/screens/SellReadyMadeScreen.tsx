@@ -1,5 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,19 +12,28 @@ import {
   View,
 } from 'react-native';
 
+import { CatalogKind } from '@curtain-crm/shared';
+
 import { Card, CardTitle } from '../components/Card';
+import { CatalogPicker } from '../components/CatalogPicker';
 import { ChipSelect, Field, Input } from '../components/Field';
+import { Icon } from '../components/Icon';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Продажа готовых штор — товар с витрины, минуя цех.
  *
  * У мастерской два разных бизнеса: пошив на заказ (полный конвейер —
  * замер, раскрой, шитьё, контроль) и готовые шторы, которые продавец
- * отдаёт клиенту сразу. Цикл цеха здесь не нужен вовсе, поэтому форма
- * не спрашивает ни модели изделия из каталога, ни этапов — только то,
- * что нужно для продажи и, при необходимости, для установки.
+ * отдаёт клиенту сразу. Цикл цеха здесь не нужен вовсе, поэтому форма не
+ * спрашивает ни размеров, ни материалов, ни этапов — только то, что нужно
+ * для продажи и, при необходимости, для установки.
+ *
+ * Позиций может быть несколько, и модель берётся из справочника — того же,
+ * что и в заказе на пошив. Раньше было одно свободное поле на всю продажу:
+ * комплект, тюль и карниз уезжали в одну строку текстом, и в отчёте нельзя
+ * было понять, что именно продано.
  *
  * Развилка «нужна ли установка» — единственное ветвление формы:
  *  - «Нет» — заказ закрывается тем же нажатием, установку никто не ждёт;
@@ -40,14 +49,33 @@ export function SellReadyMadeScreen(): ReactElement {
 
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
-  const [model, setModel] = useState('');
-  const [quantity, setQuantity] = useState('1');
+  const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
-  const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState<'no' | 'yes'>('no');
   const [installAddress, setInstallAddress] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+
+  /*
+    Модельный ряд — тот же справочник, что и в заказе на пошив
+    (`catalog_items`, вид `curtain_model`), который директор ведёт в
+    веб-панели. Раньше здесь было свободное поле: продавец писал модель
+    как помнил, и одна и та же штора в отчётах называлась тремя способами.
+  */
+  const catalog = trpc.catalog.list.useQuery({});
+  const modelOptions = useMemo(
+    () =>
+      (catalog.data ?? [])
+        .filter((entry) => entry.kind === CatalogKind.CURTAIN_MODEL)
+        .map((entry) => entry.name),
+    [catalog.data],
+  );
+
+  const updateItem = (id: number, patch: Partial<DraftItem>): void => {
+    setItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  };
 
   const sell = trpc.orders.sellReadyMade.useMutation({
     async onSuccess(order) {
@@ -77,10 +105,12 @@ export function SellReadyMadeScreen(): ReactElement {
       clientPhone: clientPhone.trim(),
       workPrice: toMoney(workPrice),
       deposit: toMoney(deposit),
-      quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
       needsInstallation: needsInstallation === 'yes',
-      ...(model.trim() === '' ? {} : { model: model.trim() }),
-      ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
+      items: items.map((item) => ({
+        quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
+        ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
+        ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
+      })),
       ...(needsInstallation === 'yes'
         ? {
             installAddress: installAddress.trim(),
@@ -125,12 +155,13 @@ export function SellReadyMadeScreen(): ReactElement {
           </Field>
         </Card>
 
+        {/*
+          Деньги — на всю продажу, а не на позицию: так же, как в заказе на
+          пошив. Клиент платит одну сумму и оставляет один задаток, и
+          раскладывать их по строкам продавцу на кассе не нужно.
+        */}
         <Card>
-          <CardTitle title="Товар" icon="window" />
-
-          <Field label="Что продано" hint="Например, «Готовый комплект, бежевый»">
-            <Input value={model} onChangeText={setModel} placeholder="Модель или описание" />
-          </Field>
+          <CardTitle title="Оплата" icon="paid" />
 
           <View style={styles.money}>
             <View style={styles.moneyItem}>
@@ -153,27 +184,88 @@ export function SellReadyMadeScreen(): ReactElement {
                 />
               </Field>
             </View>
-            <View style={styles.quantityItem}>
-              <Field label="Кол-во">
-                <Input
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="number-pad"
-                  placeholder="1"
-                />
-              </Field>
-            </View>
           </View>
-
-          <Field label="Комментарий">
-            <Input
-              value={comment}
-              onChangeText={setComment}
-              placeholder="Что важно помнить по этой продаже"
-              multiline
-            />
-          </Field>
         </Card>
+
+        {items.map((item, index) => (
+          <Card key={item.id}>
+            <CardTitle
+              title={`Позиция ${(index + 1).toString()}`}
+              icon="window"
+              action={
+                items.length > 1 ? (
+                  <Pressable
+                    onPress={() => {
+                      setItems((current) => current.filter((entry) => entry.id !== item.id));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Удалить позицию ${(index + 1).toString()}`}
+                    hitSlop={8}
+                  >
+                    {({ pressed }) => (
+                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>Удалить</Text>
+                    )}
+                  </Pressable>
+                ) : undefined
+              }
+            />
+
+            <View style={styles.row}>
+              <View style={styles.modelItem}>
+                <Field label="Модель">
+                  <CatalogPicker
+                    value={item.model}
+                    placeholder="Не выбрана"
+                    options={modelOptions}
+                    sheetTitle="Модельный ряд"
+                    onChange={(model) => {
+                      updateItem(item.id, { model });
+                    }}
+                  />
+                </Field>
+              </View>
+              <View style={styles.quantityItem}>
+                <Field label="Кол-во">
+                  <Input
+                    value={item.quantity}
+                    onChangeText={(quantity) => {
+                      updateItem(item.id, { quantity });
+                    }}
+                    keyboardType="number-pad"
+                    placeholder="1"
+                  />
+                </Field>
+              </View>
+            </View>
+
+            <Field label="Комментарий">
+              <Input
+                value={item.comment}
+                onChangeText={(comment) => {
+                  updateItem(item.id, { comment });
+                }}
+                placeholder="Что важно помнить по этой позиции"
+                multiline
+              />
+            </Field>
+          </Card>
+        ))}
+
+        <Pressable
+          onPress={() => {
+            setItems((current) => [
+              ...current,
+              // Идентификатор от максимума, а не от длины: после удаления
+              // позиции длина повторяется, и ключи списка начинают совпадать.
+              emptyItem(current.reduce((max, entry) => Math.max(max, entry.id), 0) + 1),
+            ]);
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.addItem, pressed ? styles.pressed : null]}
+        >
+          <Icon name="assigned" size={18} color={colors.accent} />
+          <Text style={styles.addItemText}>Добавить позицию</Text>
+        </Pressable>
 
         <Card>
           <CardTitle title="Установка" icon="deadline" />
@@ -237,6 +329,16 @@ export function SellReadyMadeScreen(): ReactElement {
 
 /* -------------------------------------------------------------------------- */
 
+/** Позиция в форме: строки, потому что поля ввода отдают строки. */
+interface DraftItem {
+  readonly id: number;
+  readonly model: string;
+  readonly quantity: string;
+  readonly comment: string;
+}
+
+const emptyItem = (id: number): DraftItem => ({ id, model: '', quantity: '1', comment: '' });
+
 function validate(values: {
   readonly clientName: string;
   readonly clientPhone: string;
@@ -283,8 +385,37 @@ const styles = StyleSheet.create({
   moneyItem: {
     flex: 1,
   },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modelItem: {
+    flex: 1,
+    minWidth: 0,
+  },
   quantityItem: {
     width: 80,
+  },
+  remove: {
+    ...typography.footnote,
+    color: colors.danger,
+    fontWeight: '600',
+  },
+  addItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: hairline,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  addItemText: {
+    ...typography.body,
+    color: colors.accentStrong,
+    fontWeight: '600',
   },
   hint: {
     ...typography.footnote,
