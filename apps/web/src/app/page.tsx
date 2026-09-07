@@ -2,7 +2,7 @@
 
 import { DEPARTMENT_LABELS, formatPhone, toTelHref, type Department } from '@curtain-crm/shared';
 import { animate, stagger, utils } from 'animejs';
-import { MapPin } from 'lucide-react';
+import { ArrowRight, Gem, Home, MapPin, Settings2, Sparkles, Star, Users } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, type ReactElement, type RefObject } from 'react';
@@ -55,11 +55,12 @@ export default function LandingPage(): ReactElement {
 
       <main>
         <Hero copy={c} />
+        <Styles copy={c} />
+        <StatsBand copy={c} />
         <Marquee copy={c} />
         <About copy={c} />
         <Process copy={c} />
         <Team copy={c} locale={locale} />
-        <Gallery copy={c} />
         <Contact copy={c} />
       </main>
 
@@ -255,10 +256,10 @@ function SiteHeader({
 }
 
 const NAV_LINKS = [
+  { key: 'styles', href: '#styles' },
   { key: 'about', href: '#about' },
   { key: 'process', href: '#process' },
   { key: 'team', href: '#team' },
-  { key: 'gallery', href: '#gallery' },
   { key: 'contact', href: '#contact' },
 ] as const satisfies readonly { key: keyof LandingCopy['nav']; href: string }[];
 
@@ -270,83 +271,118 @@ const NAV_LINKS = [
  * Герой — единственное место с анимацией, которая играет СРАЗУ, а не по
  * прокрутке: он и так на экране в первый момент, дожидаться пересечения
  * с областью видимости здесь не нужно и не сработало бы.
+ *
+ * Композиция — по референсу владельца: тёмная панель слева (знак, заголовок,
+ * значки преимуществ, кнопка) и фотография интерьера справа во всю высоту,
+ * а не текст поверх затемнённого снимка, как было раньше. Тёмная панель —
+ * тот же `bg-nav`, что и в остальной панели: свой цвет здесь не заводится.
  */
-/**
- * Задержка запуска для N-го элемента героя, строкой для `animationDelay`.
- * Считается один раз при рендере — это обычное свойство разметки, а не
- * состояние, которое нужно применять эффектом.
- */
+
+/** Задержка запуска для N-го элемента героя, строкой для `animationDelay`. */
 const heroDelay = (index: number): string => `${(150 + index * 120).toString()}ms`;
+
+/**
+ * Золотой акцент — только здесь, только для героя и полосы показателей.
+ *
+ * Не заведён в `tailwind.config.ts` как токен: акцент всей панели зелёный
+ * (`accent`, «Хвоя»), и он никак не должен звать себя туда, где кнопка
+ * входа или карточка заказа этот же класс возьмут по имени. Здесь это
+ * ровно то, чем и названо — цвет одного конкретного места.
+ */
+const GOLD = '#C9A227';
+const GOLD_LIGHT = '#E4C77A';
+
+const HERO_BADGE_ICONS = [Gem, Sparkles, Settings2, Home] as const;
 
 function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
   return (
-    <section id="top" className="relative flex min-h-[680px] items-center overflow-hidden">
-      {/*
-        Появление героя и «дыхание» фона — чистый CSS (`.hero-enter`,
-        `.hero-kenburns` в globals.css), а не `animejs`.
+    <section id="top" className="grid overflow-hidden lg:grid-cols-[minmax(0,480px)_1fr]">
+      {/* Левая панель: тёмно-зелёная, как шапка панели (`bg-nav`) — не новый
+          цвет, а тот же самый, что уже используется под навигацией. */}
+      <div className="relative flex flex-col gap-8 bg-nav px-8 py-14 text-nav-text sm:px-12 lg:px-14 lg:py-20">
+        <a
+          href="#top"
+          className="hero-enter flex flex-col items-start gap-3"
+          style={{ animationDelay: heroDelay(0) }}
+        >
+          <span
+            aria-hidden
+            className="block h-[70px] w-[110px] bg-current"
+            style={{
+              color: GOLD_LIGHT,
+              WebkitMaskImage: 'url(/logo.png)',
+              maskImage: 'url(/logo.png)',
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              WebkitMaskPosition: 'left',
+              maskPosition: 'left',
+            }}
+          />
+          {/* Название «Design House» уже впечатано в сам файл знака — вторая
+              подпись тем же текстом рядом читалась бы как повтор. Здесь
+              только то, чего в файле нет: тег ассортимента. */}
+          <span className="text-footnote uppercase tracking-[0.3em] text-nav-text/60">
+            {copy.heroWordmarkTagline}
+          </span>
+        </a>
 
-        Это единственное место на странице, которое видно СРАЗУ, без единой
-        прокрутки, и полагаться здесь на `requestAnimationFrame` рискованно:
-        браузер ставит его на паузу во вкладках, открытых в фоне — например,
-        ссылку открыли средней кнопкой мыши и не сразу переключились на неё.
-        `animejs`-анимация в такой вкладке замерла бы на невидимом первом
-        кадре и осталась бы такой, даже когда на вкладку наконец посмотрят.
-        CSS-анимация на `transform`/`opacity` идёт по композитному потоку и
-        такой паузы не замечает — ровно поэтому ниже по странице, где
-        появление ждёт прокрутки (а значит, вкладка уже открыта и активна),
-        используется `animejs` без этой оговорки.
-      */}
-      <div className="hero-kenburns absolute inset-0">
+        <div
+          className="hero-enter flex flex-col gap-4"
+          style={{ animationDelay: heroDelay(1) }}
+        >
+          <h1 className="font-editorial text-[38px] leading-[1.12] tracking-[-0.01em] sm:text-[46px]">
+            {copy.heroTitleLead}
+            <br />
+            <span style={{ color: GOLD_LIGHT }}>{copy.heroTitleAccent}</span>
+          </h1>
+          <p className="max-w-sm text-body leading-relaxed text-nav-text/75">
+            {copy.heroSubtitle}
+          </p>
+        </div>
+
+        <div
+          className="hero-enter grid grid-cols-2 gap-x-4 gap-y-5"
+          style={{ animationDelay: heroDelay(2) }}
+        >
+          {copy.heroBadges.map((badge, index) => {
+            const BadgeIcon = HERO_BADGE_ICONS[index] ?? Gem;
+            return (
+              <div key={badge} className="flex flex-col items-start gap-2">
+                <span
+                  className="grid h-10 w-10 place-items-center rounded-full border"
+                  style={{ borderColor: `${GOLD}66`, color: GOLD_LIGHT }}
+                >
+                  <BadgeIcon className="h-[18px] w-[18px]" aria-hidden />
+                </span>
+                <span className="text-footnote leading-snug text-nav-text/80">{badge}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <a
+          href="#styles"
+          className="hero-enter pressable inline-flex w-fit items-center gap-2 rounded-tile px-6 py-3 text-caption font-semibold uppercase tracking-[0.08em] text-nav"
+          style={{ animationDelay: heroDelay(3), backgroundColor: GOLD_LIGHT }}
+        >
+          {copy.heroCtaPrimary}
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </a>
+      </div>
+
+      {/* Фото — во всю высоту секции, без затемнения: текст теперь не лежит
+          поверх него, и гасить контраст снимка незачем. */}
+      <div className="hero-kenburns relative min-h-[360px] lg:min-h-[640px]">
         <Image
           src={unsplash(PHOTOS.hero, 1600)}
           alt={copy.heroImageAlt}
           fill
           priority
-          sizes="100vw"
+          sizes="(min-width: 1024px) 60vw, 100vw"
           className="object-cover"
         />
-      </div>
-      {/* Затемнение слева направо: заголовок стоит слева, и текст на светлом
-          участке фотографии терял бы контраст без него. */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[rgb(11_20_16_/_0.86)] via-[rgb(11_20_16_/_0.58)] to-[rgb(11_20_16_/_0.18)]" />
-
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-7 px-6 py-24">
-        <span
-          className="hero-enter text-overline font-semibold uppercase tracking-[0.22em] text-white/70"
-          style={{ animationDelay: heroDelay(0) }}
-        >
-          {copy.heroEyebrow}
-        </span>
-        <h1
-          className="hero-enter max-w-3xl font-editorial text-[42px] leading-[1.08] tracking-[-0.01em] text-white sm:text-[58px] lg:text-[66px]"
-          style={{ animationDelay: heroDelay(1) }}
-        >
-          {copy.heroTitle}
-        </h1>
-        <p
-          className="hero-enter max-w-xl text-body leading-relaxed text-white/80"
-          style={{ animationDelay: heroDelay(2) }}
-        >
-          {copy.heroSubtitle}
-        </p>
-
-        <div
-          className="hero-enter mt-2 flex flex-wrap items-center gap-4"
-          style={{ animationDelay: heroDelay(3) }}
-        >
-          <a
-            href="#contact"
-            className="pressable rounded-tile bg-accent-bright px-6 py-3 text-caption font-semibold text-on-accent shadow-glow"
-          >
-            {copy.heroCtaPrimary}
-          </a>
-          <a
-            href="#process"
-            className="pressable rounded-tile border border-white/30 px-6 py-3 text-caption font-semibold text-white hover:bg-white/10"
-          >
-            {copy.heroCtaSecondary}
-          </a>
-        </div>
       </div>
     </section>
   );
@@ -597,56 +633,97 @@ function TeamCard({
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                   Галерея                                  */
+/*                                   Стили                                    */
 /* -------------------------------------------------------------------------- */
 
-function Gallery({ copy }: { readonly copy: LandingCopy }): ReactElement {
-  const ref = useScrollReveal({ stagger: 80 });
+/**
+ * Витрина стилей — по которым мастерская реально делит шторы (подтверждено
+ * владельцем, не придумано для страницы). Шесть карточек, а не галерея без
+ * подписей: клиент, который уже знает, что ищет «минимализм» или «хай-тек»,
+ * находит это одним взглядом, а не листает случайные интерьеры.
+ */
+function Styles({ copy }: { readonly copy: LandingCopy }): ReactElement {
+  const ref = useScrollReveal({ stagger: 70 });
 
   return (
-    <section id="gallery" ref={ref} className="bg-panel py-24">
+    <section id="styles" ref={ref} className="bg-panel py-24">
       <div className="mx-auto max-w-6xl px-6">
         <div className="reveal-item mb-12 flex flex-col gap-3">
-          <span className="section-title">{copy.galleryEyebrow}</span>
+          <span className="section-title">{copy.stylesEyebrow}</span>
           <h2 className="font-editorial text-[32px] leading-tight sm:text-[38px]">
-            {copy.galleryTitle}
+            {copy.stylesTitle}
           </h2>
         </div>
 
-        {/* Первый снимок — на два столбца и обе строки: даёт сетке акцент,
-            вместо ряда одинаковых плиток. */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-          {PHOTOS.gallery.map((id, index) => {
-            const alt = copy.galleryAlts[index] ?? copy.galleryTitle;
-            return (
-              <div
-                key={id}
-                className={cn(
-                  'reveal-item group relative overflow-hidden rounded-panel bg-raised',
-                  index === 0 ? 'col-span-2 row-span-2 aspect-square' : 'aspect-square',
-                )}
-              >
-                <Image
-                  src={unsplash(id, index === 0 ? 900 : 500)}
-                  alt={alt}
-                  fill
-                  sizes={
-                    index === 0 ? '(min-width: 640px) 480px, 100vw' : '(min-width: 640px) 240px, 50vw'
-                  }
-                  className="object-cover transition-transform duration-500 group-hover:scale-110"
-                />
-                {/* Подпись всплывает на наведении, а не лежит на снимке
-                    всегда: с ней фотография отдыхает от текста, которого
-                    и так много на странице. */}
-                <div className="absolute inset-x-0 bottom-0 translate-y-full bg-gradient-to-t from-black/75 to-transparent p-4 transition-transform duration-300 group-hover:translate-y-0">
-                  <p className="text-footnote leading-snug text-white">{alt}</p>
-                </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+          {copy.styles.map((style) => (
+            <div
+              key={style.name}
+              className="reveal-item group relative aspect-[3/4] overflow-hidden rounded-panel bg-raised"
+            >
+              <Image
+                src={unsplash(PHOTOS.styles[style.photo], 500)}
+                alt={style.caption}
+                fill
+                sizes="(min-width: 1024px) 200px, (min-width: 640px) 240px, 50vw"
+                className="object-cover transition-transform duration-500 group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4">
+                <p className="text-caption font-bold uppercase tracking-[0.06em] text-white">
+                  {style.name}
+                </p>
+                <p className="text-footnote leading-snug text-white/75">{style.caption}</p>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Полоса показателей                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ЗАГЛУШКА: значения — прочерки. Настоящие цифры (клиенты, коллекции
+ * тканей, годы на рынке) должен дать владелец — писать на публичной
+ * странице числа, которые никто не проверял, значит выдавать догадку за
+ * факт о его бизнесе, а это не мне решать.
+ */
+const STATS_PLACEHOLDER = '—';
+
+function StatsBand({ copy }: { readonly copy: LandingCopy }): ReactElement {
+  const stats = [
+    { icon: Users, value: STATS_PLACEHOLDER, label: copy.statsClientsLabel },
+    { icon: Gem, value: STATS_PLACEHOLDER, label: copy.statsFabricsLabel },
+    { icon: Star, value: STATS_PLACEHOLDER, label: copy.statsYearsLabel },
+  ] as const;
+
+  return (
+    <div className="border-y border-subtle bg-nav">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-x-10 gap-y-6">
+          {stats.map((stat) => (
+            <div key={stat.label} className="flex items-center gap-3">
+              <stat.icon className="h-5 w-5" style={{ color: GOLD_LIGHT }} aria-hidden />
+              <div>
+                <p className="font-editorial text-[22px] leading-none text-nav-text">
+                  {stat.value}
+                </p>
+                <p className="text-footnote text-nav-text/60">{stat.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-overline font-semibold uppercase tracking-[0.2em] text-nav-text/60">
+          {copy.statsTagline}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -715,14 +792,21 @@ function SiteFooter({ copy }: { readonly copy: LandingCopy }): ReactElement {
 const PHOTOS = {
   hero: '1659282386282-d7145e593bad',
   about: '1578353022142-09264fd64295',
-  gallery: [
-    '1577926606472-fc6d3a33f7e1',
-    '1577926382659-d34e9430e853',
-    '1664112742143-6aa92230d9c6',
-    '1617617495640-153230cf3408',
-    '1706817969183-908d5b67d465',
-    '1601000785676-f9b0ade234d3',
-  ],
+  /**
+   * По одному снимку на реальную категорию мастерской. Из-за временной
+   * недоступности поиска на unsplash.com (сам CDN картинок работает)
+   * фотографии подобраны из уже проверенных снимков этой же страницы —
+   * ближе всего к настроению стиля, но не идеальный подбор для «Хай-тек»,
+   * это стоит заменить, когда поиск снова станет доступен.
+   */
+  styles: {
+    neoClassic: '1601000785676-f9b0ade234d3',
+    classic: '1577926382659-d34e9430e853',
+    modern: '1617617495640-153230cf3408',
+    minimal: '1706817969183-908d5b67d465',
+    hiTech: '1664112742143-6aa92230d9c6',
+    premium: '1577926606472-fc6d3a33f7e1',
+  },
 } as const;
 
 function unsplash(id: string, width: number): string {
@@ -749,21 +833,35 @@ interface ProcessStep {
   readonly description: string;
 }
 
+interface StyleCard {
+  readonly name: string;
+  readonly caption: string;
+  readonly photo: keyof (typeof PHOTOS)['styles'];
+}
+
 interface LandingCopy {
   readonly nav: {
+    readonly styles: string;
     readonly about: string;
     readonly process: string;
     readonly team: string;
-    readonly gallery: string;
     readonly contact: string;
   };
   readonly staffLogin: string;
-  readonly heroEyebrow: string;
-  readonly heroTitle: string;
+  readonly heroWordmarkTagline: string;
+  readonly heroTitleLead: string;
+  readonly heroTitleAccent: string;
   readonly heroSubtitle: string;
+  readonly heroBadges: readonly string[];
   readonly heroCtaPrimary: string;
-  readonly heroCtaSecondary: string;
   readonly heroImageAlt: string;
+  readonly stylesEyebrow: string;
+  readonly stylesTitle: string;
+  readonly styles: readonly StyleCard[];
+  readonly statsClientsLabel: string;
+  readonly statsFabricsLabel: string;
+  readonly statsYearsLabel: string;
+  readonly statsTagline: string;
   readonly aboutEyebrow: string;
   readonly aboutStatement: string;
   readonly aboutParagraph: string;
@@ -775,9 +873,6 @@ interface LandingCopy {
   readonly teamEyebrow: string;
   readonly teamTitle: string;
   readonly teamSubtitle: string;
-  readonly galleryEyebrow: string;
-  readonly galleryTitle: string;
-  readonly galleryAlts: readonly string[];
   readonly contactTitle: string;
   readonly contactSubtitle: string;
   readonly contactCity: string;
@@ -785,15 +880,29 @@ interface LandingCopy {
 
 const COPY: Record<'ru' | 'uz', LandingCopy> = {
   ru: {
-    nav: { about: 'О нас', process: 'Как мы работаем', team: 'Команда', gallery: 'Работы', contact: 'Контакты' },
+    nav: { styles: 'Стили', about: 'О нас', process: 'Как мы работаем', team: 'Команда', contact: 'Контакты' },
     staffLogin: 'Вход для сотрудников',
-    heroEyebrow: 'Пошив штор на заказ',
-    heroTitle: 'Шторы, сшитые под ваши окна, а не подогнанные под них',
-    heroSubtitle:
-      'Замер, ткань, пошив и установка — всё в одной мастерской в Ташкенте. Каждый заказ проходит контроль качества, прежде чем поехать к вам домой.',
-    heroCtaPrimary: 'Обсудить заказ',
-    heroCtaSecondary: 'Как мы работаем',
-    heroImageAlt: 'Бордовые шторы у арочного окна',
+    heroWordmarkTagline: 'Curtains & Accessories',
+    heroTitleLead: 'Больше, чем просто',
+    heroTitleAccent: 'шторы',
+    heroSubtitle: 'Создаём уют, стиль и атмосферу в вашем доме.',
+    heroBadges: ['Премиальные ткани', 'Индивидуальный пошив', 'Профессиональная установка', 'Комплексные решения'],
+    heroCtaPrimary: 'Смотреть стили',
+    heroImageAlt: 'Гостиная с золотистыми портьерами и тюлем у панорамного окна',
+    stylesEyebrow: 'Каталог',
+    stylesTitle: 'Шесть стилей — один почерк мастерской',
+    styles: [
+      { name: 'Neo Classic', caption: 'Элегантность в каждой детали', photo: 'neoClassic' },
+      { name: 'Classic', caption: 'Вечная классика', photo: 'classic' },
+      { name: 'Modern', caption: 'Современный стиль жизни', photo: 'modern' },
+      { name: 'Minimal', caption: 'Больше пространства', photo: 'minimal' },
+      { name: 'Hi-Tech', caption: 'Умные решения для комфорта', photo: 'hiTech' },
+      { name: 'Premium', caption: 'Эксклюзивные коллекции', photo: 'premium' },
+    ],
+    statsClientsLabel: 'Довольных клиентов',
+    statsFabricsLabel: 'Коллекций тканей',
+    statsYearsLabel: 'Доверия и качества',
+    statsTagline: 'Уют начинается с деталей',
     aboutEyebrow: 'О мастерской',
     aboutStatement: 'Мы не подгоняем шторы под окно — мы шьём их заново, под конкретное окно.',
     aboutParagraph:
@@ -812,30 +921,34 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     teamEyebrow: 'Команда',
     teamTitle: 'Люди, которые шьют ваши шторы',
     teamSubtitle: 'За каждым заказом — конкретные мастера, а не безымянный цех.',
-    galleryEyebrow: 'Работы',
-    galleryTitle: 'Как это выглядит у клиентов',
-    galleryAlts: [
-      'Гостиная с золотистыми портьерами в три окна',
-      'Золотистая штора с кружевным подкладом',
-      'Тёмные деревянные двери со светлыми шторами',
-      'Открытая дверь с лёгкой тюлевой шторой и видом на море',
-      'Светлая штора у стены в тёплом свете',
-      'Прозрачная штора у кресла с зелёной обивкой',
-    ],
     contactTitle: 'Расскажите о своём окне',
     contactSubtitle: 'Подскажем модель и приедем на замер — обычно в течение нескольких дней.',
     contactCity: 'Ташкент',
   },
   uz: {
-    nav: { about: 'Biz haqimizda', process: 'Ish jarayoni', team: 'Jamoa', gallery: 'Ishlarimiz', contact: 'Aloqa' },
+    nav: { styles: 'Uslublar', about: 'Biz haqimizda', process: 'Ish jarayoni', team: 'Jamoa', contact: 'Aloqa' },
     staffLogin: 'Xodimlar uchun kirish',
-    heroEyebrow: 'Buyurtma asosida parda tikish',
-    heroTitle: 'Derazangizga moslab tikilgan parda — tayyorini moslashtirish emas',
-    heroSubtitle:
-      "O'lchov, mato, tikuv va o'rnatish — barchasi Toshkentdagi bitta ustaxonada. Har bir buyurtma uyingizga jo'nashdan oldin sifat nazoratidan o'tadi.",
-    heroCtaPrimary: 'Buyurtmani muhokama qilish',
-    heroCtaSecondary: 'Ish jarayoni',
-    heroImageAlt: 'Gumbazsimon deraza yonidagi to‘q qizil pardalar',
+    heroWordmarkTagline: 'Curtains & Accessories',
+    heroTitleLead: "Bu shunchaki parda emas —",
+    heroTitleAccent: 'bu did',
+    heroSubtitle: "Uyingizga qulaylik, uslub va muhit yaratamiz.",
+    heroBadges: ['Premium matolar', 'Individual tikuv', "Professional o'rnatish", 'Kompleks yechimlar'],
+    heroCtaPrimary: "Uslublarni ko'rish",
+    heroImageAlt: "Panoramali deraza oldida tilla rangli pardalar va tyulli mehmonxona",
+    stylesEyebrow: 'Katalog',
+    stylesTitle: 'Oltita uslub — bitta ustaxona qo\'li',
+    styles: [
+      { name: 'Neo Classic', caption: 'Har detalda nafislik', photo: 'neoClassic' },
+      { name: 'Classic', caption: 'Abadiy klassika', photo: 'classic' },
+      { name: 'Modern', caption: 'Zamonaviy turmush tarzi', photo: 'modern' },
+      { name: 'Minimal', caption: "Ko'proq bo'shliq", photo: 'minimal' },
+      { name: 'Hi-Tech', caption: 'Qulaylik uchun aqlli yechimlar', photo: 'hiTech' },
+      { name: 'Premium', caption: 'Eksklyuziv kolleksiyalar', photo: 'premium' },
+    ],
+    statsClientsLabel: 'Mamnun mijozlar',
+    statsFabricsLabel: 'Mato kolleksiyalari',
+    statsYearsLabel: 'Ishonch va sifat',
+    statsTagline: "Qulaylik mayda detallardan boshlanadi",
     aboutEyebrow: 'Ustaxona haqida',
     aboutStatement: "Biz pardani derazaga moslamaymiz — uni aynan shu deraza uchun qaytadan tikamiz.",
     aboutParagraph:
@@ -854,16 +967,6 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     teamEyebrow: 'Jamoa',
     teamTitle: 'Pardangizni tikadigan odamlar',
     teamSubtitle: 'Har bir buyurtma ortida aniq ustalar bor, nomsiz sex emas.',
-    galleryEyebrow: 'Ishlarimiz',
-    galleryTitle: "Mijozlarda qanday ko'rinadi",
-    galleryAlts: [
-      'Uch derazali mehmonxonada tilla rangli pardalar',
-      "To'r pardali tilla rangli parda",
-      "Yengil pardali to'q rangli yog'och eshiklar",
-      'Dengiz manzarali ochiq eshik va yengil tyul parda',
-      "Issiq yorug'likda devor yonidagi och rangli parda",
-      'Yashil mebelli kreslo yonidagi shaffof parda',
-    ],
     contactTitle: 'Derazangiz haqida gapirib bering',
     contactSubtitle: "Model tavsiya qilamiz va o'lchovga kelamiz — odatda bir necha kun ichida.",
     contactCity: 'Toshkent',
