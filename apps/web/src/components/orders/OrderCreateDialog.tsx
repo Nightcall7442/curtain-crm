@@ -430,7 +430,7 @@ export function OrderCreateDialog({
                 onChange={(event) => {
                   setInstallAddress(event.target.value);
                 }}
-                placeholder="г. Ташкент, Мирабадский р-н, ул. …"
+                placeholder="г. Ургенч, ул. …"
               />
             </Field>
 

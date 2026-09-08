@@ -328,7 +328,7 @@ export function SellReadyMadeDialog({
                   onChange={(event) => {
                     setInstallAddress(event.target.value);
                   }}
-                  placeholder="г. Ташкент, Мирабадский р-н, ул. …"
+                  placeholder="г. Ургенч, ул. …"
                   invalid={errors['installAddress'] !== undefined}
                 />
               </Field>

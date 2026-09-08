@@ -270,7 +270,7 @@ export function BranchManager(): ReactElement {
               onChange={(event) => {
                 setAddress(event.target.value);
               }}
-              placeholder="г. Ташкент, ул. …"
+              placeholder="г. Ургенч, ул. …"
             />
           </Field>
 

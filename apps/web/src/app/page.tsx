@@ -1234,7 +1234,7 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     teamSubtitle: 'За каждым заказом — конкретные мастера, а не безымянный цех.',
     contactTitle: 'Расскажите о своём окне',
     contactSubtitle: 'Подскажем модель и приедем на замер — обычно в течение нескольких дней.',
-    contactCity: 'Ташкент',
+    contactCity: 'Ургенч',
   },
   uz: {
     nav: { styles: 'Uslublar', about: 'Biz haqimizda', process: 'Ish jarayoni', team: 'Jamoa', contact: 'Aloqa' },
@@ -1281,6 +1281,6 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     teamSubtitle: 'Har bir buyurtma ortida aniq ustalar bor, nomsiz sex emas.',
     contactTitle: 'Derazangiz haqida gapirib bering',
     contactSubtitle: "Model tavsiya qilamiz va o'lchovga kelamiz — odatda bir necha kun ichida.",
-    contactCity: 'Toshkent',
+    contactCity: 'Urganch',
   },
 };
