@@ -339,16 +339,42 @@ const heroDelay = (index: number): string => `${(150 + index * 120).toString()}m
 function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
   return (
     <section id="top" style={{ backgroundColor: GREEN_DEEP }}>
-      <div className="grid overflow-hidden lg:grid-cols-[minmax(0,560px)_1fr]">
-        {/* Левая панель. Градиент, а не заливка: у референса свет падает
-            сверху слева, и ровный прямоугольник рядом с фотографией
-            выглядит наклейкой. */}
+      {/*
+        Один кадр во всю ширину, а зелень — заливкой поверх его левой части.
+
+        Раньше здесь был жёсткий стык: слева плоская зелёная панель, справа
+        фотография. Две половины читались как две разные картинки, поставленные
+        рядом. В референсе владельца иначе — комната занимает весь экран, а
+        текст лежит на зелёной дымке над ней, и именно это делает обложку
+        цельной.
+      */}
+      <div className="relative isolate min-h-[560px] overflow-hidden lg:min-h-[680px]">
+        <div className="hero-kenburns absolute inset-0">
+          <Image
+            src={unsplash(PHOTOS.hero, 2000)}
+            alt={copy.heroImageAlt}
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+          />
+        </div>
+
+        {/*
+          Заливка: плотная зелень слева, к середине сходит на нет. Текст
+          живёт в её плотной части, поэтому контраст белого по зелёному остаётся
+          прежним, а снимок при этом не обрезан пополам.
+        */}
         <div
-          className="relative flex flex-col justify-center gap-9 px-8 py-14 text-white sm:px-12 lg:px-14 lg:py-24"
+          aria-hidden
+          className="absolute inset-0"
           style={{
-            backgroundImage: `radial-gradient(120% 90% at 12% 0%, #1A5540 0%, ${GREEN} 45%, ${GREEN_DEEP} 100%)`,
+            backgroundImage: `linear-gradient(100deg, ${GREEN_DEEP} 0%, ${GREEN} 26%, rgb(15 58 44 / 0.86) 40%, rgb(15 58 44 / 0.35) 56%, transparent 72%),
+              linear-gradient(0deg, rgb(8 32 26 / 0.6) 0%, transparent 34%)`,
           }}
-        >
+        />
+
+        <div className="relative flex min-h-[560px] flex-col justify-center gap-8 px-6 py-16 text-white sm:px-10 lg:min-h-[680px] lg:px-16 lg:py-20">
           <a
             href="#top"
             className="hero-enter flex flex-col items-start gap-3"
@@ -356,7 +382,7 @@ function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
           >
             <span
               aria-hidden
-              className="block h-[76px] w-[122px] bg-current"
+              className="block h-[84px] w-[136px] bg-current"
               style={{
                 color: GOLD_LIGHT,
                 WebkitMaskImage: 'url(/logo.png)',
@@ -369,54 +395,48 @@ function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
                 maskPosition: 'left',
               }}
             />
-            {/* Название «Design House» впечатано в сам знак — вторая подпись
-                тем же текстом рядом читалась бы как повтор. Здесь только то,
-                чего в файле нет: тег ассортимента. */}
             <span className="text-overline uppercase tracking-[0.42em] text-white/55">
               {copy.heroWordmarkTagline}
             </span>
           </a>
 
           <div className="hero-enter flex flex-col gap-5" style={{ animationDelay: heroDelay(1) }}>
-            <h1 className="font-hero text-[clamp(36px,5.4vw,60px)] font-extrabold uppercase leading-[0.98] tracking-[-0.02em]">
+            <h1 className="max-w-[13ch] font-hero text-[clamp(34px,5vw,58px)] font-extrabold uppercase leading-[1.0] tracking-[-0.02em]">
               {copy.heroTitleLead}
               <br />
               <span style={{ color: GOLD_LIGHT }}>{copy.heroTitleAccent}</span>
             </h1>
-            <p className="max-w-[24rem] text-body leading-relaxed text-white/70">
+            <p className="max-w-[26ch] text-body leading-relaxed text-white/75">
               {copy.heroSubtitle}
             </p>
           </div>
 
-          {/* Два столбца, а не четыре в ряд, как в референсе: там подписи
-              короткие, а «Профессиональная установка» на четверти панели
-              переносится в три строки и слипается с соседней. Ширина
-              панели — величина заданная, длина слов — тоже; уступает
-              сетка. */}
-          <ul
-            className="hero-enter grid grid-cols-2 gap-x-8 gap-y-6"
-            style={{ animationDelay: heroDelay(2) }}
-          >
-            {copy.heroBadges.map((badge) => (
-              <li key={badge} className="flex flex-col items-start gap-3">
-                {/* Золотой волосок вместо значка.
+          {/*
+            Четыре обещания — просто список, без отметок.
 
-                    Здесь стояли иконки из общего набора — бриллиант,
-                    искорки, домик. На витрине мастерской премиального
-                    сегмента они читались наклейками из мессенджера: набор
-                    один и тот же у любого сайта, и ни одна из четырёх не
-                    говорила о шторах ничего, чего не сказала бы подпись под
-                    ней. Осталась подпись и та же линия, которой набраны
-                    надзаголовки разделов и линия процесса. */}
-                <span aria-hidden className="h-px w-7" style={{ backgroundColor: GOLD }} />
-                <span className="text-caption leading-snug text-white/80">{badge}</span>
-              </li>
-            ))}
-          </ul>
+            Сначала здесь были иконки из общего набора (бриллиант, искорки,
+            домик), потом — по золотому волоску над каждой подписью. И то и
+            другое оказалось украшением: ни значок, ни штрих не говорили о
+            шторах ничего, чего не сказала бы сама подпись, а четыре
+            коротких черты в воздухе читались как случайные помарки.
+
+            Линия осталась одна — над всем блоком: она отделяет обещание
+            («создаём уют») от того, чем оно подтверждается.
+          */}
+          <div className="hero-enter" style={{ animationDelay: heroDelay(2) }}>
+            <span aria-hidden className="block h-px w-16" style={{ backgroundColor: `${GOLD}80` }} />
+            <ul className="mt-5 grid max-w-md grid-cols-2 gap-x-8 gap-y-3">
+              {copy.heroBadges.map((badge) => (
+                <li key={badge} className="text-caption leading-snug text-white/80">
+                  {badge}
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <a
             href="#styles"
-            className="hero-enter pressable inline-flex w-fit items-center gap-3 rounded-full px-7 py-3.5 text-caption font-bold uppercase tracking-[0.12em]"
+            className="hero-enter pressable inline-flex w-fit items-center gap-3 rounded-full px-8 py-4 text-caption font-bold uppercase tracking-[0.12em]"
             style={{
               animationDelay: heroDelay(3),
               backgroundColor: GOLD_LIGHT,
@@ -426,34 +446,10 @@ function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
             {copy.heroCtaPrimary}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </a>
-        </div>
 
-        {/* Фотография во всю высоту. Слева — растушёвка в зелень панели,
-            чтобы стык двух половин не выглядел склейкой двух картинок. */}
-        <div className="hero-kenburns relative min-h-[340px] lg:min-h-[660px]">
-          <Image
-            src={unsplash(PHOTOS.hero, 1600)}
-            alt={copy.heroImageAlt}
-            fill
-            priority
-            sizes="(min-width: 1024px) 62vw, 100vw"
-            className="object-cover"
-          />
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `linear-gradient(90deg, ${GREEN_DEEP} 0%, transparent 22%),
-                linear-gradient(0deg, rgb(8 32 26 / 0.55) 0%, transparent 38%)`,
-            }}
-          />
-
-          {/* Росчерк — та самая деталь референса, которая делает кадр
-              фирменным, а не стоковым. Латиница в обеих локалях: это
-              подпись, а не текст интерфейса. */}
           <p
             aria-hidden
-            className="hero-enter absolute bottom-10 right-8 text-right font-script text-[clamp(26px,3.4vw,44px)] leading-[1.15] sm:right-12"
+            className="hero-enter pointer-events-none absolute bottom-10 right-6 text-right font-script text-[clamp(24px,3.2vw,42px)] leading-[1.15] sm:right-10 lg:right-16"
             style={{ animationDelay: heroDelay(4), color: GOLD_LIGHT }}
           >
             Your Style
@@ -549,8 +545,8 @@ function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
     <section
       id="styles"
       aria-label={copy.stylesTitle}
-      className="overflow-hidden border-y"
-      style={{ borderColor: `${GOLD}22` }}
+      className="overflow-hidden"
+      style={{ backgroundColor: GREEN_DEEP }}
       onMouseEnter={hold}
       onMouseLeave={release}
       onFocus={hold}
@@ -558,7 +554,7 @@ function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
     >
       <h2 className="sr-only">{copy.stylesTitle}</h2>
 
-      <div ref={trackRef} className="flex w-max">
+      <div ref={trackRef} className="flex w-max gap-4 px-4 pb-6 pt-2">
         {[0, 1].map((pass) =>
           copy.styles.map((style) => (
             <a
@@ -567,13 +563,13 @@ function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
               /* Второй проход — копия первого, для читалки это повтор одного
                  и того же: озвучивать его незачем. */
               {...(pass === 1 ? { 'aria-hidden': true, tabIndex: -1 } : {})}
-              className="group relative block aspect-[4/3] w-[clamp(190px,20vw,280px)] shrink-0 overflow-hidden"
+              className="group relative block aspect-[4/5] w-[clamp(200px,17vw,246px)] shrink-0 overflow-hidden rounded-[14px]"
             >
               <Image
                 src={unsplash(PHOTOS.styles[style.photo], 560)}
                 alt=""
                 fill
-                sizes="280px"
+                sizes="246px"
                 className="object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-[1.08]"
               />
               <div
@@ -586,19 +582,22 @@ function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
               />
               {/* Золотая линия у нижнего края появляется под курсором —
                   единственная реакция карточки, кроме приближения кадра. */}
+              {/* Золотая рамка проступает под курсором — вместо подчёркивания:
+                  у плитки со скруглением линия по нижнему краю обрывалась
+                  в углах и читалась браком вёрстки. */}
               <span
                 aria-hidden
-                className="absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
-                style={{ backgroundColor: GOLD_LIGHT }}
+                className="absolute inset-0 rounded-[14px] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                style={{ boxShadow: `inset 0 0 0 1px ${GOLD_LIGHT}` }}
               />
-              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4">
-                <span
-                  className="text-caption font-bold uppercase tracking-[0.1em]"
-                  style={{ color: GOLD_LIGHT }}
-                >
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-5">
+                {/* Название засечным, как в референсе: гротеск капсом рядом с
+                    фотографией интерьера читается ценником, а не подписью к
+                    стилю. */}
+                <span className="font-editorial text-[19px] uppercase leading-none tracking-[0.02em] text-white">
                   {style.name}
                 </span>
-                <span className="text-footnote leading-snug text-white/70">{style.caption}</span>
+                <span className="text-footnote leading-snug text-white/65">{style.caption}</span>
               </div>
             </a>
           )),
