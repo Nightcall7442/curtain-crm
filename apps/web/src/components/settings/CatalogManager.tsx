@@ -3,13 +3,18 @@
 import {
   CATALOG_KIND_LABELS_RU,
   CATALOG_KINDS,
+  CURTAIN_MOUNT_KIND_LABELS_RU,
+  CURTAIN_MOUNT_KINDS,
+  CatalogKind as CatalogKinds,
+  curtainMountKindOf,
   type CatalogKind,
+  type CurtainMountKind,
 } from '@curtain-crm/shared';
 import { EyeOff, Eye, ListTree, Pencil, Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { Card, CardBody, CardHeader, EmptyState, Skeleton } from '@/components/ui/Card';
-import { Button, Field, FormError, Input, Modal } from '@/components/ui/Form';
+import { Button, Field, FormError, Input, Modal, Select } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +30,17 @@ export function CatalogManager(): ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [mountKind, setMountKind] = useState<CurtainMountKind>('cornice');
   const [sortOrder, setSortOrder] = useState('0');
+
+  /*
+    Описание спрашивается только у справочников кодов, крепление — только у
+    моделей. Показывать продавцу «группу крепления» у цвета было бы ровно
+    тем шумом, из-за которого перестают читать подписи полей.
+  */
+  const isCodeKind = kind.endsWith('_code');
+  const isModelKind = kind === CatalogKinds.CURTAIN_MODEL;
 
   const utils = trpc.useUtils();
   const list = trpc.catalog.list.useQuery({ kind, includeInactive: true });
@@ -38,6 +53,8 @@ export function CatalogManager(): ReactElement {
     setDialogOpen(false);
     setEditingId(null);
     setName('');
+    setDescription('');
+    setMountKind('cornice');
     setSortOrder('0');
     create.reset();
     update.reset();
@@ -71,6 +88,8 @@ export function CatalogManager(): ReactElement {
             onClick={() => {
               setEditingId(null);
               setName('');
+              setDescription('');
+              setMountKind('cornice');
               setSortOrder('0');
               setDialogOpen(true);
             }}
@@ -160,6 +179,8 @@ export function CatalogManager(): ReactElement {
                   onClick={() => {
                     setEditingId(item.id);
                     setName(item.name);
+                    setDescription(item.description ?? '');
+                    setMountKind(curtainMountKindOf(item.mountKind));
                     setSortOrder(item.sortOrder.toString());
                     setDialogOpen(true);
                   }}
@@ -226,10 +247,15 @@ export function CatalogManager(): ReactElement {
               disabled={name.trim().length === 0}
               onClick={() => {
                 const order = Number.parseInt(sortOrder, 10) || 0;
+                const extra = {
+                  description: isCodeKind && description.trim() !== '' ? description.trim() : null,
+                  mountKind: isModelKind ? mountKind : null,
+                };
+
                 if (editingId === null) {
-                  create.mutate({ kind, name: name.trim(), sortOrder: order });
+                  create.mutate({ kind, name: name.trim(), sortOrder: order, ...extra });
                 } else {
-                  update.mutate({ id: editingId, name: name.trim(), sortOrder: order });
+                  update.mutate({ id: editingId, name: name.trim(), sortOrder: order, ...extra });
                 }
               }}
             >
@@ -254,6 +280,40 @@ export function CatalogManager(): ReactElement {
               placeholder="Например: Римские"
             />
           </Field>
+
+          {isCodeKind ? (
+            <Field
+              label="Мини-описание"
+              hint="Продавец увидит его в заказе сразу после ввода кода"
+            >
+              <Input
+                value={description}
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                }}
+                placeholder="Например: тёмная сторона, плотный блэкаут"
+              />
+            </Field>
+          ) : null}
+
+          {/*
+            Крепление модели решает, что форма заказа вообще спросит: у трубных
+            моделей нет пластика с карнизом, у остальных нет трубы.
+          */}
+          {isModelKind ? (
+            <Field label="Крепление" hint="Какие позиции спрашивать в заказе для этой модели">
+              <Select
+                value={mountKind}
+                onChange={(event) => {
+                  setMountKind(event.target.value as CurtainMountKind);
+                }}
+                options={CURTAIN_MOUNT_KINDS.map((value) => ({
+                  value,
+                  label: CURTAIN_MOUNT_KIND_LABELS_RU[value],
+                }))}
+              />
+            </Field>
+          ) : null}
 
           <Field label="Порядок в списке" hint="Меньше — выше">
             <Input

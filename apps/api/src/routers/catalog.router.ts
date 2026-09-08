@@ -1,5 +1,5 @@
 import { catalogItems } from '@curtain-crm/db';
-import { CATALOG_KINDS } from '@curtain-crm/shared';
+import { CATALOG_KINDS, CURTAIN_MOUNT_KINDS } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -26,6 +26,19 @@ import { router } from '../trpc';
 
 const kindSchema = z.enum(CATALOG_KINDS);
 
+/**
+ * Пояснение к значению и группа крепления модели.
+ *
+ * Описание нужно справочникам кодов: продавец вводит код с этикетки и должен
+ * увидеть, что это за ткань. Группа крепления — только моделям штор: от неё
+ * зависит, спросит ли форма заказа трубу или пластик с карнизом.
+ *
+ * Ни то, ни другое не привязано к виду справочника проверкой: лишнее поле у
+ * цвета ничего не ломает, а отказ на ровном месте — ломает работу.
+ */
+const descriptionSchema = z.string().trim().max(300).nullable();
+const mountKindSchema = z.enum(CURTAIN_MOUNT_KINDS).nullable();
+
 export const catalogRouter = router({
   /** Позиции справочника. Неактивные показываются только по явному запросу. */
   list: protectedProcedure
@@ -43,6 +56,8 @@ export const catalogRouter = router({
           id: catalogItems.id,
           kind: catalogItems.kind,
           name: catalogItems.name,
+          description: catalogItems.description,
+          mountKind: catalogItems.mountKind,
           sortOrder: catalogItems.sortOrder,
           isActive: catalogItems.isActive,
         })
@@ -61,6 +76,8 @@ export const catalogRouter = router({
       z.object({
         kind: kindSchema,
         name: nonEmptyString(200, 'Укажите название'),
+        description: descriptionSchema.default(null),
+        mountKind: mountKindSchema.default(null),
         sortOrder: z.number().int().min(0).max(9999).default(0),
       }),
     )
@@ -71,6 +88,8 @@ export const catalogRouter = router({
           .values({
             kind: input.kind,
             name: input.name,
+            description: input.description === '' ? null : input.description,
+            mountKind: input.mountKind,
             sortOrder: input.sortOrder,
             createdBy: ctx.user.id,
           })
@@ -103,6 +122,8 @@ export const catalogRouter = router({
       z.object({
         id: idSchema,
         name: nonEmptyString(200).optional(),
+        description: descriptionSchema.optional(),
+        mountKind: mountKindSchema.optional(),
         sortOrder: z.number().int().min(0).max(9999).optional(),
       }),
     )
@@ -110,6 +131,10 @@ export const catalogRouter = router({
       ctx.db.transaction(async (tx) => {
         const patch = {
           ...(input.name === undefined ? {} : { name: input.name }),
+          ...(input.description === undefined
+            ? {}
+            : { description: input.description === '' ? null : input.description }),
+          ...(input.mountKind === undefined ? {} : { mountKind: input.mountKind }),
           ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
         };
 

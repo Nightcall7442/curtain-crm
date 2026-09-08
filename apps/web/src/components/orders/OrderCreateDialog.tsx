@@ -4,6 +4,9 @@ import {
   areaM2FromCm,
   CatalogKind,
   CORNICE_ROTATION_LABELS_RU,
+  curtainMountKindOf,
+  CurtainMountKind,
+  MATERIAL_CODE_KINDS,
   CORNICE_ROTATIONS,
   ORDER_ITEM_KIND_LABELS_RU,
   ORDER_ITEM_KINDS,
@@ -52,17 +55,16 @@ const emptyAccessory = (): AccessoryDraft => ({
 /**
  * Материал позиции в форме: код с этикетки, метраж и описание.
  *
- * Всё строками — включая метраж: поле ввода отдаёт строку, и пустое поле
- * должно оставаться пустым, а не превращаться в ноль на первом же нажатии.
- * Числом оно становится один раз, при отправке.
+ * Остался один код с этикетки: метраж и описание продавец больше не
+ * набирает. Описание приходит из справочника, который ведёт руководитель, —
+ * так «П-31» значит одно и то же во всех заказах, а не то, что успел
+ * дописать продавец.
  */
 interface MaterialDraft {
   code: string;
-  meters: string;
-  description: string;
 }
 
-const emptyMaterial = (): MaterialDraft => ({ code: '', meters: '', description: '' });
+const emptyMaterial = (): MaterialDraft => ({ code: '' });
 
 /** Портьер на позицию бывает несколько — потому у них есть ключ списка. */
 interface PortiereDraft extends MaterialDraft {
@@ -74,65 +76,66 @@ const emptyPortiere = (): PortiereDraft => ({
   ...emptyMaterial(),
 });
 
-/** Материал для отправки на сервер. `undefined` — код не заполнен. */
+/**
+ * Материал для отправки на сервер. `undefined` — код не заполнен.
+ *
+ * Метраж уходит пустым: колонка осталась в позиции заказа, но продавец её
+ * больше не набирает. Описание — из справочника, а не из формы.
+ */
 function toMaterial(
   draft: MaterialDraft,
+  description: string | null,
 ): { code: string; meters: number | null; description: string | null } | undefined {
   const code = draft.code.trim();
   if (code.length === 0) return undefined;
 
-  const meters = Number.parseFloat(draft.meters.replace(',', '.'));
-  const description = draft.description.trim();
-
-  return {
-    code,
-    meters: Number.isFinite(meters) && meters > 0 ? meters : null,
-    description: description.length > 0 ? description : null,
-  };
+  return { code, meters: null, description };
 }
 
-/** Три поля одного материала в ряд — одинаково для всех шести. */
+/**
+ * Код материала с подсказкой из справочника.
+ *
+ * Описание появляется только после того, как код введён: до этого показывать
+ * нечего, а пустая строка на месте будущей подсказки читалась бы как
+ * «справочник молчит».
+ */
 function MaterialFields({
   label,
   placeholder,
   value,
+  description,
   onChange,
 }: {
   readonly label: string;
   readonly placeholder: string;
   readonly value: MaterialDraft;
+  readonly description: string | null;
   readonly onChange: (patch: Partial<MaterialDraft>) => void;
 }): ReactElement {
+  const filled = value.code.trim().length > 0;
+
   return (
     <div className="sm:col-span-2 lg:col-span-3">
       <span className="mb-1.5 block text-footnote font-medium text-secondary">{label}</span>
-      <div className="grid gap-2 sm:grid-cols-[1fr_6rem_1.5fr]">
-        <Input
-          aria-label={`${label}: код`}
-          value={value.code}
-          onChange={(event) => {
-            onChange({ code: event.target.value });
-          }}
-          placeholder={placeholder}
-        />
-        <Input
-          aria-label={`${label}: метраж`}
-          inputMode="decimal"
-          value={value.meters}
-          onChange={(event) => {
-            onChange({ meters: event.target.value });
-          }}
-          placeholder="метр"
-        />
-        <Input
-          aria-label={`${label}: описание`}
-          value={value.description}
-          onChange={(event) => {
-            onChange({ description: event.target.value });
-          }}
-          placeholder="описание"
-        />
-      </div>
+      <Input
+        aria-label={`${label}: код`}
+        value={value.code}
+        onChange={(event) => {
+          onChange({ code: event.target.value });
+        }}
+        placeholder={placeholder}
+      />
+      {!filled ? null : (
+        <p
+          className={
+            description === null
+              ? 'mt-1.5 text-footnote text-muted'
+              : 'mt-1.5 text-footnote text-accent-strong'
+          }
+        >
+          {description ?? 'Такого кода нет в справочнике'}
+        </p>
+      )}
     </div>
   );
 }
@@ -243,6 +246,36 @@ export function OrderCreateDialog({
     (byKind.get(kind) ?? []).map((name) => ({ value: name, label: name }));
 
   /**
+   * Мини-описания кодов и группа крепления моделей — из того же справочника.
+   *
+   * Ключ с приведённым регистром: продавец переписывает код с этикетки от
+   * руки, и «п-31» должно найтись так же, как «П-31».
+   */
+  const codeDescriptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of catalog.data ?? []) {
+      if (entry.description !== null && entry.description.length > 0) {
+        map.set(`${entry.kind}:${entry.name.trim().toLowerCase()}`, entry.description);
+      }
+    }
+    return map;
+  }, [catalog.data]);
+
+  const describeCode = (kind: string, code: string): string | null =>
+    codeDescriptions.get(`${kind}:${code.trim().toLowerCase()}`) ?? null;
+
+  const mountByModel = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const entry of catalog.data ?? []) {
+      if (entry.kind === CatalogKind.CURTAIN_MODEL) map.set(entry.name, entry.mountKind);
+    }
+    return map;
+  }, [catalog.data]);
+
+  /** Труба или пластик с карнизом — что спрашивать для выбранной модели. */
+  const mountOf = (model: string): string => curtainMountKindOf(mountByModel.get(model));
+
+  /**
    * Список аксессуаров на выбор — из двух справочников сразу.
    *
    * «Сачак» больше не отдельное поле позиции: оно такой же аксессуар, как
@@ -316,11 +349,29 @@ export function OrderCreateDialog({
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
       items: items.map((item) => {
-        const tulle = toMaterial(item.tulle);
-        const protection = toMaterial(item.protection);
-        const cornice = toMaterial(item.cornice);
-        const plastic = toMaterial(item.plastic);
-        const pipe = toMaterial(item.pipe);
+        /*
+          Строки материала, которых у этой модели не бывает, не уезжают на
+          сервер, даже если продавец успел их заполнить до смены модели.
+        */
+        const onPipe = mountOf(item.model) === CurtainMountKind.PIPE;
+
+        const tulle = toMaterial(
+          item.tulle,
+          describeCode(MATERIAL_CODE_KINDS.tulle, item.tulle.code),
+        );
+        const protection = toMaterial(
+          item.protection,
+          describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code),
+        );
+        const cornice = onPipe
+          ? undefined
+          : toMaterial(item.cornice, describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code));
+        const plastic = onPipe
+          ? undefined
+          : toMaterial(item.plastic, describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code));
+        const pipe = onPipe
+          ? toMaterial(item.pipe, describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code))
+          : undefined;
 
         return {
         kind: item.kind,
@@ -338,7 +389,9 @@ export function OrderCreateDialog({
             }
           : {}),
         portieres: item.portieres
-          .map((portiere) => toMaterial(portiere))
+          .map((portiere) =>
+            toMaterial(portiere, describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code)),
+          )
           .filter((portiere) => portiere !== undefined),
         ...(tulle === undefined ? {} : { tulle }),
         ...(protection === undefined ? {} : { protection }),
@@ -630,8 +683,8 @@ export function OrderCreateDialog({
 
                     {/*
                       Портьеры — списком, как аксессуары: на одну позицию
-                      иногда идут две ткани сразу. Справочника у них нет,
-                      только код с этикетки, метраж и описание.
+                      иногда идут две ткани сразу. Код с этикетки, описание
+                      подтягивается из справочника кодов портьер.
                     */}
                     <div className="sm:col-span-2 lg:col-span-3">
                       <div className="mb-1.5 flex items-center gap-2">
@@ -651,14 +704,12 @@ export function OrderCreateDialog({
                       </div>
 
                       {item.portieres.length === 0 ? (
-                        <p className="text-footnote text-muted">
-                          Код ткани с этикетки, метраж и описание
-                        </p>
+                        <p className="text-footnote text-muted">Код ткани с этикетки</p>
                       ) : (
                         <div className="space-y-2">
                           {item.portieres.map((portiere) => (
                             <div key={portiere.id} className="flex items-start gap-2">
-                              <div className="grid flex-1 gap-2 sm:grid-cols-[1fr_6rem_1.5fr]">
+                              <div className="flex-1">
                                 <Input
                                   aria-label="Портьера: код"
                                   value={portiere.code}
@@ -667,27 +718,19 @@ export function OrderCreateDialog({
                                   }}
                                   placeholder="Например: П-31"
                                 />
-                                <Input
-                                  aria-label="Портьера: метраж"
-                                  inputMode="decimal"
-                                  value={portiere.meters}
-                                  onChange={(event) => {
-                                    patchPortiere(item.id, portiere.id, {
-                                      meters: event.target.value,
-                                    });
-                                  }}
-                                  placeholder="метр"
-                                />
-                                <Input
-                                  aria-label="Портьера: описание"
-                                  value={portiere.description}
-                                  onChange={(event) => {
-                                    patchPortiere(item.id, portiere.id, {
-                                      description: event.target.value,
-                                    });
-                                  }}
-                                  placeholder="описание"
-                                />
+                                {portiere.code.trim().length === 0 ? null : (
+                                  <p
+                                    className={
+                                      describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code) ===
+                                      null
+                                        ? 'mt-1.5 text-footnote text-muted'
+                                        : 'mt-1.5 text-footnote text-accent-strong'
+                                    }
+                                  >
+                                    {describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code) ??
+                                      'Такого кода нет в справочнике'}
+                                  </p>
+                                )}
                               </div>
                               <button
                                 type="button"
@@ -713,6 +756,7 @@ export function OrderCreateDialog({
                       label="Тюль"
                       placeholder="Например: Т-22"
                       value={item.tulle}
+                      description={describeCode(MATERIAL_CODE_KINDS.tulle, item.tulle.code)}
                       onChange={(patch) => {
                         patchItem(item.id, { tulle: { ...item.tulle, ...patch } });
                       }}
@@ -728,37 +772,54 @@ export function OrderCreateDialog({
                       label="Защита"
                       placeholder="Например: З-07"
                       value={item.protection}
+                      description={describeCode(
+                        MATERIAL_CODE_KINDS.protection,
+                        item.protection.code,
+                      )}
                       onChange={(patch) => {
                         patchItem(item.id, { protection: { ...item.protection, ...patch } });
                       }}
                     />
 
-                    <MaterialFields
-                      label="Карниз"
-                      placeholder="Например: К-104"
-                      value={item.cornice}
-                      onChange={(patch) => {
-                        patchItem(item.id, { cornice: { ...item.cornice, ...patch } });
-                      }}
-                    />
+                    {/*
+                      Крепление модели решает, что спрашивать: у трубных
+                      моделей («Труба», «Киприк») карниза с пластиком не
+                      бывает, у остальных не бывает трубы. Группу задаёт
+                      руководитель у модели в справочнике.
+                    */}
+                    {mountOf(item.model) === CurtainMountKind.PIPE ? (
+                      <MaterialFields
+                        label="Труба"
+                        placeholder="Код трубы"
+                        value={item.pipe}
+                        description={describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code)}
+                        onChange={(patch) => {
+                          patchItem(item.id, { pipe: { ...item.pipe, ...patch } });
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <MaterialFields
+                          label="Карниз"
+                          placeholder="Например: К-104"
+                          value={item.cornice}
+                          description={describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code)}
+                          onChange={(patch) => {
+                            patchItem(item.id, { cornice: { ...item.cornice, ...patch } });
+                          }}
+                        />
 
-                    <MaterialFields
-                      label="Пластик"
-                      placeholder="Код пластика"
-                      value={item.plastic}
-                      onChange={(patch) => {
-                        patchItem(item.id, { plastic: { ...item.plastic, ...patch } });
-                      }}
-                    />
-
-                    <MaterialFields
-                      label="Труба"
-                      placeholder="Код трубы"
-                      value={item.pipe}
-                      onChange={(patch) => {
-                        patchItem(item.id, { pipe: { ...item.pipe, ...patch } });
-                      }}
-                    />
+                        <MaterialFields
+                          label="Пластик"
+                          placeholder="Код пластика"
+                          value={item.plastic}
+                          description={describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code)}
+                          onChange={(patch) => {
+                            patchItem(item.id, { plastic: { ...item.plastic, ...patch } });
+                          }}
+                        />
+                      </>
+                    )}
 
                     <Field label="Поворот карниза">
                       <Select

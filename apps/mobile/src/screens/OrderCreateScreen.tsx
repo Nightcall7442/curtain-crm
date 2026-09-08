@@ -3,6 +3,9 @@ import {
   CatalogKind,
   CORNICE_ROTATION_LABELS,
   CORNICE_ROTATIONS,
+  curtainMountKindOf,
+  CurtainMountKind,
+  MATERIAL_CODE_KINDS,
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
   OrderItemKind,
@@ -62,19 +65,17 @@ interface AccessoryDraft {
 const emptyAccessory = (id: number): AccessoryDraft => ({ id, name: '', quantity: '1', code: '' });
 
 /**
- * Материал позиции в форме: код с этикетки, метраж и описание.
+ * Материал позиции в форме — один код с этикетки.
  *
- * Метраж строкой, как и всё остальное: поле ввода отдаёт строку, и пустое
- * поле должно оставаться пустым, а не превращаться в ноль на первом же
- * нажатии. Числом оно становится один раз, при отправке.
+ * Метраж и описание продавец больше не набирает: описание приходит из
+ * справочника, который ведёт руководитель, и «П-31» значит одно и то же во
+ * всех заказах, а не то, что успел дописать продавец у клиента дома.
  */
 interface MaterialDraft {
   readonly code: string;
-  readonly meters: string;
-  readonly description: string;
 }
 
-const emptyMaterial = (): MaterialDraft => ({ code: '', meters: '', description: '' });
+const emptyMaterial = (): MaterialDraft => ({ code: '' });
 
 /** Портьер на позицию бывает несколько — потому у них есть ключ списка. */
 interface PortiereDraft extends MaterialDraft {
@@ -83,37 +84,44 @@ interface PortiereDraft extends MaterialDraft {
 
 const emptyPortiere = (id: number): PortiereDraft => ({ id, ...emptyMaterial() });
 
-/** Материал для отправки на сервер. `undefined` — код не заполнен. */
+/**
+ * Материал для отправки на сервер. `undefined` — код не заполнен.
+ *
+ * Метраж уходит пустым: колонка в позиции заказа осталась, но продавец её
+ * больше не набирает. Описание — из справочника, а не из формы.
+ */
 function toMaterial(
   draft: MaterialDraft,
+  description: string | null,
 ): { code: string; meters: number | null; description: string | null } | undefined {
   const code = draft.code.trim();
   if (code === '') return undefined;
 
-  const meters = Number.parseFloat(draft.meters.replace(',', '.'));
-  const description = draft.description.trim();
-
-  return {
-    code,
-    meters: Number.isFinite(meters) && meters > 0 ? meters : null,
-    description: description === '' ? null : description,
-  };
+  return { code, meters: null, description };
 }
 
-/** Три поля одного материала — одинаково для тюля, защиты, карниза и трубы. */
+/**
+ * Код материала с подсказкой из справочника.
+ *
+ * Описание показывается только после того, как код введён: до этого
+ * показывать нечего, а пустая строка на месте подсказки читалась бы как
+ * «справочник молчит».
+ */
 function MaterialFields({
   label,
   placeholder,
   value,
+  description,
   onChange,
 }: {
   readonly label: string;
   readonly placeholder: string;
   readonly value: MaterialDraft;
+  readonly description: string | null;
   readonly onChange: (patch: Partial<MaterialDraft>) => void;
 }): ReactElement {
   return (
-    <Field label={label} hint="Код с этикетки, метраж и описание">
+    <Field label={label} hint="Код с этикетки">
       <Input
         value={value.code}
         onChangeText={(code) => {
@@ -121,28 +129,25 @@ function MaterialFields({
         }}
         placeholder={placeholder}
       />
-      <View style={styles.materialRow}>
-        <View style={styles.materialMeters}>
-          <Input
-            value={value.meters}
-            onChangeText={(meters) => {
-              onChange({ meters });
-            }}
-            keyboardType="decimal-pad"
-            placeholder="метр"
-          />
-        </View>
-        <View style={styles.materialDescription}>
-          <Input
-            value={value.description}
-            onChangeText={(description) => {
-              onChange({ description });
-            }}
-            placeholder="описание"
-          />
-        </View>
-      </View>
+      <CodeDescription code={value.code} description={description} />
     </Field>
+  );
+}
+
+/** Описание кода из справочника — под полем, только после ввода кода. */
+function CodeDescription({
+  code,
+  description,
+}: {
+  readonly code: string;
+  readonly description: string | null;
+}): ReactElement | null {
+  if (code.trim() === '') return null;
+
+  return (
+    <Text style={description === null ? styles.codeMissing : styles.codeDescription}>
+      {description ?? 'Такого кода нет в справочнике'}
+    </Text>
   );
 }
 
@@ -227,6 +232,36 @@ export function OrderCreateScreen(): ReactElement {
 
   const modelOptions = byKind.get(CatalogKind.CURTAIN_MODEL) ?? [];
 
+  /**
+   * Мини-описания кодов и крепление моделей — из того же справочника.
+   *
+   * Ключ с приведённым регистром: продавец переписывает код с этикетки от
+   * руки, и «п-31» должно найтись так же, как «П-31».
+   */
+  const codeDescriptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of catalog.data ?? []) {
+      if (entry.description !== null && entry.description !== '') {
+        map.set(`${entry.kind}:${entry.name.trim().toLowerCase()}`, entry.description);
+      }
+    }
+    return map;
+  }, [catalog.data]);
+
+  const describeCode = (kind: string, code: string): string | null =>
+    codeDescriptions.get(`${kind}:${code.trim().toLowerCase()}`) ?? null;
+
+  const mountByModel = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const entry of catalog.data ?? []) {
+      if (entry.kind === CatalogKind.CURTAIN_MODEL) map.set(entry.name, entry.mountKind);
+    }
+    return map;
+  }, [catalog.data]);
+
+  /** Труба или пластик с карнизом — что спрашивать для выбранной модели. */
+  const mountOf = (model: string): string => curtainMountKindOf(mountByModel.get(model));
+
   const create = trpc.orders.create.useMutation({
     async onSuccess(order) {
       await utils.orders.list.invalidate();
@@ -299,11 +334,29 @@ export function OrderCreateScreen(): ReactElement {
       workPrice: toMoney(workPrice),
       deposit: toMoney(deposit),
       items: items.map((item) => {
-        const tulle = toMaterial(item.tulle);
-        const protection = toMaterial(item.protection);
-        const cornice = toMaterial(item.cornice);
-        const plastic = toMaterial(item.plastic);
-        const pipe = toMaterial(item.pipe);
+        /*
+          Строки материала, которых у этой модели не бывает, на сервер не
+          уезжают, даже если продавец успел их заполнить до смены модели.
+        */
+        const onPipe = mountOf(item.model) === CurtainMountKind.PIPE;
+
+        const tulle = toMaterial(
+          item.tulle,
+          describeCode(MATERIAL_CODE_KINDS.tulle, item.tulle.code),
+        );
+        const protection = toMaterial(
+          item.protection,
+          describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code),
+        );
+        const cornice = onPipe
+          ? undefined
+          : toMaterial(item.cornice, describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code));
+        const plastic = onPipe
+          ? undefined
+          : toMaterial(item.plastic, describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code));
+        const pipe = onPipe
+          ? toMaterial(item.pipe, describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code))
+          : undefined;
 
         return {
         kind: item.kind,
@@ -316,7 +369,9 @@ export function OrderCreateScreen(): ReactElement {
             }
           : {}),
         portieres: item.portieres
-          .map((portiere) => toMaterial(portiere))
+          .map((portiere) =>
+            toMaterial(portiere, describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code)),
+          )
           .filter((portiere) => portiere !== undefined),
         ...(tulle === undefined ? {} : { tulle }),
         ...(protection === undefined ? {} : { protection }),
@@ -532,8 +587,8 @@ export function OrderCreateScreen(): ReactElement {
               {/*
                 Портьеры — список: на одну позицию иногда идут две ткани
                 (контрастная вставка, разный метраж). Тот же приём, что у
-                аксессуаров, только без справочника — у портьеры есть
-                только код с этикетки.
+                аксессуаров: код с этикетки, описание подтягивается из
+                справочника кодов портьер.
               */}
               <View style={styles.accessories}>
                 <View style={styles.accessoriesHeader}>
@@ -556,9 +611,7 @@ export function OrderCreateScreen(): ReactElement {
                 </View>
 
                 {item.portieres.length === 0 ? (
-                  <Text style={styles.accessoriesHint}>
-                    Код ткани с этикетки, метраж и описание
-                  </Text>
+                  <Text style={styles.accessoriesHint}>Код ткани с этикетки</Text>
                 ) : (
                   item.portieres.map((portiere) => (
                     <View key={portiere.id} style={styles.accessoryRow}>
@@ -570,27 +623,10 @@ export function OrderCreateScreen(): ReactElement {
                           }}
                           placeholder="Например: П-31"
                         />
-                        <View style={styles.materialRow}>
-                          <View style={styles.materialMeters}>
-                            <Input
-                              value={portiere.meters}
-                              onChangeText={(meters) => {
-                                updatePortiere(item.id, portiere.id, { meters });
-                              }}
-                              keyboardType="decimal-pad"
-                              placeholder="метр"
-                            />
-                          </View>
-                          <View style={styles.materialDescription}>
-                            <Input
-                              value={portiere.description}
-                              onChangeText={(description) => {
-                                updatePortiere(item.id, portiere.id, { description });
-                              }}
-                              placeholder="описание"
-                            />
-                          </View>
-                        </View>
+                        <CodeDescription
+                          code={portiere.code}
+                          description={describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code)}
+                        />
                       </View>
                       {item.portieres.length > 1 ? (
                         <Pressable
@@ -618,6 +654,7 @@ export function OrderCreateScreen(): ReactElement {
                 label="Тюль"
                 placeholder="Например: Т-22"
                 value={item.tulle}
+                description={describeCode(MATERIAL_CODE_KINDS.tulle, item.tulle.code)}
                 onChange={(patch) => {
                   updateItem(item.id, { tulle: { ...item.tulle, ...patch } });
                 }}
@@ -633,37 +670,51 @@ export function OrderCreateScreen(): ReactElement {
                 label="Защита"
                 placeholder="Например: З-07"
                 value={item.protection}
+                description={describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code)}
                 onChange={(patch) => {
                   updateItem(item.id, { protection: { ...item.protection, ...patch } });
                 }}
               />
 
-              <MaterialFields
-                label="Карниз"
-                placeholder="Например: К-104"
-                value={item.cornice}
-                onChange={(patch) => {
-                  updateItem(item.id, { cornice: { ...item.cornice, ...patch } });
-                }}
-              />
+              {/*
+                Крепление модели решает, что спрашивать: у трубных моделей
+                («Труба», «Киприк») карниза с пластиком не бывает, у остальных
+                не бывает трубы. Группу задаёт руководитель у модели
+                в справочнике.
+              */}
+              {mountOf(item.model) === CurtainMountKind.PIPE ? (
+                <MaterialFields
+                  label="Труба"
+                  placeholder="Код трубы"
+                  value={item.pipe}
+                  description={describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code)}
+                  onChange={(patch) => {
+                    updateItem(item.id, { pipe: { ...item.pipe, ...patch } });
+                  }}
+                />
+              ) : (
+                <>
+                  <MaterialFields
+                    label="Карниз"
+                    placeholder="Например: К-104"
+                    value={item.cornice}
+                    description={describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code)}
+                    onChange={(patch) => {
+                      updateItem(item.id, { cornice: { ...item.cornice, ...patch } });
+                    }}
+                  />
 
-              <MaterialFields
-                label="Пластик"
-                placeholder="Код пластика"
-                value={item.plastic}
-                onChange={(patch) => {
-                  updateItem(item.id, { plastic: { ...item.plastic, ...patch } });
-                }}
-              />
-
-              <MaterialFields
-                label="Труба"
-                placeholder="Код трубы"
-                value={item.pipe}
-                onChange={(patch) => {
-                  updateItem(item.id, { pipe: { ...item.pipe, ...patch } });
-                }}
-              />
+                  <MaterialFields
+                    label="Пластик"
+                    placeholder="Код пластика"
+                    value={item.plastic}
+                    description={describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code)}
+                    onChange={(patch) => {
+                      updateItem(item.id, { plastic: { ...item.plastic, ...patch } });
+                    }}
+                  />
+                </>
+              )}
 
               <Field label="Поворот карниза">
                 <ChipSelect
@@ -940,16 +991,16 @@ const styles = StyleSheet.create({
   accessoryName: {
     flex: 1,
   },
-  materialRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+  /* Описание из справочника: подсказка, а не введённое значение. */
+  codeDescription: {
+    ...typography.footnote,
+    color: colors.accent,
+    marginTop: spacing.xs,
   },
-  materialMeters: {
-    width: 88,
-  },
-  materialDescription: {
-    flex: 1,
+  codeMissing: {
+    ...typography.footnote,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   accessoryQuantity: {
     width: 56,
