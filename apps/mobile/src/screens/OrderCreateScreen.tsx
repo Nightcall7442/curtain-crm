@@ -15,7 +15,7 @@ import {
   type CorniceRotation,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +30,7 @@ import {
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
+import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
@@ -113,24 +114,63 @@ function MaterialFields({
   value,
   description,
   onChange,
+  onScan,
 }: {
   readonly label: string;
   readonly placeholder: string;
   readonly value: MaterialDraft;
   readonly description: string | null;
   readonly onChange: (patch: Partial<MaterialDraft>) => void;
+  readonly onScan: () => void;
 }): ReactElement {
   return (
-    <Field label={label} hint="Код с этикетки">
-      <Input
+    <Field label={label} hint="Код с этикетки — можно считать камерой">
+      <CodeInput
         value={value.code}
+        placeholder={placeholder}
         onChangeText={(code) => {
           onChange({ code });
         }}
-        placeholder={placeholder}
+        onScan={onScan}
       />
       <CodeDescription code={value.code} description={description} />
     </Field>
+  );
+}
+
+/**
+ * Поле кода с кнопкой сканера.
+ *
+ * Код на этикетке рулона напечатан мелко и часто читается сквозь плёнку
+ * зеркально; ошибка в одном символе означает, что справочник ткань не
+ * найдёт, а цех возьмёт не тот рулон. Ввод руками остался — не на каждом
+ * рулоне есть целая наклейка.
+ */
+function CodeInput({
+  value,
+  placeholder,
+  onChangeText,
+  onScan,
+}: {
+  readonly value: string;
+  readonly placeholder: string;
+  readonly onChangeText: (value: string) => void;
+  readonly onScan: () => void;
+}): ReactElement {
+  return (
+    <View style={styles.codeRow}>
+      <View style={styles.codeInput}>
+        <Input value={value} onChangeText={onChangeText} placeholder={placeholder} />
+      </View>
+      <Pressable
+        onPress={onScan}
+        accessibilityRole="button"
+        accessibilityLabel="Считать код камерой"
+        style={({ pressed }) => [styles.scanButton, pressed ? styles.pressed : null]}
+      >
+        <Icon name="camera" size={18} color={colors.accent} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -204,6 +244,19 @@ export function OrderCreateScreen(): ReactElement {
   const [deposit, setDeposit] = useState('');
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [showErrors, setShowErrors] = useState(false);
+
+  /*
+    Сканер один на всю форму: полей с кодом на позицию до семи, и держать
+    камеру в каждом значило бы семь смонтированных камер сразу. Куда положить
+    результат, помнит ref — состояние здесь перерисовывалось бы зря.
+  */
+  const [scanning, setScanning] = useState<string | null>(null);
+  const applyScan = useRef<((code: string) => void) | null>(null);
+
+  const askScan = (label: string, apply: (code: string) => void): void => {
+    applyScan.current = apply;
+    setScanning(label);
+  };
 
   const catalog = trpc.catalog.list.useQuery({});
 
@@ -616,12 +669,17 @@ export function OrderCreateScreen(): ReactElement {
                   item.portieres.map((portiere) => (
                     <View key={portiere.id} style={styles.accessoryRow}>
                       <View style={styles.accessoryName}>
-                        <Input
+                        <CodeInput
                           value={portiere.code}
+                          placeholder="Например: П-31"
                           onChangeText={(code) => {
                             updatePortiere(item.id, portiere.id, { code });
                           }}
-                          placeholder="Например: П-31"
+                          onScan={() => {
+                            askScan('Портьера', (code) => {
+                              updatePortiere(item.id, portiere.id, { code });
+                            });
+                          }}
                         />
                         <CodeDescription
                           code={portiere.code}
@@ -658,6 +716,11 @@ export function OrderCreateScreen(): ReactElement {
                 onChange={(patch) => {
                   updateItem(item.id, { tulle: { ...item.tulle, ...patch } });
                 }}
+                onScan={() => {
+                  askScan('Тюль', (code) => {
+                    updateItem(item.id, { tulle: { ...item.tulle, code } });
+                  });
+                }}
               />
 
               {/*
@@ -673,6 +736,11 @@ export function OrderCreateScreen(): ReactElement {
                 description={describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code)}
                 onChange={(patch) => {
                   updateItem(item.id, { protection: { ...item.protection, ...patch } });
+                }}
+                onScan={() => {
+                  askScan('Защита', (code) => {
+                    updateItem(item.id, { protection: { ...item.protection, code } });
+                  });
                 }}
               />
 
@@ -691,6 +759,11 @@ export function OrderCreateScreen(): ReactElement {
                   onChange={(patch) => {
                     updateItem(item.id, { pipe: { ...item.pipe, ...patch } });
                   }}
+                  onScan={() => {
+                    askScan('Труба', (code) => {
+                      updateItem(item.id, { pipe: { ...item.pipe, code } });
+                    });
+                  }}
                 />
               ) : (
                 <>
@@ -702,6 +775,11 @@ export function OrderCreateScreen(): ReactElement {
                     onChange={(patch) => {
                       updateItem(item.id, { cornice: { ...item.cornice, ...patch } });
                     }}
+                    onScan={() => {
+                      askScan('Карниз', (code) => {
+                        updateItem(item.id, { cornice: { ...item.cornice, code } });
+                      });
+                    }}
                   />
 
                   <MaterialFields
@@ -711,6 +789,11 @@ export function OrderCreateScreen(): ReactElement {
                     description={describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code)}
                     onChange={(patch) => {
                       updateItem(item.id, { plastic: { ...item.plastic, ...patch } });
+                    }}
+                    onScan={() => {
+                      askScan('Пластик', (code) => {
+                        updateItem(item.id, { plastic: { ...item.plastic, code } });
+                      });
                     }}
                   />
                 </>
@@ -861,6 +944,16 @@ export function OrderCreateScreen(): ReactElement {
           можно добавить в карточке заказа.
         </Text>
       </ScrollView>
+      <CodeScanner
+        visible={scanning !== null}
+        label={scanning ?? ''}
+        onScan={(code) => {
+          applyScan.current?.(code);
+        }}
+        onClose={() => {
+          setScanning(null);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -990,6 +1083,24 @@ const styles = StyleSheet.create({
   },
   accessoryName: {
     flex: 1,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  codeInput: {
+    flex: 1,
+  },
+  scanButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: hairline,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   /* Описание из справочника: подсказка, а не введённое значение. */
   codeDescription: {
