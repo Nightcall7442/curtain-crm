@@ -29,6 +29,7 @@ export default function ReadyMadePage(): ReactElement {
 
   const [adding, setAdding] = useState(false);
   const [model, setModel] = useState('');
+  const [branchId, setBranchId] = useState('');
   const [code, setCode] = useState('');
   const [comment, setComment] = useState('');
   const [widthCm, setWidthCm] = useState('');
@@ -36,11 +37,25 @@ export default function ReadyMadePage(): ReactElement {
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('1');
 
+  /*
+    Снимок — то, ради чего продавец вообще открывает склад: штору выбирают
+    глазами. Раньше приложить его можно было только с телефона, а полку
+    заводит и руководитель за компьютером — и заводил вслепую.
+
+    Файл держим уже в base64: tRPC работает поверх JSON, и читать его при
+    нажатии «Поставить на склад» значило бы ждать чтения после нажатия.
+  */
+  const [photo, setPhoto] = useState<
+    { readonly name: string; readonly mimeType: string; readonly content: string; readonly preview: string } | null
+  >(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
   /** Штора, которой пересчитывают остаток. `null` — окно закрыто. */
   const [counting, setCounting] = useState<{ id: number; model: string } | null>(null);
   const [countValue, setCountValue] = useState('');
 
   const items = trpc.readyMade.list.useQuery({ includeEmpty: true, includeInactive: true });
+  const branches = trpc.branches.list.useQuery({});
   const catalog = trpc.catalog.list.useQuery({});
 
   const modelOptions = (catalog.data ?? [])
@@ -55,6 +70,9 @@ export default function ReadyMadePage(): ReactElement {
     onSuccess(item) {
       setAdding(false);
       setModel('');
+      setBranchId('');
+      setPhoto(null);
+      setPhotoError(null);
       setCode('');
       setComment('');
       setWidthCm('');
@@ -265,6 +283,16 @@ export default function ReadyMadePage(): ReactElement {
               onClick={() => {
                 create.mutate({
                   model: model.trim(),
+                  ...(branchId === '' ? {} : { branchId: Number.parseInt(branchId, 10) }),
+                  ...(photo === null
+                    ? {}
+                    : {
+                        photo: {
+                          fileName: photo.name,
+                          mimeType: photo.mimeType,
+                          content: photo.content,
+                        },
+                      }),
                   ...(code.trim() === '' ? {} : { code: code.trim() }),
                   ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
                   widthCm: Number.parseFloat(widthCm.replace(',', '.')) || 0,
@@ -305,6 +333,20 @@ export default function ReadyMadePage(): ReactElement {
             находит штору, когда клиент называет её по телефону. Описание
             рядом заполняется руками: справочнику здесь взяться неоткуда.
           */}
+          <Field label="Филиал" hint="По умолчанию — ваш основной">
+            <Select
+              value={branchId}
+              onChange={(event) => {
+                setBranchId(event.target.value);
+              }}
+              placeholder="Основной филиал"
+              options={(branches.data ?? []).map((branch) => ({
+                value: branch.id.toString(),
+                label: branch.name,
+              }))}
+            />
+          </Field>
+
           <Field label="Код" hint="Бирка на шторе — по нему её найдут в продаже">
             <Input
               value={code}
@@ -323,6 +365,70 @@ export default function ReadyMadePage(): ReactElement {
               }}
               placeholder="Чем эта штора отличается: ткань, оттенок, особенности"
             />
+          </Field>
+
+          {/*
+            Снимок читается сразу при выборе файла: к нажатию «Поставить на
+            склад» он уже готов, и продавец не ждёт чтения после нажатия.
+          */}
+          <Field label="Снимок" hint="Продавец показывает штору клиенту" error={photoError ?? undefined}>
+            <div className="flex items-center gap-3">
+              {photo !== null && (
+                /* Обычный img: это локальный data-URL, оптимизатору Next
+                   его оптимизировать нечем и незачем. */
+                <img
+                  src={photo.preview}
+                  alt=""
+                  className="h-16 w-16 shrink-0 rounded-tile object-cover"
+                />
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className="text-footnote text-secondary file:mr-3 file:rounded-tile file:border file:border-subtle file:bg-panel file:px-3 file:py-1.5 file:text-footnote file:text-primary hover:file:bg-raised"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  setPhotoError(null);
+                  if (file === undefined) {
+                    setPhoto(null);
+                    return;
+                  }
+
+                  const reader = new FileReader();
+                  reader.onerror = () => {
+                    setPhotoError('Не удалось прочитать файл');
+                  };
+                  reader.onload = () => {
+                    const result = reader.result;
+                    if (typeof result !== 'string') {
+                      setPhotoError('Не удалось прочитать файл');
+                      return;
+                    }
+                    setPhoto({
+                      name: file.name,
+                      mimeType: file.type,
+                      // `readAsDataURL` даёт `data:image/jpeg;base64,…` —
+                      // сервер такой префикс срезает сам, но отправлять
+                      // лишние байты незачем.
+                      content: result.slice(result.indexOf(',') + 1),
+                      preview: result,
+                    });
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+              {photo !== null && (
+                <button
+                  type="button"
+                  className="text-footnote text-muted underline-offset-2 hover:text-danger hover:underline"
+                  onClick={() => {
+                    setPhoto(null);
+                  }}
+                >
+                  Убрать
+                </button>
+              )}
+            </div>
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
