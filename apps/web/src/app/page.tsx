@@ -85,10 +85,22 @@ export default function LandingPage(): ReactElement {
 function useScrollReveal(options?: {
   readonly stagger?: number;
   readonly ease?: string;
+  /**
+   * Содержимое раздела уже отрисовано.
+   *
+   * Разделу, который ждёт ответа сервера, этого мало по умолчанию: эффект
+   * привязывается один раз, и в тот момент на месте раздела ещё заглушка —
+   * ни узла, ни блоков `.reveal-item`. Наблюдатель не ставится, таймер не
+   * заводится, а когда данные приходят, повторить эффекту нечего: список
+   * зависимостей не менялся. Раздел остаётся прозрачным навсегда — ровно
+   * так «Команда» и пропала со страницы, хотя фотографии сервер отдавал.
+   */
+  readonly ready?: boolean;
 }): RefObject<HTMLElement | null> {
   const ref = useRef<HTMLElement | null>(null);
   const staggerMs = options?.stagger ?? 90;
   const ease = options?.ease ?? 'outQuad';
+  const ready = options?.ready ?? true;
 
   useEffect(() => {
     const root = ref.current;
@@ -102,7 +114,17 @@ function useScrollReveal(options?: {
       return;
     }
 
+    /** Конечное состояние без анимации — то, чем всё должно закончиться. */
+    const settle = (): void => {
+      for (const item of items) {
+        item.style.opacity = '1';
+        item.style.transform = 'none';
+      }
+    };
+
     let revealed = false;
+    let settleTimer = 0;
+
     const reveal = (): void => {
       if (revealed) return;
       revealed = true;
@@ -116,6 +138,19 @@ function useScrollReveal(options?: {
         delay: stagger(staggerMs),
         ease,
       });
+
+      /*
+        Второй таймер — уже после запуска анимации.
+
+        Первой подстраховки мало: она снимается ровно в тот момент, когда
+        секция попала в кадр, и дальше всё держится на твине. А твин идёт по
+        кадрам, которых в фоновой вкладке нет: раздел «появился», анимация
+        не сыграла ни разу, страховки больше нет — и текст остаётся
+        невидимым до самой перезагрузки. Этот таймер дописывает конечное
+        состояние независимо от кадров; если анимация всё же сыграла, он
+        ставит ровно те же значения, что она и так поставила.
+      */
+      settleTimer = window.setTimeout(settle, 900 + staggerMs * items.length);
     };
 
     const observer = new IntersectionObserver(
@@ -142,17 +177,15 @@ function useScrollReveal(options?: {
       if (revealed) return;
       revealed = true;
       observer.disconnect();
-      for (const item of items) {
-        item.style.opacity = '1';
-        item.style.transform = 'none';
-      }
+      settle();
     }, 5000);
 
     return () => {
       observer.disconnect();
       clearTimeout(fallbackTimer);
+      clearTimeout(settleTimer);
     };
-  }, [staggerMs, ease]);
+  }, [staggerMs, ease, ready]);
 
   return ref;
 }
@@ -854,7 +887,7 @@ function Team({
   readonly locale: 'ru' | 'uz';
 }): ReactElement | null {
   const team = trpc.users.publicTeam.useQuery();
-  const ref = useScrollReveal({ stagger: 60, ease: 'outBack' });
+  const ref = useScrollReveal({ stagger: 60, ease: 'outBack', ready: team.data !== undefined });
 
   // Пока грузится или пусто — молчим. У совсем новой мастерской без единой
   // загруженной фотографии сотрудника раздел просто не появится: пустая
