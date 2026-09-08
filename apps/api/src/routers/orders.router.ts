@@ -23,7 +23,7 @@ import {
   orderItemAccessorySchema,
   OrderItemKind,
   orderItemKindSchema,
-  orderItemPortiereSchema,
+  orderItemMaterialSchema,
   orderStatusSchema,
   parseDimensions,
   OrderStatus,
@@ -115,15 +115,20 @@ const orderItemInputSchema = z
     heightCm: z.number().positive().max(2000).optional(),
 
     /** Портьеры — коды тканей с этикеток; на одну позицию их бывает несколько. */
-    portieres: z.array(orderItemPortiereSchema).max(MAX_PORTIERES_PER_ITEM).default([]),
+    portieres: z.array(orderItemMaterialSchema).max(MAX_PORTIERES_PER_ITEM).default([]),
 
-    /** Код карниза/тюля — продавец переписывает с этикетки, справочника нет. */
-    cornice: optionalText(200),
+    /*
+      Тюль, защита, карниз, пластик и труба — по одной строке материала:
+      код с этикетки, метраж и описание. Справочника нет ни у одного из них,
+      продавец переписывает код руками — потому форма у всех одна.
+    */
+    tulle: orderItemMaterialSchema.optional(),
+    protection: orderItemMaterialSchema.optional(),
+    cornice: orderItemMaterialSchema.optional(),
+    plastic: orderItemMaterialSchema.optional(),
+    pipe: orderItemMaterialSchema.optional(),
     /** Сторона открывания — перечисление, а не свободный текст. */
     corniceRotation: corniceRotationSchema.optional(),
-    tulle: optionalText(200),
-    hasProtection: z.boolean().default(false),
-    protectionCode: optionalText(200),
     accessories: z.array(orderItemAccessorySchema).max(MAX_ACCESSORIES_PER_ITEM).default([]),
 
     quantity: z.number().int().positive().max(1000).default(1),
@@ -135,17 +140,7 @@ const orderItemInputSchema = z
       (item.widthCm !== undefined && item.heightCm !== undefined) ||
       (item.widthCm === undefined && item.heightCm === undefined),
     { message: 'Укажите обе стороны или оставьте размеры пустыми', path: ['heightCm'] },
-  )
-  /*
-    Та же связка, что и в БД (`order_items_protection_code_required`): защита
-    без кода — незавершённая мысль, цех получил бы «нужно что-то защитное»
-    без единственной детали, которая ему и нужна. Проверка тут — чтобы
-    отказ пришёл понятным текстом, а не ошибкой ограничения Postgres.
-  */
-  .refine((item) => !item.hasProtection || item.protectionCode !== undefined, {
-    message: 'Укажите код защиты',
-    path: ['protectionCode'],
-  });
+  );
 
 type OrderItemInput = z.infer<typeof orderItemInputSchema>;
 
@@ -185,11 +180,12 @@ function toOrderItemValues(item: OrderItemInput, orderId: number, position: numb
     heightCm: heightCm === null ? null : heightCm.toFixed(1),
     areaM2: areaM2 === null ? null : areaM2.toFixed(4),
     portieres: item.portieres,
-    cornice: item.cornice ?? null,
-    corniceRotation: item.corniceRotation ?? null,
     tulle: item.tulle ?? null,
-    hasProtection: item.hasProtection,
-    protectionCode: item.protectionCode ?? null,
+    protection: item.protection ?? null,
+    cornice: item.cornice ?? null,
+    plastic: item.plastic ?? null,
+    pipe: item.pipe ?? null,
+    corniceRotation: item.corniceRotation ?? null,
     accessories: item.accessories,
     quantity: item.quantity,
     comment: item.comment ?? null,
@@ -223,6 +219,7 @@ interface StageFeesInput {
   readonly cuttingFee?: number | undefined;
   readonly sewingFee?: number | undefined;
   readonly qcFee?: number | undefined;
+  readonly corniceFee?: number | undefined;
   readonly installationFee?: number | undefined;
 }
 
@@ -238,6 +235,9 @@ function toStageFeeValues(input: StageFeesInput) {
     ...(toColumn(input.cuttingFee) === undefined ? {} : { cuttingFee: toColumn(input.cuttingFee) }),
     ...(toColumn(input.sewingFee) === undefined ? {} : { sewingFee: toColumn(input.sewingFee) }),
     ...(toColumn(input.qcFee) === undefined ? {} : { qcFee: toColumn(input.qcFee) }),
+    ...(toColumn(input.corniceFee) === undefined
+      ? {}
+      : { corniceFee: toColumn(input.corniceFee) }),
     ...(toColumn(input.installationFee) === undefined
       ? {}
       : { installationFee: toColumn(input.installationFee) }),
@@ -250,6 +250,7 @@ const STAGE_FEE_COLUMN = {
   cutting: 'cuttingFee',
   sewing: 'sewingFee',
   qc: 'qcFee',
+  cornice: 'corniceFee',
   installation: 'installationFee',
 } as const satisfies Record<OrderStageFee, keyof typeof orders.$inferSelect>;
 
@@ -261,6 +262,9 @@ const STAGE_EXECUTOR_COLUMN = {
   cutting: 'sewerId',
   sewing: 'sewerId',
   qc: 'qcId',
+  // Карниз ставит установщик — отдельного «карнизчика» в системе нет,
+  // поэтому у двух этапов один и тот же исполнитель.
+  cornice: 'installerId',
   installation: 'installerId',
 } as const satisfies Record<OrderStageFee, keyof typeof orders.$inferSelect>;
 
@@ -681,7 +685,6 @@ export const ordersRouter = router({
                 materials: [],
                 materialOptions: [],
                 portieres: [],
-                hasProtection: false,
                 accessories: [],
                 quantity: item.quantity,
                 ...(item.model === undefined ? {} : { model: item.model }),
@@ -881,6 +884,7 @@ export const ordersRouter = router({
         cuttingFee: moneySchema.optional(),
         sewingFee: moneySchema.optional(),
         qcFee: moneySchema.optional(),
+        corniceFee: moneySchema.optional(),
         installationFee: moneySchema.optional(),
       }),
     )
@@ -911,6 +915,7 @@ export const ordersRouter = router({
               measurementFee: order.measurementFee,
               sewingFee: order.sewingFee,
               qcFee: order.qcFee,
+              corniceFee: order.corniceFee,
               installationFee: order.installationFee,
             },
             to: patch,

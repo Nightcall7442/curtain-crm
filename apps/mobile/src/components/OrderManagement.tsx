@@ -43,6 +43,7 @@ const FEE_FIELD = {
   cutting: 'cuttingFee',
   sewing: 'sewingFee',
   qc: 'qcFee',
+  cornice: 'corniceFee',
   installation: 'installationFee',
 } as const satisfies Readonly<Record<OrderStageFee, string>>;
 

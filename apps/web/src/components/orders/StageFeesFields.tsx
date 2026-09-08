@@ -31,6 +31,7 @@ export const emptyStageFees = (): StageFeesDraft => ({
   cutting: '',
   sewing: '',
   qc: '',
+  cornice: '',
   installation: '',
 });
 
@@ -43,6 +44,7 @@ export function toStageFeesInput(draft: StageFeesDraft): {
   readonly cuttingFee: number;
   readonly sewingFee: number;
   readonly qcFee: number;
+  readonly corniceFee: number;
   readonly installationFee: number;
 } {
   return {
@@ -50,6 +52,7 @@ export function toStageFeesInput(draft: StageFeesDraft): {
     cuttingFee: amountOf(draft.cutting),
     sewingFee: amountOf(draft.sewing),
     qcFee: amountOf(draft.qc),
+    corniceFee: amountOf(draft.cornice),
     installationFee: amountOf(draft.installation),
   };
 }
@@ -60,6 +63,7 @@ export function stageFeesFromOrder(order: {
   readonly cuttingFee: string | null;
   readonly sewingFee: string | null;
   readonly qcFee: string | null;
+  readonly corniceFee: string | null;
   readonly installationFee: string | null;
 }): StageFeesDraft {
   const shown = (value: string | null): string =>
@@ -70,6 +74,7 @@ export function stageFeesFromOrder(order: {
     cutting: shown(order.cuttingFee),
     sewing: shown(order.sewingFee),
     qc: shown(order.qcFee),
+    cornice: shown(order.corniceFee),
     installation: shown(order.installationFee),
   };
 }
@@ -79,6 +84,7 @@ const ERROR_FIELD: Readonly<Record<OrderStageFee, string>> = {
   cutting: 'cuttingFee',
   sewing: 'sewingFee',
   qc: 'qcFee',
+  cornice: 'corniceFee',
   installation: 'installationFee',
 };
 

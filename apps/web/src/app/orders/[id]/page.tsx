@@ -2,6 +2,7 @@
 
 import {
   CORNICE_ROTATION_LABELS_RU,
+  formatMaterial,
   formatDimensions,
   formatMoney,
   formatPhone,
@@ -418,30 +419,50 @@ export default function OrderDetailPage(): ReactElement {
                         <Detail label="Опции материала" value={item.materialOptions.join(', ')} />
                       )}
                       {item.color !== null && <Detail label="Цвет" value={item.color} />}
-                      {item.portieres.length > 0 && (
+                      {item.portieres.map((portiere, index) => (
                         <Detail
-                          label="Портьеры"
-                          value={item.portieres
-                            .map(
-                              (portiere) => `${portiere.code} × ${portiere.quantity.toString()}`,
-                            )
-                            .join(', ')}
+                          key={`${portiere.code}-${index.toString()}`}
+                          label={
+                            item.portieres.length > 1
+                              ? `Портьера ${(index + 1).toString()}`
+                              : 'Портьера'
+                          }
+                          value={formatMaterial(portiere)}
+                          className="col-span-2"
+                        />
+                      ))}
+                      {item.tulle !== null && (
+                        <Detail label="Тюль" value={formatMaterial(item.tulle)} className="col-span-2" />
+                      )}
+                      {item.protection !== null && (
+                        <Detail
+                          label="Защита"
+                          value={formatMaterial(item.protection)}
                           className="col-span-2"
                         />
                       )}
-                      {item.cornice !== null && <Detail label="Карниз, код" value={item.cornice} />}
+                      {item.cornice !== null && (
+                        <Detail
+                          label="Карниз"
+                          value={formatMaterial(item.cornice)}
+                          className="col-span-2"
+                        />
+                      )}
                       {item.corniceRotation !== null && (
                         <Detail
                           label="Поворот карниза"
                           value={CORNICE_ROTATION_LABELS_RU[item.corniceRotation]}
                         />
                       )}
-                      {item.tulle !== null && <Detail label="Тюль, код" value={item.tulle} />}
-                      {item.hasProtection && (
+                      {item.plastic !== null && (
                         <Detail
-                          label="Защита"
-                          value={item.protectionCode ?? 'Нужна, код не указан'}
+                          label="Пластик"
+                          value={formatMaterial(item.plastic)}
+                          className="col-span-2"
                         />
+                      )}
+                      {item.pipe !== null && (
+                        <Detail label="Труба" value={formatMaterial(item.pipe)} className="col-span-2" />
                       )}
                       {item.accessories.length > 0 && (
                         <Detail

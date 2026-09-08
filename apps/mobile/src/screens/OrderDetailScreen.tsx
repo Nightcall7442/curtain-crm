@@ -1,5 +1,6 @@
 import {
   CORNICE_ROTATION_LABELS,
+  formatMaterial,
   formatMoney,
   formatPhone,
   ORDER_STAGE_FEE_LABELS,
@@ -135,8 +136,10 @@ export function OrderDetailScreen({
   */
   const stageFeeValue: Readonly<Record<string, string | null>> = {
     measurement: data.measurementFee,
+    cutting: data.cuttingFee,
     sewing: data.sewingFee,
     qc: data.qcFee,
+    cornice: data.corniceFee,
     installation: data.installationFee,
   };
 
@@ -378,28 +381,30 @@ export function OrderDetailScreen({
                 них карточка заказа на телефоне остаётся описанием, по
                 которому нельзя ничего сделать.
               */}
-              {item.portieres.length > 0 && (
-                <Text style={styles.itemDetail}>
-                  {`Портьеры: ${item.portieres
-                    .map((portiere) => `${portiere.code} × ${portiere.quantity.toString()}`)
-                    .join(', ')}`}
+              {item.portieres.map((portiere, index) => (
+                <Text key={`${portiere.code}-${index.toString()}`} style={styles.itemDetail}>
+                  {`Портьера: ${formatMaterial(portiere)}`}
                 </Text>
-              )}
+              ))}
               {item.tulle !== null && (
-                <Text style={styles.itemDetail}>{`Тюль: ${item.tulle}`}</Text>
+                <Text style={styles.itemDetail}>{`Тюль: ${formatMaterial(item.tulle)}`}</Text>
+              )}
+              {item.protection !== null && (
+                <Text style={styles.itemDetail}>{`Защита: ${formatMaterial(item.protection)}`}</Text>
               )}
               {item.cornice !== null && (
-                <Text style={styles.itemDetail}>{`Карниз: ${item.cornice}`}</Text>
+                <Text style={styles.itemDetail}>{`Карниз: ${formatMaterial(item.cornice)}`}</Text>
               )}
               {item.corniceRotation !== null && (
                 <Text style={styles.itemDetail}>
                   {`Поворот: ${t(CORNICE_ROTATION_LABELS, item.corniceRotation)}`}
                 </Text>
               )}
-              {item.hasProtection && (
-                <Text style={styles.itemDetail}>
-                  {`Защита: ${item.protectionCode ?? 'код не указан'}`}
-                </Text>
+              {item.plastic !== null && (
+                <Text style={styles.itemDetail}>{`Пластик: ${formatMaterial(item.plastic)}`}</Text>
+              )}
+              {item.pipe !== null && (
+                <Text style={styles.itemDetail}>{`Труба: ${formatMaterial(item.pipe)}`}</Text>
               )}
               {item.comment !== null && <Text style={styles.itemComment}>{item.comment}</Text>}
             </View>
@@ -440,6 +445,7 @@ export function OrderDetailScreen({
             cuttingFee: data.cuttingFee,
             sewingFee: data.sewingFee,
             qcFee: data.qcFee,
+            corniceFee: data.corniceFee,
             installationFee: data.installationFee,
           }}
           assignees={{

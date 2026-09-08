@@ -59,18 +59,93 @@ const emptyAccessory = (): AccessoryDraft => ({
   code: '',
 });
 
-/** Одна портьера позиции: код ткани с этикетки и её количество. */
-interface PortiereDraft {
-  readonly id: string;
+/**
+ * Материал позиции в форме: код с этикетки, метраж и описание.
+ *
+ * Всё строками — включая метраж: поле ввода отдаёт строку, и пустое поле
+ * должно оставаться пустым, а не превращаться в ноль на первом же нажатии.
+ * Числом оно становится один раз, при отправке.
+ */
+interface MaterialDraft {
   code: string;
-  quantity: number;
+  meters: string;
+  description: string;
+}
+
+const emptyMaterial = (): MaterialDraft => ({ code: '', meters: '', description: '' });
+
+/** Портьер на позицию бывает несколько — потому у них есть ключ списка. */
+interface PortiereDraft extends MaterialDraft {
+  readonly id: string;
 }
 
 const emptyPortiere = (): PortiereDraft => ({
   id: Math.random().toString(36).slice(2),
-  code: '',
-  quantity: 1,
+  ...emptyMaterial(),
 });
+
+/** Материал для отправки на сервер. `undefined` — код не заполнен. */
+function toMaterial(
+  draft: MaterialDraft,
+): { code: string; meters: number | null; description: string | null } | undefined {
+  const code = draft.code.trim();
+  if (code.length === 0) return undefined;
+
+  const meters = Number.parseFloat(draft.meters.replace(',', '.'));
+  const description = draft.description.trim();
+
+  return {
+    code,
+    meters: Number.isFinite(meters) && meters > 0 ? meters : null,
+    description: description.length > 0 ? description : null,
+  };
+}
+
+/** Три поля одного материала в ряд — одинаково для всех шести. */
+function MaterialFields({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  readonly label: string;
+  readonly placeholder: string;
+  readonly value: MaterialDraft;
+  readonly onChange: (patch: Partial<MaterialDraft>) => void;
+}): ReactElement {
+  return (
+    <div className="sm:col-span-2 lg:col-span-3">
+      <span className="mb-1.5 block text-footnote font-medium text-secondary">{label}</span>
+      <div className="grid gap-2 sm:grid-cols-[1fr_6rem_1.5fr]">
+        <Input
+          aria-label={`${label}: код`}
+          value={value.code}
+          onChange={(event) => {
+            onChange({ code: event.target.value });
+          }}
+          placeholder={placeholder}
+        />
+        <Input
+          aria-label={`${label}: метраж`}
+          inputMode="decimal"
+          value={value.meters}
+          onChange={(event) => {
+            onChange({ meters: event.target.value });
+          }}
+          placeholder="метр"
+        />
+        <Input
+          aria-label={`${label}: описание`}
+          value={value.description}
+          onChange={(event) => {
+            onChange({ description: event.target.value });
+          }}
+          placeholder="описание"
+        />
+      </div>
+    </div>
+  );
+}
 
 interface ItemDraft {
   readonly id: string;
@@ -84,12 +159,13 @@ interface ItemDraft {
   heightCm: string;
   /** Портьеры — коды тканей, которых на одну позицию бывает несколько. */
   portieres: PortiereDraft[];
-  /** Код карниза/тюля с этикетки — не выбор из справочника. */
-  cornice: string;
+  /** Остальные материалы — по одному на позицию, форма та же. */
+  tulle: MaterialDraft;
+  protection: MaterialDraft;
+  cornice: MaterialDraft;
+  plastic: MaterialDraft;
+  pipe: MaterialDraft;
   corniceRotation: CorniceRotation | '';
-  tulle: string;
-  hasProtection: boolean;
-  protectionCode: string;
   accessories: AccessoryDraft[];
   quantity: number;
   comment: string;
@@ -106,11 +182,12 @@ const emptyItem = (): ItemDraft => ({
   widthCm: '',
   heightCm: '',
   portieres: [emptyPortiere()],
-  cornice: '',
+  tulle: emptyMaterial(),
+  protection: emptyMaterial(),
+  cornice: emptyMaterial(),
+  plastic: emptyMaterial(),
+  pipe: emptyMaterial(),
   corniceRotation: '',
-  tulle: '',
-  hasProtection: false,
-  protectionCode: '',
   accessories: [],
   quantity: 1,
   comment: '',
@@ -248,7 +325,14 @@ export function OrderCreateDialog({
       ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
-      items: items.map((item) => ({
+      items: items.map((item) => {
+        const tulle = toMaterial(item.tulle);
+        const protection = toMaterial(item.protection);
+        const cornice = toMaterial(item.cornice);
+        const plastic = toMaterial(item.plastic);
+        const pipe = toMaterial(item.pipe);
+
+        return {
         kind: item.kind,
         ...(item.model.length > 0 ? { model: item.model } : {}),
         materials: item.materials,
@@ -264,18 +348,14 @@ export function OrderCreateDialog({
             }
           : {}),
         portieres: item.portieres
-          .filter((portiere) => portiere.code.trim().length > 0)
-          .map((portiere) => ({
-            code: portiere.code.trim(),
-            quantity: Math.max(1, portiere.quantity),
-          })),
-        ...(item.cornice.trim().length > 0 ? { cornice: item.cornice.trim() } : {}),
+          .map((portiere) => toMaterial(portiere))
+          .filter((portiere) => portiere !== undefined),
+        ...(tulle === undefined ? {} : { tulle }),
+        ...(protection === undefined ? {} : { protection }),
+        ...(cornice === undefined ? {} : { cornice }),
+        ...(plastic === undefined ? {} : { plastic }),
+        ...(pipe === undefined ? {} : { pipe }),
         ...(item.corniceRotation === '' ? {} : { corniceRotation: item.corniceRotation }),
-        ...(item.tulle.trim().length > 0 ? { tulle: item.tulle.trim() } : {}),
-        hasProtection: item.hasProtection,
-        ...(item.hasProtection && item.protectionCode.trim().length > 0
-          ? { protectionCode: item.protectionCode.trim() }
-          : {}),
         accessories: item.accessories
           .filter((accessory) => accessory.name.trim().length > 0)
           .map((accessory) => ({
@@ -285,7 +365,8 @@ export function OrderCreateDialog({
           })),
         quantity: item.quantity,
         ...(item.comment.trim().length > 0 ? { comment: item.comment.trim() } : {}),
-      })),
+        };
+      }),
     });
   };
 
@@ -566,7 +647,7 @@ export function OrderCreateDialog({
                     {/*
                       Портьеры — списком, как аксессуары: на одну позицию
                       иногда идут две ткани сразу. Справочника у них нет,
-                      только код с этикетки.
+                      только код с этикетки, метраж и описание.
                     */}
                     <div className="sm:col-span-2 lg:col-span-3">
                       <div className="mb-1.5 flex items-center gap-2">
@@ -586,31 +667,44 @@ export function OrderCreateDialog({
                       </div>
 
                       {item.portieres.length === 0 ? (
-                        <p className="text-footnote text-muted">Код ткани с этикетки и количество</p>
+                        <p className="text-footnote text-muted">
+                          Код ткани с этикетки, метраж и описание
+                        </p>
                       ) : (
                         <div className="space-y-2">
                           {item.portieres.map((portiere) => (
-                            <div key={portiere.id} className="flex items-center gap-2">
-                              <Input
-                                className="flex-1"
-                                value={portiere.code}
-                                onChange={(event) => {
-                                  patchPortiere(item.id, portiere.id, { code: event.target.value });
-                                }}
-                                placeholder="Код портьеры, например П-31"
-                              />
-                              <Input
-                                type="number"
-                                min={1}
-                                max={1000}
-                                className="w-20 shrink-0"
-                                value={portiere.quantity}
-                                onChange={(event) => {
-                                  patchPortiere(item.id, portiere.id, {
-                                    quantity: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
-                                  });
-                                }}
-                              />
+                            <div key={portiere.id} className="flex items-start gap-2">
+                              <div className="grid flex-1 gap-2 sm:grid-cols-[1fr_6rem_1.5fr]">
+                                <Input
+                                  aria-label="Портьера: код"
+                                  value={portiere.code}
+                                  onChange={(event) => {
+                                    patchPortiere(item.id, portiere.id, { code: event.target.value });
+                                  }}
+                                  placeholder="Например: П-31"
+                                />
+                                <Input
+                                  aria-label="Портьера: метраж"
+                                  inputMode="decimal"
+                                  value={portiere.meters}
+                                  onChange={(event) => {
+                                    patchPortiere(item.id, portiere.id, {
+                                      meters: event.target.value,
+                                    });
+                                  }}
+                                  placeholder="метр"
+                                />
+                                <Input
+                                  aria-label="Портьера: описание"
+                                  value={portiere.description}
+                                  onChange={(event) => {
+                                    patchPortiere(item.id, portiere.id, {
+                                      description: event.target.value,
+                                    });
+                                  }}
+                                  placeholder="описание"
+                                />
+                              </div>
                               <button
                                 type="button"
                                 aria-label="Удалить портьеру"
@@ -631,61 +725,56 @@ export function OrderCreateDialog({
                       )}
                     </div>
 
-                    <Field label="Тюль, код" hint="Код с этикетки — справочника нет">
-                      <Input
-                        value={item.tulle}
-                        onChange={(event) => {
-                          patchItem(item.id, { tulle: event.target.value });
-                        }}
-                        placeholder="Например: Т-22"
-                      />
-                    </Field>
+                    <MaterialFields
+                      label="Тюль"
+                      placeholder="Например: Т-22"
+                      value={item.tulle}
+                      onChange={(patch) => {
+                        patchItem(item.id, { tulle: { ...item.tulle, ...patch } });
+                      }}
+                    />
 
                     {/*
-                      Защита вместо прежней галочки «антимоскитная сетка»:
-                      сетка была не единственным защитным полотном, а какое
-                      именно нужно — цех узнавал на словах. Код обязателен
-                      при «нужна» — это же правило стоит в БД и на сервере.
+                      Защита вместо прежней «антимоскитной сетки»: сетка была
+                      не единственным защитным полотном, а какое именно нужно —
+                      цех узнавал на словах. Теперь это такая же строка
+                      материала, как тюль: заполнен код — защита есть.
                     */}
-                    <Field label="Защита">
-                      <Select
-                        value={item.hasProtection ? 'yes' : 'no'}
-                        onChange={(event) => {
-                          const needed = event.target.value === 'yes';
-                          patchItem(item.id, {
-                            hasProtection: needed,
-                            ...(needed ? {} : { protectionCode: '' }),
-                          });
-                        }}
-                        options={[
-                          { value: 'no', label: 'Не нужна' },
-                          { value: 'yes', label: 'Нужна' },
-                        ]}
-                      />
-                    </Field>
+                    <MaterialFields
+                      label="Защита"
+                      placeholder="Например: З-07"
+                      value={item.protection}
+                      onChange={(patch) => {
+                        patchItem(item.id, { protection: { ...item.protection, ...patch } });
+                      }}
+                    />
 
-                    {item.hasProtection && (
-                      <Field label="Код защиты" required hint="Код с этикетки — справочника нет">
-                        <Input
-                          value={item.protectionCode}
-                          onChange={(event) => {
-                            patchItem(item.id, { protectionCode: event.target.value });
-                          }}
-                          placeholder="Например: З-07"
-                          invalid={item.protectionCode.trim().length === 0}
-                        />
-                      </Field>
-                    )}
+                    <MaterialFields
+                      label="Карниз"
+                      placeholder="Например: К-104"
+                      value={item.cornice}
+                      onChange={(patch) => {
+                        patchItem(item.id, { cornice: { ...item.cornice, ...patch } });
+                      }}
+                    />
 
-                    <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
-                      <Input
-                        value={item.cornice}
-                        onChange={(event) => {
-                          patchItem(item.id, { cornice: event.target.value });
-                        }}
-                        placeholder="Например: К-104"
-                      />
-                    </Field>
+                    <MaterialFields
+                      label="Пластик"
+                      placeholder="Код пластика"
+                      value={item.plastic}
+                      onChange={(patch) => {
+                        patchItem(item.id, { plastic: { ...item.plastic, ...patch } });
+                      }}
+                    />
+
+                    <MaterialFields
+                      label="Труба"
+                      placeholder="Код трубы"
+                      value={item.pipe}
+                      onChange={(patch) => {
+                        patchItem(item.id, { pipe: { ...item.pipe, ...patch } });
+                      }}
+                    />
 
                     <Field label="Поворот карниза">
                       <Select

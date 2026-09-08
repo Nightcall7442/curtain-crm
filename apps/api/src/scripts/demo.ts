@@ -470,8 +470,8 @@ async function build(db: Database): Promise<void> {
           widthCm: width.toFixed(1),
           heightCm: height.toFixed(1),
           areaM2: areaM2FromCm(width, height).toFixed(4),
-          cornice: pick(cornices),
-          tulle: pick(tulles),
+          cornice: { code: pick(cornices), meters: null, description: null },
+          tulle: { code: pick(tulles), meters: null, description: null },
           quantity: between(1, 2),
         });
       }

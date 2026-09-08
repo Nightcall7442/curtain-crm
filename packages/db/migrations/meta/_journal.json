@@ -127,6 +127,13 @@
       "when": 1788866430066,
       "tag": "0017_order_item_portieres_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788867534817,
+      "tag": "0018_order_item_materials",
+      "breakpoints": true
     }
   ]
 }

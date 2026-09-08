@@ -329,6 +329,7 @@ const STAGE_FEE_COLUMN = {
   cutting: orders.cuttingFee,
   sewing: orders.sewingFee,
   qc: orders.qcFee,
+  cornice: orders.corniceFee,
   installation: orders.installationFee,
 } as const satisfies Record<OrderStageFee, unknown>;
 

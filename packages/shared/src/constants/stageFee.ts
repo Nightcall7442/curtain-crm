@@ -25,6 +25,7 @@ export const ORDER_STAGE_FEES = [
   'cutting',
   'sewing',
   'qc',
+  'cornice',
   'installation',
 ] as const;
 
@@ -35,6 +36,7 @@ export const OrderStageFee = {
   CUTTING: 'cutting',
   SEWING: 'sewing',
   QC: 'qc',
+  CORNICE: 'cornice',
   INSTALLATION: 'installation',
 } as const satisfies Record<string, OrderStageFee>;
 
@@ -44,6 +46,7 @@ export const ORDER_STAGE_FEE_LABELS: Translated<OrderStageFee> = {
     cutting: 'За раскрой',
     sewing: 'За пошив',
     qc: 'За контроль качества',
+    cornice: 'За карниз',
     installation: 'За установку',
   },
   uz: {
@@ -51,6 +54,7 @@ export const ORDER_STAGE_FEE_LABELS: Translated<OrderStageFee> = {
     cutting: 'Bichish uchun',
     sewing: 'Tikuv uchun',
     qc: 'Sifat nazorati uchun',
+    cornice: 'Karniz uchun',
     installation: "O'rnatish uchun",
   },
 };
@@ -81,6 +85,14 @@ export const ORDER_STAGE_FEE_ROLE = {
   cutting: Role.SEWER,
   sewing: Role.SEWER,
   qc: Role.QC,
+  /*
+    Карниз ставит установщик — отдельной роли «карнизчик» в системе нет и
+    заводить её владелец не стал: это те же люди, просто другая работа.
+    Поэтому у роли установщика теперь ДВЕ сдельных строки, и `stageFeesOfRole`
+    возвращает обе — ровно та причина, по которой она возвращает список,
+    а не один этап (см. комментарий к раскрою выше).
+  */
+  cornice: Role.INSTALLER,
   installation: Role.INSTALLER,
   /*
     `as const satisfies` вместо аннотации типом.

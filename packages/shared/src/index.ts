@@ -33,7 +33,7 @@ export * from './constants/stageFee';
 
 /* Типы */
 export * from './types/orderItemAccessory';
-export * from './types/orderItemPortiere';
+export * from './types/orderItemMaterial';
 
 /* Утилиты */
 export * from './utils/dates';

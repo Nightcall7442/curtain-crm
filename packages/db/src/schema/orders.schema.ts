@@ -1,7 +1,6 @@
-import type { OrderItemAccessory, OrderItemPortiere } from '@curtain-crm/shared';
+import type { OrderItemAccessory, OrderItemMaterial } from '@curtain-crm/shared';
 import { sql } from 'drizzle-orm';
 import {
-  boolean,
   check,
   date,
   doublePrecision,
@@ -121,6 +120,16 @@ export const orders = pgTable(
     cuttingFee: numeric('cutting_fee', { precision: 14, scale: 2 }).notNull().default('0'),
     sewingFee: numeric('sewing_fee', { precision: 14, scale: 2 }).notNull().default('0'),
     qcFee: numeric('qc_fee', { precision: 14, scale: 2 }).notNull().default('0'),
+    /**
+     * За карниз.
+     *
+     * Отдельный этап и отдельная расценка: карниз ставят до того, как
+     * повесят шторы, и делает это не обязательно тот же человек, что придёт
+     * на установку. Роли «карнизчик» в системе нет — владелец решил, что это
+     * те же установщики, — поэтому у роли установщика теперь две сдельных
+     * строки (см. `ORDER_STAGE_FEE_ROLE`).
+     */
+    corniceFee: numeric('cornice_fee', { precision: 14, scale: 2 }).notNull().default('0'),
     installationFee: numeric('installation_fee', { precision: 14, scale: 2 })
       .notNull()
       .default('0'),
@@ -188,7 +197,7 @@ export const orders = pgTable(
       'orders_stage_fees_non_negative',
       sql`${table.measurementFee} >= 0 and ${table.cuttingFee} >= 0
           and ${table.sewingFee} >= 0 and ${table.qcFee} >= 0
-          and ${table.installationFee} >= 0`,
+          and ${table.corniceFee} >= 0 and ${table.installationFee} >= 0`,
     ),
     // Отменённый заказ обязан нести причину отмены.
     check(
@@ -233,28 +242,27 @@ export const orderItems = pgTable(
     areaM2: numeric('area_m2', { precision: 10, scale: 4 }),
 
     /**
-     * Портьера — код ткани (артикул) с этикетки, список: одна позиция
-     * иногда шьётся из двух тканей сразу (контрастная вставка). См.
-     * `OrderItemPortiere` в `@curtain-crm/shared`.
+     * Материалы позиции — код с этикетки, метраж и описание у каждого.
+     *
+     * Все шесть описываются одной формой (`OrderItemMaterial`): у закройщика
+     * и карнизчика вопросы к любой строке одни и те же. Справочников у них
+     * нет — продавец переписывает код с этикетки товара.
+     *
+     * Портьера — СПИСОК: на одну позицию нередко идут две ткани сразу
+     * (контрастная вставка, разный метраж). Остальные — по одной строке
+     * или `null`, если этого материала в позиции нет.
      */
-    portieres: jsonb('portieres').$type<OrderItemPortiere[]>().notNull().default([]),
+    portieres: jsonb('portieres').$type<OrderItemMaterial[]>().notNull().default([]),
+    tulle: jsonb('tulle').$type<OrderItemMaterial | null>(),
+    protection: jsonb('protection').$type<OrderItemMaterial | null>(),
+    cornice: jsonb('cornice').$type<OrderItemMaterial | null>(),
+    /** Пластик и труба — то, из чего собирают сам карниз. */
+    plastic: jsonb('plastic').$type<OrderItemMaterial | null>(),
+    pipe: jsonb('pipe').$type<OrderItemMaterial | null>(),
 
-    /** Карниз — код (артикул), а не выбор из справочника: у карнизов и тюля
-     *  нет фиксированного набора вариантов, продавец переписывает код с
-     *  этикетки товара. Сторона открывания — перечисление: свободный текст
-     *  раньше давал «левый», «правый» и «п-образный» под тремя разными
-     *  подписями на одно и то же. */
-    cornice: text('cornice'),
+    /** Сторона открывания: свободный текст раньше давал «левый», «правый»
+     *  и «п-образный» под тремя разными подписями на одно и то же. */
     corniceRotation: corniceRotationEnum('cornice_rotation'),
-    tulle: text('tulle'),
-    /**
-     * Нужна ли защита — антимоскитная сетка или другое защитное полотно.
-     * Код читается вместе с флагом: включённая защита без кода означала бы
-     * «что-то нужно, а что именно — неизвестно», и заказ уехал бы в цех
-     * без единственной детали, которая там и нужна.
-     */
-    hasProtection: boolean('has_protection').notNull().default(false),
-    protectionCode: text('protection_code'),
     /**
      * Аксессуары позиции: держатели, султанчики, бубоны, обхваты, сачак —
      * список, а не одно поле, потому что к одной шторе часто идёт сразу
@@ -282,12 +290,6 @@ export const orderItems = pgTable(
     check(
       'order_items_height_range',
       sql`${table.heightCm} is null or ${table.heightCm} between 1 and 2000`,
-    ),
-    // Включённая защита без кода — незавершённая мысль: цех получил бы
-    // заказ с пометкой «нужно что-то защитное», не зная, что именно.
-    check(
-      'order_items_protection_code_required',
-      sql`not ${table.hasProtection} or ${table.protectionCode} is not null`,
     ),
   ],
 );

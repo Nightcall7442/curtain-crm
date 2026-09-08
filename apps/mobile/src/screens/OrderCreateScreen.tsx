@@ -61,14 +61,90 @@ interface AccessoryDraft {
 
 const emptyAccessory = (id: number): AccessoryDraft => ({ id, name: '', quantity: '1', code: '' });
 
-/** Одна портьера позиции: код ткани с этикетки и её количество. */
-interface PortiereDraft {
-  readonly id: number;
+/**
+ * Материал позиции в форме: код с этикетки, метраж и описание.
+ *
+ * Метраж строкой, как и всё остальное: поле ввода отдаёт строку, и пустое
+ * поле должно оставаться пустым, а не превращаться в ноль на первом же
+ * нажатии. Числом оно становится один раз, при отправке.
+ */
+interface MaterialDraft {
   readonly code: string;
-  readonly quantity: string;
+  readonly meters: string;
+  readonly description: string;
 }
 
-const emptyPortiere = (id: number): PortiereDraft => ({ id, code: '', quantity: '1' });
+const emptyMaterial = (): MaterialDraft => ({ code: '', meters: '', description: '' });
+
+/** Портьер на позицию бывает несколько — потому у них есть ключ списка. */
+interface PortiereDraft extends MaterialDraft {
+  readonly id: number;
+}
+
+const emptyPortiere = (id: number): PortiereDraft => ({ id, ...emptyMaterial() });
+
+/** Материал для отправки на сервер. `undefined` — код не заполнен. */
+function toMaterial(
+  draft: MaterialDraft,
+): { code: string; meters: number | null; description: string | null } | undefined {
+  const code = draft.code.trim();
+  if (code === '') return undefined;
+
+  const meters = Number.parseFloat(draft.meters.replace(',', '.'));
+  const description = draft.description.trim();
+
+  return {
+    code,
+    meters: Number.isFinite(meters) && meters > 0 ? meters : null,
+    description: description === '' ? null : description,
+  };
+}
+
+/** Три поля одного материала — одинаково для тюля, защиты, карниза и трубы. */
+function MaterialFields({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  readonly label: string;
+  readonly placeholder: string;
+  readonly value: MaterialDraft;
+  readonly onChange: (patch: Partial<MaterialDraft>) => void;
+}): ReactElement {
+  return (
+    <Field label={label} hint="Код с этикетки, метраж и описание">
+      <Input
+        value={value.code}
+        onChangeText={(code) => {
+          onChange({ code });
+        }}
+        placeholder={placeholder}
+      />
+      <View style={styles.materialRow}>
+        <View style={styles.materialMeters}>
+          <Input
+            value={value.meters}
+            onChangeText={(meters) => {
+              onChange({ meters });
+            }}
+            keyboardType="decimal-pad"
+            placeholder="метр"
+          />
+        </View>
+        <View style={styles.materialDescription}>
+          <Input
+            value={value.description}
+            onChangeText={(description) => {
+              onChange({ description });
+            }}
+            placeholder="описание"
+          />
+        </View>
+      </View>
+    </Field>
+  );
+}
 
 /** Позиция заказа в форме. Идентификатор нужен только для ключа списка. */
 interface DraftItem {
@@ -80,12 +156,13 @@ interface DraftItem {
   readonly quantity: string;
   /** Портьеры — коды тканей, которых на одну позицию бывает несколько. */
   readonly portieres: readonly PortiereDraft[];
-  /** Код карниза/тюля с этикетки — справочника для них нет. */
-  readonly cornice: string;
+  /** Остальные материалы — по одному на позицию, форма та же. */
+  readonly tulle: MaterialDraft;
+  readonly protection: MaterialDraft;
+  readonly cornice: MaterialDraft;
+  readonly plastic: MaterialDraft;
+  readonly pipe: MaterialDraft;
   readonly corniceRotation: CorniceRotation | null;
-  readonly tulle: string;
-  readonly hasProtection: boolean;
-  readonly protectionCode: string;
   readonly accessories: readonly AccessoryDraft[];
   readonly comment: string;
 }
@@ -98,11 +175,12 @@ const emptyItem = (id: number): DraftItem => ({
   widthCm: '',
   quantity: '1',
   portieres: [emptyPortiere(1)],
-  cornice: '',
+  tulle: emptyMaterial(),
+  protection: emptyMaterial(),
+  cornice: emptyMaterial(),
+  plastic: emptyMaterial(),
+  pipe: emptyMaterial(),
   corniceRotation: null,
-  tulle: '',
-  hasProtection: false,
-  protectionCode: '',
   accessories: [],
   comment: '',
 });
@@ -220,7 +298,14 @@ export function OrderCreateScreen(): ReactElement {
       ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
       workPrice: toMoney(workPrice),
       deposit: toMoney(deposit),
-      items: items.map((item) => ({
+      items: items.map((item) => {
+        const tulle = toMaterial(item.tulle);
+        const protection = toMaterial(item.protection);
+        const cornice = toMaterial(item.cornice);
+        const plastic = toMaterial(item.plastic);
+        const pipe = toMaterial(item.pipe);
+
+        return {
         kind: item.kind,
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
@@ -231,18 +316,14 @@ export function OrderCreateScreen(): ReactElement {
             }
           : {}),
         portieres: item.portieres
-          .filter((portiere) => portiere.code.trim() !== '')
-          .map((portiere) => ({
-            code: portiere.code.trim(),
-            quantity: Math.max(1, Number.parseInt(portiere.quantity, 10) || 1),
-          })),
-        ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
+          .map((portiere) => toMaterial(portiere))
+          .filter((portiere) => portiere !== undefined),
+        ...(tulle === undefined ? {} : { tulle }),
+        ...(protection === undefined ? {} : { protection }),
+        ...(cornice === undefined ? {} : { cornice }),
+        ...(plastic === undefined ? {} : { plastic }),
+        ...(pipe === undefined ? {} : { pipe }),
         ...(item.corniceRotation === null ? {} : { corniceRotation: item.corniceRotation }),
-        ...(item.tulle.trim() === '' ? {} : { tulle: item.tulle.trim() }),
-        hasProtection: item.hasProtection,
-        ...(item.hasProtection && item.protectionCode.trim() !== ''
-          ? { protectionCode: item.protectionCode.trim() }
-          : {}),
         accessories: item.accessories
           .filter((accessory) => accessory.name.trim() !== '')
           .map((accessory) => ({
@@ -251,7 +332,8 @@ export function OrderCreateScreen(): ReactElement {
             code: accessory.code.trim() === '' ? null : accessory.code.trim(),
           })),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
-      })),
+        };
+      }),
     });
   };
 
@@ -476,7 +558,9 @@ export function OrderCreateScreen(): ReactElement {
                 </View>
 
                 {item.portieres.length === 0 ? (
-                  <Text style={styles.accessoriesHint}>Код ткани с этикетки и количество</Text>
+                  <Text style={styles.accessoriesHint}>
+                    Код ткани с этикетки, метраж и описание
+                  </Text>
                 ) : (
                   item.portieres.map((portiere) => (
                     <View key={portiere.id} style={styles.accessoryRow}>
@@ -486,18 +570,29 @@ export function OrderCreateScreen(): ReactElement {
                           onChangeText={(code) => {
                             updatePortiere(item.id, portiere.id, { code });
                           }}
-                          placeholder="Код портьеры, например П-31"
+                          placeholder="Например: П-31"
                         />
-                      </View>
-                      <View style={styles.accessoryQuantity}>
-                        <Input
-                          value={portiere.quantity}
-                          onChangeText={(quantity) => {
-                            updatePortiere(item.id, portiere.id, { quantity });
-                          }}
-                          keyboardType="number-pad"
-                          placeholder="1"
-                        />
+                        <View style={styles.materialRow}>
+                          <View style={styles.materialMeters}>
+                            <Input
+                              value={portiere.meters}
+                              onChangeText={(meters) => {
+                                updatePortiere(item.id, portiere.id, { meters });
+                              }}
+                              keyboardType="decimal-pad"
+                              placeholder="метр"
+                            />
+                          </View>
+                          <View style={styles.materialDescription}>
+                            <Input
+                              value={portiere.description}
+                              onChangeText={(description) => {
+                                updatePortiere(item.id, portiere.id, { description });
+                              }}
+                              placeholder="описание"
+                            />
+                          </View>
+                        </View>
                       </View>
                       {item.portieres.length > 1 ? (
                         <Pressable
@@ -521,69 +616,56 @@ export function OrderCreateScreen(): ReactElement {
                 )}
               </View>
 
-              <Field label="Тюль, код" hint="Код с этикетки — справочника нет">
-                <Input
-                  value={item.tulle}
-                  onChangeText={(tulle) => {
-                    updateItem(item.id, { tulle });
-                  }}
-                  placeholder="Например: Т-22"
-                />
-              </Field>
+              <MaterialFields
+                label="Тюль"
+                placeholder="Например: Т-22"
+                value={item.tulle}
+                onChange={(patch) => {
+                  updateItem(item.id, { tulle: { ...item.tulle, ...patch } });
+                }}
+              />
 
               {/*
-                Защита пришла на смену галочке «антимоскитная сетка»: сетка
-                была не единственным защитным полотном, а какое именно нужно
-                — цех узнавал только на словах. Код обязателен при «да» —
-                это же правило стоит и в БД (`order_items_protection_code_required`).
+                Защита пришла на смену «антимоскитной сетке»: сетка была не
+                единственным защитным полотном, а какое именно нужно — цех
+                узнавал только на словах. Теперь это такая же строка
+                материала, как тюль: заполнен код — защита есть.
               */}
-              <Field label="Защита">
-                <ChipSelect
-                  value={item.hasProtection ? 'yes' : 'no'}
-                  onChange={(value) => {
-                    updateItem(item.id, {
-                      hasProtection: value === 'yes',
-                      ...(value === 'no' ? { protectionCode: '' } : {}),
-                    });
-                  }}
-                  options={[
-                    { value: 'no', label: 'Не нужна' },
-                    { value: 'yes', label: 'Нужна' },
-                  ]}
-                />
-              </Field>
+              <MaterialFields
+                label="Защита"
+                placeholder="Например: З-07"
+                value={item.protection}
+                onChange={(patch) => {
+                  updateItem(item.id, { protection: { ...item.protection, ...patch } });
+                }}
+              />
 
-              {item.hasProtection ? (
-                <Field
-                  label="Код защиты"
-                  required
-                  hint="Код с этикетки — справочника нет"
-                  error={
-                    showErrors && item.protectionCode.trim() === ''
-                      ? 'Укажите код защиты'
-                      : undefined
-                  }
-                >
-                  <Input
-                    value={item.protectionCode}
-                    onChangeText={(protectionCode) => {
-                      updateItem(item.id, { protectionCode });
-                    }}
-                    placeholder="Например: З-07"
-                    invalid={showErrors && item.protectionCode.trim() === ''}
-                  />
-                </Field>
-              ) : null}
+              <MaterialFields
+                label="Карниз"
+                placeholder="Например: К-104"
+                value={item.cornice}
+                onChange={(patch) => {
+                  updateItem(item.id, { cornice: { ...item.cornice, ...patch } });
+                }}
+              />
 
-              <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
-                <Input
-                  value={item.cornice}
-                  onChangeText={(cornice) => {
-                    updateItem(item.id, { cornice });
-                  }}
-                  placeholder="Например: К-104"
-                />
-              </Field>
+              <MaterialFields
+                label="Пластик"
+                placeholder="Код пластика"
+                value={item.plastic}
+                onChange={(patch) => {
+                  updateItem(item.id, { plastic: { ...item.plastic, ...patch } });
+                }}
+              />
+
+              <MaterialFields
+                label="Труба"
+                placeholder="Код трубы"
+                value={item.pipe}
+                onChange={(patch) => {
+                  updateItem(item.id, { pipe: { ...item.pipe, ...patch } });
+                }}
+              />
 
               <Field label="Поворот карниза">
                 <ChipSelect
@@ -749,14 +831,8 @@ function validate(values: {
   readonly clientPhone: string;
   readonly deadline: string;
   readonly items: readonly DraftItem[];
-}): Partial<Record<'clientName' | 'clientPhone' | 'deadline' | 'protectionCode', string>> {
+}): Partial<Record<'clientName' | 'clientPhone' | 'deadline', string>> {
   const errors: Record<string, string> = {};
-
-  // Защита без кода: то же правило, что на сервере и в ограничении БД.
-  // Само поле подсвечивается в своей позиции — здесь только запрет отправки.
-  if (values.items.some((item) => item.hasProtection && item.protectionCode.trim() === '')) {
-    errors['protectionCode'] = 'Укажите код защиты';
-  }
 
   if (values.clientName.trim() === '') {
     errors['clientName'] = 'Укажите имя клиента';
@@ -864,6 +940,17 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   accessoryName: {
+    flex: 1,
+  },
+  materialRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  materialMeters: {
+    width: 88,
+  },
+  materialDescription: {
     flex: 1,
   },
   accessoryQuantity: {
