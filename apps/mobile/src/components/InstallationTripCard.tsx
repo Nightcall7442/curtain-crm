@@ -11,13 +11,17 @@ import { Card, CardTitle, Pill } from './Card';
 /**
  * Выезд на установку: сотрудник уходит с объекта работы, но не с работы.
  *
- * Раньше выбор был из двух: закрыть смену — и потерять полдня в табеле, —
+ * Раньше выбор был из двух: закрыть смену — и заново открывать её потом, —
  * или не отмечаться вовсе, и тогда человек числится в цеху, где его нет.
- * Смена остаётся открытой, часы идут, а руководитель видит в явке «на
- * установке», а не «в цеху».
+ * Смена остаётся открытой, но рабочее время встаёт на паузу и продолжается
+ * с того же места по возвращении; руководитель видит в явке «на установке».
  *
- * От личной отлучки отличается тем, что это работа: срока нет, просрочки
- * нет, в тревоги на главной выезд не попадает.
+ * Часы выезда не идут в почасовую оплату намеренно: установка оплачивается
+ * сдельной расценкой за этап, и засчитать её ещё и часами значило бы
+ * заплатить дважды.
+ *
+ * От личной отлучки отличается тем, что срока нет и просрочки нет: в
+ * тревоги на главной выезд не попадает.
  *
  * Координаты обязательны на обоих концах — так просил владелец. Радиусом
  * цеха выезд не проверяется: из цеха как раз уезжают.
@@ -29,11 +33,18 @@ export function InstallationTripCard({
 }): ReactElement | null {
   const current = trpc.shifts.currentTrip.useQuery(undefined, { enabled: shiftOpen });
   const { requestPosition, isRequesting, error: locationError } = useLocation();
+  const utils = trpc.useUtils();
+
+  /* Кольцо таймера берёт паузу из `shifts.current`: без обновления этого
+     запроса время на экране продолжало бы идти после нажатия кнопки. */
+  const refresh = async (): Promise<void> => {
+    await Promise.all([current.refetch(), utils.shifts.current.invalidate()]);
+  };
 
   const startTrip = trpc.shifts.startTrip.useMutation({
     async onSuccess() {
       notifySuccess();
-      await current.refetch();
+      await refresh();
     },
     onError(error) {
       notifyError();
@@ -44,7 +55,7 @@ export function InstallationTripCard({
   const endTrip = trpc.shifts.endTrip.useMutation({
     async onSuccess() {
       notifySuccess();
-      await current.refetch();
+      await refresh();
     },
     onError(error) {
       notifyError();
@@ -88,8 +99,8 @@ export function InstallationTripCard({
       <Card>
         <CardTitle title="Установка" icon="deadline" />
         <Text style={styles.hint}>
-          Уезжаете на объект — отметьтесь. Смена не закроется, а в явке будет видно, что
-          вы на установке.
+          Уезжаете на объект — отметьтесь. Смена не закроется, но рабочее время
+          встанет на паузу и продолжится с того же места, когда вернётесь.
         </Text>
 
         {locationError !== null && <Text style={styles.error}>{locationError}</Text>}

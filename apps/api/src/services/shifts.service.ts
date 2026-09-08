@@ -1,5 +1,5 @@
-import { shifts, type DbExecutor } from '@curtain-crm/db';
-import { and, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
+import { installationTrips, shifts, type DbExecutor } from '@curtain-crm/db';
+import { and, eq, gte, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
 
 /**
  * Учёт рабочего времени.
@@ -64,7 +64,47 @@ export function sqlTimestamp(value: Date): string {
  * смена с 31-го на 1-е иначе целиком попала бы в один из двух месяцев.
  * Открытые смены (`ended_at is null`) не учитываются — их длительность
  * ещё не определена, и включать «сейчас минус начало» в расчёт зарплаты нельзя.
+ *
+ * Время выездов на установку вычитается — см. `workedSecondsExpression`.
  */
+/**
+ * Часы смен за период ЗА ВЫЧЕТОМ выездов на установку.
+ *
+ * Выезд останавливает рабочее время: пока сотрудник на объекте, его час не
+ * идёт в почасовую оплату. Так решил владелец, и это согласуется с тем, как
+ * установка оплачивается на самом деле — сдельной расценкой за этап, а не
+ * часами. Считать выезд ещё и часами значило бы заплатить за него дважды.
+ *
+ * Выражение общее для всех трёх мест, где считаются часы: расчёт зарплаты,
+ * ведомость смен у руководства и отчёт по сотрудникам. Разойтись они не
+ * могут — три разных числа за один и тот же месяц спорят между собой, и
+ * доказать сотруднику правоту любого из них уже нельзя.
+ *
+ * Вычитаются ТОЛЬКО закрытые выезды. Выезд, оставшийся открытым на закрытой
+ * смене (человек уехал, а «вернулся» нажать забыл), — это пробел в данных, и
+ * молча урезать по нему зарплату хуже, чем не урезать: ошибка в свою пользу
+ * заметна сотруднику, ошибка против него — нет.
+ */
+export function workedSecondsExpression(bounds: PeriodBounds): SQL<string> {
+  const periodEnd = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
+  const periodStart = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
+
+  return sql<string>`coalesce(sum(
+    extract(epoch from (
+      least(${shifts.endedAt}, ${periodEnd}) - greatest(${shifts.startedAt}, ${periodStart})
+    ))
+    - coalesce((
+      select sum(extract(epoch from (
+        least(${installationTrips.returnedAt}, ${periodEnd})
+        - greatest(${installationTrips.startedAt}, ${periodStart})
+      )))
+      from ${installationTrips}
+      where ${installationTrips.shiftId} = ${shifts.id}
+        and ${installationTrips.returnedAt} is not null
+    ), 0)
+  ), 0)`;
+}
+
 export async function calculateWorkedHours(
   executor: DbExecutor,
   userId: number,
@@ -72,12 +112,7 @@ export async function calculateWorkedHours(
 ): Promise<number> {
   const [row] = await executor
     .select({
-      hours: sql<string>`coalesce(sum(
-        extract(epoch from (
-          least(${shifts.endedAt}, ${sqlTimestamp(bounds.end)}::timestamptz)
-          - greatest(${shifts.startedAt}, ${sqlTimestamp(bounds.start)}::timestamptz)
-        ))
-      ), 0) / 3600`,
+      hours: sql<string>`${workedSecondsExpression(bounds)} / 3600`,
     })
     .from(shifts)
     .where(

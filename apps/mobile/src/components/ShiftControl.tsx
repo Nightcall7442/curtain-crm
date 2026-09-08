@@ -150,7 +150,13 @@ export function ShiftControl({
 
       {showTimer && (
         <Card>
-          <ShiftRing startedAt={startedAt} />
+          <ShiftRing
+            startedAt={startedAt}
+            pausedSeconds={shift?.pausedSeconds ?? 0}
+            pausedSince={
+              shift?.pausedSince == null ? null : new Date(shift.pausedSince)
+            }
+          />
         </Card>
       )}
 

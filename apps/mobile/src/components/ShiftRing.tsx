@@ -23,12 +23,19 @@ const STROKE = 12;
 
 export function ShiftRing({
   startedAt,
+  pausedSeconds = 0,
+  pausedSince = null,
 }: {
   /** Момент открытия смены; `null` — смена закрыта. */
   readonly startedAt: Date | null;
+  /** Уже накопленная пауза за закрытые выезды. */
+  readonly pausedSeconds?: number;
+  /** Начало незакрытого выезда; `null` — сотрудник в цеху. */
+  readonly pausedSince?: Date | null;
 }): ReactElement {
-  const elapsed = useElapsed(startedAt);
+  const elapsed = useElapsed(startedAt, pausedSeconds, pausedSince);
   const isOpen = startedAt !== null;
+  const isPaused = isOpen && pausedSince !== null;
 
   // Радиус считается от центра до середины линии, иначе толстое кольцо
   // обрезается краем холста.
@@ -51,7 +58,9 @@ export function ShiftRing({
             cx={center}
             cy={center}
             r={ringRadius}
-            stroke={colors.accentBright}
+            /* На выезде кольцо гаснет до янтарного: время стоит, и цвет
+               «всё идёт как надо» здесь сказал бы неправду. */
+            stroke={isPaused ? colors.warning : colors.accentBright}
             strokeWidth={STROKE}
             strokeLinecap="round"
             fill="none"
@@ -60,9 +69,21 @@ export function ShiftRing({
       </Svg>
 
       <View style={styles.inner} pointerEvents="none">
-        <Text style={styles.caption}>{isOpen ? 'Сейчас на работе' : 'Смена не открыта'}</Text>
-        <Text style={[styles.time, isOpen ? styles.timeOpen : styles.timeClosed]}>{elapsed}</Text>
-        <Text style={styles.caption}>{isOpen ? 'Рабочее время' : 'с начала смены'}</Text>
+        <Text style={styles.caption}>
+          {!isOpen ? 'Смена не открыта' : isPaused ? 'На установке' : 'Сейчас на работе'}
+        </Text>
+        <Text
+          style={[
+            styles.time,
+            isOpen ? styles.timeOpen : styles.timeClosed,
+            isPaused ? styles.timePaused : null,
+          ]}
+        >
+          {elapsed}
+        </Text>
+        <Text style={styles.caption}>
+          {!isOpen ? 'с начала смены' : isPaused ? 'время стоит' : 'Рабочее время'}
+        </Text>
       </View>
     </View>
   );
@@ -75,7 +96,11 @@ export function ShiftRing({
  * приложение на час, сотрудник увидел бы отставание ровно на этот час, потому
  * что интервалы в фоне не выполняются.
  */
-function useElapsed(startedAt: Date | null): string {
+function useElapsed(
+  startedAt: Date | null,
+  pausedSeconds: number,
+  pausedSince: Date | null,
+): string {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -92,9 +117,20 @@ function useElapsed(startedAt: Date | null): string {
 
   if (startedAt === null) return '00:00:00';
 
+  /*
+    Выезд на установку останавливает счётчик: показанное здесь число должно
+    совпадать с тем, что уйдёт в зарплату, а там часы выезда вычитаются
+    (`workedSecondsExpression` на сервере). Уже закрытые выезды приходят
+    суммой, открытый — моментом начала: с него время просто не растёт.
+  */
+  const away = pausedSince === null ? 0 : Math.max(0, (now - pausedSince.getTime()) / 1000);
+
   // Отрицательное значение возможно при расхождении часов телефона и сервера;
   // показывать «-1:59:59» нельзя, поэтому отсчёт начинается с нуля.
-  const seconds = Math.max(0, Math.floor((now - startedAt.getTime()) / 1000));
+  const seconds = Math.max(
+    0,
+    Math.floor((now - startedAt.getTime()) / 1000 - pausedSeconds - away),
+  );
 
   const pad = (value: number): string => value.toString().padStart(2, '0');
 
@@ -133,6 +169,9 @@ const styles = StyleSheet.create({
   },
   timeOpen: {
     color: colors.textPrimary,
+  },
+  timePaused: {
+    color: colors.warning,
   },
   timeClosed: {
     color: colors.textMuted,

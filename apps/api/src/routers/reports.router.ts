@@ -37,7 +37,7 @@ import { z } from 'zod';
 import { idSchema, periodSchema } from '../lib/schemas';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { topPerformers } from '../services/performance.service';
-import { periodBounds, sqlTimestamp } from '../services/shifts.service';
+import { periodBounds, workedSecondsExpression } from '../services/shifts.service';
 import { router } from '../trpc';
 
 /**
@@ -753,12 +753,8 @@ export const reportsRouter = router({
         ctx.db
           .select({
             userId: shifts.userId,
-            workedHours: sql<string>`round(coalesce(sum(
-              extract(epoch from (
-                least(${shifts.endedAt}, ${sqlTimestamp(bounds.end)}::timestamptz)
-                - greatest(${shifts.startedAt}, ${sqlTimestamp(bounds.start)}::timestamptz)
-              ))
-            ), 0) / 3600, 2)`,
+            // То же выражение, что в зарплате: часы за вычетом выездов.
+            workedHours: sql<string>`round(${workedSecondsExpression(bounds)} / 3600, 2)`,
           })
           .from(shifts)
           .where(and(lt(shifts.startedAt, bounds.end), gte(shifts.endedAt, bounds.start)))

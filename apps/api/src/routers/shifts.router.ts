@@ -19,7 +19,7 @@ import {
   resolveCheckInBranch,
 } from '../services/geolocation.service';
 import { notifyShiftAdjusted } from '../services/notifications.service';
-import { calculateWorkedHours, periodBounds, sqlTimestamp } from '../services/shifts.service';
+import { calculateWorkedHours, periodBounds, workedSecondsExpression } from '../services/shifts.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
@@ -53,13 +53,40 @@ export const shiftsRouter = router({
         branchName: branches.name,
         startedAt: shifts.startedAt,
         startDistanceMeters: shifts.startDistanceMeters,
+        /*
+          Пауза за выезды — чтобы часы на экране совпадали с теми, что уйдут
+          в зарплату. Считать их на клиенте по списку выездов нельзя: тогда
+          в двух местах появились бы два разных правила, и разошлись бы они
+          незаметно.
+        */
+        pausedSeconds: sql<string>`coalesce((
+          select sum(extract(epoch from (
+            ${installationTrips.returnedAt} - ${installationTrips.startedAt}
+          )))
+          from ${installationTrips}
+          where ${installationTrips.shiftId} = ${shifts.id}
+            and ${installationTrips.returnedAt} is not null
+        ), 0)`,
+        /** Начало незакрытого выезда: с этого момента таймер стоит. */
+        pausedSince: sql<Date | null>`(
+          select ${installationTrips.startedAt}
+          from ${installationTrips}
+          where ${installationTrips.shiftId} = ${shifts.id}
+            and ${installationTrips.returnedAt} is null
+          limit 1
+        )`,
       })
       .from(shifts)
       .innerJoin(branches, eq(branches.id, shifts.branchId))
       .where(findOpenShift(ctx.user.id))
       .limit(1);
 
-    return shift ?? null;
+    if (shift === undefined) return null;
+
+    return {
+      ...shift,
+      pausedSeconds: Math.max(0, Math.round(Number.parseFloat(shift.pausedSeconds) || 0)),
+    };
   }),
 
   /**
@@ -695,12 +722,8 @@ export const shiftsRouter = router({
           userId: shifts.userId,
           userFullName: users.fullName,
           shiftsCount: count(),
-          workedHours: sql<string>`round(coalesce(sum(
-            extract(epoch from (
-              least(${shifts.endedAt}, ${sqlTimestamp(bounds.end)}::timestamptz)
-              - greatest(${shifts.startedAt}, ${sqlTimestamp(bounds.start)}::timestamptz)
-            ))
-          ), 0) / 3600, 2)`,
+          // То же выражение, что в расчёте зарплаты: часы за вычетом выездов.
+          workedHours: sql<string>`round(${workedSecondsExpression(bounds)} / 3600, 2)`,
         })
         .from(shifts)
         .innerJoin(users, eq(users.id, shifts.userId))
