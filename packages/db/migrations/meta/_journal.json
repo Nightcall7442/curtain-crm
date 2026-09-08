@@ -134,6 +134,13 @@
       "when": 1788867534817,
       "tag": "0018_order_item_materials",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788868730150,
+      "tag": "0019_cornice_stage",
+      "breakpoints": true
     }
   ]
 }

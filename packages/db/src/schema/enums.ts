@@ -1,6 +1,7 @@
 import {
   CATALOG_KINDS,
   CORNICE_ROTATIONS,
+  CORNICE_STATUSES,
   DAY_OFF_STATUSES,
   DEPARTMENTS,
   EMPLOYMENT_TYPES,
@@ -35,6 +36,7 @@ export const roleEnum = pgEnum('role', ROLES);
 export const orderStatusEnum = pgEnum('order_status', ORDER_STATUSES);
 export const orderTypeEnum = pgEnum('order_type', ORDER_TYPES);
 export const priorityEnum = pgEnum('priority', PRIORITIES);
+export const corniceStatusEnum = pgEnum('cornice_status', CORNICE_STATUSES);
 export const photoStageEnum = pgEnum('photo_stage', PHOTO_STAGES);
 export const notificationTypeEnum = pgEnum('notification_type', NOTIFICATION_TYPES);
 export const payrollSchemeTypeEnum = pgEnum('payroll_scheme_type', PAYROLL_SCHEME_TYPES);

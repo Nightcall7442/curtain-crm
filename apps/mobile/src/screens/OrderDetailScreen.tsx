@@ -1,5 +1,7 @@
 import {
   CORNICE_ROTATION_LABELS,
+  CORNICE_STATUS_LABELS,
+  CorniceStatus,
   formatMaterial,
   formatMoney,
   formatPhone,
@@ -33,7 +35,7 @@ import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { Stepper } from '../components/Stepper';
 import { VoiceCommentPlayer, VoiceRecorderButton } from '../components/VoiceComment';
-import { useIsManagement } from '../hooks/useAuth';
+import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -60,6 +62,8 @@ export function OrderDetailScreen({
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const isManager = useIsManagement();
+  const { user } = useAuth();
+  const isInstaller = (user?.roles ?? []).includes(Role.INSTALLER);
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
@@ -85,6 +89,28 @@ export function OrderDetailScreen({
       notifyError();
     },
   });
+
+  /*
+    Карниз — своя пара мутаций, мимо `changeStatus`: он идёт параллельно
+    цепочке статусов, и статус заказа при этом не меняется. Обе обновляют
+    и карточку, и очередь карнизчиков — иначе взятая работа осталась бы
+    висеть в списке свободных до перезахода на экран.
+  */
+  const corniceMutationOptions = {
+    onSuccess: async () => {
+      notifySuccess();
+      await Promise.all([
+        utils.orders.byId.invalidate({ id: orderId }),
+        utils.orders.corniceQueue.invalidate(),
+      ]);
+    },
+    onError: () => {
+      notifyError();
+    },
+  };
+
+  const takeCornice = trpc.orders.takeCornice.useMutation(corniceMutationOptions);
+  const finishCornice = trpc.orders.finishCornice.useMutation(corniceMutationOptions);
 
   /** Запуск перехода: с причиной — через форму, без — сразу. */
   const startTransition = (toStatus: OrderStatus, requiresComment: boolean): void => {
@@ -412,6 +438,69 @@ export function OrderDetailScreen({
         )}
       </Card>
 
+      {/* --- Карниз ---------------------------------------------------------- */}
+      {data.corniceStatus !== CorniceStatus.NOT_REQUIRED && (
+        <Card>
+          <CardTitle title="Карниз" icon="window" />
+
+          <Row label="Состояние" value={t(CORNICE_STATUS_LABELS, data.corniceStatus)} />
+          {data.corniceInstaller !== null && (
+            <Row label="Ставит" value={data.corniceInstaller.fullName} />
+          )}
+          {data.corniceDoneAt !== null && (
+            <Row label="Готов" value={new Date(data.corniceDoneAt).toLocaleString('ru-RU')} />
+          )}
+
+          {/*
+            Кнопки видит только карнизчик и только по своей работе: взять
+            свободный карниз или закрыть уже взятый им. Остальным карточка
+            остаётся справкой — кто ставит и когда сделал.
+          */}
+          {isInstaller && data.corniceStatus === CorniceStatus.PENDING && (
+            <Pressable
+              disabled={takeCornice.isPending}
+              onPress={() => {
+                takeCornice.mutate({ id: orderId });
+              }}
+              style={({ pressed }) => [
+                styles.primaryAction,
+                styles.corniceAction,
+                pressed ? styles.pressed : null,
+                takeCornice.isPending ? styles.disabled : null,
+              ]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryActionText}>Взять карниз</Text>
+            </Pressable>
+          )}
+
+          {isInstaller &&
+            data.corniceStatus === CorniceStatus.IN_PROGRESS &&
+            data.corniceInstaller?.id === user?.id && (
+              <>
+                <Pressable
+                  disabled={finishCornice.isPending}
+                  onPress={() => {
+                    finishCornice.mutate({ id: orderId });
+                  }}
+                  style={({ pressed }) => [
+                    styles.primaryAction,
+                    styles.corniceAction,
+                    pressed ? styles.pressed : null,
+                    finishCornice.isPending ? styles.disabled : null,
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryActionText}>Карниз готов</Text>
+                </Pressable>
+                <Text style={styles.corniceHint}>
+                  Сначала загрузите фото карниза ниже — без снимка работа не принимается.
+                </Text>
+              </>
+            )}
+        </Card>
+      )}
+
       {/* --- Фотофиксация --------------------------------------------------- */}
       <OrderPhotoUpload orderId={orderId} orderStatus={data.status} />
 
@@ -671,6 +760,14 @@ const styles = StyleSheet.create({
     ...typography.headline,
     color: colors.onAccent,
     fontWeight: '700',
+  },
+  corniceAction: {
+    marginTop: spacing.md,
+  },
+  corniceHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   moreAction: {
     minHeight: 44,

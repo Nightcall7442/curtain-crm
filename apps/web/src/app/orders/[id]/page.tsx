@@ -2,6 +2,8 @@
 
 import {
   CORNICE_ROTATION_LABELS_RU,
+  CORNICE_STATUS_LABELS_RU,
+  CorniceStatus,
   formatMaterial,
   formatDimensions,
   formatMoney,
@@ -341,6 +343,38 @@ export default function OrderDetailPage(): ReactElement {
             </dl>
             <p className="mt-3 text-overline text-muted">
               Начисляется в зарплату за месяц, в котором заказ закрыт.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+
+      {/*
+        Карниз — работа мимо цепочки статусов, поэтому у неё своя карточка.
+
+        Показывается только там, где карниз есть: у заказа без карниза,
+        пластика и трубы вешать нечего, и пустая строка «карниз не нужен»
+        сообщала бы ровно ничего.
+      */}
+      {data.corniceStatus !== CorniceStatus.NOT_REQUIRED && (
+        <Card>
+          <CardHeader title="Карниз" />
+          <CardBody>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
+              <Detail label="Состояние" value={CORNICE_STATUS_LABELS_RU[data.corniceStatus]} />
+              <Detail
+                label="Ставит"
+                value={data.corniceInstaller?.fullName ?? 'ещё никто не взял'}
+              />
+              {data.corniceDoneAt !== null && (
+                <Detail
+                  label="Готов"
+                  value={new Date(data.corniceDoneAt).toLocaleString('ru-RU')}
+                  className="col-span-2"
+                />
+              )}
+            </dl>
+            <p className="mt-3 text-overline text-muted">
+              Карнизчик берёт работу сам и закрывает её фотографией стадии «Карниз».
             </p>
           </CardBody>
         </Card>

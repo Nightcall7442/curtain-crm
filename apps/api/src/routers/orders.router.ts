@@ -1,6 +1,7 @@
 import {
   orderInstallationTeam,
   orderItems,
+  orderPhotos,
   orders,
   orderStatusHistory,
   users,
@@ -12,6 +13,7 @@ import {
   assignableRoleSchema,
   availableTransitions,
   corniceRotationSchema,
+  CorniceStatus,
   isManagement,
   MAX_ACCESSORIES_PER_ITEM,
   MAX_PORTIERES_PER_ITEM,
@@ -20,6 +22,7 @@ import {
   ORDER_PHASES,
   ORDER_STAGE_FEES,
   ORDER_STATUS_PHASE,
+  PhotoStage,
   orderItemAccessorySchema,
   OrderItemKind,
   orderItemKindSchema,
@@ -32,11 +35,11 @@ import {
   prioritySchema,
   TransitionKind,
   type OrderPhase,
+  Role,
   type OrderStageFee,
-  type Role,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -331,6 +334,15 @@ function visibilityFilter(user: { id: number; roles: readonly Role[] }) {
     eq(orders.sewerId, user.id),
     eq(orders.qcId, user.id),
     eq(orders.installerId, user.id),
+    /*
+      Карниз — общая работа установщиков, и заказ с непоставленным карнизом
+      принадлежит всей бригаде, а не назначенному человеку. То же исключение
+      стоит в `canUserAccessOrder`: список и карточка заказа должны
+      сходиться, иначе заказ виден в очереди, но не открывается.
+    */
+    ...(user.roles.includes(Role.INSTALLER)
+      ? [ne(orders.corniceStatus, CorniceStatus.NOT_REQUIRED)]
+      : []),
   );
 }
 
@@ -445,6 +457,7 @@ export const ordersRouter = router({
           sewer: { columns: { id: true, fullName: true, phone: true } },
           qc: { columns: { id: true, fullName: true, phone: true } },
           installer: { columns: { id: true, fullName: true, phone: true } },
+          corniceInstaller: { columns: { id: true, fullName: true, phone: true } },
         },
       });
 
@@ -1182,6 +1195,193 @@ export const ordersRouter = router({
           ipAddress: ctx.ipAddress,
         }),
       ),
+    ),
+
+  /* ------------------------------- Карниз -------------------------------- */
+
+  /**
+   * Очередь карнизчиков.
+   *
+   * Отдельная выдача, а не фильтр общего списка: карниз идёт мимо цепочки
+   * статусов, и по статусу заказа его не найти — заказ на карнизе может
+   * быть в любом производственном статусе сразу.
+   *
+   * `done: true` показывает уже сделанные — владелец просил, чтобы
+   * карнизчики видели, кто какой заказ выполнил, а не только свободную
+   * работу.
+   */
+  corniceQueue: protectedProcedure
+    .input(z.object({ done: z.boolean().default(false) }).default({ done: false }))
+    .query(async ({ ctx, input }) => {
+      const rows = await ctx.db
+        .select({
+          id: orders.id,
+          orderNumber: orders.orderNumber,
+          clientName: orders.clientName,
+          clientPhone: orders.clientPhone,
+          installAddress: orders.installAddress,
+          deadline: orders.deadline,
+          priority: orders.priority,
+          status: orders.status,
+          workPrice: orders.workPrice,
+          corniceStatus: orders.corniceStatus,
+          corniceDoneAt: orders.corniceDoneAt,
+          corniceInstallerId: orders.corniceInstallerId,
+          corniceInstallerName: users.fullName,
+        })
+        .from(orders)
+        .leftJoin(users, eq(users.id, orders.corniceInstallerId))
+        .where(
+          and(
+            inArray(
+              orders.corniceStatus,
+              input.done
+                ? [CorniceStatus.DONE]
+                : [CorniceStatus.PENDING, CorniceStatus.IN_PROGRESS],
+            ),
+            notInArray(orders.status, [OrderStatus.CANCELLED]),
+            visibilityFilter(ctx.user),
+          ),
+        )
+        .orderBy(input.done ? desc(orders.corniceDoneAt) : asc(orders.createdAt))
+        .limit(100);
+
+      return rows;
+    }),
+
+  /**
+   * Карнизчик берёт работу себе.
+   *
+   * Берёт сам, а не получает от админа: карнизы разбирает бригада между
+   * собой, и лишний шаг «попроси, чтобы назначили» означал бы, что заказ
+   * ждёт админа вместо того, чтобы ждать свободного человека. Кто взял —
+   * записано, и повторно взять чужой карниз нельзя.
+   */
+  takeCornice: protectedProcedure
+    .input(z.object({ id: idSchema }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user.roles.includes(Role.INSTALLER)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Карниз ставит установщик',
+        });
+      }
+
+      return ctx.db.transaction(async (tx) => {
+        const order = await loadOrderForUpdate(tx, input.id);
+        assertCanAccessOrder(order, ctx.user);
+
+        if (order.corniceStatus !== CorniceStatus.PENDING) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message:
+              order.corniceStatus === CorniceStatus.NOT_REQUIRED
+                ? 'В этом заказе карниза нет'
+                : 'Карниз уже взят в работу',
+          });
+        }
+
+        const [updated] = await tx
+          .update(orders)
+          .set({
+            corniceStatus: CorniceStatus.IN_PROGRESS,
+            corniceInstallerId: ctx.user.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, order.id))
+          .returning();
+
+        if (updated === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'order.cornice_taken',
+          entityType: 'order',
+          entityId: order.id,
+          details: { corniceInstallerId: ctx.user.id },
+          ipAddress: ctx.ipAddress,
+        });
+
+        return updated;
+      });
+    }),
+
+  /**
+   * Карниз готов — с фотоподтверждением.
+   *
+   * Фото обязательно и проверяется здесь, а не в интерфейсе: «сделано» без
+   * снимка — это слово против слова, а спорят о карнизе уже на объекте, где
+   * переделывать дороже всего. Загружается фото обычной загрузкой на стадию
+   * «Карниз», её же видят остальные карнизчики.
+   */
+  finishCornice: protectedProcedure
+    .input(z.object({ id: idSchema }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const order = await loadOrderForUpdate(tx, input.id);
+        assertCanAccessOrder(order, ctx.user);
+
+        if (order.corniceStatus !== CorniceStatus.IN_PROGRESS) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message:
+              order.corniceStatus === CorniceStatus.DONE
+                ? 'Карниз уже отмечен готовым'
+                : 'Сначала возьмите карниз в работу',
+          });
+        }
+
+        // Чужую работу закрывает только руководство: иначе один карнизчик
+        // закрыл бы наряд другого, и в записи остался бы не тот человек.
+        if (order.corniceInstallerId !== ctx.user.id && !isManagement(ctx.user.roles)) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Этот карниз взял другой сотрудник',
+          });
+        }
+
+        const [photo] = await tx
+          .select({ id: orderPhotos.id })
+          .from(orderPhotos)
+          .where(
+            and(eq(orderPhotos.orderId, order.id), eq(orderPhotos.stage, PhotoStage.CORNICE)),
+          )
+          .limit(1);
+
+        if (photo === undefined) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Загрузите фото карниза — без снимка работа не принимается',
+          });
+        }
+
+        const [updated] = await tx
+          .update(orders)
+          .set({
+            corniceStatus: CorniceStatus.DONE,
+            corniceDoneAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, order.id))
+          .returning();
+
+        if (updated === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'order.cornice_done',
+          entityType: 'order',
+          entityId: order.id,
+          details: { corniceInstallerId: order.corniceInstallerId },
+          ipAddress: ctx.ipAddress,
+        });
+
+        return updated;
+      }),
     ),
 
   /** Позиции нескольких заказов сразу — для списка с раскрытием. */

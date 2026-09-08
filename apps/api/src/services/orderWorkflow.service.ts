@@ -1,4 +1,5 @@
 import {
+  orderItems,
   orders,
   orderStatusHistory,
   userRoles,
@@ -7,6 +8,7 @@ import {
   type Order,
 } from '@curtain-crm/db';
 import {
+  CorniceStatus,
   findTransition,
   isRollback,
   isManagement,
@@ -22,7 +24,7 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
 import {
@@ -130,7 +132,43 @@ export function collectOrderParticipants(order: Order): number[] {
  */
 export function canUserAccessOrder(order: Order, user: AuthenticatedUser): boolean {
   if (isManagement(user.roles)) return true;
+  /*
+    Карниз — общая работа установщиков: пока он не повешен, заказ принадлежит
+    не конкретному человеку, а всей бригаде. Без этого исключения карнизчик
+    видел бы заказ в своей очереди, но не смог бы его открыть — ни адреса,
+    ни кода карниза. После «готово» доступ остаётся: владелец просил, чтобы
+    остальные видели, кто и как сделал работу.
+  */
+  if (order.corniceStatus !== CorniceStatus.NOT_REQUIRED && user.roles.includes(Role.INSTALLER)) {
+    return true;
+  }
   return collectOrderParticipants(order).includes(user.id);
+}
+
+/**
+ * Нужен ли заказу карниз — по позициям: карниз, пластик или труба.
+ *
+ * Спрашивается один раз, на выходе из проверки админом. Держать ответ
+ * колонкой-дубликатом позиций не стали: позиции после создания заказа не
+ * меняются, а лишнее поле разошлось бы с ними при первой же правке.
+ */
+async function orderNeedsCornice(executor: DbExecutor, orderId: number): Promise<boolean> {
+  const [row] = await executor
+    .select({ id: orderItems.id })
+    .from(orderItems)
+    .where(
+      and(
+        eq(orderItems.orderId, orderId),
+        or(
+          isNotNull(orderItems.cornice),
+          isNotNull(orderItems.plastic),
+          isNotNull(orderItems.pipe),
+        ),
+      ),
+    )
+    .limit(1);
+
+  return row !== undefined;
 }
 
 export function assertCanAccessOrder(order: Order, user: AuthenticatedUser): void {
@@ -354,10 +392,30 @@ export async function changeOrderStatus(
   const now = new Date();
   const wasRollback = isRollback(fromStatus, toStatus, order.orderType);
 
+  /*
+    5b. Карниз уходит карнизчикам ровно на выходе из проверки админом.
+
+    Не раньше: пока админ не утвердил заказ, вешать нечего — его могут
+    отклонить или переписать. И не позже: карниз ставят до того, как из
+    цеха привезут шторы, поэтому он идёт параллельно пошиву, а не после.
+
+    `not_required` в условии — защита от повторного запуска: заказ может
+    вернуться на проверку админом и уйти в цех второй раз, а карниз к тому
+    времени уже могут вешать. Затирать чужую работу откатом статуса нельзя.
+  */
+  const startsCornice =
+    order.corniceStatus === CorniceStatus.NOT_REQUIRED &&
+    (fromStatus === OrderStatus.PENDING_ADMIN_REVIEW ||
+      fromStatus === OrderStatus.REJECTED_TO_CEO) &&
+    !wasRollback &&
+    toStatus !== OrderStatus.CANCELLED &&
+    (await orderNeedsCornice(executor, order.id));
+
   const [updated] = await executor
     .update(orders)
     .set({
       status: toStatus,
+      ...(startsCornice ? { corniceStatus: CorniceStatus.PENDING } : {}),
       ...(autoAssign === null ? {} : { [ASSIGNABLE_ROLE_COLUMNS[autoAssign.role]]: autoAssign.userId }),
       ...(toStatus === OrderStatus.COMPLETED ? { completedAt: now } : {}),
       ...(toStatus === OrderStatus.CANCELLED
@@ -426,6 +484,12 @@ export async function changeOrderStatus(
   const awaitingRole = STATUS_OWNER[toStatus];
   if (awaitingRole !== undefined && assigneeOf(updated, awaitingRole) === null) {
     await notifyStageAwaitingExecutor(executor, context, awaitingRole, actor.id);
+  }
+
+  // Карниз в очереди — та же рассылка «свободная работа», что и у этапов:
+  // установщики узнают о нём, не открывая список.
+  if (startsCornice) {
+    await notifyStageAwaitingExecutor(executor, context, Role.INSTALLER, actor.id, 'Карниз');
   }
 
   return { order: updated, fromStatus, toStatus, wasRollback };

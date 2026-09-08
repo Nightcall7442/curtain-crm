@@ -1,7 +1,10 @@
 import {
+  CORNICE_STATUS_LABELS_RU,
+  CorniceStatus,
   isActiveStatus,
   isOverdueDate,
   ORDER_INTAKE_ROLES,
+  Role,
   TaskStatus,
 } from '@curtain-crm/shared';
 
@@ -31,7 +34,7 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
  * подобрав параметры, невозможно.
  */
 
-type Filter = 'active' | 'all' | 'overdue' | 'tasks' | 'personal';
+type Filter = 'active' | 'all' | 'overdue' | 'tasks' | 'personal' | 'cornice';
 
 const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
   { key: 'active', label: 'В работе' },
@@ -40,6 +43,18 @@ const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
   { key: 'tasks', label: 'Доп работы' },
   { key: 'personal', label: 'Личные' },
 ];
+
+/*
+  Карнизы — вкладка только для установщиков.
+
+  Карниз идёт мимо цепочки статусов, поэтому в общем списке заказов его не
+  найти: заказ на карнизе может быть в любом производственном статусе. Это
+  свободная работа бригады, и её берут отсюда.
+*/
+const CORNICE_FILTER: { readonly key: Filter; readonly label: string } = {
+  key: 'cornice',
+  label: 'Карнизы',
+};
 
 export function WorkScreen(): ReactElement {
   const navigation = useNavigation();
@@ -55,6 +70,8 @@ export function WorkScreen(): ReactElement {
    */
   const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
   const isManager = useIsManagement();
+  const isInstaller = (user?.roles ?? []).includes(Role.INSTALLER);
+  const filters = isInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
   const query = trpc.orders.list.useQuery(
     {
@@ -62,7 +79,21 @@ export function WorkScreen(): ReactElement {
       pageSize: 50,
       includeArchived: filter === 'all',
     },
-    { enabled: filter !== 'tasks' && filter !== 'personal' },
+    { enabled: filter !== 'tasks' && filter !== 'personal' && filter !== 'cornice' },
+  );
+
+  /*
+    Очередь карнизов и уже сделанные — двумя запросами: сделанные нужны
+    реже, но нужны, и мешать их со свободной работой в одном списке значило
+    бы прятать саму работу под историей.
+  */
+  const corniceQueue = trpc.orders.corniceQueue.useQuery(
+    { done: false },
+    { enabled: filter === 'cornice' },
+  );
+  const corniceDone = trpc.orders.corniceQueue.useQuery(
+    { done: true },
+    { enabled: filter === 'cornice' },
   );
 
   /**
@@ -112,7 +143,7 @@ export function WorkScreen(): ReactElement {
         style={styles.filtersScroll}
         contentContainerStyle={styles.filters}
       >
-        {FILTERS.map((entry) => {
+        {filters.map((entry) => {
           const isActive = entry.key === filter;
           const label =
             entry.key === 'tasks' && openTasks.length > 0
@@ -136,7 +167,53 @@ export function WorkScreen(): ReactElement {
         })}
       </ScrollView>
 
-      {filter === 'tasks' ? (
+      {filter === 'cornice' ? (
+        <FlatList
+          data={[...(corniceQueue.data ?? []), ...(corniceDone.data ?? [])]}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+          refreshing={corniceQueue.isFetching && !corniceQueue.isLoading}
+          onRefresh={() => {
+            void corniceQueue.refetch();
+            void corniceDone.refetch();
+          }}
+          ListEmptyComponent={
+            corniceQueue.isLoading ? (
+              <Skeleton />
+            ) : corniceQueue.isError ? (
+              <ErrorState />
+            ) : (
+              <Empty
+                message="Карнизов нет"
+                hint="Здесь появляются заказы с карнизом, пластиком или трубой — сразу после проверки админом"
+              />
+            )
+          }
+          renderItem={({ item }) => (
+            <View>
+              <OrderCard
+                orderNumber={item.orderNumber ?? `#${item.id.toString()}`}
+                clientName={item.clientName}
+                clientPhone={item.clientPhone}
+                status={item.status}
+                priority={item.priority}
+                deadline={item.deadline}
+                workPrice={item.workPrice}
+                onPress={() => {
+                  navigation.navigate('OrderDetail', { orderId: item.id });
+                }}
+              />
+              <Text style={styles.corniceNote}>
+                {item.corniceStatus === CorniceStatus.PENDING
+                  ? CORNICE_STATUS_LABELS_RU.pending
+                  : `${CORNICE_STATUS_LABELS_RU[item.corniceStatus]} · ${
+                      item.corniceInstallerName ?? 'исполнитель не записан'
+                    }`}
+              </Text>
+            </View>
+          )}
+        />
+      ) : filter === 'tasks' ? (
         <FlatList
           data={tasksQuery.data ?? []}
           keyExtractor={(item) => item.id.toString()}
@@ -425,6 +502,13 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.accentStrong,
     fontWeight: '600',
+  },
+  corniceNote: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   list: {
     padding: spacing.lg,

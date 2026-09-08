@@ -124,6 +124,14 @@ export async function notifyStageAwaitingExecutor(
   order: OrderNotificationContext,
   role: Role,
   excludeUserId: number,
+  /**
+   * Название работы в тексте. По умолчанию — название роли.
+   *
+   * Нужно карнизу: он идёт мимо цепочки статусов, но зовёт тех же
+   * установщиков, и письмо «этап „Установщик“» отправило бы человека искать
+   * заказ, готовый к установке, которого ещё нет.
+   */
+  stageLabel?: string,
 ): Promise<void> {
   const candidates = await executor
     .select({ id: users.id })
@@ -139,7 +147,9 @@ export async function notifyStageAwaitingExecutor(
         userId: candidate.id,
         type: NotificationType.ORDER_STAGE_AWAITING,
         title: `Заказ ${order.orderNumber} ждёт исполнителя`,
-        body: `Клиент «${order.clientName}», этап «${ROLE_LABELS_RU[role]}». Исполнитель ещё не назначен.`,
+        body:
+          `Клиент «${order.clientName}», этап «${stageLabel ?? ROLE_LABELS_RU[role]}». ` +
+          'Исполнитель ещё не назначен.',
         relatedOrderId: order.orderId,
       })),
   );

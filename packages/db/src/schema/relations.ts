@@ -44,6 +44,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   sewingOrders: many(orders, { relationName: 'orderSewer' }),
   qcOrders: many(orders, { relationName: 'orderQc' }),
   installationOrders: many(orders, { relationName: 'orderInstaller' }),
+  corniceOrders: many(orders, { relationName: 'orderCorniceInstaller' }),
 
   orderComments: many(orderComments),
   uploadedPhotos: many(orderPhotos),
@@ -137,6 +138,11 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.installerId],
     references: [users.id],
     relationName: 'orderInstaller',
+  }),
+  corniceInstaller: one(users, {
+    fields: [orders.corniceInstallerId],
+    references: [users.id],
+    relationName: 'orderCorniceInstaller',
   }),
 
   items: many(orderItems),

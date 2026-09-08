@@ -19,6 +19,7 @@ import {
 import { branches } from './branches.schema';
 import {
   corniceRotationEnum,
+  corniceStatusEnum,
   orderItemKindEnum,
   orderStatusEnum,
   orderTypeEnum,
@@ -159,6 +160,27 @@ export const orders = pgTable(
      */
     installerId: integer('installer_id').references(() => users.id, { onDelete: 'restrict' }),
 
+    /* --- Карниз ------------------------------------------------------------ */
+
+    /*
+      Карниз идёт мимо цепочки статусов — параллельно пошиву.
+
+      После проверки админом заказ уходит и в цех, и карнизчикам сразу:
+      карниз вешают до того, как привезут шторы. Отдельными статусами это
+      выразить нельзя — заказ не может быть одновременно «в пошиве» и «на
+      карнизе», а он именно там и там. Подробнее — в `CorniceStatus`.
+
+      Исполнитель здесь свой, а не `installer_id`: карниз и установку штор
+      обычно делают разные люди из одной бригады, и «кто повесил карниз»
+      должно оставаться видимым после того, как на установку назначат
+      другого.
+    */
+    corniceStatus: corniceStatusEnum('cornice_status').notNull().default('not_required'),
+    corniceInstallerId: integer('cornice_installer_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    corniceDoneAt: timestamp('cornice_done_at', { withTimezone: true }),
+
     /* --- Отметки времени ---------------------------------------------------- */
 
     completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -182,6 +204,8 @@ export const orders = pgTable(
     index('orders_sewer_idx').on(table.sewerId),
     index('orders_qc_idx').on(table.qcId),
     index('orders_installer_idx').on(table.installerId),
+    // Очередь карнизчиков: заказы, где карниз ещё не повешен.
+    index('orders_cornice_status_idx').on(table.corniceStatus),
     index('orders_deadline_idx').on(table.deadline),
     index('orders_client_phone_idx').on(table.clientPhone),
     index('orders_created_at_idx').on(table.createdAt),
