@@ -327,21 +327,6 @@ export function WorkScreen(): ReactElement {
         <View style={styles.createRow}>
           <Pressable
             onPress={() => {
-              navigation.navigate('ReadyMadeStock');
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.createSecondary,
-              styles.createFlex,
-              pressed ? styles.createPressed : null,
-            ]}
-          >
-            <Icon name="window" size={18} color={colors.accentStrong} />
-            <Text style={styles.createSecondaryText}>Склад готовых штор</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => {
               navigation.navigate('CashDesk');
             }}
             accessibilityRole="button"

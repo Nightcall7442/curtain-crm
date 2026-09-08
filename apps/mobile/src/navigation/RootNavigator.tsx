@@ -1,5 +1,5 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
@@ -13,6 +13,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { ManagementScreen } from '../screens/ManagementScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
 import { ReadyMadeStockScreen } from '../screens/ReadyMadeStockScreen';
+import { Icon } from '../components/Icon';
 import { RetailStockScreen } from '../screens/RetailStockScreen';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
@@ -22,7 +23,7 @@ import { SaleDetailScreen } from '../screens/SaleDetailScreen';
 import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
-import { colors } from '../theme';
+import { colors, opacity } from '../theme';
 import type { RootStackParamList } from '../types';
 
 import { TabNavigator } from './TabNavigator';
@@ -73,10 +74,36 @@ export function RootNavigator(): ReactElement {
         component={OrderCreateScreen}
         options={{ title: 'Новый заказ' }}
       />
+      {/*
+        Склад открывается из шапки самой продажи, а не отдельной кнопкой на
+        экране «Работа».
+
+        Там она стояла третьей в ряду с «Новым заказом» и «Кассой» и
+        занимала место наравне с ними, хотя это не отдельное дело, а
+        оборотная сторона одного: продавец либо продаёт готовую штору, либо
+        кладёт её на полку. Обе половины теперь на одном экране.
+      */}
       <Stack.Screen
         name="SellReadyMade"
         component={SellReadyMadeScreen}
-        options={{ title: 'Готовые шторы' }}
+        options={({ navigation }) => ({
+          title: 'Готовые шторы',
+          headerRight: () => (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('ReadyMadeStock');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Склад готовых штор"
+              hitSlop={10}
+              /* Нажатие показывается прозрачностью, а не цветом: на тёмной
+                 шапке любой акцентный зелёный темнее её же текста. */
+              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+            >
+              <Icon name="orders" size={22} color={colors.headerText} />
+            </Pressable>
+          ),
+        })}
       />
       <Stack.Screen
         name="DayOff"
