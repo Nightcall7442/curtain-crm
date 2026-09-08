@@ -2,7 +2,7 @@
 
 import { DEPARTMENT_LABELS, formatPhone, toTelHref, type Department } from '@curtain-crm/shared';
 import { animate, stagger, utils } from 'animejs';
-import { ArrowRight, Gem, Home, MapPin, Settings2, Sparkles, Star, Users } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, type ReactElement, type RefObject } from 'react';
@@ -55,9 +55,6 @@ export default function LandingPage(): ReactElement {
 
       <main>
         <Hero copy={c} />
-        <Styles copy={c} />
-        <StatsBand copy={c} />
-        <Marquee copy={c} />
         <About copy={c} />
         <Process copy={c} />
         <Team copy={c} locale={locale} />
@@ -278,145 +275,462 @@ const NAV_LINKS = [
  * тот же `bg-nav`, что и в остальной панели: свой цвет здесь не заводится.
  */
 
+/**
+ * Золотой акцент и зелень первого экрана — только здесь.
+ *
+ * Не заведены токенами в `tailwind.config.ts`: акцент всей панели зелёный
+ * («Хвоя»), и цвет витрины не должен звать себя туда, где кнопка входа или
+ * карточка заказа возьмут его по имени. Здесь это ровно то, чем и названо —
+ * цвета одного конкретного экрана.
+ *
+ * Зелень взята глубже, чем `bg-nav` панели: тот почти чёрный, и рядом с
+ * тёплой фотографией читался как провал, а не как цвет. Референс владельца
+ * держится именно на бутылочном зелёном с золотом.
+ */
+const GOLD = '#C9A227';
+const GOLD_LIGHT = '#E4C77A';
+const GREEN = '#0F3A2C';
+const GREEN_DEEP = '#08201A';
+
 /** Задержка запуска для N-го элемента героя, строкой для `animationDelay`. */
 const heroDelay = (index: number): string => `${(150 + index * 120).toString()}ms`;
 
 /**
- * Золотой акцент — только здесь, только для героя и полосы показателей.
+ * Первый экран: панель с обещанием, фотография во всю высоту, под ними —
+ * едущая витрина стилей и полоса показателей.
  *
- * Не заведён в `tailwind.config.ts` как токен: акцент всей панели зелёный
- * (`accent`, «Хвоя»), и он никак не должен звать себя туда, где кнопка
- * входа или карточка заказа этот же класс возьмут по имени. Здесь это
- * ровно то, чем и названо — цвет одного конкретного места.
+ * Все четыре части — один экран, а не четыре секции подряд: в референсе
+ * владельца они читаются как одна обложка, и разрывать её отступами значило
+ * бы получить четыре одинаково важных блока вместо одного впечатления.
  */
-const GOLD = '#C9A227';
-const GOLD_LIGHT = '#E4C77A';
-
-const HERO_BADGE_ICONS = [Gem, Sparkles, Settings2, Home] as const;
-
 function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
   return (
-    <section id="top" className="grid overflow-hidden lg:grid-cols-[minmax(0,480px)_1fr]">
-      {/* Левая панель: тёмно-зелёная, как шапка панели (`bg-nav`) — не новый
-          цвет, а тот же самый, что уже используется под навигацией. */}
-      <div className="relative flex flex-col gap-8 bg-nav px-8 py-14 text-nav-text sm:px-12 lg:px-14 lg:py-20">
-        <a
-          href="#top"
-          className="hero-enter flex flex-col items-start gap-3"
-          style={{ animationDelay: heroDelay(0) }}
+    <section id="top" style={{ backgroundColor: GREEN_DEEP }}>
+      <div className="grid overflow-hidden lg:grid-cols-[minmax(0,560px)_1fr]">
+        {/* Левая панель. Градиент, а не заливка: у референса свет падает
+            сверху слева, и ровный прямоугольник рядом с фотографией
+            выглядит наклейкой. */}
+        <div
+          className="relative flex flex-col justify-center gap-9 px-8 py-14 text-white sm:px-12 lg:px-14 lg:py-24"
+          style={{
+            backgroundImage: `radial-gradient(120% 90% at 12% 0%, #1A5540 0%, ${GREEN} 45%, ${GREEN_DEEP} 100%)`,
+          }}
         >
-          <span
-            aria-hidden
-            className="block h-[70px] w-[110px] bg-current"
+          <a
+            href="#top"
+            className="hero-enter flex flex-col items-start gap-3"
+            style={{ animationDelay: heroDelay(0) }}
+          >
+            <span
+              aria-hidden
+              className="block h-[76px] w-[122px] bg-current"
+              style={{
+                color: GOLD_LIGHT,
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'left',
+                maskPosition: 'left',
+              }}
+            />
+            {/* Название «Design House» впечатано в сам знак — вторая подпись
+                тем же текстом рядом читалась бы как повтор. Здесь только то,
+                чего в файле нет: тег ассортимента. */}
+            <span className="text-overline uppercase tracking-[0.42em] text-white/55">
+              {copy.heroWordmarkTagline}
+            </span>
+          </a>
+
+          <div className="hero-enter flex flex-col gap-5" style={{ animationDelay: heroDelay(1) }}>
+            <h1 className="font-hero text-[clamp(36px,5.4vw,60px)] font-extrabold uppercase leading-[0.98] tracking-[-0.02em]">
+              {copy.heroTitleLead}
+              <br />
+              <span style={{ color: GOLD_LIGHT }}>{copy.heroTitleAccent}</span>
+            </h1>
+            <p className="max-w-[24rem] text-body leading-relaxed text-white/70">
+              {copy.heroSubtitle}
+            </p>
+          </div>
+
+          {/* Два столбца, а не четыре в ряд, как в референсе: там подписи
+              короткие, а «Профессиональная установка» на четверти панели
+              переносится в три строки и слипается с соседней. Ширина
+              панели — величина заданная, длина слов — тоже; уступает
+              сетка. */}
+          <ul
+            className="hero-enter grid grid-cols-2 gap-x-8 gap-y-6"
+            style={{ animationDelay: heroDelay(2) }}
+          >
+            {copy.heroBadges.map((badge) => (
+              <li key={badge} className="flex flex-col items-start gap-3">
+                {/* Золотой волосок вместо значка.
+
+                    Здесь стояли иконки из общего набора — бриллиант,
+                    искорки, домик. На витрине мастерской премиального
+                    сегмента они читались наклейками из мессенджера: набор
+                    один и тот же у любого сайта, и ни одна из четырёх не
+                    говорила о шторах ничего, чего не сказала бы подпись под
+                    ней. Осталась подпись и та же линия, которой набраны
+                    надзаголовки разделов и линия процесса. */}
+                <span aria-hidden className="h-px w-7" style={{ backgroundColor: GOLD }} />
+                <span className="text-caption leading-snug text-white/80">{badge}</span>
+              </li>
+            ))}
+          </ul>
+
+          <a
+            href="#styles"
+            className="hero-enter pressable inline-flex w-fit items-center gap-3 rounded-full px-7 py-3.5 text-caption font-bold uppercase tracking-[0.12em]"
             style={{
-              color: GOLD_LIGHT,
-              WebkitMaskImage: 'url(/logo.png)',
-              maskImage: 'url(/logo.png)',
-              WebkitMaskSize: 'contain',
-              maskSize: 'contain',
-              WebkitMaskRepeat: 'no-repeat',
-              maskRepeat: 'no-repeat',
-              WebkitMaskPosition: 'left',
-              maskPosition: 'left',
+              animationDelay: heroDelay(3),
+              backgroundColor: GOLD_LIGHT,
+              color: GREEN_DEEP,
+            }}
+          >
+            {copy.heroCtaPrimary}
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </a>
+        </div>
+
+        {/* Фотография во всю высоту. Слева — растушёвка в зелень панели,
+            чтобы стык двух половин не выглядел склейкой двух картинок. */}
+        <div className="hero-kenburns relative min-h-[340px] lg:min-h-[660px]">
+          <Image
+            src={unsplash(PHOTOS.hero, 1600)}
+            alt={copy.heroImageAlt}
+            fill
+            priority
+            sizes="(min-width: 1024px) 62vw, 100vw"
+            className="object-cover"
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `linear-gradient(90deg, ${GREEN_DEEP} 0%, transparent 22%),
+                linear-gradient(0deg, rgb(8 32 26 / 0.55) 0%, transparent 38%)`,
             }}
           />
-          {/* Название «Design House» уже впечатано в сам файл знака — вторая
-              подпись тем же текстом рядом читалась бы как повтор. Здесь
-              только то, чего в файле нет: тег ассортимента. */}
-          <span className="text-footnote uppercase tracking-[0.3em] text-nav-text/60">
-            {copy.heroWordmarkTagline}
-          </span>
-        </a>
 
-        <div
-          className="hero-enter flex flex-col gap-4"
-          style={{ animationDelay: heroDelay(1) }}
-        >
-          <h1 className="font-editorial text-[38px] leading-[1.12] tracking-[-0.01em] sm:text-[46px]">
-            {copy.heroTitleLead}
+          {/* Росчерк — та самая деталь референса, которая делает кадр
+              фирменным, а не стоковым. Латиница в обеих локалях: это
+              подпись, а не текст интерфейса. */}
+          <p
+            aria-hidden
+            className="hero-enter absolute bottom-10 right-8 text-right font-script text-[clamp(26px,3.4vw,44px)] leading-[1.15] sm:right-12"
+            style={{ animationDelay: heroDelay(4), color: GOLD_LIGHT }}
+          >
+            Your Style
             <br />
-            <span style={{ color: GOLD_LIGHT }}>{copy.heroTitleAccent}</span>
-          </h1>
-          <p className="max-w-sm text-body leading-relaxed text-nav-text/75">
-            {copy.heroSubtitle}
+            Our Inspiration
           </p>
         </div>
-
-        <div
-          className="hero-enter grid grid-cols-2 gap-x-4 gap-y-5"
-          style={{ animationDelay: heroDelay(2) }}
-        >
-          {copy.heroBadges.map((badge, index) => {
-            const BadgeIcon = HERO_BADGE_ICONS[index] ?? Gem;
-            return (
-              <div key={badge} className="flex flex-col items-start gap-2">
-                <span
-                  className="grid h-10 w-10 place-items-center rounded-full border"
-                  style={{ borderColor: `${GOLD}66`, color: GOLD_LIGHT }}
-                >
-                  <BadgeIcon className="h-[18px] w-[18px]" aria-hidden />
-                </span>
-                <span className="text-footnote leading-snug text-nav-text/80">{badge}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        <a
-          href="#styles"
-          className="hero-enter pressable inline-flex w-fit items-center gap-2 rounded-tile px-6 py-3 text-caption font-semibold uppercase tracking-[0.08em] text-nav"
-          style={{ animationDelay: heroDelay(3), backgroundColor: GOLD_LIGHT }}
-        >
-          {copy.heroCtaPrimary}
-          <ArrowRight className="h-4 w-4" aria-hidden />
-        </a>
       </div>
 
-      {/* Фото — во всю высоту секции, без затемнения: текст теперь не лежит
-          поверх него, и гасить контраст снимка незачем. */}
-      <div className="hero-kenburns relative min-h-[360px] lg:min-h-[640px]">
-        <Image
-          src={unsplash(PHOTOS.hero, 1600)}
-          alt={copy.heroImageAlt}
-          fill
-          priority
-          sizes="(min-width: 1024px) 60vw, 100vw"
-          className="object-cover"
-        />
+      <StyleStrip copy={copy} />
+      <StatsRail copy={copy} />
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Витрина стилей                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Шесть стилей мастерской, медленно едущих мимо.
+ *
+ * Это подпись экрана: не сетка, которую нужно разглядывать, а витрина,
+ * которая проходит перед глазами сама. Скорость постоянная — 22 пикселя в
+ * секунду, независимо от ширины экрана и числа карточек: считается от
+ * измеренной ширины ленты, а не задаётся на глаз одним числом секунд,
+ * которое на широком мониторе превратилось бы в галоп.
+ *
+ * Движение ведёт `animejs`, а не CSS: на нём же держатся пауза при
+ * наведении и остановка на фокусе с клавиатуры — читать подпись движущейся
+ * карточки невозможно, а прочитать её хочет как раз тот, кто навёл.
+ *
+ * Лента дублируется дважды и уезжает ровно на ширину одного прохода: второй
+ * проход — копия первого, поэтому момент возврата в начало не виден.
+ */
+function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const driftRef = useRef<ReturnType<typeof animate> | null>(null);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (track === null) return;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let cancelled = false;
+
+    /* Ширину меряем после раскладки: до неё `scrollWidth` равен нулю, и
+       анимация получила бы нулевую дистанцию — лента стояла бы на месте. */
+    const start = (): void => {
+      if (cancelled) return;
+
+      const distance = track.scrollWidth / 2;
+      if (distance < 1) {
+        window.requestAnimationFrame(start);
+        return;
+      }
+
+      driftRef.current?.pause();
+      driftRef.current = animate(track, {
+        x: [0, -distance],
+        duration: (distance / 22) * 1000,
+        ease: 'linear',
+        loop: true,
+      });
+    };
+
+    start();
+
+    /* Ширина карточек зависит от ширины экрана — при повороте телефона или
+       изменении окна дистанция другая, и старая анимация уехала бы не туда. */
+    const observer = new ResizeObserver(() => {
+      utils.set(track, { x: 0 });
+      start();
+    });
+    observer.observe(track);
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+      driftRef.current?.pause();
+    };
+  }, []);
+
+  const hold = (): void => {
+    driftRef.current?.pause();
+  };
+  const release = (): void => {
+    driftRef.current?.play();
+  };
+
+  return (
+    <section
+      id="styles"
+      aria-label={copy.stylesTitle}
+      className="overflow-hidden border-y"
+      style={{ borderColor: `${GOLD}22` }}
+      onMouseEnter={hold}
+      onMouseLeave={release}
+      onFocus={hold}
+      onBlur={release}
+    >
+      <h2 className="sr-only">{copy.stylesTitle}</h2>
+
+      <div ref={trackRef} className="flex w-max">
+        {[0, 1].map((pass) =>
+          copy.styles.map((style) => (
+            <a
+              key={`${pass.toString()}-${style.name}`}
+              href="#contact"
+              /* Второй проход — копия первого, для читалки это повтор одного
+                 и того же: озвучивать его незачем. */
+              {...(pass === 1 ? { 'aria-hidden': true, tabIndex: -1 } : {})}
+              className="group relative block aspect-[4/3] w-[clamp(190px,20vw,280px)] shrink-0 overflow-hidden"
+            >
+              <Image
+                src={unsplash(PHOTOS.styles[style.photo], 560)}
+                alt=""
+                fill
+                sizes="280px"
+                className="object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-[1.08]"
+              />
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(180deg, rgb(8 32 26 / 0.15) 0%, rgb(8 32 26 / 0.82) 100%)',
+                }}
+              />
+              {/* Золотая линия у нижнего края появляется под курсором —
+                  единственная реакция карточки, кроме приближения кадра. */}
+              <span
+                aria-hidden
+                className="absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
+                style={{ backgroundColor: GOLD_LIGHT }}
+              />
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4">
+                <span
+                  className="text-caption font-bold uppercase tracking-[0.1em]"
+                  style={{ color: GOLD_LIGHT }}
+                >
+                  {style.name}
+                </span>
+                <span className="text-footnote leading-snug text-white/70">{style.caption}</span>
+              </div>
+            </a>
+          )),
+        )}
       </div>
     </section>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                Бегущая строка                              */
+/*                             Полоса показателей                             */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Полоса с этапами производства — переход между тёмным героем и светлым
- * содержимым ниже. Не украшение ради украшения: те же пять слов ещё раз
- * встретятся заголовками в разделе «Процесс», и здесь они работают
- * анонсом, а не случайным орнаментом.
+ * Знак, три числа и девиз — подошва первого экрана.
+ *
+ * Числа подкручиваются от нуля, когда полоса попадает в поле зрения:
+ * `animejs` считает их по кадрам, а не CSS — счётчик это изменение ТЕКСТА,
+ * а не оформления, и переходами CSS оно не выражается вовсе.
  */
-function Marquee({ copy }: { readonly copy: LandingCopy }): ReactElement {
-  const words = copy.processSteps.map((step) => step.title.toUpperCase()).join('   —   ');
+function StatsRail({ copy }: { readonly copy: LandingCopy }): ReactElement {
+  const stats = [
+    { value: copy.statsClientsValue, label: copy.statsClientsLabel },
+    { value: copy.statsFabricsValue, label: copy.statsFabricsLabel },
+    { value: copy.statsYearsValue, label: copy.statsYearsLabel },
+  ] as const;
 
   return (
-    <div className="overflow-hidden border-y border-subtle bg-nav py-4" aria-hidden>
-      {/* Дублируется дважды и уезжает на 50% своей ширины — второй проход
-          неотличим от первого, и переход между циклами не виден. */}
-      <div className="marquee-track flex w-max gap-8 whitespace-nowrap">
-        {[0, 1].map((copyIndex) => (
-          <span
-            key={copyIndex}
-            className="font-editorial text-heading tracking-[0.02em] text-nav-text/50"
-          >
-            {words}
-            <span className="mx-8">—</span>
-          </span>
-        ))}
+    <div style={{ backgroundColor: GREEN_DEEP }}>
+      <div className="mx-auto flex max-w-7xl flex-col items-center gap-8 px-6 py-7 lg:flex-row lg:justify-between lg:gap-10">
+        <span
+          aria-hidden
+          className="hidden h-9 w-32 shrink-0 bg-current lg:block"
+          style={{
+            color: `${GOLD_LIGHT}99`,
+            WebkitMaskImage: 'url(/logo.png)',
+            maskImage: 'url(/logo.png)',
+            WebkitMaskSize: 'contain',
+            maskSize: 'contain',
+            WebkitMaskRepeat: 'no-repeat',
+            maskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'left',
+            maskPosition: 'left',
+          }}
+        />
+
+        <dl className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
+          {stats.map((stat) => (
+            <div key={stat.label} className="flex items-center gap-4">
+              <span aria-hidden className="h-8 w-px" style={{ backgroundColor: `${GOLD}59` }} />
+              <div>
+                <dd className="font-hero text-[26px] font-extrabold leading-none text-white">
+                  <CountUp value={stat.value} />
+                </dd>
+                <dt className="mt-1 text-footnote text-white/55">{stat.label}</dt>
+              </div>
+            </div>
+          ))}
+        </dl>
+
+        <p
+          className="text-overline font-semibold uppercase tracking-[0.28em] text-white/45"
+          style={{ maxWidth: '13rem' }}
+        >
+          {copy.statsTagline}
+        </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Число, которое подкручивается от нуля до своего значения.
+ *
+ * Значение приходит строкой («1000+», «5»): считается только числовая часть,
+ * а хвост вроде плюса дописывается как есть. Разбирать формат числа здесь,
+ * а не хранить его разобранным в тексте, — чтобы у перевода оставалась
+ * возможность написать «5 лет» иначе, не ломая счётчик.
+ */
+function CountUp({ value }: { readonly value: string }): ReactElement {
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (node === null) return;
+
+    const match = /\d+/.exec(value);
+    if (match === null) return;
+
+    const target = Number.parseInt(match[0], 10);
+    const suffix = value.slice(match.index + match[0].length);
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let played = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (played || !entries.some((entry) => entry.isIntersecting)) return;
+        played = true;
+        observer.disconnect();
+
+        const counter = { n: 0 };
+        const settle = (): void => {
+          node.textContent = value;
+        };
+
+        animate(counter, {
+          n: target,
+          duration: 1400,
+          ease: 'outQuad',
+          onUpdate: () => {
+            node.textContent = `${Math.round(counter.n).toString()}${suffix}`;
+          },
+          onComplete: settle,
+        });
+
+        /*
+          Страховка на замирание кадров.
+
+          Браузер останавливает `requestAnimationFrame` во вкладке, открытой
+          в фоне. Счётчик, начавший считать перед тем, как вкладку свернули,
+          замирает на полуслове — и «1000+ клиентов» показывается как «45+»
+          до самой перезагрузки. Таймер идёт независимо от кадров и дописывает
+          конечное значение, даже если анимацию досчитать не дали.
+        */
+        window.setTimeout(settle, 2200);
+      },
+      { threshold: 0.4 },
+    );
+
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [value]);
+
+  return <span ref={ref}>{value}</span>;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            Общее для разделов                              */
+/* -------------------------------------------------------------------------- */
+
+/** Кремовый разворот — вторая половина пары к бутылочной зелени обложки. */
+const CREAM = '#F5F1E8';
+
+/**
+ * Надзаголовок раздела: золотая черта и слово вразрядку.
+ *
+ * Черта, а не точка или иконка: тем же золотым волоском набраны линия
+ * процесса и подчёркивание карточки стиля — одна деталь, повторённая
+ * трижды, держит страницу вместе крепче трёх разных.
+ */
+function Eyebrow({
+  children,
+  tone,
+}: {
+  readonly children: string;
+  readonly tone: 'onGreen' | 'onCream';
+}): ReactElement {
+  return (
+    <span className="flex items-center gap-3 text-overline font-semibold uppercase tracking-[0.28em]">
+      <span aria-hidden className="h-px w-8" style={{ backgroundColor: GOLD }} />
+      <span style={{ color: tone === 'onGreen' ? GOLD_LIGHT : '#7A6A3F' }}>{children}</span>
+    </span>
   );
 }
 
@@ -424,41 +738,41 @@ function Marquee({ copy }: { readonly copy: LandingCopy }): ReactElement {
 /*                                 О мастерской                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Разворот-заявление. Без фотографии.
+ *
+ * Здесь стоял стоковый снимок ниток и ножниц — единственный кадр на
+ * странице, который не про шторы, а про швейный набор из фотобанка: рядом
+ * с обложкой он читался как чужой. Заменить его нечем — все проверенные
+ * снимки уже заняты витриной стилей этажом выше, и повтор через экран
+ * выглядел бы затычкой. Раздел стал типографским: короткое заявление
+ * засечным — оно и есть то, что владелец говорит клиенту первым.
+ */
 function About({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const ref = useScrollReveal({ stagger: 120 });
 
   return (
-    <section id="about" ref={ref} className="mx-auto max-w-6xl px-6 py-24">
-      <div className="grid gap-14 lg:grid-cols-[1.1fr_0.9fr] lg:items-start lg:gap-20">
-        <div className="reveal-item flex flex-col gap-6">
-          <span className="section-title">{copy.aboutEyebrow}</span>
+    <section id="about" ref={ref} className="px-6 py-24" style={{ backgroundColor: CREAM }}>
+      <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20">
+        <div className="reveal-item">
+          <Eyebrow tone="onCream">{copy.aboutEyebrow}</Eyebrow>
+        </div>
 
-          {/* Крупное заявление, а не подпись под заголовком: страница
-              открывается впечатлением с фотографией, здесь — коротким
-              утверждением о том, чем мастерская отличается, прежде чем
-              переходить к развёрнутому объяснению. */}
-          <p className="font-editorial text-[30px] leading-[1.25] tracking-[-0.01em] sm:text-[36px]">
+        <div className="reveal-item flex flex-col gap-8">
+          <p
+            className="font-editorial text-[clamp(28px,3.6vw,44px)] leading-[1.18] tracking-[-0.015em]"
+            style={{ color: GREEN_DEEP }}
+          >
             {copy.aboutStatement}
           </p>
 
-          <p className="max-w-xl text-body leading-relaxed text-secondary">{copy.aboutParagraph}</p>
-        </div>
+          <span aria-hidden className="h-px w-24" style={{ backgroundColor: `${GOLD}66` }} />
 
-        {/* Кадр сдвинут вверх относительно текстовой колонки отрицательным
-            отступом — на широком экране это и отличает журнальный разворот
-            от двух одинаковых по высоте плиток. */}
-        <div className="reveal-item flex flex-col gap-3 lg:-mt-10">
-          <div className="relative aspect-[4/3] overflow-hidden rounded-panel shadow-raised">
-            <Image
-              src={unsplash(PHOTOS.about, 900)}
-              alt={copy.aboutImageAlt}
-              fill
-              sizes="(min-width: 1024px) 440px, 100vw"
-              className="object-cover"
-            />
-          </div>
-          <p className="text-footnote uppercase tracking-[0.08em] text-muted">
-            {copy.aboutImageCaption}
+          <p
+            className="max-w-2xl text-body leading-[1.75]"
+            style={{ color: 'rgb(31 45 39 / 0.72)' }}
+          >
+            {copy.aboutParagraph}
           </p>
         </div>
       </div>
@@ -473,43 +787,51 @@ function About({ copy }: { readonly copy: LandingCopy }): ReactElement {
 /**
  * Пять этапов — не придуманы для страницы, а взяты из самого производства:
  * это те же роли, между которыми в системе распределяется расценка заказа
- * (`packages/shared/src/constants/stageFee.ts`). Здесь ровно то, что
- * происходит с заказом на самом деле, только без внутренних терминов.
+ * (`packages/shared/src/constants/stageFee.ts`).
  *
- * Разметка — горизонтальная линия с нумерованными метками, а не карточки
- * с иконками: у мастерской это ПУТЬ, который проходит каждый заказ, а не
- * список независимых достоинств, и линия читает это буквально.
+ * Порядок здесь несёт смысл, поэтому это список, а не сетка достоинств. Но
+ * номера в кружках убраны: 01–05 крупнее и контрастнее самих названий
+ * этапов, и первым читалось «ноль один», а не «замер». Очерёдность и так
+ * задана положением на линии — золотой волосок проходит через все пять
+ * засечек, слева направо. Ровно то же, что говорили цифры, только не
+ * заслоняя собой содержание.
  */
 function Process({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const ref = useScrollReveal({ stagger: 100 });
 
   return (
-    <section id="process" ref={ref} className="bg-panel py-24">
-      <div className="mx-auto max-w-6xl px-6">
-        <div className="reveal-item mb-16 flex flex-col gap-3">
-          <span className="section-title">{copy.processEyebrow}</span>
-          <h2 className="font-editorial text-[32px] leading-tight sm:text-[38px]">
+    <section id="process" ref={ref} className="px-6 py-24" style={{ backgroundColor: GREEN }}>
+      <div className="mx-auto max-w-6xl">
+        <div className="reveal-item mb-16 flex flex-col gap-4">
+          <Eyebrow tone="onGreen">{copy.processEyebrow}</Eyebrow>
+          <h2 className="font-hero text-[clamp(28px,3.4vw,40px)] font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white">
             {copy.processTitle}
           </h2>
         </div>
 
-        <div className="relative">
-          {/* Линия пути — за метками, во всю ширину ряда. Только на широком
-              экране: в столбик она читалась бы как случайная черта сверху. */}
-          <div aria-hidden className="absolute left-7 right-7 top-7 hidden h-px bg-strong lg:block" />
+        <ol className="relative grid gap-12 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
+          {/* Линия пути — за засечками, во всю ширину ряда. Только на широком
+              экране: в столбик она читалась бы случайной чертой сверху. */}
+          <span
+            aria-hidden
+            className="absolute left-0 right-0 top-[5px] hidden h-px lg:block"
+            style={{ backgroundColor: `${GOLD}40` }}
+          />
 
-          <ol className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5 lg:gap-6">
-            {copy.processSteps.map((step, index) => (
-              <li key={step.title} className="reveal-item relative flex flex-col gap-4">
-                <span className="relative z-10 grid h-14 w-14 shrink-0 place-items-center rounded-full border border-accent/40 bg-base font-editorial text-heading text-accent">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-                <h3 className="text-heading font-semibold">{step.title}</h3>
-                <p className="text-caption leading-relaxed text-secondary">{step.description}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
+          {copy.processSteps.map((step) => (
+            <li key={step.title} className="reveal-item relative flex flex-col gap-4">
+              {/* Засечка на линии: ромб, повёрнутый квадрат — он читается
+                  как отметка на шкале, а круг читался бы как кнопка. */}
+              <span
+                aria-hidden
+                className="h-[11px] w-[11px] rotate-45"
+                style={{ backgroundColor: GOLD_LIGHT }}
+              />
+              <h3 className="text-heading font-semibold text-white">{step.title}</h3>
+              <p className="text-caption leading-relaxed text-white/60">{step.description}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );
@@ -539,7 +861,7 @@ function Team({
   // витрина с подписью «наша команда» смотрелась бы хуже, чем её отсутствие.
   if (team.isLoading) {
     return (
-      <section id="team" className="mx-auto max-w-6xl px-6 py-24">
+      <section id="team" className="px-6 py-24" style={{ backgroundColor: CREAM }}>
         <div className="flex justify-center gap-6">
           {[0, 1, 2, 3, 4].map((key) => (
             <Skeleton key={key} className="h-28 w-28 rounded-full" />
@@ -552,17 +874,31 @@ function Team({
   if (team.data === undefined || team.data.length === 0) return null;
 
   return (
-    <section id="team" ref={ref} className="mx-auto max-w-6xl px-6 py-24">
-      <div className="reveal-item mb-16 flex flex-col gap-3 text-center">
-        <span className="section-title mx-auto">{copy.teamEyebrow}</span>
-        <h2 className="font-editorial text-[32px] leading-tight sm:text-[38px]">{copy.teamTitle}</h2>
-        <p className="mx-auto max-w-xl text-body text-secondary">{copy.teamSubtitle}</p>
-      </div>
+    <section
+      id="team"
+      ref={ref}
+      className="px-6 py-24"
+      style={{ backgroundColor: CREAM }}
+    >
+      <div className="mx-auto max-w-6xl">
+        <div className="reveal-item mb-16 flex flex-col items-center gap-4 text-center">
+          <Eyebrow tone="onCream">{copy.teamEyebrow}</Eyebrow>
+          <h2
+            className="font-editorial text-[clamp(28px,3.4vw,40px)] leading-tight"
+            style={{ color: GREEN_DEEP }}
+          >
+            {copy.teamTitle}
+          </h2>
+          <p className="max-w-xl text-body" style={{ color: 'rgb(31 45 39 / 0.65)' }}>
+            {copy.teamSubtitle}
+          </p>
+        </div>
 
-      <div className="flex flex-wrap justify-center gap-x-6 gap-y-12 sm:gap-x-10">
-        {team.data.map((member, index) => (
-          <TeamCard key={member.id} member={member} locale={locale} index={index} />
-        ))}
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-12 sm:gap-x-10">
+          {team.data.map((member, index) => (
+            <TeamCard key={member.id} member={member} locale={locale} index={index} />
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -614,8 +950,12 @@ function TeamCard({
         не нужны, так что разница того не стоит.
       */}
       <div
-        className="relative overflow-hidden rounded-full border-4 border-base shadow-raised"
-        style={{ width: rhythm.size, height: rhythm.size }}
+        className="relative overflow-hidden rounded-full"
+        style={{
+          width: rhythm.size,
+          height: rhythm.size,
+          boxShadow: `0 0 0 2px ${CREAM}, 0 0 0 3px ${GOLD}55`,
+        }}
       >
         <img
           src={member.avatarUrl}
@@ -625,94 +965,11 @@ function TeamCard({
         />
       </div>
       <div className="text-center">
-        <p className="text-caption font-semibold leading-tight">{member.fullName}</p>
-        <p className="text-footnote text-muted">{role}</p>
-      </div>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*                                   Стили                                    */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Витрина стилей — по которым мастерская реально делит шторы (подтверждено
- * владельцем, не придумано для страницы). Шесть карточек, а не галерея без
- * подписей: клиент, который уже знает, что ищет «минимализм» или «хай-тек»,
- * находит это одним взглядом, а не листает случайные интерьеры.
- */
-function Styles({ copy }: { readonly copy: LandingCopy }): ReactElement {
-  const ref = useScrollReveal({ stagger: 70 });
-
-  return (
-    <section id="styles" ref={ref} className="bg-panel py-24">
-      <div className="mx-auto max-w-6xl px-6">
-        <div className="reveal-item mb-12 flex flex-col gap-3">
-          <span className="section-title">{copy.stylesEyebrow}</span>
-          <h2 className="font-editorial text-[32px] leading-tight sm:text-[38px]">
-            {copy.stylesTitle}
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
-          {copy.styles.map((style) => (
-            <div
-              key={style.name}
-              className="reveal-item group relative aspect-[3/4] overflow-hidden rounded-panel bg-raised"
-            >
-              <Image
-                src={unsplash(PHOTOS.styles[style.photo], 500)}
-                alt={style.caption}
-                fill
-                sizes="(min-width: 1024px) 200px, (min-width: 640px) 240px, 50vw"
-                className="object-cover transition-transform duration-500 group-hover:scale-110"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4">
-                <p className="text-caption font-bold uppercase tracking-[0.06em] text-white">
-                  {style.name}
-                </p>
-                <p className="text-footnote leading-snug text-white/75">{style.caption}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*                              Полоса показателей                            */
-/* -------------------------------------------------------------------------- */
-
-function StatsBand({ copy }: { readonly copy: LandingCopy }): ReactElement {
-  const stats = [
-    { icon: Users, value: copy.statsClientsValue, label: copy.statsClientsLabel },
-    { icon: Gem, value: copy.statsFabricsValue, label: copy.statsFabricsLabel },
-    { icon: Star, value: copy.statsYearsValue, label: copy.statsYearsLabel },
-  ] as const;
-
-  return (
-    <div className="border-y border-subtle bg-nav">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-x-10 gap-y-6">
-          {stats.map((stat) => (
-            <div key={stat.label} className="flex items-center gap-3">
-              <stat.icon className="h-5 w-5" style={{ color: GOLD_LIGHT }} aria-hidden />
-              <div>
-                <p className="font-editorial text-[22px] leading-none text-nav-text">
-                  {stat.value}
-                </p>
-                <p className="text-footnote text-nav-text/60">{stat.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <p className="text-overline font-semibold uppercase tracking-[0.2em] text-nav-text/60">
-          {copy.statsTagline}
+        <p className="text-caption font-semibold leading-tight" style={{ color: GREEN_DEEP }}>
+          {member.fullName}
+        </p>
+        <p className="text-footnote" style={{ color: 'rgb(31 45 39 / 0.55)' }}>
+          {role}
         </p>
       </div>
     </div>
@@ -723,31 +980,48 @@ function StatsBand({ copy }: { readonly copy: LandingCopy }): ReactElement {
 /*                                   Контакты                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Последний экран — один призыв: позвонить.
+ *
+ * Телефон был набран засечным в тёмной коробке и ничем не отличался от
+ * заголовка: главное действие всей страницы выглядело подписью. Теперь это
+ * кнопка — золотая, во всю ширину пальца, с номером внутри. Номер остаётся
+ * и текстом рядом: его переписывают в записную книжку, а из кнопки текст
+ * выделять неудобно.
+ */
 function Contact({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const ref = useScrollReveal({ stagger: 100 });
   const telHref = toTelHref(CONTACT_PHONE) ?? `tel:${CONTACT_PHONE}`;
 
   return (
-    <section id="contact" ref={ref} className="mx-auto max-w-6xl px-6 py-24">
-      <div className="reveal-item flex flex-col items-center gap-8 rounded-panel bg-nav px-8 py-16 text-center text-nav-text sm:px-14">
-        <div className="flex flex-col gap-4">
-          <h2 className="font-editorial text-[34px] leading-tight sm:text-[42px]">
-            {copy.contactTitle}
-          </h2>
-          <p className="mx-auto max-w-lg text-body text-nav-text/75">{copy.contactSubtitle}</p>
+    <section
+      id="contact"
+      ref={ref}
+      className="px-6 py-28"
+      style={{ backgroundColor: GREEN_DEEP }}
+    >
+      <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 text-center">
+        <div className="reveal-item">
+          <Eyebrow tone="onGreen">{copy.contactCity}</Eyebrow>
         </div>
+
+        <h2 className="reveal-item font-hero text-[clamp(30px,4.4vw,52px)] font-extrabold uppercase leading-[1.03] tracking-[-0.02em] text-white">
+          {copy.contactTitle}
+        </h2>
+
+        <p className="reveal-item max-w-xl text-body leading-relaxed text-white/65">
+          {copy.contactSubtitle}
+        </p>
 
         <a
           href={telHref}
-          className="pressable font-editorial text-[28px] tracking-[-0.01em] text-nav-text transition-colors hover:text-accent-bright sm:text-[34px]"
+          className="reveal-item pressable inline-flex items-center gap-3 rounded-full px-9 py-4 font-hero text-[clamp(20px,2.4vw,26px)] font-extrabold tracking-[-0.01em]"
+          style={{ backgroundColor: GOLD_LIGHT, color: GREEN_DEEP }}
         >
           {formatPhone(CONTACT_PHONE)}
         </a>
 
-        <span className="flex items-center gap-2 text-caption text-nav-text/60">
-          <MapPin className="h-4 w-4" aria-hidden />
-          {copy.contactCity}
-        </span>
+
       </div>
     </section>
   );
@@ -759,10 +1033,18 @@ function Contact({ copy }: { readonly copy: LandingCopy }): ReactElement {
 
 function SiteFooter({ copy }: { readonly copy: LandingCopy }): ReactElement {
   return (
-    <footer className="border-t border-subtle px-6 py-8">
+    <footer
+      className="border-t px-6 py-8"
+      style={{ backgroundColor: GREEN_DEEP, borderColor: `${GOLD}26` }}
+    >
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 text-center sm:flex-row sm:justify-between sm:text-left">
-        <p className="text-caption text-muted">© {new Date().getFullYear()} Parda Bozor · Design House</p>
-        <Link href="/login" className="text-caption text-muted underline-offset-4 hover:underline">
+        <p className="text-caption text-white/45">
+          © {new Date().getFullYear()} Parda Bozor · Design House
+        </p>
+        <Link
+          href="/login"
+          className="text-caption text-white/45 underline-offset-4 transition-colors hover:text-white/80 hover:underline"
+        >
           {copy.staffLogin}
         </Link>
       </div>
@@ -782,22 +1064,29 @@ function SiteFooter({ copy }: { readonly copy: LandingCopy }): ReactElement {
  * показываются те же фотографии.
  */
 const PHOTOS = {
-  hero: '1659282386282-d7145e593bad',
-  about: '1578353022142-09264fd64295',
   /**
-   * По одному снимку на реальную категорию мастерской. Из-за временной
-   * недоступности поиска на unsplash.com (сам CDN картинок работает)
-   * фотографии подобраны из уже проверенных снимков этой же страницы —
-   * ближе всего к настроению стиля, но не идеальный подбор для «Хай-тек»,
-   * это стоит заменить, когда поиск снова станет доступен.
+   * Герой — самый светлый кадр из проверенных: тёплая комната с высокими
+   * окнами. Прежний снимок был самым тёмным из восьми (яркость 57 из 255
+   * против 104 у этого), и правая половина первого экрана читалась чёрным
+   * провалом, а не фотографией.
+   */
+  hero: '1664112742143-6aa92230d9c6',
+  /**
+   * По снимку на каждый стиль — подобраны по настроению кадра, а не по
+   * порядку: золотые ламбрекены достались классике, белое полотно —
+   * минимализму, холодный свет с морем — хай-теку, тёмный бархат — премиуму.
+   *
+   * Это по-прежнему сток: поиск на unsplash.com недоступен, и выбор идёт из
+   * восьми проверенных адресов CDN. Свои снимки работ мастерской заменят их
+   * и сразу поднимут страницу выше любого стока — им здесь и место.
    */
   styles: {
     neoClassic: '1601000785676-f9b0ade234d3',
-    classic: '1577926382659-d34e9430e853',
-    modern: '1617617495640-153230cf3408',
+    classic: '1577926606472-fc6d3a33f7e1',
+    modern: '1577926382659-d34e9430e853',
     minimal: '1706817969183-908d5b67d465',
-    hiTech: '1664112742143-6aa92230d9c6',
-    premium: '1577926606472-fc6d3a33f7e1',
+    hiTech: '1617617495640-153230cf3408',
+    premium: '1659282386282-d7145e593bad',
   },
 } as const;
 
@@ -855,8 +1144,6 @@ interface LandingCopy {
   readonly aboutEyebrow: string;
   readonly aboutStatement: string;
   readonly aboutParagraph: string;
-  readonly aboutImageAlt: string;
-  readonly aboutImageCaption: string;
   readonly processEyebrow: string;
   readonly processTitle: string;
   readonly processSteps: readonly ProcessStep[];
@@ -900,8 +1187,6 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     aboutStatement: 'Мы не подгоняем шторы под окно — мы шьём их заново, под конкретное окно.',
     aboutParagraph:
       'Design House Parda Bozor шьёт шторы под заказ: от классических портьер до лёгкого тюля. Каждое изделие проходит через одну и ту же мастерскую — замерщика, швею и контролёра, — а не собирается из чужих полуфабрикатов. Это дольше, чем купить готовое, и ровно поэтому держится дольше.',
-    aboutImageAlt: 'Ножницы, нитки и сантиметровая лента на рабочем столе мастерской',
-    aboutImageCaption: 'Инструменты одной смены',
     processEyebrow: 'Процесс',
     processTitle: 'Путь заказа — от окна до окна',
     processSteps: [
@@ -949,8 +1234,6 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     aboutStatement: "Biz pardani derazaga moslamaymiz — uni aynan shu deraza uchun qaytadan tikamiz.",
     aboutParagraph:
       "Design House Parda Bozor pardalarni buyurtma asosida tikadi: klassik pardalardan yengil tyulgacha. Har bir buyurtma bitta ustaxonadan — o'lchovchi, tikuvchi va nazoratchidan — o'tadi, boshqa joydan tayyor qismlar yig'ilmaydi. Bu tayyorini sotib olishdan sekinroq, va aynan shu sababli uzoqroq xizmat qiladi.",
-    aboutImageAlt: 'Ustaxona stolidagi qaychi, ip va santimetr lenta',
-    aboutImageCaption: 'Bir smena asboblari',
     processEyebrow: 'Jarayon',
     processTitle: "Buyurtma yo'li — derazadan derazagacha",
     processSteps: [

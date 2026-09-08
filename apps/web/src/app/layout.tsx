@@ -1,9 +1,11 @@
 import type { ReactElement, ReactNode } from 'react';
 import type { Metadata, Viewport } from 'next';
 import {
+  Great_Vibes,
   IBM_Plex_Mono,
   IBM_Plex_Sans,
   Instrument_Serif,
+  Manrope,
   Playfair_Display,
 } from 'next/font/google';
 
@@ -72,6 +74,37 @@ const playfairDisplay = Playfair_Display({
   display: 'swap',
 });
 
+/**
+ * Заголовок первого экрана лендинга — крупные прописные.
+ *
+ * Отдельная гарнитура, а не жирный Plex Sans: в прописных на сорока
+ * пикселях Plex читается как заголовок таблицы, а не как обложка. Manrope
+ * геометричнее и плотнее в капсе, кириллицу несёт полностью, и рядом с
+ * засечным знаком фирмы даёт ту самую пару «серифный логотип — гротескный
+ * заголовок», на которой держится композиция референса.
+ */
+const manrope = Manrope({
+  subsets: ['latin', 'cyrillic'],
+  weight: ['500', '800'],
+  variable: '--font-hero',
+  display: 'swap',
+});
+
+/**
+ * Рукописная подпись «Your Style / Our Inspiration» поверх фотографии.
+ *
+ * Только латиница — она и набирается латиницей в обеих локалях. Это
+ * подпись-росчерк, а не текст интерфейса: переводить её незачем, а
+ * кириллический скрипт того же настроения потянул бы третий шрифтовой
+ * файл ради двух слов.
+ */
+const greatVibes = Great_Vibes({
+  subsets: ['latin'],
+  weight: ['400'],
+  variable: '--font-script',
+  display: 'swap',
+});
+
 
 export const metadata: Metadata = {
   title: 'Design House — CRM',
@@ -99,7 +132,7 @@ export default function RootLayout({
   return (
     <html
       lang="ru"
-      className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable} ${playfairDisplay.variable}`}
+      className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable} ${playfairDisplay.variable} ${manrope.variable} ${greatVibes.variable}`}
     >
       <head>
         {/*

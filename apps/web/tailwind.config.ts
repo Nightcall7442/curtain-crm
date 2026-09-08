@@ -128,6 +128,10 @@ const config: Config = {
         display: ['var(--font-display)', 'Georgia', 'serif'],
         /** Заголовки публичного лендинга — несёт кириллицу, `display` нет. */
         editorial: ['var(--font-editorial)', 'Georgia', 'serif'],
+        /** Крупные прописные первого экрана лендинга. */
+        hero: ['var(--font-hero)', 'var(--font-sans)', 'system-ui', 'sans-serif'],
+        /** Росчерк поверх фотографии. Только латиница — так и набирается. */
+        script: ['var(--font-script)', 'cursive'],
       },
 
       boxShadow: {
