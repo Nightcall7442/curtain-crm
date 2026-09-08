@@ -657,6 +657,15 @@ export const ordersRouter = router({
                 */
                 readyMadeItemId: idSchema.optional(),
                 model: optionalText(200),
+                /*
+                  Карниз в продаже готовых штор.
+
+                  К шторе с полки его берут тут же, а иногда покупают и один
+                  карниз, без штор. Хранится той же строкой материала, что и
+                  в пошиве, — карточка заказа показывает его одинаково, и
+                  установщику незачем знать, откуда заказ пришёл.
+                */
+                cornice: optionalText(200),
                 quantity: z.number().int().positive().max(1000).default(1),
                 comment: optionalText(500),
               }),
@@ -799,6 +808,9 @@ export const ordersRouter = router({
                       widthCm: Number.parseFloat(stock.widthCm),
                       heightCm: Number.parseFloat(stock.heightCm),
                     }),
+                ...(item.cornice === undefined || item.cornice === null
+                  ? {}
+                  : { cornice: { code: item.cornice, meters: null, description: null } }),
                 ...(item.comment === undefined ? {} : { comment: item.comment }),
               },
               created.id,

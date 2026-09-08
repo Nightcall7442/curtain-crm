@@ -1,7 +1,7 @@
 import { branches, readyMadeItems, type DbExecutor } from '@curtain-crm/db';
 import { isManagement, moneyToDecimalString, parseMoney } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq, gt, ilike } from 'drizzle-orm';
+import { and, asc, eq, gt, ilike, or } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { base64FileSchema, idSchema, moneySchema, nonEmptyString, optionalText } from '../lib/schemas';
@@ -97,6 +97,7 @@ export const readyMadeRouter = router({
           branchId: readyMadeItems.branchId,
           branchName: branches.name,
           model: readyMadeItems.model,
+          code: readyMadeItems.code,
           widthCm: readyMadeItems.widthCm,
           heightCm: readyMadeItems.heightCm,
           price: readyMadeItems.price,
@@ -115,9 +116,18 @@ export const readyMadeRouter = router({
             ...(input.model === undefined
               ? []
               : [ilike(readyMadeItems.model, `%${input.model}%`)]),
+            /*
+              Поиск идёт и по коду: клиент называет бирку, а не модель, и
+              продавец набирает то, что услышал.
+            */
             ...(input.search === undefined
               ? []
-              : [ilike(readyMadeItems.model, `%${input.search}%`)]),
+              : [
+                  or(
+                    ilike(readyMadeItems.model, `%${input.search}%`),
+                    ilike(readyMadeItems.code, `%${input.search}%`),
+                  ),
+                ]),
           ),
         )
         .orderBy(asc(readyMadeItems.model), asc(readyMadeItems.widthCm))
@@ -132,6 +142,7 @@ export const readyMadeRouter = router({
       z.object({
         branchId: idSchema.optional(),
         model: nonEmptyString(200, 'Укажите модель'),
+        code: optionalText(100),
         widthCm: dimensionSchema,
         heightCm: dimensionSchema,
         price: moneySchema,
@@ -171,6 +182,7 @@ export const readyMadeRouter = router({
             .values({
               branchId,
               model: input.model,
+              code: input.code ?? null,
               widthCm: input.widthCm.toFixed(1),
               heightCm: input.heightCm.toFixed(1),
               price: moneyToDecimalString(parseMoney(input.price)),

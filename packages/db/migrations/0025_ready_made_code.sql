@@ -1,0 +1,1 @@
+ALTER TABLE "ready_made_items" ADD COLUMN "code" varchar(100);

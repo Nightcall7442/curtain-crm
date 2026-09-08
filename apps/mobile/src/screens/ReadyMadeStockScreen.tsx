@@ -35,6 +35,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
 
 interface FormState {
   readonly model: string;
+  readonly code: string;
   readonly widthCm: string;
   readonly heightCm: string;
   readonly price: string;
@@ -45,6 +46,7 @@ interface FormState {
 
 const emptyForm = (): FormState => ({
   model: '',
+  code: '',
   widthCm: '',
   heightCm: '',
   price: '',
@@ -164,6 +166,7 @@ export function ReadyMadeStockScreen(): ReactElement {
       heightCm: toNumber(form.heightCm),
       price: toNumber(form.price),
       quantity: Math.max(0, Number.parseInt(form.quantity, 10) || 0),
+      ...(form.code.trim() === '' ? {} : { code: form.code.trim() }),
       ...(form.comment.trim() === '' ? {} : { comment: form.comment.trim() }),
       ...(form.photo === null
         ? {}
@@ -220,6 +223,34 @@ export function ReadyMadeStockScreen(): ReactElement {
               />
             </Field>
 
+            {/*
+              Код — своя бирка мастерской, а не код ткани с этикетки рулона:
+              две шторы одной модели и размера различают по нему. Описание
+              рядом заполняется руками — справочнику здесь взяться неоткуда,
+              штора одна такая.
+            */}
+            <Field label="Код" hint="Бирка на шторе — по нему её найдут в продаже">
+              <Input
+                value={form.code}
+                onChangeText={(code) => {
+                  patch({ code });
+                }}
+                placeholder="Например: ГШ-014"
+                autoCapitalize="characters"
+              />
+            </Field>
+
+            <Field label="Описание">
+              <Input
+                value={form.comment}
+                onChangeText={(comment) => {
+                  patch({ comment });
+                }}
+                placeholder="Чем эта штора отличается: ткань, оттенок, особенности"
+                multiline
+              />
+            </Field>
+
             <View style={styles.row}>
               <View style={styles.half}>
                 <Field label="Ширина, см" required>
@@ -272,17 +303,6 @@ export function ReadyMadeStockScreen(): ReactElement {
                 </Field>
               </View>
             </View>
-
-            <Field label="Комментарий">
-              <Input
-                value={form.comment}
-                onChangeText={(comment) => {
-                  patch({ comment });
-                }}
-                placeholder="Что важно помнить про эту штору"
-                multiline
-              />
-            </Field>
 
             <View style={styles.photoRow}>
               {form.photo === null ? (
@@ -349,12 +369,19 @@ export function ReadyMadeStockScreen(): ReactElement {
                   )}
 
                   <View style={styles.itemBody}>
-                    <Text style={styles.itemTitle}>{item.model}</Text>
+                    <Text style={styles.itemTitle}>
+                      {item.code === null ? item.model : `${item.model} · ${item.code}`}
+                    </Text>
                     <Text style={styles.itemMeta}>
                       {`${Number.parseFloat(item.widthCm).toString()}×${Number.parseFloat(
                         item.heightCm,
                       ).toString()} см`}
                     </Text>
+                    {item.comment !== null && (
+                      <Text style={styles.itemMeta} numberOfLines={2}>
+                        {item.comment}
+                      </Text>
+                    )}
                     <Text style={styles.itemMeta}>{item.branchName}</Text>
                   </View>
 

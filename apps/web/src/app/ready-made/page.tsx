@@ -29,6 +29,8 @@ export default function ReadyMadePage(): ReactElement {
 
   const [adding, setAdding] = useState(false);
   const [model, setModel] = useState('');
+  const [code, setCode] = useState('');
+  const [comment, setComment] = useState('');
   const [widthCm, setWidthCm] = useState('');
   const [heightCm, setHeightCm] = useState('');
   const [price, setPrice] = useState('');
@@ -53,6 +55,8 @@ export default function ReadyMadePage(): ReactElement {
     onSuccess(item) {
       setAdding(false);
       setModel('');
+      setCode('');
+      setComment('');
       setWidthCm('');
       setHeightCm('');
       setPrice('');
@@ -165,8 +169,11 @@ export default function ReadyMadePage(): ReactElement {
                   )}
                   <span className="block">
                     <span className={row.isActive ? 'text-primary' : 'text-muted line-through'}>
-                      {row.model}
+                      {row.code === null ? row.model : `${row.model} · ${row.code}`}
                     </span>
+                    {row.comment !== null && (
+                      <span className="block text-footnote text-muted">{row.comment}</span>
+                    )}
                   </span>
                 </span>
               ),
@@ -258,6 +265,8 @@ export default function ReadyMadePage(): ReactElement {
               onClick={() => {
                 create.mutate({
                   model: model.trim(),
+                  ...(code.trim() === '' ? {} : { code: code.trim() }),
+                  ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
                   widthCm: Number.parseFloat(widthCm.replace(',', '.')) || 0,
                   heightCm: Number.parseFloat(heightCm.replace(',', '.')) || 0,
                   price: Number.parseFloat(price.replace(',', '.')) || 0,
@@ -287,6 +296,32 @@ export default function ReadyMadePage(): ReactElement {
               }}
               placeholder="Выберите модель"
               options={modelOptions}
+            />
+          </Field>
+
+          {/*
+            Код — своя бирка мастерской, а не код ткани с рулона: две шторы
+            одной модели и размера различают по нему, и по нему же продавец
+            находит штору, когда клиент называет её по телефону. Описание
+            рядом заполняется руками: справочнику здесь взяться неоткуда.
+          */}
+          <Field label="Код" hint="Бирка на шторе — по нему её найдут в продаже">
+            <Input
+              value={code}
+              onChange={(event) => {
+                setCode(event.target.value);
+              }}
+              placeholder="Например: ГШ-014"
+            />
+          </Field>
+
+          <Field label="Описание">
+            <Input
+              value={comment}
+              onChange={(event) => {
+                setComment(event.target.value);
+              }}
+              placeholder="Чем эта штора отличается: ткань, оттенок, особенности"
             />
           </Field>
 

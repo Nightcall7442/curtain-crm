@@ -79,6 +79,19 @@ export function SellReadyMadeScreen(): ReactElement {
     [catalog.data],
   );
 
+  /*
+    Карнизы — из своего справочника: к шторе с полки карниз берут тут же, а
+    иногда покупают и один карниз, без штор. Поэтому позиция может быть и
+    «штора с карнизом», и только карниз — модель тогда остаётся пустой.
+  */
+  const corniceOptions = useMemo(
+    () =>
+      (catalog.data ?? [])
+        .filter((entry) => entry.kind === CatalogKind.CORNICE)
+        .map((entry) => entry.name),
+    [catalog.data],
+  );
+
   const updateItem = (id: number, patch: Partial<DraftItem>): void => {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
@@ -118,6 +131,7 @@ export function SellReadyMadeScreen(): ReactElement {
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.readyMadeItemId === null ? {} : { readyMadeItemId: item.readyMadeItemId }),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
+        ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
       })),
       ...(needsInstallation === 'yes'
@@ -250,6 +264,18 @@ export function SellReadyMadeScreen(): ReactElement {
               а не переписывает её описание: размер, цвет и код приезжают со
               склада, а остаток списывается при продаже.
             */}
+            <Field label="Карниз" hint="Можно продать и один карниз — модель тогда не нужна">
+              <CatalogPicker
+                value={item.cornice}
+                placeholder="Без карниза"
+                options={corniceOptions}
+                sheetTitle="Карнизы"
+                onChange={(cornice) => {
+                  updateItem(item.id, { cornice });
+                }}
+              />
+            </Field>
+
             {item.model.trim() !== '' && (
               <View style={styles.stock}>
                 <Text style={styles.stockTitle}>В наличии</Text>
@@ -258,8 +284,12 @@ export function SellReadyMadeScreen(): ReactElement {
                   <ActivityIndicator color={colors.accent} />
                 ) : (
                   (() => {
-                    const matching = (stock.data ?? []).filter((entry) =>
-                      entry.model.toLowerCase().includes(item.model.trim().toLowerCase()),
+                    /* Ищем и по коду с бирки: клиент называет его, а не модель. */
+                    const needle = item.model.trim().toLowerCase();
+                    const matching = (stock.data ?? []).filter(
+                      (entry) =>
+                        entry.model.toLowerCase().includes(needle) ||
+                        (entry.code ?? '').toLowerCase().includes(needle),
                     );
 
                     if (matching.length === 0) {
@@ -306,7 +336,13 @@ export function SellReadyMadeScreen(): ReactElement {
                               {`${Number.parseFloat(entry.widthCm).toString()}×${Number.parseFloat(
                                 entry.heightCm,
                               ).toString()} см`}
+                              {entry.code === null ? '' : ` · ${entry.code}`}
                             </Text>
+                            {entry.comment !== null && (
+                              <Text style={styles.stockMeta} numberOfLines={2}>
+                                {entry.comment}
+                              </Text>
+                            )}
                             <Text style={styles.stockMeta}>
                               {`${entry.branchName} · ${entry.quantity.toString()} шт`}
                             </Text>
@@ -417,6 +453,8 @@ export function SellReadyMadeScreen(): ReactElement {
 interface DraftItem {
   readonly id: number;
   readonly model: string;
+  /** Карниз из справочника. Пусто — продают одни шторы. */
+  readonly cornice: string;
   readonly quantity: string;
   readonly comment: string;
   /**
@@ -429,6 +467,7 @@ interface DraftItem {
 const emptyItem = (id: number): DraftItem => ({
   id,
   model: '',
+  cornice: '',
   quantity: '1',
   comment: '',
   readyMadeItemId: null,

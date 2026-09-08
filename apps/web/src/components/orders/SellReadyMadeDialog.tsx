@@ -1,9 +1,9 @@
 'use client';
 
-import { formatMoney, parseMoney } from '@curtain-crm/shared';
+import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
-import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Textarea } from '@/components/ui/Form';
+import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
 /**
@@ -11,9 +11,10 @@ import { trpc } from '@/lib/trpc';
  *
  * Форма короче обычного создания заказа НАМЕРЕННО: готовые шторы не проходят
  * замер, раскрой, пошив и контроль качества, поэтому весь набор полей под
- * позицию заказа (карниз, тюль, сачак, материалы...) здесь неуместен — это
- * атрибуты того, что ещё предстоит сшить, а не того, что уже готово и лежит
- * на витрине.
+ * позицию заказа (тюль, сачак, материалы...) здесь неуместен — это атрибуты
+ * того, что ещё предстоит сшить, а не того, что уже готово и лежит на
+ * витрине. Исключение — карниз: его берут к шторе с полки тут же, а иногда
+ * покупают и один карниз, без штор.
  *
  * Единственное ветвление — «нужна ли установка»: без неё заказ закрывается
  * тем же нажатием, с ней уходит админу в очередь на назначение установщика,
@@ -31,6 +32,7 @@ export function SellReadyMadeDialog({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [model, setModel] = useState('');
+  const [cornice, setCornice] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
@@ -46,6 +48,12 @@ export function SellReadyMadeDialog({
   const utils = trpc.useUtils();
 
   const stock = trpc.readyMade.list.useQuery({}, { enabled: open });
+
+  /*
+    Карнизы — из справочника: к шторе с полки карниз берут тут же, а иногда
+    покупают и один карниз, без штор. Тогда «Что продано» остаётся пустым.
+  */
+  const catalog = trpc.catalog.list.useQuery({ kind: CatalogKind.CORNICE }, { enabled: open });
 
   const sell = trpc.orders.sellReadyMade.useMutation({
     async onSuccess(order) {
@@ -65,6 +73,7 @@ export function SellReadyMadeDialog({
     setClientName('');
     setClientPhone('');
     setModel('');
+    setCornice('');
     setQuantity('1');
     setWorkPrice('');
     setDeposit('');
@@ -91,6 +100,7 @@ export function SellReadyMadeDialog({
           quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
           ...(stockItemId === null ? {} : { readyMadeItemId: stockItemId }),
           ...(model.trim().length > 0 ? { model: model.trim() } : {}),
+          ...(cornice.length > 0 ? { cornice } : {}),
           ...(comment.trim().length > 0 ? { comment: comment.trim() } : {}),
         },
       ],
@@ -169,6 +179,20 @@ export function SellReadyMadeDialog({
                   setStockItemId(null);
                 }}
                 placeholder="Готовый комплект, бежевый"
+              />
+            </Field>
+
+            <Field label="Карниз" hint="Можно продать и один карниз">
+              <Select
+                value={cornice}
+                onChange={(event) => {
+                  setCornice(event.target.value);
+                }}
+                placeholder="Без карниза"
+                options={(catalog.data ?? []).map((entry) => ({
+                  value: entry.name,
+                  label: entry.name,
+                }))}
               />
             </Field>
 
