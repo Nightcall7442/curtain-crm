@@ -1,4 +1,5 @@
 import {
+  CORNICE_ROTATION_LABELS,
   formatMoney,
   formatPhone,
   ORDER_STAGE_FEE_LABELS,
@@ -371,8 +372,34 @@ export function OrderDetailScreen({
               {item.color !== null && (
                 <Text style={styles.itemDetail}>{`Цвет: ${item.color}`}</Text>
               )}
+              {/*
+                Коды тканей и фурнитуры — то, по чему в цехе и работают:
+                раскройщик берёт по ним рулон, а установщик — карниз. Без
+                них карточка заказа на телефоне остаётся описанием, по
+                которому нельзя ничего сделать.
+              */}
+              {item.portieres.length > 0 && (
+                <Text style={styles.itemDetail}>
+                  {`Портьеры: ${item.portieres
+                    .map((portiere) => `${portiere.code} × ${portiere.quantity.toString()}`)
+                    .join(', ')}`}
+                </Text>
+              )}
+              {item.tulle !== null && (
+                <Text style={styles.itemDetail}>{`Тюль: ${item.tulle}`}</Text>
+              )}
               {item.cornice !== null && (
                 <Text style={styles.itemDetail}>{`Карниз: ${item.cornice}`}</Text>
+              )}
+              {item.corniceRotation !== null && (
+                <Text style={styles.itemDetail}>
+                  {`Поворот: ${t(CORNICE_ROTATION_LABELS, item.corniceRotation)}`}
+                </Text>
+              )}
+              {item.hasProtection && (
+                <Text style={styles.itemDetail}>
+                  {`Защита: ${item.protectionCode ?? 'код не указан'}`}
+                </Text>
               )}
               {item.comment !== null && <Text style={styles.itemComment}>{item.comment}</Text>}
             </View>

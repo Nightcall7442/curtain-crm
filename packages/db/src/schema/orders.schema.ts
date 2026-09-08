@@ -1,4 +1,4 @@
-import type { OrderItemAccessory } from '@curtain-crm/shared';
+import type { OrderItemAccessory, OrderItemPortiere } from '@curtain-crm/shared';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -18,7 +18,13 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { branches } from './branches.schema';
-import { orderItemKindEnum, orderStatusEnum, orderTypeEnum, priorityEnum } from './enums';
+import {
+  corniceRotationEnum,
+  orderItemKindEnum,
+  orderStatusEnum,
+  orderTypeEnum,
+  priorityEnum,
+} from './enums';
 import { users } from './users.schema';
 
 /**
@@ -226,14 +232,29 @@ export const orderItems = pgTable(
     heightCm: numeric('height_cm', { precision: 7, scale: 1 }),
     areaM2: numeric('area_m2', { precision: 10, scale: 4 }),
 
+    /**
+     * Портьера — код ткани (артикул) с этикетки, список: одна позиция
+     * иногда шьётся из двух тканей сразу (контрастная вставка). См.
+     * `OrderItemPortiere` в `@curtain-crm/shared`.
+     */
+    portieres: jsonb('portieres').$type<OrderItemPortiere[]>().notNull().default([]),
+
     /** Карниз — код (артикул), а не выбор из справочника: у карнизов и тюля
      *  нет фиксированного набора вариантов, продавец переписывает код с
-     *  этикетки товара. */
+     *  этикетки товара. Сторона открывания — перечисление: свободный текст
+     *  раньше давал «левый», «правый» и «п-образный» под тремя разными
+     *  подписями на одно и то же. */
     cornice: text('cornice'),
-    corniceRotation: text('cornice_rotation'),
+    corniceRotation: corniceRotationEnum('cornice_rotation'),
     tulle: text('tulle'),
-    /** Нужна ли антимоскитная сетка. */
+    /**
+     * Нужна ли защита — антимоскитная сетка или другое защитное полотно.
+     * Код читается вместе с флагом: включённая защита без кода означала бы
+     * «что-то нужно, а что именно — неизвестно», и заказ уехал бы в цех
+     * без единственной детали, которая там и нужна.
+     */
     hasProtection: boolean('has_protection').notNull().default(false),
+    protectionCode: text('protection_code'),
     /**
      * Аксессуары позиции: держатели, султанчики, бубоны, обхваты, сачак —
      * список, а не одно поле, потому что к одной шторе часто идёт сразу
@@ -261,6 +282,12 @@ export const orderItems = pgTable(
     check(
       'order_items_height_range',
       sql`${table.heightCm} is null or ${table.heightCm} between 1 and 2000`,
+    ),
+    // Включённая защита без кода — незавершённая мысль: цех получил бы
+    // заказ с пометкой «нужно что-то защитное», не зная, что именно.
+    check(
+      'order_items_protection_code_required',
+      sql`not ${table.hasProtection} or ${table.protectionCode} is not null`,
     ),
   ],
 );

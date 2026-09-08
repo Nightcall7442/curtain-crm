@@ -1,12 +1,15 @@
 import {
   areaM2FromCm,
   CatalogKind,
+  CORNICE_ROTATION_LABELS,
+  CORNICE_ROTATIONS,
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
   OrderItemKind,
   PRIORITIES,
   PRIORITY_LABELS,
   Priority,
+  type CorniceRotation,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState, type ReactElement } from 'react';
@@ -58,6 +61,15 @@ interface AccessoryDraft {
 
 const emptyAccessory = (id: number): AccessoryDraft => ({ id, name: '', quantity: '1', code: '' });
 
+/** Одна портьера позиции: код ткани с этикетки и её количество. */
+interface PortiereDraft {
+  readonly id: number;
+  readonly code: string;
+  readonly quantity: string;
+}
+
+const emptyPortiere = (id: number): PortiereDraft => ({ id, code: '', quantity: '1' });
+
 /** Позиция заказа в форме. Идентификатор нужен только для ключа списка. */
 interface DraftItem {
   readonly id: number;
@@ -66,11 +78,14 @@ interface DraftItem {
   readonly heightCm: string;
   readonly widthCm: string;
   readonly quantity: string;
+  /** Портьеры — коды тканей, которых на одну позицию бывает несколько. */
+  readonly portieres: readonly PortiereDraft[];
   /** Код карниза/тюля с этикетки — справочника для них нет. */
   readonly cornice: string;
-  readonly corniceRotation: string;
+  readonly corniceRotation: CorniceRotation | null;
   readonly tulle: string;
   readonly hasProtection: boolean;
+  readonly protectionCode: string;
   readonly accessories: readonly AccessoryDraft[];
   readonly comment: string;
 }
@@ -82,10 +97,12 @@ const emptyItem = (id: number): DraftItem => ({
   heightCm: '',
   widthCm: '',
   quantity: '1',
+  portieres: [emptyPortiere(1)],
   cornice: '',
-  corniceRotation: '',
+  corniceRotation: null,
   tulle: '',
   hasProtection: false,
+  protectionCode: '',
   accessories: [],
   comment: '',
 });
@@ -150,6 +167,25 @@ export function OrderCreateScreen(): ReactElement {
     );
   };
 
+  const updatePortiere = (
+    itemId: number,
+    portiereId: number,
+    patch: Partial<PortiereDraft>,
+  ): void => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id !== itemId
+          ? item
+          : {
+              ...item,
+              portieres: item.portieres.map((portiere) =>
+                portiere.id === portiereId ? { ...portiere, ...patch } : portiere,
+              ),
+            },
+      ),
+    );
+  };
+
   const updateAccessory = (
     itemId: number,
     accessoryId: number,
@@ -169,7 +205,7 @@ export function OrderCreateScreen(): ReactElement {
     );
   };
 
-  const errors = validate({ clientName, clientPhone, deadline });
+  const errors = validate({ clientName, clientPhone, deadline, items });
   const hasErrors = Object.keys(errors).length > 0;
 
   const submit = (): void => {
@@ -194,10 +230,19 @@ export function OrderCreateScreen(): ReactElement {
               widthCm: Number.parseFloat(item.widthCm.replace(',', '.')),
             }
           : {}),
+        portieres: item.portieres
+          .filter((portiere) => portiere.code.trim() !== '')
+          .map((portiere) => ({
+            code: portiere.code.trim(),
+            quantity: Math.max(1, Number.parseInt(portiere.quantity, 10) || 1),
+          })),
         ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
-        ...(item.corniceRotation.trim() === '' ? {} : { corniceRotation: item.corniceRotation.trim() }),
+        ...(item.corniceRotation === null ? {} : { corniceRotation: item.corniceRotation }),
         ...(item.tulle.trim() === '' ? {} : { tulle: item.tulle.trim() }),
         hasProtection: item.hasProtection,
+        ...(item.hasProtection && item.protectionCode.trim() !== ''
+          ? { protectionCode: item.protectionCode.trim() }
+          : {}),
         accessories: item.accessories
           .filter((accessory) => accessory.name.trim() !== '')
           .map((accessory) => ({
@@ -404,25 +449,77 @@ export function OrderCreateScreen(): ReactElement {
                 />
               </Field>
 
-              <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
-                <Input
-                  value={item.cornice}
-                  onChangeText={(cornice) => {
-                    updateItem(item.id, { cornice });
-                  }}
-                  placeholder="Например: К-104"
-                />
-              </Field>
+              {/*
+                Портьеры — список: на одну позицию иногда идут две ткани
+                (контрастная вставка, разный метраж). Тот же приём, что у
+                аксессуаров, только без справочника — у портьеры есть
+                только код с этикетки.
+              */}
+              <View style={styles.accessories}>
+                <View style={styles.accessoriesHeader}>
+                  <Text style={styles.accessoriesTitle}>Портьера</Text>
+                  <Pressable
+                    onPress={() => {
+                      const nextId =
+                        item.portieres.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
+                      updateItem(item.id, { portieres: [...item.portieres, emptyPortiere(nextId)] });
+                    }}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                  >
+                    {({ pressed }) => (
+                      <Text style={[styles.addAccessory, pressed ? styles.pressed : null]}>
+                        + Портьера
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
 
-              <Field label="Поворот карниза">
-                <Input
-                  value={item.corniceRotation}
-                  onChangeText={(corniceRotation) => {
-                    updateItem(item.id, { corniceRotation });
-                  }}
-                  placeholder="Левый, правый, П-образный"
-                />
-              </Field>
+                {item.portieres.length === 0 ? (
+                  <Text style={styles.accessoriesHint}>Код ткани с этикетки и количество</Text>
+                ) : (
+                  item.portieres.map((portiere) => (
+                    <View key={portiere.id} style={styles.accessoryRow}>
+                      <View style={styles.accessoryName}>
+                        <Input
+                          value={portiere.code}
+                          onChangeText={(code) => {
+                            updatePortiere(item.id, portiere.id, { code });
+                          }}
+                          placeholder="Код портьеры, например П-31"
+                        />
+                      </View>
+                      <View style={styles.accessoryQuantity}>
+                        <Input
+                          value={portiere.quantity}
+                          onChangeText={(quantity) => {
+                            updatePortiere(item.id, portiere.id, { quantity });
+                          }}
+                          keyboardType="number-pad"
+                          placeholder="1"
+                        />
+                      </View>
+                      {item.portieres.length > 1 ? (
+                        <Pressable
+                          onPress={() => {
+                            updateItem(item.id, {
+                              portieres: item.portieres.filter((entry) => entry.id !== portiere.id),
+                            });
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Удалить портьеру"
+                          hitSlop={8}
+                          style={styles.accessoryRemove}
+                        >
+                          <Icon name="remove" size={18} color={colors.danger} />
+                        </Pressable>
+                      ) : (
+                        <View style={styles.accessoryRemove} />
+                      )}
+                    </View>
+                  ))
+                )}
+              </View>
 
               <Field label="Тюль, код" hint="Код с этикетки — справочника нет">
                 <Input
@@ -434,22 +531,77 @@ export function OrderCreateScreen(): ReactElement {
                 />
               </Field>
 
-              <Pressable
-                onPress={() => {
-                  updateItem(item.id, { hasProtection: !item.hasProtection });
-                }}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: item.hasProtection }}
-                style={styles.protectionRow}
-                hitSlop={4}
-              >
-                <View style={[styles.checkbox, item.hasProtection ? styles.checkboxChecked : null]}>
-                  {item.hasProtection && (
-                    <Icon name="completed" size={14} color={colors.onAccent} />
-                  )}
-                </View>
-                <Text style={styles.protectionLabel}>Нужна антимоскитная сетка</Text>
-              </Pressable>
+              {/*
+                Защита пришла на смену галочке «антимоскитная сетка»: сетка
+                была не единственным защитным полотном, а какое именно нужно
+                — цех узнавал только на словах. Код обязателен при «да» —
+                это же правило стоит и в БД (`order_items_protection_code_required`).
+              */}
+              <Field label="Защита">
+                <ChipSelect
+                  value={item.hasProtection ? 'yes' : 'no'}
+                  onChange={(value) => {
+                    updateItem(item.id, {
+                      hasProtection: value === 'yes',
+                      ...(value === 'no' ? { protectionCode: '' } : {}),
+                    });
+                  }}
+                  options={[
+                    { value: 'no', label: 'Не нужна' },
+                    { value: 'yes', label: 'Нужна' },
+                  ]}
+                />
+              </Field>
+
+              {item.hasProtection ? (
+                <Field
+                  label="Код защиты"
+                  required
+                  hint="Код с этикетки — справочника нет"
+                  error={
+                    showErrors && item.protectionCode.trim() === ''
+                      ? 'Укажите код защиты'
+                      : undefined
+                  }
+                >
+                  <Input
+                    value={item.protectionCode}
+                    onChangeText={(protectionCode) => {
+                      updateItem(item.id, { protectionCode });
+                    }}
+                    placeholder="Например: З-07"
+                    invalid={showErrors && item.protectionCode.trim() === ''}
+                  />
+                </Field>
+              ) : null}
+
+              <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
+                <Input
+                  value={item.cornice}
+                  onChangeText={(cornice) => {
+                    updateItem(item.id, { cornice });
+                  }}
+                  placeholder="Например: К-104"
+                />
+              </Field>
+
+              <Field label="Поворот карниза">
+                <ChipSelect
+                  value={item.corniceRotation ?? ''}
+                  onChange={(corniceRotation) => {
+                    updateItem(item.id, {
+                      corniceRotation: corniceRotation === '' ? null : corniceRotation,
+                    });
+                  }}
+                  options={[
+                    { value: '', label: 'Не задан' },
+                    ...CORNICE_ROTATIONS.map((value) => ({
+                      value,
+                      label: t(CORNICE_ROTATION_LABELS, value),
+                    })),
+                  ]}
+                />
+              </Field>
 
               <View style={styles.accessories}>
                 <View style={styles.accessoriesHeader}>
@@ -596,8 +748,15 @@ function validate(values: {
   readonly clientName: string;
   readonly clientPhone: string;
   readonly deadline: string;
-}): Partial<Record<'clientName' | 'clientPhone' | 'deadline', string>> {
+  readonly items: readonly DraftItem[];
+}): Partial<Record<'clientName' | 'clientPhone' | 'deadline' | 'protectionCode', string>> {
   const errors: Record<string, string> = {};
+
+  // Защита без кода: то же правило, что на сервере и в ограничении БД.
+  // Само поле подсвечивается в своей позиции — здесь только запрет отправки.
+  if (values.items.some((item) => item.hasProtection && item.protectionCode.trim() === '')) {
+    errors['protectionCode'] = 'Укажите код защиты';
+  }
 
   if (values.clientName.trim() === '') {
     errors['clientName'] = 'Укажите имя клиента';

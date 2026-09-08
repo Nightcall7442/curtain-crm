@@ -11,8 +11,10 @@ import {
   ARCHIVED_ORDER_STATUSES,
   assignableRoleSchema,
   availableTransitions,
+  corniceRotationSchema,
   isManagement,
   MAX_ACCESSORIES_PER_ITEM,
+  MAX_PORTIERES_PER_ITEM,
   MAX_BATCH_ORDERS,
   moneyToDecimalString,
   ORDER_PHASES,
@@ -21,6 +23,7 @@ import {
   orderItemAccessorySchema,
   OrderItemKind,
   orderItemKindSchema,
+  orderItemPortiereSchema,
   orderStatusSchema,
   parseDimensions,
   OrderStatus,
@@ -111,11 +114,16 @@ const orderItemInputSchema = z
     widthCm: z.number().positive().max(2000).optional(),
     heightCm: z.number().positive().max(2000).optional(),
 
+    /** Портьеры — коды тканей с этикеток; на одну позицию их бывает несколько. */
+    portieres: z.array(orderItemPortiereSchema).max(MAX_PORTIERES_PER_ITEM).default([]),
+
     /** Код карниза/тюля — продавец переписывает с этикетки, справочника нет. */
     cornice: optionalText(200),
-    corniceRotation: optionalText(200),
+    /** Сторона открывания — перечисление, а не свободный текст. */
+    corniceRotation: corniceRotationSchema.optional(),
     tulle: optionalText(200),
     hasProtection: z.boolean().default(false),
+    protectionCode: optionalText(200),
     accessories: z.array(orderItemAccessorySchema).max(MAX_ACCESSORIES_PER_ITEM).default([]),
 
     quantity: z.number().int().positive().max(1000).default(1),
@@ -127,7 +135,17 @@ const orderItemInputSchema = z
       (item.widthCm !== undefined && item.heightCm !== undefined) ||
       (item.widthCm === undefined && item.heightCm === undefined),
     { message: 'Укажите обе стороны или оставьте размеры пустыми', path: ['heightCm'] },
-  );
+  )
+  /*
+    Та же связка, что и в БД (`order_items_protection_code_required`): защита
+    без кода — незавершённая мысль, цех получил бы «нужно что-то защитное»
+    без единственной детали, которая ему и нужна. Проверка тут — чтобы
+    отказ пришёл понятным текстом, а не ошибкой ограничения Postgres.
+  */
+  .refine((item) => !item.hasProtection || item.protectionCode !== undefined, {
+    message: 'Укажите код защиты',
+    path: ['protectionCode'],
+  });
 
 type OrderItemInput = z.infer<typeof orderItemInputSchema>;
 
@@ -166,10 +184,12 @@ function toOrderItemValues(item: OrderItemInput, orderId: number, position: numb
     widthCm: widthCm === null ? null : widthCm.toFixed(1),
     heightCm: heightCm === null ? null : heightCm.toFixed(1),
     areaM2: areaM2 === null ? null : areaM2.toFixed(4),
+    portieres: item.portieres,
     cornice: item.cornice ?? null,
     corniceRotation: item.corniceRotation ?? null,
     tulle: item.tulle ?? null,
     hasProtection: item.hasProtection,
+    protectionCode: item.protectionCode ?? null,
     accessories: item.accessories,
     quantity: item.quantity,
     comment: item.comment ?? null,
@@ -660,6 +680,7 @@ export const ordersRouter = router({
                 kind: OrderItemKind.OTHER,
                 materials: [],
                 materialOptions: [],
+                portieres: [],
                 hasProtection: false,
                 accessories: [],
                 quantity: item.quantity,

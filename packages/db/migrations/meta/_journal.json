@@ -120,6 +120,13 @@
       "when": 1788552242484,
       "tag": "0016_notification_task_replied",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788866430066,
+      "tag": "0017_order_item_portieres_protection",
+      "breakpoints": true
     }
   ]
 }

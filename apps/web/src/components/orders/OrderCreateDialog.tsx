@@ -3,11 +3,14 @@
 import {
   areaM2FromCm,
   CatalogKind,
+  CORNICE_ROTATION_LABELS_RU,
+  CORNICE_ROTATIONS,
   ORDER_ITEM_KIND_LABELS_RU,
   ORDER_ITEM_KINDS,
   OrderItemKind,
   PRIORITIES,
   Priority,
+  type CorniceRotation,
   type Priority as PriorityName,
   PRIORITY_LABELS_RU,
 } from '@curtain-crm/shared';
@@ -56,6 +59,19 @@ const emptyAccessory = (): AccessoryDraft => ({
   code: '',
 });
 
+/** Одна портьера позиции: код ткани с этикетки и её количество. */
+interface PortiereDraft {
+  readonly id: string;
+  code: string;
+  quantity: number;
+}
+
+const emptyPortiere = (): PortiereDraft => ({
+  id: Math.random().toString(36).slice(2),
+  code: '',
+  quantity: 1,
+});
+
 interface ItemDraft {
   readonly id: string;
   kind: OrderItemKind;
@@ -66,11 +82,14 @@ interface ItemDraft {
   characteristics: string;
   widthCm: string;
   heightCm: string;
+  /** Портьеры — коды тканей, которых на одну позицию бывает несколько. */
+  portieres: PortiereDraft[];
   /** Код карниза/тюля с этикетки — не выбор из справочника. */
   cornice: string;
-  corniceRotation: string;
+  corniceRotation: CorniceRotation | '';
   tulle: string;
   hasProtection: boolean;
+  protectionCode: string;
   accessories: AccessoryDraft[];
   quantity: number;
   comment: string;
@@ -86,10 +105,12 @@ const emptyItem = (): ItemDraft => ({
   characteristics: '',
   widthCm: '',
   heightCm: '',
+  portieres: [emptyPortiere()],
   cornice: '',
   corniceRotation: '',
   tulle: '',
   hasProtection: false,
+  protectionCode: '',
   accessories: [],
   quantity: 1,
   comment: '',
@@ -178,6 +199,25 @@ export function OrderCreateDialog({
     );
   };
 
+  const patchPortiere = (
+    itemId: string,
+    portiereId: string,
+    patch: Partial<PortiereDraft>,
+  ): void => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id !== itemId
+          ? item
+          : {
+              ...item,
+              portieres: item.portieres.map((portiere) =>
+                portiere.id === portiereId ? { ...portiere, ...patch } : portiere,
+              ),
+            },
+      ),
+    );
+  };
+
   const patchAccessory = (
     itemId: string,
     accessoryId: string,
@@ -223,12 +263,19 @@ export function OrderCreateDialog({
               heightCm: Number.parseFloat(item.heightCm.replace(',', '.')),
             }
           : {}),
+        portieres: item.portieres
+          .filter((portiere) => portiere.code.trim().length > 0)
+          .map((portiere) => ({
+            code: portiere.code.trim(),
+            quantity: Math.max(1, portiere.quantity),
+          })),
         ...(item.cornice.trim().length > 0 ? { cornice: item.cornice.trim() } : {}),
-        ...(item.corniceRotation.trim().length > 0
-          ? { corniceRotation: item.corniceRotation.trim() }
-          : {}),
+        ...(item.corniceRotation === '' ? {} : { corniceRotation: item.corniceRotation }),
         ...(item.tulle.trim().length > 0 ? { tulle: item.tulle.trim() } : {}),
         hasProtection: item.hasProtection,
+        ...(item.hasProtection && item.protectionCode.trim().length > 0
+          ? { protectionCode: item.protectionCode.trim() }
+          : {}),
         accessories: item.accessories
           .filter((accessory) => accessory.name.trim().length > 0)
           .map((accessory) => ({
@@ -516,25 +563,73 @@ export function OrderCreateDialog({
                       />
                     </Field>
 
-                    <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
-                      <Input
-                        value={item.cornice}
-                        onChange={(event) => {
-                          patchItem(item.id, { cornice: event.target.value });
-                        }}
-                        placeholder="Например: К-104"
-                      />
-                    </Field>
+                    {/*
+                      Портьеры — списком, как аксессуары: на одну позицию
+                      иногда идут две ткани сразу. Справочника у них нет,
+                      только код с этикетки.
+                    */}
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="text-footnote font-medium text-secondary">Портьера</span>
+                        <Button
+                          variant="ghost"
+                          className="ml-auto"
+                          onClick={() => {
+                            patchItem(item.id, {
+                              portieres: [...item.portieres, emptyPortiere()],
+                            });
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5" aria-hidden />
+                          Портьера
+                        </Button>
+                      </div>
 
-                    <Field label="Поворот карниза" hint="Например: левый, правый, П-образный">
-                      <Input
-                        value={item.corniceRotation}
-                        onChange={(event) => {
-                          patchItem(item.id, { corniceRotation: event.target.value });
-                        }}
-                        placeholder="Не задан"
-                      />
-                    </Field>
+                      {item.portieres.length === 0 ? (
+                        <p className="text-footnote text-muted">Код ткани с этикетки и количество</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {item.portieres.map((portiere) => (
+                            <div key={portiere.id} className="flex items-center gap-2">
+                              <Input
+                                className="flex-1"
+                                value={portiere.code}
+                                onChange={(event) => {
+                                  patchPortiere(item.id, portiere.id, { code: event.target.value });
+                                }}
+                                placeholder="Код портьеры, например П-31"
+                              />
+                              <Input
+                                type="number"
+                                min={1}
+                                max={1000}
+                                className="w-20 shrink-0"
+                                value={portiere.quantity}
+                                onChange={(event) => {
+                                  patchPortiere(item.id, portiere.id, {
+                                    quantity: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                                  });
+                                }}
+                              />
+                              <button
+                                type="button"
+                                aria-label="Удалить портьеру"
+                                onClick={() => {
+                                  patchItem(item.id, {
+                                    portieres: item.portieres.filter(
+                                      (entry) => entry.id !== portiere.id,
+                                    ),
+                                  });
+                                }}
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     <Field label="Тюль, код" hint="Код с этикетки — справочника нет">
                       <Input
@@ -546,17 +641,67 @@ export function OrderCreateDialog({
                       />
                     </Field>
 
-                    <label className="flex items-center gap-2 self-center text-caption text-primary sm:col-span-2 lg:col-span-3">
-                      <input
-                        type="checkbox"
-                        checked={item.hasProtection}
+                    {/*
+                      Защита вместо прежней галочки «антимоскитная сетка»:
+                      сетка была не единственным защитным полотном, а какое
+                      именно нужно — цех узнавал на словах. Код обязателен
+                      при «нужна» — это же правило стоит в БД и на сервере.
+                    */}
+                    <Field label="Защита">
+                      <Select
+                        value={item.hasProtection ? 'yes' : 'no'}
                         onChange={(event) => {
-                          patchItem(item.id, { hasProtection: event.target.checked });
+                          const needed = event.target.value === 'yes';
+                          patchItem(item.id, {
+                            hasProtection: needed,
+                            ...(needed ? {} : { protectionCode: '' }),
+                          });
                         }}
-                        className="h-4 w-4 accent-accent"
+                        options={[
+                          { value: 'no', label: 'Не нужна' },
+                          { value: 'yes', label: 'Нужна' },
+                        ]}
                       />
-                      Нужна антимоскитная сетка
-                    </label>
+                    </Field>
+
+                    {item.hasProtection && (
+                      <Field label="Код защиты" required hint="Код с этикетки — справочника нет">
+                        <Input
+                          value={item.protectionCode}
+                          onChange={(event) => {
+                            patchItem(item.id, { protectionCode: event.target.value });
+                          }}
+                          placeholder="Например: З-07"
+                          invalid={item.protectionCode.trim().length === 0}
+                        />
+                      </Field>
+                    )}
+
+                    <Field label="Карниз, код" hint="Код с этикетки — справочника нет">
+                      <Input
+                        value={item.cornice}
+                        onChange={(event) => {
+                          patchItem(item.id, { cornice: event.target.value });
+                        }}
+                        placeholder="Например: К-104"
+                      />
+                    </Field>
+
+                    <Field label="Поворот карниза">
+                      <Select
+                        value={item.corniceRotation}
+                        onChange={(event) => {
+                          patchItem(item.id, {
+                            corniceRotation: event.target.value as CorniceRotation | '',
+                          });
+                        }}
+                        placeholder="Не задан"
+                        options={CORNICE_ROTATIONS.map((value) => ({
+                          value,
+                          label: CORNICE_ROTATION_LABELS_RU[value],
+                        }))}
+                      />
+                    </Field>
 
                     <div className="sm:col-span-2 lg:col-span-3">
                       <div className="mb-1.5 flex items-center gap-2">

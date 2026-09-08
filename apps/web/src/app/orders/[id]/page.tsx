@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  CORNICE_ROTATION_LABELS_RU,
   formatDimensions,
   formatMoney,
   formatPhone,
@@ -417,13 +418,30 @@ export default function OrderDetailPage(): ReactElement {
                         <Detail label="Опции материала" value={item.materialOptions.join(', ')} />
                       )}
                       {item.color !== null && <Detail label="Цвет" value={item.color} />}
+                      {item.portieres.length > 0 && (
+                        <Detail
+                          label="Портьеры"
+                          value={item.portieres
+                            .map(
+                              (portiere) => `${portiere.code} × ${portiere.quantity.toString()}`,
+                            )
+                            .join(', ')}
+                          className="col-span-2"
+                        />
+                      )}
                       {item.cornice !== null && <Detail label="Карниз, код" value={item.cornice} />}
                       {item.corniceRotation !== null && (
-                        <Detail label="Поворот карниза" value={item.corniceRotation} />
+                        <Detail
+                          label="Поворот карниза"
+                          value={CORNICE_ROTATION_LABELS_RU[item.corniceRotation]}
+                        />
                       )}
                       {item.tulle !== null && <Detail label="Тюль, код" value={item.tulle} />}
                       {item.hasProtection && (
-                        <Detail label="Антимоскитная сетка" value="Нужна" />
+                        <Detail
+                          label="Защита"
+                          value={item.protectionCode ?? 'Нужна, код не указан'}
+                        />
                       )}
                       {item.accessories.length > 0 && (
                         <Detail

@@ -1,5 +1,6 @@
 import {
   CATALOG_KINDS,
+  CORNICE_ROTATIONS,
   DAY_OFF_STATUSES,
   DEPARTMENTS,
   EMPLOYMENT_TYPES,
@@ -48,3 +49,4 @@ export const departmentEnum = pgEnum('department', DEPARTMENTS);
 export const employmentTypeEnum = pgEnum('employment_type', EMPLOYMENT_TYPES);
 
 export const orderItemKindEnum = pgEnum('order_item_kind', ORDER_ITEM_KINDS);
+export const corniceRotationEnum = pgEnum('cornice_rotation', CORNICE_ROTATIONS);
