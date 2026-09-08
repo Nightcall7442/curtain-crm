@@ -7,7 +7,9 @@ import {
   type NotificationType as NotificationTypeName,
   type Role,
 } from '@curtain-crm/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
+
+import { isTelegramEnabled, sendTelegramMessage } from './telegram.service';
 
 /**
  * Внутренние уведомления сотрудников.
@@ -65,7 +67,45 @@ export async function createNotifications(
     })),
   );
 
+  await mirrorToTelegram(executor, unique);
+
   return unique.length;
+}
+
+/**
+ * То же уведомление — в Telegram тем, кто привязал аккаунт.
+ *
+ * Событие остаётся одно: запись в таблице выше. Здесь только вторая
+ * доставка, и она НЕ ждёт ответа мессенджера — иначе транзакция, внутри
+ * которой создаётся уведомление (назначение исполнителя, смена статуса),
+ * держалась бы открытой на время запроса к чужому серверу, а при его
+ * недоступности откатывалась бы целиком. Заказ важнее сообщения.
+ */
+async function mirrorToTelegram(
+  executor: DbExecutor,
+  drafts: readonly NotificationDraft[],
+): Promise<void> {
+  if (!isTelegramEnabled()) return;
+
+  const recipients = await executor
+    .select({ id: users.id, telegramId: users.telegramId })
+    .from(users)
+    .where(inArray(users.id, [...new Set(drafts.map((draft) => draft.userId))]));
+
+  const chats = new Map(
+    recipients
+      .filter((row): row is { id: number; telegramId: number } => row.telegramId !== null)
+      .map((row) => [row.id, row.telegramId]),
+  );
+
+  if (chats.size === 0) return;
+
+  for (const draft of drafts) {
+    const chatId = chats.get(draft.userId);
+    if (chatId === undefined) continue;
+
+    void sendTelegramMessage(chatId, draft.title, draft.body);
+  }
 }
 
 /** Уведомление одному сотруднику. */

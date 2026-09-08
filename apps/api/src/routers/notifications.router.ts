@@ -1,10 +1,15 @@
-import { notifications, payrollRecords } from '@curtain-crm/db';
+import { notifications, payrollRecords, users } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, paginationSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
+import {
+  createLinkCode,
+  getBotUsername,
+  isTelegramEnabled,
+} from '../services/telegram.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
@@ -69,6 +74,47 @@ export const notificationsRouter = router({
     }),
 
   /** Счётчик непрочитанных — для бейджа на табе. */
+  /* ------------------------------ Telegram ------------------------------- */
+
+  /**
+   * Состояние привязки Telegram и ссылка, чтобы её сделать.
+   *
+   * Ссылка одноразовая по сути: код в ней подписан и живёт полчаса. Она не
+   * хранится — каждый запрос выдаёт новую, поэтому «утёкшая» из истории
+   * переписки ссылка через полчаса перестаёт работать сама.
+   */
+  telegram: protectedProcedure.query(async ({ ctx }) => {
+    const [row] = await ctx.db
+      .select({ telegramId: users.telegramId })
+      .from(users)
+      .where(eq(users.id, ctx.user.id))
+      .limit(1);
+
+    const enabled = isTelegramEnabled();
+    const botUsername = enabled ? await getBotUsername() : null;
+
+    return {
+      enabled,
+      linked: (row?.telegramId ?? null) !== null,
+      /* `null`, когда Telegram не подключён к системе или бот недоступен:
+         показывать кнопку, которая никуда не ведёт, незачем. */
+      linkUrl:
+        botUsername === null
+          ? null
+          : `https://t.me/${botUsername}?start=${createLinkCode(ctx.user.id)}`,
+    };
+  }),
+
+  /** Отключить Telegram: уведомления остаются в приложении. */
+  unlinkTelegram: protectedProcedure.mutation(async ({ ctx }) => {
+    await ctx.db
+      .update(users)
+      .set({ telegramId: null, updatedAt: new Date() })
+      .where(eq(users.id, ctx.user.id));
+
+    return { linked: false } as const;
+  }),
+
   unreadCount: protectedProcedure.query(async ({ ctx }) => {
     const [row] = await ctx.db
       .select({ value: count() })

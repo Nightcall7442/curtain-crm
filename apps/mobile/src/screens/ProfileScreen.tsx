@@ -10,6 +10,7 @@ import Constants from 'expo-constants';
 import { useMemo, type ReactElement } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -54,6 +55,14 @@ export function ProfileScreen(): ReactElement {
   const shift = trpc.shifts.current.useQuery();
   const payroll = trpc.payroll.my.useQuery({ year: period.year });
   const myOrders = trpc.orders.list.useQuery({ page: 1, pageSize: 50 });
+
+  const utils = trpc.useUtils();
+  const telegram = trpc.notifications.telegram.useQuery();
+  const unlinkTelegram = trpc.notifications.unlinkTelegram.useMutation({
+    async onSuccess() {
+      await utils.notifications.telegram.invalidate();
+    },
+  });
 
   /*
     Фото профиля отсюда не меняется.
@@ -222,6 +231,68 @@ export function ProfileScreen(): ReactElement {
         своими разделами.
       */}
       {/*
+        Уведомления в Telegram — подключает их сам сотрудник.
+
+        Привязка идёт через бота, а не через ввод номера в панели: чтобы
+        писать человеку в мессенджер, нужно, чтобы он сам начал разговор с
+        ботом. Кнопка открывает бота с одноразовым кодом в ссылке — сотрудник
+        нажимает «Start», и на этом всё.
+
+        Карточка не показывается вовсе, если Telegram к системе не подключён:
+        предлагать подключение, которое ничем не кончится, незачем.
+      */}
+      {telegram.data?.enabled === true && (
+        <>
+          <SectionHeader title="Уведомления" />
+          <Card>
+            <CardTitle title="Telegram" icon="notifications" />
+
+            {telegram.data.linked ? (
+              <>
+                <Text style={styles.telegramHint}>
+                  Уведомления приходят и в приложение, и в Telegram.
+                </Text>
+                <Pressable
+                  disabled={unlinkTelegram.isPending}
+                  onPress={() => {
+                    unlinkTelegram.mutate();
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.telegramAction,
+                    styles.telegramActionOff,
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  <Text style={styles.telegramActionOffText}>Отключить</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.telegramHint}>
+                  Подключите — и всё, что приходит сюда, будет дублироваться в Telegram.
+                </Text>
+                <Pressable
+                  disabled={telegram.data.linkUrl === null}
+                  onPress={() => {
+                    const url = telegram.data?.linkUrl;
+                    if (url != null) void Linking.openURL(url);
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.telegramAction,
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  <Text style={styles.telegramActionText}>Подключить Telegram</Text>
+                </Pressable>
+              </>
+            )}
+          </Card>
+        </>
+      )}
+
+      {/*
         Язык — отдельной карточкой, а не строкой в списке «Ещё»: варианты
         видны сразу, без перехода на ещё один экран. Их всего два, и прятать
         их за строкой значит заставить человека, который не читает по-русски,
@@ -345,6 +416,32 @@ function appVersion(): string {
 }
 
 const styles = StyleSheet.create({
+  telegramHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  telegramAction: {
+    minHeight: 46,
+    marginTop: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  telegramActionText: {
+    ...typography.headline,
+    color: colors.onAccent,
+    fontWeight: '700',
+  },
+  telegramActionOff: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  telegramActionOffText: {
+    ...typography.headline,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,

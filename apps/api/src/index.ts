@@ -8,10 +8,11 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 
-import { closeDb, createContext, readClientIp } from './context';
+import { closeDb, createContext, getDb, readClientIp } from './context';
 import { getEnv } from './lib/constants';
 import { installRussianZodMessages } from './lib/zodMessages';
 import { appRouter } from './routers';
+import { startTelegramPolling } from './services/telegram.service';
 import { consumeAuthRequestBudget } from './services/loginThrottle.service';
 import {
   FILE_EXPIRES_PARAM,
@@ -218,6 +219,12 @@ const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (
   );
 });
 
+/*
+  Telegram: опрос обновлений бота — только чтобы сотрудник мог привязать
+  аккаунт командой `/start`. Без токена в окружении не делает ничего.
+*/
+const stopTelegramPolling = startTelegramPolling(getDb());
+
 /**
  * Корректное завершение.
  *
@@ -226,6 +233,7 @@ const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (
  */
 const shutdown = (signal: string): void => {
   process.stdout.write(`\nПолучен ${signal}, останавливаю сервер...\n`);
+  stopTelegramPolling();
 
   server.close(() => {
     void closeDb().then(() => {

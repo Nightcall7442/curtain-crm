@@ -65,6 +65,13 @@ const envSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
 
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().positive().max(100).default(15),
+
+  /*
+    Токен бота из BotFather. Не задан — Telegram выключен целиком: ни
+    опроса, ни отправки. Система обязана работать без мессенджера, он
+    дополнение к приложению, а не его условие.
+  */
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
