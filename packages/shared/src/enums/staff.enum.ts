@@ -80,6 +80,7 @@ export const DEFAULT_DEPARTMENT_BY_ROLE: Readonly<Record<RoleName, Department>> 
   sewer: Department.SEWING,
   qc: Department.QUALITY,
   installer: Department.INSTALLATION,
+  cornice_installer: Department.INSTALLATION,
   smm: Department.OTHER,
 };
 

@@ -20,6 +20,14 @@ export const ROLES = [
   'sewer',
   'qc',
   'installer',
+  /*
+    Карнизчик — отдельная работа, а не «установщик, который сегодня вешает
+    карниз». Карниз ставят до установки штор и часто другие люди, поэтому
+    у него своя очередь, свои фото и своя сдельная строка. Пока роли не
+    было, в назначении заказа стояли два «Установщика» подряд, и по ним
+    нельзя было понять, кто что делает.
+  */
+  'cornice_installer',
   'smm',
 ] as const;
 
@@ -34,6 +42,7 @@ export const Role = {
   SEWER: 'sewer',
   QC: 'qc',
   INSTALLER: 'installer',
+  CORNICE_INSTALLER: 'cornice_installer',
   SMM: 'smm',
 } as const satisfies Record<string, Role>;
 
@@ -50,6 +59,7 @@ export const ROLE_LABELS: Translated<Role> = {
     sewer: 'Швея',
     qc: 'Контроль качества',
     installer: 'Установщик',
+    cornice_installer: 'Карнизчик',
     smm: 'SMM',
   },
   uz: {
@@ -60,6 +70,7 @@ export const ROLE_LABELS: Translated<Role> = {
     sewer: 'Tikuvchi',
     qc: 'Sifat nazorati',
     installer: "O'rnatuvchi",
+    cornice_installer: 'Karnizchi',
     smm: 'SMM',
   },
 };
@@ -89,6 +100,7 @@ export const PRODUCTION_ROLES: readonly Role[] = [
   Role.SEWER,
   Role.QC,
   Role.INSTALLER,
+  Role.CORNICE_INSTALLER,
 ];
 
 /**
@@ -119,9 +131,23 @@ export const ORDER_INTAKE_ROLES: readonly Role[] = [Role.SELLER, Role.ADMIN, Rol
  */
 export const ASSIGNABLE_ROLES = [Role.MASTER, Role.SEWER, Role.QC, Role.INSTALLER] as const;
 
+/*
+  Карнизчика здесь нет намеренно: карниз не назначают, его берут.
+
+  Так решил владелец — карнизы бригада разбирает между собой, и шаг «попроси,
+  чтобы назначили» означал бы, что заказ ждёт админа вместо свободного
+  человека. Кто взял, записано в `orders.cornice_installer_id`, и в карточке
+  заказа это видно в блоке «Карниз».
+*/
+
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 export const assignableRoleSchema = z.enum(ASSIGNABLE_ROLES);
+
+/** Можно ли назначить сотрудника на этап в этой роли. */
+export function isAssignableRole(role: Role): role is AssignableRole {
+  return (ASSIGNABLE_ROLES as readonly Role[]).includes(role);
+}
 
 /** Type guard: является ли произвольная строка известной ролью. */
 export function isRole(value: unknown): value is Role {

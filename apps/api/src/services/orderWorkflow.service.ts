@@ -134,13 +134,16 @@ export function collectOrderParticipants(order: Order): number[] {
 export function canUserAccessOrder(order: Order, user: AuthenticatedUser): boolean {
   if (isManagement(user.roles)) return true;
   /*
-    Карниз — общая работа установщиков: пока он не повешен, заказ принадлежит
+    Карниз — общая работа карнизчиков: пока он не повешен, заказ принадлежит
     не конкретному человеку, а всей бригаде. Без этого исключения карнизчик
     видел бы заказ в своей очереди, но не смог бы его открыть — ни адреса,
     ни кода карниза. После «готово» доступ остаётся: владелец просил, чтобы
     остальные видели, кто и как сделал работу.
   */
-  if (order.corniceStatus !== CorniceStatus.NOT_REQUIRED && user.roles.includes(Role.INSTALLER)) {
+  if (
+    order.corniceStatus !== CorniceStatus.NOT_REQUIRED &&
+    user.roles.includes(Role.CORNICE_INSTALLER)
+  ) {
     return true;
   }
   return collectOrderParticipants(order).includes(user.id);
@@ -502,7 +505,13 @@ export async function changeOrderStatus(
   // Карниз в очереди — та же рассылка «свободная работа», что и у этапов:
   // установщики узнают о нём, не открывая список.
   if (startsCornice) {
-    await notifyStageAwaitingExecutor(executor, context, Role.INSTALLER, actor.id, 'Карниз');
+    await notifyStageAwaitingExecutor(
+      executor,
+      context,
+      Role.CORNICE_INSTALLER,
+      actor.id,
+      'Карниз',
+    );
   }
 
   return { order: updated, fromStatus, toStatus, wasRollback };

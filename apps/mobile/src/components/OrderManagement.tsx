@@ -1,6 +1,7 @@
 import {
   formatMoney,
   ORDER_STAGE_FEE_LABELS,
+  isAssignableRole,
   ORDER_STAGE_FEE_ROLE,
   parseMoney,
   ROLE_LABELS,
@@ -74,6 +75,18 @@ export function OrderManagement({
   const [assigning, setAssigning] = useState<Role | null>(null);
 
   const stages = stageFeesOfOrderType(orderType);
+
+  /*
+    В «Назначении» — роли, а не этапы, и только те, на которые назначают.
+
+    Этапов у одной роли бывает несколько: пока нет закройщика, раскрой и
+    пошив числятся за швеёй, и по этапам в списке выходило две «Швеи» подряд.
+    Карнизчика тут нет вовсе — карниз он берёт сам (см. `ASSIGNABLE_ROLES`),
+    и строка «назначить» под него обещала бы действие, которого нет.
+  */
+  const assignedRoles = [
+    ...new Set(stages.map((stage) => ORDER_STAGE_FEE_ROLE[stage]).filter(isAssignableRole)),
+  ];
 
   const people = trpc.users.list.useQuery(
     { page: 1, pageSize: 100, isActive: true },
@@ -170,12 +183,11 @@ export function OrderManagement({
       <Card>
         <CardTitle title="Назначение" icon="people" />
 
-        {stages.map((stage) => {
-          const role = ORDER_STAGE_FEE_ROLE[stage];
+        {assignedRoles.map((role) => {
           const current = assignees[role] ?? null;
 
           return (
-            <View key={stage}>
+            <View key={role}>
               <Pressable
                 onPress={() => {
                   setAssigning(assigning === role ? null : role);

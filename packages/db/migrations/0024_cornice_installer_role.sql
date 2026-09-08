@@ -1,0 +1,1 @@
+ALTER TYPE "public"."role" ADD VALUE 'cornice_installer' BEFORE 'smm';

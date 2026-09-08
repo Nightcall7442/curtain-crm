@@ -70,8 +70,8 @@ export function WorkScreen(): ReactElement {
    */
   const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
   const isManager = useIsManagement();
-  const isInstaller = (user?.roles ?? []).includes(Role.INSTALLER);
-  const filters = isInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
+  const isCorniceInstaller = (user?.roles ?? []).includes(Role.CORNICE_INSTALLER);
+  const filters = isCorniceInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
   const query = trpc.orders.list.useQuery(
     {

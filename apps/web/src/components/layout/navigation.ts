@@ -57,6 +57,7 @@ const ALL_ROLES: readonly RoleName[] = [
   Role.SEWER,
   Role.QC,
   Role.INSTALLER,
+  Role.CORNICE_INSTALLER,
   Role.SMM,
 ];
 

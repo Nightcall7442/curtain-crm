@@ -78,7 +78,7 @@ export const PHOTO_STAGE_UPLOADER_ROLES: Readonly<Record<PhotoStage, readonly Ro
   sewing_process: [Role.CEO, Role.ADMIN, Role.SEWER],
   qc: [Role.CEO, Role.ADMIN, Role.QC],
   // Карниз ставит установщик — отдельной роли «карнизчик» в системе нет.
-  cornice: [Role.CEO, Role.ADMIN, Role.INSTALLER],
+  cornice: [Role.CEO, Role.ADMIN, Role.CORNICE_INSTALLER],
   install_before: [Role.CEO, Role.ADMIN, Role.INSTALLER],
   install_after: [Role.CEO, Role.ADMIN, Role.INSTALLER],
   // `general` — свободная стадия: приложить фото может любой участник заказа.

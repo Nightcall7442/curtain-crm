@@ -321,6 +321,9 @@ const ORDER_ROLE_COLUMN = {
   sewer: orders.sewerId,
   qc: orders.qcId,
   installer: orders.installerId,
+  // Карнизчик привязан к заказу своей колонкой: карниз он берёт сам, а
+  // сдельная за него уходит тому, кто взял, а не назначенному установщику.
+  cornice_installer: orders.corniceInstallerId,
 } as const satisfies Partial<Record<RoleName, unknown>>;
 
 const hasOrderAttribution = (role: RoleName): role is keyof typeof ORDER_ROLE_COLUMN =>

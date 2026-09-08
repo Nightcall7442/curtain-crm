@@ -267,9 +267,9 @@ const STAGE_EXECUTOR_COLUMN = {
   cutting: 'sewerId',
   sewing: 'sewerId',
   qc: 'qcId',
-  // Карниз ставит установщик — отдельного «карнизчика» в системе нет,
-  // поэтому у двух этапов один и тот же исполнитель.
-  cornice: 'installerId',
+  // У карниза свой исполнитель: его берёт карнизчик, и расценку за карниз
+  // видит и получает он, а не назначенный на установку.
+  cornice: 'corniceInstallerId',
   installation: 'installerId',
 } as const satisfies Record<OrderStageFee, keyof typeof orders.$inferSelect>;
 
@@ -337,12 +337,12 @@ function visibilityFilter(user: { id: number; roles: readonly Role[] }) {
     eq(orders.qcId, user.id),
     eq(orders.installerId, user.id),
     /*
-      Карниз — общая работа установщиков, и заказ с непоставленным карнизом
+      Карниз — общая работа карнизчиков, и заказ с непоставленным карнизом
       принадлежит всей бригаде, а не назначенному человеку. То же исключение
       стоит в `canUserAccessOrder`: список и карточка заказа должны
       сходиться, иначе заказ виден в очереди, но не открывается.
     */
-    ...(user.roles.includes(Role.INSTALLER)
+    ...(user.roles.includes(Role.CORNICE_INSTALLER)
       ? [ne(orders.corniceStatus, CorniceStatus.NOT_REQUIRED)]
       : []),
   );
@@ -1438,10 +1438,10 @@ export const ordersRouter = router({
   takeCornice: protectedProcedure
     .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user.roles.includes(Role.INSTALLER)) {
+      if (!ctx.user.roles.includes(Role.CORNICE_INSTALLER)) {
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: 'Карниз ставит установщик',
+          message: 'Карниз ставит карнизчик',
         });
       }
 

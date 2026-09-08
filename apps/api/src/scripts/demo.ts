@@ -148,6 +148,9 @@ const STAFF: readonly StaffSpec[] = [
   { name: 'Жасур Тошматов', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'permanent', tenureMonths: 29, age: 26 },
   { name: 'Отабек Нурматов', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'temporary', tenureMonths: 5, age: 23 },
 
+  { name: 'Шухрат Абдуллаев', role: Role.CORNICE_INSTALLER, jobTitle: 'Карнизчик', department: 'installation', employment: 'permanent', tenureMonths: 34, age: 30 },
+  { name: 'Бекзод Эргашев', role: Role.CORNICE_INSTALLER, jobTitle: 'Карнизчик', department: 'installation', employment: 'permanent', tenureMonths: 8, age: 24 },
+
   { name: 'Дилшод Мирзаев', role: Role.ADMIN, jobTitle: 'Администратор производства', department: 'administration', employment: 'permanent', tenureMonths: 55, age: 40 },
   { name: 'Зарина Юсупова', role: Role.ADMIN, jobTitle: 'Администратор', department: 'administration', employment: 'permanent', tenureMonths: 19, age: 31 },
 
@@ -318,6 +321,7 @@ async function build(db: Database): Promise<void> {
     ...roleUsers(Role.MASTER),
     ...roleUsers(Role.QC),
     ...roleUsers(Role.INSTALLER),
+    ...roleUsers(Role.CORNICE_INSTALLER),
     ...roleUsers(Role.SELLER),
   ];
 

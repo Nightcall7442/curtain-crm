@@ -108,6 +108,7 @@ const SEED_PAYROLL_SCHEMES: readonly SeedScheme[] = [
   { role: Role.SEWER, type: PayrollSchemeType.HOURLY, rate: '35000.00' },
   { role: Role.QC, type: PayrollSchemeType.HOURLY, rate: '30000.00' },
   { role: Role.INSTALLER, type: PayrollSchemeType.COMMISSION, commissionPercent: '4.000' },
+  { role: Role.CORNICE_INSTALLER, type: PayrollSchemeType.COMMISSION, commissionPercent: '4.000' },
   { role: Role.SMM, type: PayrollSchemeType.FIXED, baseAmount: '4000000.00' },
 ];
 

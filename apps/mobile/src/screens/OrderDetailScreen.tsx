@@ -74,7 +74,7 @@ export function OrderDetailScreen({
 
   const isManager = useIsManagement();
   const { user } = useAuth();
-  const isInstaller = (user?.roles ?? []).includes(Role.INSTALLER);
+  const isCorniceInstaller = (user?.roles ?? []).includes(Role.CORNICE_INSTALLER);
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
@@ -520,7 +520,7 @@ export function OrderDetailScreen({
             свободный карниз или закрыть уже взятый им. Остальным карточка
             остаётся справкой — кто ставит и когда сделал.
           */}
-          {isInstaller && data.corniceStatus === CorniceStatus.PENDING && (
+          {isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
             <Pressable
               disabled={takeCornice.isPending}
               onPress={() => {
@@ -538,7 +538,7 @@ export function OrderDetailScreen({
             </Pressable>
           )}
 
-          {isInstaller &&
+          {isCorniceInstaller &&
             data.corniceStatus === CorniceStatus.IN_PROGRESS &&
             data.corniceInstaller?.id === user?.id && (
               <>
