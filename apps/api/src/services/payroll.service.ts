@@ -27,7 +27,7 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 
 import {
   calculateWorkedHours,
@@ -392,6 +392,72 @@ export async function calculateCompletedOrders(
     amount: parseMoney(row?.amount ?? '0'),
     stageFees: parseMoney(row?.stageFees ?? '0'),
   };
+}
+
+/**
+ * Те же заказы, но поимённо: номер, клиент, дата закрытия и сдельная.
+ *
+ * Отдельная функция, а не расширение `calculateCompletedOrders`: расчёт
+ * зарплаты складывает одну строку агрегатом, и заставлять его тащить сотню
+ * заказов ради суммы незачем. Разбивка нужна человеку, который спрашивает
+ * «за что именно», и спрашивает он редко.
+ *
+ * Состав восстанавливается ПОВТОРНЫМ запросом, а не хранится: связи
+ * `payroll_records → orders` в базе нет. Отсюда честное ограничение — если
+ * заказ после расчёта переназначили на другого исполнителя или переоткрыли,
+ * он уйдёт из этой разбивки, хотя в начисленной сумме останется. Сумма в
+ * ведомости первична, разбивка — пояснение к ней.
+ */
+export async function listCompletedOrdersForPayroll(
+  executor: DbExecutor,
+  userId: number,
+  role: RoleName,
+  bounds: PeriodBounds,
+): Promise<
+  readonly {
+    readonly id: number;
+    readonly orderNumber: string | null;
+    readonly clientName: string;
+    readonly completedAt: Date | null;
+    readonly workPrice: string;
+    readonly stageFee: string;
+  }[]
+> {
+  const periodFilter = and(
+    eq(orders.status, OrderStatus.COMPLETED),
+    isNotNull(orders.completedAt),
+    gte(orders.completedAt, bounds.start),
+    lt(orders.completedAt, bounds.end),
+  );
+
+  const where = hasOrderAttribution(role)
+    ? and(periodFilter, eq(ORDER_ROLE_COLUMN[role], userId))
+    : periodFilter;
+
+  const stages = stageFeesOfRole(role);
+  const stageFee =
+    stages.length === 0
+      ? sql<string>`0`
+      : sql<string>`coalesce(${sql.join(
+          stages.map((stage) => STAGE_FEE_COLUMN[stage]),
+          sql` + `,
+        )}, 0)`;
+
+  return executor
+    .select({
+      id: orders.id,
+      orderNumber: orders.orderNumber,
+      clientName: orders.clientName,
+      completedAt: orders.completedAt,
+      workPrice: orders.workPrice,
+      stageFee,
+    })
+    .from(orders)
+    .where(where)
+    .orderBy(desc(orders.completedAt))
+    // Потолок щедрый, но конечный: ведомость за месяц — это десятки
+    // заказов, а не тысячи, и открытая разбивка не должна выкачивать базу.
+    .limit(300);
 }
 
 /** Собирает все исходные данные для расчёта. */

@@ -62,8 +62,8 @@ import { toOffset, toPage } from '../types';
  *  - `list`, `listByRole`, `setBranches` — руководство (CEO, админ):
  *    админу нужны списки, чтобы назначать исполнителей на заказы;
  *  - `byId` — руководство ЛИБО сам сотрудник (свой профиль);
- *  - `uploadAvatar`, `removeAvatar` — любой вошедший, но ВСЕГДА только своё
- *    фото: `user_id` берётся из контекста и не приходит во входных данных;
+ *  - `setAvatar`, `removeAvatar` — только директор, и по любому сотруднику:
+ *    фото в карточке — рабочий документ компании, а не профиль в мессенджере;
  *  - `stats`, `presenceToday`, `attendance`, `birthdays`, `performance` —
  *    кадровая аналитика, руководство;
  *  - `create`, `setActive`, `grantRole`, `revokeRole`, `resetPassword`,
@@ -392,32 +392,22 @@ export const usersRouter = router({
   /**
    * Загрузка собственного фото.
    *
-   * Сотрудник меняет только своё. Корпоративный портрет за него ставит
-   * руководство процедурой `setAvatar` — почему это разные права,
-   * объяснено в её комментарии.
-   */
-  uploadAvatar: protectedProcedure
-    .input(z.object({ file: base64FileSchema }))
-    .mutation(async ({ ctx, input }) => {
-      await replaceAvatar(ctx.db, ctx.user.id, input.file);
-      return loadUserOrThrow(ctx.db, ctx.user.id);
-    }),
-
-  /**
-   * Корпоративное фото сотрудника, которое ставит руководство.
+   * Фото сотрудника — дело директора, и только его.
    *
-   * Раньше чужое фото не менял даже директор: снимок считался личными
-   * данными. Практика оказалась другой — компания снимает весь штат разом,
-   * в фирменном поло и на общем фоне, и полученные портреты некому
-   * загрузить, кроме кадровика: у швеи файла с её портретом нет, а
-   * рассылать людям их же фотографии, чтобы каждый загрузил свою, — работа
-   * ради соблюдения формальности.
+   * Сначала снимок считался личными данными, и своё фото ставил себе каждый
+   * сам. Практика оказалась другой: компания снимает весь штат разом, в
+   * фирменном поло и на общем фоне, и полученные портреты некому загрузить,
+   * кроме директора — у швеи файла с её портретом просто нет.
    *
-   * Поэтому право разделено: своё фото ставит сотрудник, корпоративное —
-   * руководство, и каждая такая замена попадает в audit_log с именем того,
-   * кто её сделал. Тихой подмены не выйдет.
+   * Владелец решил закрыть и обратную сторону: сотрудник своё фото больше
+   * не меняет и не убирает. Карточка в системе — рабочий документ, а не
+   * профиль в мессенджере, и снимок в ней должен оставаться тем, который
+   * поставила компания.
+   *
+   * Каждая замена попадает в audit_log с именем того, кто её сделал: тихой
+   * подмены не выйдет и у директора.
    */
-  setAvatar: managementProcedure
+  setAvatar: ceoProcedure
     .input(z.object({ userId: idSchema, file: base64FileSchema }))
     .mutation(async ({ ctx, input }) => {
       // Существование проверяем ДО загрузки: иначе файл несуществующего
@@ -438,26 +428,39 @@ export const usersRouter = router({
       return loadUserOrThrow(ctx.db, input.userId);
     }),
 
-  /** Удаление собственного фото: снова показываются инициалы. */
-  removeAvatar: protectedProcedure.mutation(async ({ ctx }) => {
-    const [before] = await ctx.db
-      .select({ avatarStorageKey: users.avatarStorageKey })
-      .from(users)
-      .where(eq(users.id, ctx.user.id))
-      .limit(1);
+  /** Убрать фото сотрудника: снова показываются инициалы. Тоже директор. */
+  removeAvatar: ceoProcedure
+    .input(z.object({ userId: idSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const target = await loadUserOrThrow(ctx.db, input.userId);
 
-    await ctx.db
-      .update(users)
-      .set({ avatarStorageKey: null, updatedAt: new Date() })
-      .where(eq(users.id, ctx.user.id));
+      const [before] = await ctx.db
+        .select({ avatarStorageKey: users.avatarStorageKey })
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1);
 
-    const key = before?.avatarStorageKey ?? null;
-    // Файл удаляем ПОСЛЕ снятия ссылки: обратный порядок оставил бы в БД
-    // ключ на уже удалённый объект, и профиль отдавал бы битую ссылку.
-    if (key !== null) await getStorage().delete(key).catch(() => undefined);
+      await ctx.db
+        .update(users)
+        .set({ avatarStorageKey: null, updatedAt: new Date() })
+        .where(eq(users.id, input.userId));
 
-    return loadUserOrThrow(ctx.db, ctx.user.id);
-  }),
+      const key = before?.avatarStorageKey ?? null;
+      // Файл удаляем ПОСЛЕ снятия ссылки: обратный порядок оставил бы в БД
+      // ключ на уже удалённый объект, и профиль отдавал бы битую ссылку.
+      if (key !== null) await getStorage().delete(key).catch(() => undefined);
+
+      await recordAudit(ctx.db, {
+        actorId: ctx.user.id,
+        action: "user.avatar_changed",
+        entityType: "user",
+        entityId: input.userId,
+        details: { fullName: target.fullName, removed: true },
+        ipAddress: ctx.ipAddress,
+      });
+
+      return loadUserOrThrow(ctx.db, input.userId);
+    }),
 
   /** Карточка сотрудника. Свой профиль доступен любому, чужой — руководству. */
   byId: protectedProcedure

@@ -7,11 +7,9 @@ import {
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import Constants from 'expo-constants';
-import * as ImagePicker from 'expo-image-picker';
 import { useMemo, type ReactElement } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -57,97 +55,15 @@ export function ProfileScreen(): ReactElement {
   const payroll = trpc.payroll.my.useQuery({ year: period.year });
   const myOrders = trpc.orders.list.useQuery({ page: 1, pageSize: 50 });
 
-  const utils = trpc.useUtils();
+  /*
+    Фото профиля отсюда не меняется.
 
-  const onAvatarChanged = async (): Promise<void> => {
-    await utils.users.byId.invalidate({ id: user?.id ?? 0 });
-  };
+    Владелец закрыл это право за директором: карточка в системе — рабочий
+    документ компании, а не профиль в мессенджере, и снимок в ней должен
+    оставаться тем, который поставила компания. Меняет и убирает фото
+    директор в разделе «Сотрудники», каждая замена — с записью в журнале.
+  */
 
-  const uploadAvatar = trpc.users.uploadAvatar.useMutation({
-    onSuccess: onAvatarChanged,
-    onError(error) {
-      Alert.alert('Не удалось загрузить фото', error.message);
-    },
-  });
-
-  const removeAvatar = trpc.users.removeAvatar.useMutation({
-    onSuccess: onAvatarChanged,
-    onError(error) {
-      Alert.alert('Не удалось убрать фото', error.message);
-    },
-  });
-
-  /**
-   * Снимок сжимается и обрезается в квадрат прямо в пикере: аватар
-   * показывается плашкой 1:1, и растить трафик ради невидимых пикселей незачем.
-   */
-  const pickAvatar = async (fromCamera: boolean): Promise<void> => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert(
-        'Нет доступа',
-        fromCamera
-          ? 'Разрешите доступ к камере в настройках телефона.'
-          : 'Разрешите доступ к галерее в настройках телефона.',
-      );
-      return;
-    }
-
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-      base64: true,
-      exif: false,
-    };
-
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync(options)
-      : await ImagePicker.launchImageLibraryAsync(options);
-
-    if (result.canceled) return;
-
-    const asset = result.assets[0];
-    if (asset?.base64 == null) {
-      Alert.alert('Не удалось прочитать снимок', 'Попробуйте ещё раз.');
-      return;
-    }
-
-    uploadAvatar.mutate({
-      file: {
-        fileName: asset.fileName ?? 'avatar.jpg',
-        mimeType: asset.mimeType ?? 'image/jpeg',
-        content: asset.base64,
-      },
-    });
-  };
-
-  const chooseAvatarAction = (): void => {
-    const options = [
-      { text: 'Снять камерой', onPress: () => void pickAvatar(true) },
-      { text: 'Выбрать из галереи', onPress: () => void pickAvatar(false) },
-    ];
-
-    Alert.alert('Фото профиля', 'Как добавить фото?', [
-      ...options,
-      ...(profile.data?.avatarUrl == null
-        ? []
-        : [
-            {
-              text: 'Убрать фото',
-              style: 'destructive' as const,
-              onPress: () => {
-                removeAvatar.mutate();
-              },
-            },
-          ]),
-      { text: 'Отмена', style: 'cancel' as const },
-    ]);
-  };
 
   // Без `useMemo`: вычисление — несколько арифметических операций, а `now`
   // создаётся заново на каждый рендер, поэтому мемоизация всё равно
@@ -231,8 +147,6 @@ export function ProfileScreen(): ReactElement {
         department={data.department}
         hiredAt={data.hiredAt}
         avatarUrl={data.avatarUrl}
-        onPressPhoto={chooseAvatarAction}
-        isPhotoBusy={uploadAvatar.isPending || removeAvatar.isPending}
       />
 
       {/*

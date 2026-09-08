@@ -148,6 +148,13 @@
       "when": 1788869820945,
       "tag": "0020_ready_made_items",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788871187443,
+      "tag": "0021_installation_trips",
+      "breakpoints": true
     }
   ]
 }

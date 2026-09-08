@@ -12,6 +12,7 @@ import {
 import { Calculator, SlidersHorizontal } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
+import { PayrollBreakdownDialog } from '@/components/payroll/PayrollBreakdownDialog';
 import { SchemeDialog } from '@/components/payroll/SchemeDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button, controlClass } from '@/components/ui/Form';
@@ -39,6 +40,8 @@ export default function PayrollPage(): ReactElement {
   const [schemeOpen, setSchemeOpen] = useState(false);
   /** Отмеченные строки ведомости — для массового утверждения директором. */
   const [checked, setChecked] = useState<ReadonlySet<RowKey>>(new Set());
+  /** Открытая разбивка начисления. `null` — окно закрыто. */
+  const [breakdownId, setBreakdownId] = useState<number | null>(null);
 
   const { hasRole } = useAuth();
   const isCeo = hasRole(Role.CEO);
@@ -140,6 +143,52 @@ export default function PayrollPage(): ReactElement {
     (sum, row) => sum + parseMoney(row.calculatedAmount),
     0,
   );
+
+
+  /**
+   * Утвердить или отметить выплату — по состоянию строки.
+   *
+   * Вынесено из колонки: рядом с кнопкой «Разбивка» вложенные `if` внутри
+   * `render` читались как одно выражение с четырьмя ветками.
+   */
+  const renderRowAction = (row: {
+    readonly id: number;
+    readonly status: PayrollRecordStatus;
+  }): ReactElement | null => {
+    if (!isCeo) return null;
+
+    if (row.status === PayrollRecordStatus.DRAFT) {
+      return (
+        <button
+          type="button"
+          disabled={approve.isPending}
+          onClick={() => {
+            approve.mutate({ id: row.id });
+          }}
+          className="rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
+        >
+          Утвердить
+        </button>
+      );
+    }
+
+    if (row.status === PayrollRecordStatus.APPROVED) {
+      return (
+        <button
+          type="button"
+          disabled={markPaid.isPending}
+          onClick={() => {
+            markPaid.mutate({ id: row.id });
+          }}
+          className="rounded border border-accent/40 px-2 py-1 text-footnote text-accent hover:bg-accent/10 disabled:opacity-50"
+        >
+          Выплачено
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="space-y-6">
@@ -343,45 +392,36 @@ export default function PayrollPage(): ReactElement {
               key: 'actions',
               header: '',
               align: 'right',
-              render: (row) => {
-                if (!isCeo) return null;
-
-                if (row.status === PayrollRecordStatus.DRAFT) {
-                  return (
-                    <button
-                      type="button"
-                      disabled={approve.isPending}
-                      onClick={() => {
-                        approve.mutate({ id: row.id });
-                      }}
-                      className="rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
-                    >
-                      Утвердить
-                    </button>
-                  );
-                }
-
-                if (row.status === PayrollRecordStatus.APPROVED) {
-                  return (
-                    <button
-                      type="button"
-                      disabled={markPaid.isPending}
-                      onClick={() => {
-                        markPaid.mutate({ id: row.id });
-                      }}
-                      className="rounded border border-accent/40 px-2 py-1 text-footnote text-accent hover:bg-accent/10 disabled:opacity-50"
-                    >
-                      Выплачено
-                    </button>
-                  );
-                }
-
-                return null;
-              },
+              render: (row) => (
+                <span className="flex items-center justify-end gap-2">
+                  {/*
+                    Разбивка — всем, кто видит ведомость: спор о зарплате
+                    начинается с того, что человеку нечего посмотреть.
+                    Утверждение и выплата остались за директором.
+                  */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBreakdownId(row.id);
+                    }}
+                    className="rounded border border-subtle px-2 py-1 text-footnote text-secondary hover:border-accent/50 hover:text-primary"
+                  >
+                    Разбивка
+                  </button>
+                  {renderRowAction(row)}
+                </span>
+              ),
             },
           ]}
         />
       </Card>
+
+      <PayrollBreakdownDialog
+        recordId={breakdownId}
+        onClose={() => {
+          setBreakdownId(null);
+        }}
+      />
 
       <SchemeDialog
         open={schemeOpen}

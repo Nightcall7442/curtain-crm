@@ -12,7 +12,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { WorkScreen } from '../screens/WorkScreen';
-import { useIsCeo } from '../hooks/useAuth';
+import { useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, radius } from '../theme';
 import type { TabParamList } from '../types';
@@ -48,7 +48,7 @@ export function TabNavigator(): ReactElement {
 
   /** Открыт ли список сохранённых входов. Живёт здесь — жест на вкладке. */
   const [isSwitcherOpen, setSwitcherOpen] = useState(false);
-  const isCeo = useIsCeo();
+  const isManager = useIsManagement();
 
   return (
     <>
@@ -111,21 +111,26 @@ export function TabNavigator(): ReactElement {
         }}
       />
       {/*
-        Средняя вкладка у директора показывает другое.
+        Средняя вкладка у руководства показывает другое.
 
-        Сам он смену не открывает — свайп отметки и кольцо таймера на его
-        экране были занятым местом. Вместо них явка цеха: кто пришёл, во
-        сколько, кто сейчас на месте и кто на перерыве.
+        Ему нужен не только свой день, но и чужой: кто пришёл, во сколько,
+        кто сейчас на месте, кто на перерыве и кто уехал на установку. Своя
+        отметка при этом никуда не делась — она первым блоком того же
+        экрана, потому что отмечаются все и все по GPS.
+
+        Раньше развилка шла только по директору, и админ видел обычный экран
+        смены — то есть явку цеха, за которую он отвечает наравне с
+        директором, посмотреть с телефона не мог.
 
         Вкладка та же самая, а не добавленная рядом: панель одна на всех, и
-        шестая кнопка ради одного человека сделала бы её разной у разных
-        людей. Меняется только содержимое и подпись.
+        шестая кнопка ради двоих сделала бы её разной у разных людей.
+        Меняется только содержимое и подпись.
       */}
       <Tab.Screen
         name="CheckInOut"
-        component={isCeo ? AttendanceScreen : CheckInOutScreen}
+        component={isManager ? AttendanceScreen : CheckInOutScreen}
         options={{
-          title: isCeo ? 'Явка' : 'Смена',
+          title: isManager ? 'Явка' : 'Смена',
           tabBarIcon: () => <CheckInGlyph />,
         }}
       />

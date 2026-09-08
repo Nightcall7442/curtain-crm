@@ -2,6 +2,7 @@ import { payrollRecords, payrollSchemes, userRoles, users } from '@curtain-crm/d
 import {
   canTransitionPayrollStatus,
   formatMoney,
+  isManagement,
   moneyToDecimalString,
   parseMoney,
   payrollSchemeTypeSchema,
@@ -19,8 +20,13 @@ import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import { notifyPayroll } from '../services/notifications.service';
-import { calculateForUserRole, payableRoles, saveDraft } from '../services/payroll.service';
-import { formatPeriod } from '../services/shifts.service';
+import {
+  calculateForUserRole,
+  listCompletedOrdersForPayroll,
+  payableRoles,
+  saveDraft,
+} from '../services/payroll.service';
+import { calculateWorkedHours, formatPeriod, periodBounds } from '../services/shifts.service';
 import { router } from '../trpc';
 
 /**
@@ -306,6 +312,74 @@ export const payrollRouter = router({
         totalCalculated: totals?.calculated ?? '0',
         totalPaid: totals?.paid ?? '0',
       };
+    }),
+
+  /**
+   * Из чего сложилось начисление: часы, условия оплаты и поимённо заказы.
+   *
+   * Ведомость отвечает «сколько», а спорят обычно про «за что»: установщик
+   * хочет видеть номера заказов, за которые ему посчитали сдельную, а
+   * почасовик — сколько часов ему засчитали и по какой ставке.
+   *
+   * Состав заказов восстанавливается повторным запросом: связи
+   * `payroll_records → orders` в базе нет, в записи лежит только количество
+   * и сумма. Поэтому заказ, переназначенный после расчёта, из разбивки
+   * уйдёт, хотя в начисленной сумме останется. Первична сумма, разбивка —
+   * пояснение к ней, и это честнее, чем хранить второй список, который
+   * разойдётся с первым.
+   *
+   * Свою разбивку видит и сам сотрудник: спор о зарплате начинается с того,
+   * что человеку нечего посмотреть.
+   */
+  breakdown: protectedProcedure
+    .input(z.object({ id: idSchema }))
+    .query(async ({ ctx, input }) => {
+      const [record] = await ctx.db
+        .select({
+          id: payrollRecords.id,
+          userId: payrollRecords.userId,
+          userFullName: users.fullName,
+          role: payrollRecords.role,
+          periodYear: payrollRecords.periodYear,
+          periodMonth: payrollRecords.periodMonth,
+          calculatedAmount: payrollRecords.calculatedAmount,
+          paidAmount: payrollRecords.paidAmount,
+          kpiPercent: payrollRecords.kpiPercent,
+          status: payrollRecords.status,
+          schemeSnapshot: payrollRecords.schemeSnapshot,
+          comment: payrollRecords.comment,
+          approvedAt: payrollRecords.approvedAt,
+          paidAt: payrollRecords.paidAt,
+          receiptConfirmedAt: payrollRecords.receiptConfirmedAt,
+        })
+        .from(payrollRecords)
+        .innerJoin(users, eq(users.id, payrollRecords.userId))
+        .where(eq(payrollRecords.id, input.id))
+        .limit(1);
+
+      if (record === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Начисление не найдено' });
+      }
+
+      if (record.userId !== ctx.user.id && !isManagement(ctx.user.roles)) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Это чужое начисление' });
+      }
+
+      const period = { year: record.periodYear, month: record.periodMonth };
+      const bounds = periodBounds(period);
+
+      const [orders, workedHours] = await Promise.all([
+        listCompletedOrdersForPayroll(ctx.db, record.userId, record.role, bounds),
+        /*
+          Часы пересчитываются, а не берутся из снимка: снимок писался в
+          момент расчёта, а смены за незакрытый месяц с тех пор прибавились.
+          Расхождение с суммой в ведомости здесь — не ошибка, а ответ на
+          вопрос «пора ли пересчитать».
+        */
+        calculateWorkedHours(ctx.db, record.userId, bounds),
+      ]);
+
+      return { record, period, orders, workedHours };
     }),
 
   /** Собственные начисления сотрудника. */

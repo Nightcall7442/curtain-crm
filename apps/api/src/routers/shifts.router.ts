@@ -1,4 +1,4 @@
-import { branches, personalBreaks, shifts, users } from '@curtain-crm/db';
+import { branches, installationTrips, orders, personalBreaks, shifts, users } from '@curtain-crm/db';
 import { MAX_PERSONAL_BREAK_MINUTES } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
@@ -29,7 +29,10 @@ import { toOffset, toPage } from '../types';
  * Права доступа:
  *  - `current`, `checkIn`, `checkOut`, `my`, `mySummary` — любой вошедший
  *    сотрудник, всегда только со своей сменой (`user_id` берётся из контекста);
- *  - `list`, `summary`, `adjustManually`, `remove` — руководство (CEO, админ).
+ *  - `startTrip`, `endTrip`, `currentTrip` — свой выезд на установку: смена
+ *    при этом не закрывается, человек просто не в цеху;
+ *  - `list`, `summary`, `adjustManually`, `remove`, `activeTrips` —
+ *    руководство (CEO, админ).
  *
  * Смена — один непрерывный блок без учёта перерывов. Открытая смена может быть
  * только одна: это гарантирует частичный уникальный индекс
@@ -280,6 +283,166 @@ export const shiftsRouter = router({
       .innerJoin(branches, eq(branches.id, shifts.branchId))
       .where(and(isNull(shifts.endedAt), isNull(personalBreaks.returnedAt)))
       .orderBy(personalBreaks.startedAt);
+
+    return rows;
+  }),
+
+  /* ---------------------------- Выезд на установку ---------------------------- */
+
+  /**
+   * Уехал на установку — смена продолжается.
+   *
+   * Раньше выбор был из двух: закрыть смену и потерять полдня в табеле или
+   * не отмечаться вовсе — тогда человек числится в цеху, где его нет.
+   *
+   * Координаты обязательны: владелец просил, чтобы всё было по GPS. А вот
+   * радиус филиала здесь НЕ проверяется — из него как раз уезжают, и
+   * отказать «вы слишком далеко» значило бы запретить отметить именно то
+   * событие, ради которого кнопка и сделана. Расстояние записывается: оно
+   * отвечает на вопрос «откуда отметился», ничему не мешая.
+   */
+  startTrip: protectedProcedure
+    .input(geoPointSchema.extend({ orderId: idSchema.optional() }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const [openShift] = await tx
+          .select({ id: shifts.id, branchId: shifts.branchId })
+          .from(shifts)
+          .where(findOpenShift(ctx.user.id))
+          .limit(1);
+
+        if (openShift === undefined) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Сначала откройте смену — выезжать не с чего',
+          });
+        }
+
+        const [activeTrip] = await tx
+          .select({ id: installationTrips.id })
+          .from(installationTrips)
+          .where(
+            and(
+              eq(installationTrips.shiftId, openShift.id),
+              isNull(installationTrips.returnedAt),
+            ),
+          )
+          .limit(1);
+
+        if (activeTrip !== undefined) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Вы уже отмечены на установке' });
+        }
+
+        const distance = await measureDistanceToBranch(tx, openShift.branchId, input);
+
+        const [created] = await tx
+          .insert(installationTrips)
+          .values({
+            shiftId: openShift.id,
+            orderId: input.orderId ?? null,
+            startLatitude: input.latitude,
+            startLongitude: input.longitude,
+            startDistanceMeters: distance,
+          })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Не удалось отметить выезд',
+          });
+        }
+
+        return created;
+      }),
+    ),
+
+  /** Вернулся с установки. Координаты — те же правила, что и при выезде. */
+  endTrip: protectedProcedure.input(geoPointSchema).mutation(async ({ ctx, input }) =>
+    ctx.db.transaction(async (tx) => {
+      const [openShift] = await tx
+        .select({ id: shifts.id, branchId: shifts.branchId })
+        .from(shifts)
+        .where(findOpenShift(ctx.user.id))
+        .limit(1);
+
+      if (openShift === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Открытая смена не найдена' });
+      }
+
+      const distance = await measureDistanceToBranch(tx, openShift.branchId, input);
+
+      const [updated] = await tx
+        .update(installationTrips)
+        .set({
+          returnedAt: new Date(),
+          endLatitude: input.latitude,
+          endLongitude: input.longitude,
+          endDistanceMeters: distance,
+        })
+        .where(
+          and(eq(installationTrips.shiftId, openShift.id), isNull(installationTrips.returnedAt)),
+        )
+        .returning();
+
+      if (updated === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Открытый выезд не найден' });
+      }
+
+      return updated;
+    }),
+  ),
+
+  /** Текущий выезд или `null`. Экран смены спрашивает это при старте. */
+  currentTrip: protectedProcedure.query(async ({ ctx }) => {
+    const [row] = await ctx.db
+      .select({
+        id: installationTrips.id,
+        startedAt: installationTrips.startedAt,
+        orderId: installationTrips.orderId,
+        orderNumber: orders.orderNumber,
+      })
+      .from(installationTrips)
+      .innerJoin(shifts, eq(shifts.id, installationTrips.shiftId))
+      .leftJoin(orders, eq(orders.id, installationTrips.orderId))
+      .where(
+        and(
+          eq(shifts.userId, ctx.user.id),
+          isNull(shifts.endedAt),
+          isNull(installationTrips.returnedAt),
+        ),
+      )
+      .limit(1);
+
+    return row ?? null;
+  }),
+
+  /**
+   * Кто сейчас на установке — для руководства.
+   *
+   * `isNull(shifts.endedAt)` обязателен ровно по той же причине, что и у
+   * отлучек: незакрытый выезд от позавчерашней смены иначе висел бы
+   * «активным» вечно, и человек показывался бы одновременно в цеху и на
+   * объекте.
+   */
+  activeTrips: managementProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db
+      .select({
+        id: installationTrips.id,
+        startedAt: installationTrips.startedAt,
+        userId: shifts.userId,
+        userFullName: users.fullName,
+        branchName: branches.name,
+        orderId: installationTrips.orderId,
+        orderNumber: orders.orderNumber,
+      })
+      .from(installationTrips)
+      .innerJoin(shifts, eq(shifts.id, installationTrips.shiftId))
+      .innerJoin(users, eq(users.id, shifts.userId))
+      .innerJoin(branches, eq(branches.id, shifts.branchId))
+      .leftJoin(orders, eq(orders.id, installationTrips.orderId))
+      .where(and(isNull(shifts.endedAt), isNull(installationTrips.returnedAt)))
+      .orderBy(installationTrips.startedAt);
 
     return rows;
   }),

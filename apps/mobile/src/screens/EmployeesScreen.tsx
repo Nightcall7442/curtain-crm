@@ -7,6 +7,7 @@ import {
   type Department,
   type Role,
 } from '@curtain-crm/shared';
+import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -51,6 +52,109 @@ export function EmployeesScreen(): ReactElement {
   const [openId, setOpenId] = useState<number | null>(null);
   /** Открыта ли форма приёма нового сотрудника. */
   const [isCreating, setCreating] = useState(false);
+
+  /*
+    Фото сотрудника ставит и убирает только директор — с этого экрана.
+
+    Сотрудник своё фото больше не меняет: компания снимает штат разом, в
+    фирменном поло и на общем фоне, и карточка в системе должна показывать
+    именно этот снимок. Каждая замена уходит в журнал действий.
+  */
+  const setAvatar = trpc.users.setAvatar.useMutation({
+    async onSuccess() {
+      notifySuccess();
+      await utils.users.list.invalidate();
+    },
+    onError(error) {
+      notifyError();
+      Alert.alert('Не удалось поставить фото', error.message);
+    },
+  });
+
+  const removeAvatar = trpc.users.removeAvatar.useMutation({
+    async onSuccess() {
+      notifySuccess();
+      await utils.users.list.invalidate();
+    },
+    onError(error) {
+      notifyError();
+      Alert.alert('Не удалось убрать фото', error.message);
+    },
+  });
+
+  /**
+   * Снимок обрезается в квадрат прямо в пикере: фото показывается плашкой
+   * 1:1, и растить трафик ради невидимых пикселей незачем.
+   */
+  const pickAvatar = async (userId: number, fromCamera: boolean): Promise<void> => {
+    const permission = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        'Нет доступа',
+        fromCamera
+          ? 'Разрешите доступ к камере в настройках телефона.'
+          : 'Разрешите доступ к галерее в настройках телефона.',
+      );
+      return;
+    }
+
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+          base64: true,
+          exif: false,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+          base64: true,
+          exif: false,
+        });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    if (asset?.base64 == null) {
+      Alert.alert('Не удалось прочитать снимок', 'Попробуйте ещё раз.');
+      return;
+    }
+
+    setAvatar.mutate({
+      userId,
+      file: {
+        fileName: asset.fileName ?? 'avatar.jpg',
+        mimeType: asset.mimeType ?? 'image/jpeg',
+        content: asset.base64,
+      },
+    });
+  };
+
+  const chooseAvatarAction = (person: { readonly id: number; readonly avatarUrl: string | null }): void => {
+    Alert.alert('Фото сотрудника', 'Что сделать?', [
+      { text: 'Снять камерой', onPress: () => void pickAvatar(person.id, true) },
+      { text: 'Выбрать из галереи', onPress: () => void pickAvatar(person.id, false) },
+      ...(person.avatarUrl === null
+        ? []
+        : [
+            {
+              text: 'Убрать фото',
+              style: 'destructive' as const,
+              onPress: () => {
+                removeAvatar.mutate({ userId: person.id });
+              },
+            },
+          ]),
+      { text: 'Отмена', style: 'cancel' as const },
+    ]);
+  };
 
   /* --- Черновик правки: заполняется при раскрытии карточки --------------- */
   const [fullName, setFullName] = useState('');
@@ -318,6 +422,24 @@ export function EmployeesScreen(): ReactElement {
 
                 {openId === person.id && (
                   <View style={styles.editor}>
+                    <Field label="Фото" hint="Ставит и убирает только директор">
+                      <Pressable
+                        onPress={() => {
+                          chooseAvatarAction(person);
+                        }}
+                        disabled={setAvatar.isPending || removeAvatar.isPending}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [
+                          styles.action,
+                          pressed ? styles.pressed : null,
+                        ]}
+                      >
+                        <Text style={styles.actionText}>
+                          {person.avatarUrl === null ? 'Поставить фото' : 'Заменить или убрать'}
+                        </Text>
+                      </Pressable>
+                    </Field>
+
                     <Field label="Имя и фамилия">
                       <Input value={fullName} onChangeText={setFullName} autoCapitalize="words" />
                     </Field>
