@@ -141,6 +141,13 @@
       "when": 1788868730150,
       "tag": "0019_cornice_stage",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788869820945,
+      "tag": "0020_ready_made_items",
+      "breakpoints": true
     }
   ]
 }

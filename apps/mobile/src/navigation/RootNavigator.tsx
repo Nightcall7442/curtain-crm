@@ -12,6 +12,7 @@ import { EmployeesScreen } from '../screens/EmployeesScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ManagementScreen } from '../screens/ManagementScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
+import { ReadyMadeStockScreen } from '../screens/ReadyMadeStockScreen';
 import { RetailStockScreen } from '../screens/RetailStockScreen';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
@@ -116,6 +117,11 @@ export function RootNavigator(): ReactElement {
         name="TaskAssign"
         component={TaskAssignScreen}
         options={{ title: 'Поручения' }}
+      />
+      <Stack.Screen
+        name="ReadyMadeStock"
+        component={ReadyMadeStockScreen}
+        options={{ title: 'Склад готовых штор' }}
       />
       <Stack.Screen
         name="RetailStock"

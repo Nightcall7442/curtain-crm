@@ -1,5 +1,6 @@
 'use client';
 
+import { formatMoney, parseMoney } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
 import { Button, Field, fieldErrors, FormError, Input, Modal, Textarea } from '@/components/ui/Form';
@@ -36,12 +37,25 @@ export function SellReadyMadeDialog({
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState(false);
   const [installAddress, setInstallAddress] = useState('');
+  /**
+   * Выбранная штора со склада. `null` — продажа без склада: так продают то,
+   * чего на полке не оказалось, и так продавали до появления остатков.
+   */
+  const [stockItemId, setStockItemId] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
 
+  const stock = trpc.readyMade.list.useQuery({}, { enabled: open });
+
   const sell = trpc.orders.sellReadyMade.useMutation({
     async onSuccess(order) {
-      await Promise.all([utils.orders.list.invalidate(), utils.reports.dashboard.invalidate()]);
+      await Promise.all([
+        utils.orders.list.invalidate(),
+        utils.reports.dashboard.invalidate(),
+        // Остаток списался — список склада в этой же вкладке иначе покажет
+        // прежнее число, и следующую продажу продавец начнёт с неверного.
+        utils.readyMade.list.invalidate(),
+      ]);
       reset();
       onSold(order.id);
     },
@@ -57,6 +71,7 @@ export function SellReadyMadeDialog({
     setComment('');
     setNeedsInstallation(false);
     setInstallAddress('');
+    setStockItemId(null);
     sell.reset();
   };
 
@@ -74,6 +89,7 @@ export function SellReadyMadeDialog({
       items: [
         {
           quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
+          ...(stockItemId === null ? {} : { readyMadeItemId: stockItemId }),
           ...(model.trim().length > 0 ? { model: model.trim() } : {}),
           ...(comment.trim().length > 0 ? { comment: comment.trim() } : {}),
         },
@@ -148,6 +164,9 @@ export function SellReadyMadeDialog({
                 value={model}
                 onChange={(event) => {
                   setModel(event.target.value);
+                  // Набранное руками расходится с выбранной вещью — снимаем
+                  // выбор, чтобы со склада не списалось не то.
+                  setStockItemId(null);
                 }}
                 placeholder="Готовый комплект, бежевый"
               />
@@ -164,6 +183,92 @@ export function SellReadyMadeDialog({
                 }}
               />
             </Field>
+
+            {/*
+              Что лежит на складе по набранной модели. Выбранная строка
+              списывается при продаже, а размер, цвет и код уезжают в заказ
+              со склада — продавец выбирает вещь, а не переписывает её.
+            */}
+            <div className="sm:col-span-2 lg:col-span-4">
+              <span className="mb-1.5 block text-footnote font-medium text-secondary">
+                Со склада
+              </span>
+
+              {(() => {
+                const matching = (stock.data ?? []).filter(
+                  (row) =>
+                    model.trim().length === 0 ||
+                    row.model.toLowerCase().includes(model.trim().toLowerCase()),
+                );
+
+                if (stock.isLoading) {
+                  return <p className="text-footnote text-muted">Загрузка остатков…</p>;
+                }
+
+                if (matching.length === 0) {
+                  return (
+                    <p className="text-footnote text-muted">
+                      Готовых штор по этой модели на складе нет — продажа пройдёт без списания
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {matching.map((row) => {
+                      const chosen = stockItemId === row.id;
+
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => {
+                            setStockItemId(chosen ? null : row.id);
+                            if (!chosen) {
+                              setModel(row.model);
+                              if (workPrice.trim().length === 0) {
+                                setWorkPrice(
+                                  (
+                                    Number.parseFloat(row.price) *
+                                    Math.max(1, Number.parseInt(quantity, 10) || 1)
+                                  ).toString(),
+                                );
+                              }
+                            }
+                          }}
+                          className={`flex items-center gap-3 rounded border p-2 text-left transition-colors ${
+                            chosen
+                              ? 'border-accent bg-accent/10'
+                              : 'border-subtle hover:border-accent/50'
+                          }`}
+                        >
+                          <span className="block flex-1">
+                            <span className="block text-footnote text-primary">
+                              {`${row.model} · ${Number.parseFloat(row.widthCm).toString()}×${Number.parseFloat(
+                                row.heightCm,
+                              ).toString()} см`}
+                            </span>
+                            <span className="block text-overline text-muted">
+                              {[row.color, row.code, row.branchName]
+                                .filter((part) => part !== null)
+                                .join(' · ')}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-footnote text-primary">
+                              {formatMoney(parseMoney(row.price))}
+                            </span>
+                            <span className="block text-overline text-muted">
+                              {`${row.quantity.toString()} шт`}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
 
             <Field label="Цена, сум" error={errors['workPrice']}>
               <Input

@@ -24,6 +24,7 @@ export const AUDIT_ENTITY_TYPES = [
   'day_off_request',
   'retail_item',
   'retail_sale',
+  'ready_made_item',
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];

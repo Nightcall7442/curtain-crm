@@ -4,6 +4,7 @@ import {
   orderPhotos,
   orders,
   orderStatusHistory,
+  readyMadeItems,
   users,
   type DbExecutor,
 } from '@curtain-crm/db';
@@ -627,6 +628,13 @@ export const ordersRouter = router({
           items: z
             .array(
               z.object({
+                /*
+                  Штора со склада: остаток списывается, а модель, размер и
+                  цвет берутся из складской записи, а не с формы. Продавец
+                  выбирает вещь, а не переписывает её описание — переписанное
+                  расходится с полкой на второй продаже.
+                */
+                readyMadeItemId: idSchema.optional(),
                 model: optionalText(200),
                 quantity: z.number().int().positive().max(1000).default(1),
                 comment: optionalText(500),
@@ -690,9 +698,72 @@ export const ordersRouter = router({
           });
         }
 
+        /*
+          Позиции со склада списываются ДО вставки строк заказа: если штук
+          не хватило, продажа не должна оставить за собой ни заказа, ни
+          половины списанного остатка.
+        */
+        const soldFromStock = new Map<number, typeof readyMadeItems.$inferSelect>();
+
+        for (const item of input.items) {
+          if (item.readyMadeItemId === undefined) continue;
+
+          const [stock] = await tx
+            .select()
+            .from(readyMadeItems)
+            .where(eq(readyMadeItems.id, item.readyMadeItemId))
+            .for('update')
+            .limit(1);
+
+          if (stock === undefined) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Готовая штора не найдена' });
+          }
+          if (stock.branchId !== branchId) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `«${stock.model}» лежит в другом филиале`,
+            });
+          }
+          if (stock.quantity < item.quantity) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message:
+                `«${stock.model}»: на складе ${stock.quantity.toString()} шт, ` +
+                `продать ${item.quantity.toString()} нельзя`,
+            });
+          }
+
+          await tx
+            .update(readyMadeItems)
+            .set({ quantity: stock.quantity - item.quantity, updatedAt: new Date() })
+            .where(eq(readyMadeItems.id, stock.id));
+
+          await recordAudit(tx, {
+            actorId: ctx.user.id,
+            action: 'ready_made_item.sold',
+            entityType: 'ready_made_item',
+            entityId: stock.id,
+            details: {
+              model: stock.model,
+              quantity: item.quantity,
+              stockAfter: stock.quantity - item.quantity,
+              orderId: created.id,
+            },
+            ipAddress: ctx.ipAddress,
+          });
+
+          soldFromStock.set(stock.id, stock);
+        }
+
         await tx.insert(orderItems).values(
-          input.items.map((item, index) =>
-            toOrderItemValues(
+          input.items.map((item, index) => {
+            const stock =
+              item.readyMadeItemId === undefined
+                ? undefined
+                : soldFromStock.get(item.readyMadeItemId);
+            const model = stock?.model ?? item.model;
+
+            return toOrderItemValues(
               {
                 kind: OrderItemKind.OTHER,
                 materials: [],
@@ -700,13 +771,23 @@ export const ordersRouter = router({
                 portieres: [],
                 accessories: [],
                 quantity: item.quantity,
-                ...(item.model === undefined ? {} : { model: item.model }),
+                ...(model === undefined ? {} : { model }),
+                ...(stock === undefined
+                  ? {}
+                  : {
+                      widthCm: Number.parseFloat(stock.widthCm),
+                      heightCm: Number.parseFloat(stock.heightCm),
+                      ...(stock.color === null ? {} : { color: stock.color }),
+                      ...(stock.code === null
+                        ? {}
+                        : { characteristics: `Код ткани: ${stock.code}` }),
+                    }),
                 ...(item.comment === undefined ? {} : { comment: item.comment }),
               },
               created.id,
               index,
-            ),
-          ),
+            );
+          }),
         );
 
         await tx.insert(orderStatusHistory).values({

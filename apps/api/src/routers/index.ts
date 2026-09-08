@@ -14,6 +14,7 @@ import { ratingRouter } from './rating.router';
 import { reportsRouter } from './reports.router';
 import { shiftsRouter } from './shifts.router';
 import { smmRouter } from './smm.router';
+import { readyMadeRouter } from './readyMade.router';
 import { retailRouter } from './retail.router';
 import { personalWorksRouter } from './personalWorks.router';
 import { tasksRouter } from './tasks.router';
@@ -47,6 +48,7 @@ export const appRouter = router({
   archive: archiveRouter,
   audit: auditRouter,
   smm: smmRouter,
+  readyMade: readyMadeRouter,
   tasks: tasksRouter,
   personalWorks: personalWorksRouter,
   retail: retailRouter,

@@ -32,6 +32,7 @@ export type RootStackParamList = {
   DayOffApprovals: undefined;
   PayrollApprovals: undefined;
   TaskAssign: undefined;
+  ReadyMadeStock: undefined;
   RetailStock: undefined;
 };
 

@@ -1,5 +1,6 @@
 import {
   MANAGEMENT_ROLES,
+  ORDER_INTAKE_ROLES,
   Role,
   ROLE_MANAGER_ROLES,
   type Role as RoleName,
@@ -9,6 +10,7 @@ import {
   ClipboardList,
   Compass,
   LayoutGrid,
+  Package,
   ScrollText,
   Settings,
   Trophy,
@@ -89,6 +91,12 @@ export const NAVIGATION: readonly NavItem[] = [
     ],
   },
   { href: '/retail', label: 'Касса', icon: Store, roles: MANAGEMENT_ROLES },
+  /*
+    Готовые шторы видит и продавец: полку пополняет тот же, кто с неё
+    продаёт, и ждать, пока приход оприходует руководство, значит не продать
+    сегодняшнюю партию.
+  */
+  { href: '/ready-made', label: 'Готовые шторы', icon: Package, roles: ORDER_INTAKE_ROLES },
   { href: '/payroll', label: 'Зарплаты', icon: Wallet, roles: MANAGEMENT_ROLES },
   { href: '/rating', label: 'Рейтинг', icon: Trophy, roles: MANAGEMENT_ROLES },
   { href: '/reports', label: 'Отчёты', icon: BarChart3, roles: MANAGEMENT_ROLES },

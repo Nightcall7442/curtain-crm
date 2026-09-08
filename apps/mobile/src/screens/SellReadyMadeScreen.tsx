@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { CatalogKind } from '@curtain-crm/shared';
+import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
@@ -62,6 +62,14 @@ export function SellReadyMadeScreen(): ReactElement {
     веб-панели. Раньше здесь было свободное поле: продавец писал модель
     как помнил, и одна и та же штора в отчётах называлась тремя способами.
   */
+  /*
+    Склад запрашивается целиком, один раз на экран, а не по запросу на
+    позицию: позиции добавляют и удаляют, а хук, вызванный внутри списка,
+    менял бы порядок хуков при каждом таком нажатии. Отбор по модели —
+    здесь же, на клиенте: строк на витрине десятки, не тысячи.
+  */
+  const stock = trpc.readyMade.list.useQuery({});
+
   const catalog = trpc.catalog.list.useQuery({});
   const modelOptions = useMemo(
     () =>
@@ -108,6 +116,7 @@ export function SellReadyMadeScreen(): ReactElement {
       needsInstallation: needsInstallation === 'yes',
       items: items.map((item) => ({
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
+        ...(item.readyMadeItemId === null ? {} : { readyMadeItemId: item.readyMadeItemId }),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
       })),
@@ -238,6 +247,85 @@ export function SellReadyMadeScreen(): ReactElement {
               </View>
             </View>
 
+            {/*
+              Что есть на складе по выбранной модели. Продавец выбирает вещь,
+              а не переписывает её описание: размер, цвет и код приезжают со
+              склада, а остаток списывается при продаже.
+            */}
+            {item.model.trim() !== '' && (
+              <View style={styles.stock}>
+                <Text style={styles.stockTitle}>В наличии</Text>
+
+                {stock.isLoading ? (
+                  <ActivityIndicator color={colors.accent} />
+                ) : (
+                  (() => {
+                    const matching = (stock.data ?? []).filter((entry) =>
+                      entry.model.toLowerCase().includes(item.model.trim().toLowerCase()),
+                    );
+
+                    if (matching.length === 0) {
+                      return (
+                        <Text style={styles.stockHint}>
+                          По этой модели готовых штор на складе нет — продажа пройдёт без списания
+                        </Text>
+                      );
+                    }
+
+                    return matching.map((entry) => {
+                      const chosen = item.readyMadeItemId === entry.id;
+
+                      return (
+                        <Pressable
+                          key={entry.id}
+                          onPress={() => {
+                            updateItem(item.id, {
+                              readyMadeItemId: chosen ? null : entry.id,
+                              model: entry.model,
+                            });
+                            // Цену подставляем, пока продавец её не трогал:
+                            // переписать её он всегда успеет, а вот забыть
+                            // ценник со склада — обычное дело.
+                            if (!chosen && workPrice.trim() === '') {
+                              setWorkPrice(
+                                (
+                                  Number.parseFloat(entry.price) *
+                                  Math.max(1, Number.parseInt(item.quantity, 10) || 1)
+                                ).toString(),
+                              );
+                            }
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: chosen }}
+                          style={({ pressed }) => [
+                            styles.stockRow,
+                            chosen ? styles.stockRowChosen : null,
+                            pressed ? styles.pressed : null,
+                          ]}
+                        >
+                          <View style={styles.stockBody}>
+                            <Text style={styles.stockName}>
+                              {`${Number.parseFloat(entry.widthCm).toString()}×${Number.parseFloat(
+                                entry.heightCm,
+                              ).toString()} см`}
+                              {entry.color === null ? '' : ` · ${entry.color}`}
+                              {entry.code === null ? '' : ` · ${entry.code}`}
+                            </Text>
+                            <Text style={styles.stockMeta}>
+                              {`${entry.branchName} · ${entry.quantity.toString()} шт`}
+                            </Text>
+                          </View>
+                          <Text style={styles.stockPrice}>
+                            {formatMoney(parseMoney(entry.price))}
+                          </Text>
+                        </Pressable>
+                      );
+                    });
+                  })()
+                )}
+              </View>
+            )}
+
             <Field label="Комментарий">
               <Input
                 value={item.comment}
@@ -335,9 +423,20 @@ interface DraftItem {
   readonly model: string;
   readonly quantity: string;
   readonly comment: string;
+  /**
+   * Выбранная штора со склада. `null` — продажа без склада: так продавали
+   * до появления остатков, и так продают то, чего на полке не оказалось.
+   */
+  readonly readyMadeItemId: number | null;
 }
 
-const emptyItem = (id: number): DraftItem => ({ id, model: '', quantity: '1', comment: '' });
+const emptyItem = (id: number): DraftItem => ({
+  id,
+  model: '',
+  quantity: '1',
+  comment: '',
+  readyMadeItemId: null,
+});
 
 function validate(values: {
   readonly clientName: string;
@@ -411,6 +510,47 @@ const styles = StyleSheet.create({
     borderWidth: hairline,
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
+  },
+  stock: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  stockTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  stockHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  stockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: hairline,
+    borderColor: colors.border,
+  },
+  stockRowChosen: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surfaceMuted,
+  },
+  stockBody: { flex: 1 },
+  stockName: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  stockMeta: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  stockPrice: {
+    ...typography.headline,
+    color: colors.textPrimary,
+    fontWeight: '700',
   },
   addItemText: {
     ...typography.body,
