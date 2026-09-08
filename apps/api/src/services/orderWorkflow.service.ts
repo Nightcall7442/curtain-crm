@@ -27,6 +27,7 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
+import { accrueForClosedOrder } from './payroll.service';
 import {
   notifyOrderAssigned,
   notifyOrderStatusChanged,
@@ -428,6 +429,18 @@ export async function changeOrderStatus(
 
   if (updated === undefined) {
     throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Не удалось обновить заказ' });
+  }
+
+  /*
+    6a. Закрытый заказ сразу доходит до зарплаты.
+
+    Сдельная за этапы назначена в самом заказе, но до ведомости она раньше
+    добиралась только тогда, когда руководство вручную запускало месячный
+    расчёт. Работа сделана и принята — начисление должно существовать в тот
+    же момент, а не ждать чужого нажатия.
+  */
+  if (toStatus === OrderStatus.COMPLETED) {
+    await accrueForClosedOrder(executor, updated);
   }
 
   /* 7. История — только добавление, никогда перезапись. */

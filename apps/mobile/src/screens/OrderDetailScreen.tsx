@@ -16,6 +16,7 @@ import {
   TransitionKind,
   type OrderStatus,
 } from '@curtain-crm/shared';
+import { BlurView } from 'expo-blur';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -60,6 +61,15 @@ export function OrderDetailScreen({
   const [reason, setReason] = useState('');
   const [comment, setComment] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+  /*
+    Расценки закрыты, пока их не откроют глазом.
+
+    Заказ смотрят в цехе и при клиенте, через плечо, и «за установку 200 000»
+    на виду — это чужая зарплата, прочитанная посторонним. Прячем показ, а не
+    данные: что человеку видеть можно, решил сервер (`maskStageFees`), и
+    открытый глаз ничего сверх этого не покажет.
+  */
+  const [feesShown, setFeesShown] = useState(false);
 
   const isManager = useIsManagement();
   const { user } = useAuth();
@@ -169,11 +179,19 @@ export function OrderDetailScreen({
     installation: data.installationFee,
   };
 
+  /*
+    Руководителю показываем и нулевые строки, исполнителю — нет.
+
+    У незаполненного этапа стоит ноль, и «За пошив: 0 сум» читается швеёй как
+    «мне за это не заплатят», хотя означает «сумму ещё не внесли». А вот
+    директору нужен именно полный список: пропущенная строка — это забытая
+    расценка, и заметить её можно только там, где она должна была быть.
+  */
   const visibleStageFees = stageFeesOfOrderType(data.orderType)
     .map((stage) => [stage, stageFeeValue[stage] ?? null] as const)
     .filter(
       (entry): entry is readonly [(typeof entry)[0], string] =>
-        entry[1] !== null && Number.parseFloat(entry[1]) > 0,
+        entry[1] !== null && (isManager || Number.parseFloat(entry[1]) > 0),
     );
 
   return (
@@ -245,13 +263,52 @@ export function OrderDetailScreen({
         */}
         {visibleStageFees.length > 0 && (
           <View style={styles.details}>
-            {visibleStageFees.map(([stage, value]) => (
-              <Row
-                key={stage}
-                label={t(ORDER_STAGE_FEE_LABELS, stage)}
-                value={formatMoney(parseMoney(value))}
+            <Pressable
+              onPress={() => {
+                setFeesShown((shown) => !shown);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={feesShown ? 'Скрыть расценки' : 'Показать расценки'}
+              hitSlop={8}
+              style={styles.feesHeader}
+            >
+              <Text style={styles.feesTitle}>Расценки по этапам</Text>
+              <Icon
+                name={feesShown ? 'eyeOff' : 'eye'}
+                size={18}
+                color={colors.textSecondary}
               />
-            ))}
+            </Pressable>
+
+            <View>
+              {visibleStageFees.map(([stage, value]) => (
+                <Row
+                  key={stage}
+                  label={t(ORDER_STAGE_FEE_LABELS, stage)}
+                  value={
+                    Number.parseFloat(value) > 0
+                      ? formatMoney(parseMoney(value))
+                      : 'не назначена'
+                  }
+                />
+              ))}
+
+              {/*
+                Заслонка поверх сумм, а не `display: none`: строки остаются на
+                месте, и карточка не прыгает при каждом нажатии глаза.
+                Полупрозрачный слой под размытием обязателен — на Android до
+                12-й версии `expo-blur` почти не размывает, и без него суммы
+                читались бы сквозь «скрытие».
+              */}
+              {!feesShown && (
+                <BlurView
+                  intensity={24}
+                  tint="light"
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFill, styles.feesVeil]}
+                />
+              )}
+            </View>
           </View>
         )}
 
@@ -731,6 +788,22 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  feesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  feesTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+  feesVeil: {
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(246, 248, 246, 0.72)',
+    overflow: 'hidden',
   },
   address: {
     ...typography.caption,

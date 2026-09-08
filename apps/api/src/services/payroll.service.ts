@@ -2,7 +2,10 @@ import {
   orders,
   payrollRecords,
   payrollSchemes,
+  userRoles,
+  users,
   type DbExecutor,
+  type Order,
   type PayrollScheme,
   type PayrollSchemeSnapshot,
 } from '@curtain-crm/db';
@@ -24,7 +27,7 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 
 import {
   calculateWorkedHours,
@@ -425,11 +428,11 @@ export async function gatherPayrollInputs(
  * условия человеку не завели, расчёт отказывается считать, а не подставляет
  * чужую ставку — молча начислить по средней хуже, чем не начислить вовсе.
  */
-export async function findActiveScheme(
+export async function findActiveSchemeOrNull(
   executor: DbExecutor,
   userId: number,
   role: RoleName,
-): Promise<PayrollScheme> {
+): Promise<PayrollScheme | null> {
   const scheme = await executor.query.payrollSchemes.findFirst({
     where: and(
       eq(payrollSchemes.userId, userId),
@@ -438,7 +441,17 @@ export async function findActiveScheme(
     ),
   });
 
-  if (scheme === undefined) {
+  return scheme ?? null;
+}
+
+export async function findActiveScheme(
+  executor: DbExecutor,
+  userId: number,
+  role: RoleName,
+): Promise<PayrollScheme> {
+  const scheme = await findActiveSchemeOrNull(executor, userId, role);
+
+  if (scheme === null) {
     throw new TRPCError({
       code: 'NOT_FOUND',
       message: `Сотруднику не заданы условия оплаты в роли «${ROLE_LABELS_RU[role]}»`,
@@ -539,6 +552,65 @@ export async function saveDraft(
   }
 
   return true;
+}
+
+/**
+ * Пересчитывает начисления всем, кто участвовал в только что закрытом заказе.
+ *
+ * Раньше ведомость появлялась только тогда, когда руководство само нажимало
+ * «рассчитать» за месяц: заказ закрыт, сдельная за него назначена, а в
+ * зарплате сотрудника её нет — до конца месяца и до чужого нажатия. Теперь
+ * закрытие заказа само доводит расчёт до ведомости.
+ *
+ * Пересчёт, а не «прибавить сдельную»: сумма зависит от схемы целиком —
+ * у почасовой это часы за месяц, у процента выручка, у KPI число заказов.
+ * Прибавлять к записи одну строку значило бы завести второй, расходящийся
+ * с `calculatePayroll`, способ считать зарплату.
+ *
+ * Утверждённые и выплаченные записи не трогаются — за это отвечает
+ * `saveDraft`. Ненастроенная схема не мешает закрыть заказ: без схемы
+ * начисление просто не появится, и это видно в ведомости пустой строкой,
+ * а не отказом закрыть выполненную работу.
+ */
+export async function accrueForClosedOrder(
+  executor: DbExecutor,
+  order: Order,
+): Promise<void> {
+  const closedAt = order.completedAt ?? new Date();
+  const period: Period = { year: closedAt.getUTCFullYear(), month: closedAt.getUTCMonth() + 1 };
+
+  const participants = [
+    order.createdBy,
+    order.masterId,
+    order.sewerId,
+    order.qcId,
+    order.installerId,
+    order.corniceInstallerId,
+  ].filter((id): id is number => id !== null);
+
+  if (participants.length === 0) return;
+
+  const staff = await executor
+    .select({ userId: userRoles.userId, role: userRoles.role })
+    .from(userRoles)
+    .innerJoin(users, eq(users.id, userRoles.userId))
+    .where(and(eq(users.isActive, true), inArray(userRoles.userId, [...new Set(participants)])));
+
+  for (const entry of staff) {
+    if (payableRoles([entry.role]).length === 0) continue;
+
+    /*
+      Без схемы начисления нет — и это не повод отказать в закрытии заказа.
+      Условия оплаты заводит владелец, и пока он до кого-то не дошёл, работа
+      всё равно должна закрываться: пустая строка в ведомости заметна, а
+      незакрытый выполненный заказ ломает и отчёты, и сдельную всем
+      остальным участникам.
+    */
+    if ((await findActiveSchemeOrNull(executor, entry.userId, entry.role)) === null) continue;
+
+    const calculated = await calculateForUserRole(executor, entry.userId, entry.role, period);
+    await saveDraft(executor, calculated);
+  }
 }
 
 /** Роли, по которым сотруднику начисляется зарплата. */
