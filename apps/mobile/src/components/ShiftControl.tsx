@@ -156,6 +156,7 @@ export function ShiftControl({
             pausedSince={
               shift?.pausedSince == null ? null : new Date(shift.pausedSince)
             }
+            pausedReason={shift?.pausedReason ?? null}
           />
         </Card>
       )}

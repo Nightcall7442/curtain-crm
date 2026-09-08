@@ -25,13 +25,16 @@ export function ShiftRing({
   startedAt,
   pausedSeconds = 0,
   pausedSince = null,
+  pausedReason = null,
 }: {
   /** Момент открытия смены; `null` — смена закрыта. */
   readonly startedAt: Date | null;
   /** Уже накопленная пауза за закрытые выезды. */
   readonly pausedSeconds?: number;
-  /** Начало незакрытого выезда; `null` — сотрудник в цеху. */
+  /** Начало незакрытой паузы; `null` — сотрудник в цеху. */
   readonly pausedSince?: Date | null;
+  /** Из-за чего стоит время: выезд на установку или личная отлучка. */
+  readonly pausedReason?: 'trip' | 'break' | null;
 }): ReactElement {
   const elapsed = useElapsed(startedAt, pausedSeconds, pausedSince);
   const isOpen = startedAt !== null;
@@ -58,7 +61,7 @@ export function ShiftRing({
             cx={center}
             cy={center}
             r={ringRadius}
-            /* На выезде кольцо гаснет до янтарного: время стоит, и цвет
+            /* На паузе кольцо гаснет до янтарного: время стоит, и цвет
                «всё идёт как надо» здесь сказал бы неправду. */
             stroke={isPaused ? colors.warning : colors.accentBright}
             strokeWidth={STROKE}
@@ -70,7 +73,13 @@ export function ShiftRing({
 
       <View style={styles.inner} pointerEvents="none">
         <Text style={styles.caption}>
-          {!isOpen ? 'Смена не открыта' : isPaused ? 'На установке' : 'Сейчас на работе'}
+          {!isOpen
+            ? 'Смена не открыта'
+            : !isPaused
+              ? 'Сейчас на работе'
+              : pausedReason === 'break'
+                ? 'На отлучке'
+                : 'На установке'}
         </Text>
         <Text
           style={[
@@ -118,10 +127,10 @@ function useElapsed(
   if (startedAt === null) return '00:00:00';
 
   /*
-    Выезд на установку останавливает счётчик: показанное здесь число должно
-    совпадать с тем, что уйдёт в зарплату, а там часы выезда вычитаются
-    (`workedSecondsExpression` на сервере). Уже закрытые выезды приходят
-    суммой, открытый — моментом начала: с него время просто не растёт.
+    Выезд на установку и личная отлучка останавливают счётчик: показанное
+    здесь число должно совпадать с тем, что уйдёт в зарплату, а там обе
+    паузы вычитаются (`workedSecondsExpression` на сервере). Закрытые
+    приходят суммой, открытая — моментом начала: с него время не растёт.
   */
   const away = pausedSince === null ? 0 : Math.max(0, (now - pausedSince.getTime()) / 1000);
 

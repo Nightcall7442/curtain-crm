@@ -1,4 +1,9 @@
-import { installationTrips, shifts, type DbExecutor } from '@curtain-crm/db';
+import {
+  installationTrips,
+  personalBreaks,
+  shifts,
+  type DbExecutor,
+} from '@curtain-crm/db';
 import { and, eq, gte, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
 
 /**
@@ -70,10 +75,16 @@ export function sqlTimestamp(value: Date): string {
 /**
  * Часы смен за период ЗА ВЫЧЕТОМ выездов на установку.
  *
- * Выезд останавливает рабочее время: пока сотрудник на объекте, его час не
- * идёт в почасовую оплату. Так решил владелец, и это согласуется с тем, как
- * установка оплачивается на самом деле — сдельной расценкой за этап, а не
- * часами. Считать выезд ещё и часами значило бы заплатить за него дважды.
+ * Время не идёт, пока сотрудника нет на месте: ни на выезде, ни на личной
+ * отлучке. Так решил владелец.
+ *
+ * У выезда есть и вторая причина: установка оплачивается сдельной расценкой
+ * за этап, и засчитать её ещё и часами значило бы заплатить дважды. Отлучка
+ * же — личное время, и оплачивать его как рабочее не за что.
+ *
+ * Одновременно быть на выезде и на отлучке нельзя — это запрещено в самих
+ * процедурах (`startBreak`, `startTrip`). Иначе пересечение вычлось бы
+ * дважды, и как раз не в пользу сотрудника.
  *
  * Выражение общее для всех трёх мест, где считаются часы: расчёт зарплаты,
  * ведомость смен у руководства и отчёт по сотрудникам. Разойтись они не
@@ -101,6 +112,15 @@ export function workedSecondsExpression(bounds: PeriodBounds): SQL<string> {
       from ${installationTrips}
       where ${installationTrips.shiftId} = ${shifts.id}
         and ${installationTrips.returnedAt} is not null
+    ), 0)
+    - coalesce((
+      select sum(extract(epoch from (
+        least(${personalBreaks.returnedAt}, ${periodEnd})
+        - greatest(${personalBreaks.startedAt}, ${periodStart})
+      )))
+      from ${personalBreaks}
+      where ${personalBreaks.shiftId} = ${shifts.id}
+        and ${personalBreaks.returnedAt} is not null
     ), 0)
   ), 0)`;
 }

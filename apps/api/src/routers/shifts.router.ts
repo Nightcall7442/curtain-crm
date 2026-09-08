@@ -66,13 +66,28 @@ export const shiftsRouter = router({
           from ${installationTrips}
           where ${installationTrips.shiftId} = ${shifts.id}
             and ${installationTrips.returnedAt} is not null
+        ), 0) + coalesce((
+          select sum(extract(epoch from (
+            ${personalBreaks.returnedAt} - ${personalBreaks.startedAt}
+          )))
+          from ${personalBreaks}
+          where ${personalBreaks.shiftId} = ${shifts.id}
+            and ${personalBreaks.returnedAt} is not null
         ), 0)`,
         /** Начало незакрытого выезда: с этого момента таймер стоит. */
-        pausedSince: sql<Date | null>`(
+        tripSince: sql<Date | null>`(
           select ${installationTrips.startedAt}
           from ${installationTrips}
           where ${installationTrips.shiftId} = ${shifts.id}
             and ${installationTrips.returnedAt} is null
+          limit 1
+        )`,
+        /** То же для незакрытой личной отлучки. */
+        breakSince: sql<Date | null>`(
+          select ${personalBreaks.startedAt}
+          from ${personalBreaks}
+          where ${personalBreaks.shiftId} = ${shifts.id}
+            and ${personalBreaks.returnedAt} is null
           limit 1
         )`,
       })
@@ -83,9 +98,19 @@ export const shiftsRouter = router({
 
     if (shift === undefined) return null;
 
+    const { tripSince, breakSince, ...rest } = shift;
+
+    /*
+      Причина паузы нужна экрану, чтобы подписать таймер: «на установке» и
+      «на перерыве» — разные вещи для того, кто смотрит явку. Одновременно
+      они не открываются (см. `startBreak` и `startTrip`), так что выбор
+      однозначен.
+    */
     return {
-      ...shift,
+      ...rest,
       pausedSeconds: Math.max(0, Math.round(Number.parseFloat(shift.pausedSeconds) || 0)),
+      pausedSince: tripSince ?? breakSince ?? null,
+      pausedReason: tripSince !== null ? ('trip' as const) : breakSince !== null ? ('break' as const) : null,
     };
   }),
 
@@ -224,6 +249,31 @@ export const shiftsRouter = router({
           throw new TRPCError({ code: 'CONFLICT', message: 'Отлучка уже начата' });
         }
 
+        /*
+          На выезде отлучиться нельзя — и наоборот.
+
+          Оба состояния значат «меня нет на месте», и оба вычитаются из
+          рабочего времени. Открытые одновременно, они вычлись бы дважды за
+          один и тот же час — и как раз не в пользу сотрудника.
+        */
+        const [activeTrip] = await tx
+          .select({ id: installationTrips.id })
+          .from(installationTrips)
+          .where(
+            and(
+              eq(installationTrips.shiftId, openShift.id),
+              isNull(installationTrips.returnedAt),
+            ),
+          )
+          .limit(1);
+
+        if (activeTrip !== undefined) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Вы на установке — сначала отметьте возвращение',
+          });
+        }
+
         const [created] = await tx
           .insert(personalBreaks)
           .values({ shiftId: openShift.id, plannedMinutes: input.plannedMinutes })
@@ -358,6 +408,20 @@ export const shiftsRouter = router({
 
         if (activeTrip !== undefined) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Вы уже отмечены на установке' });
+        }
+
+        // Обратная половина того же запрета — см. `startBreak`.
+        const [activeBreak] = await tx
+          .select({ id: personalBreaks.id })
+          .from(personalBreaks)
+          .where(and(eq(personalBreaks.shiftId, openShift.id), isNull(personalBreaks.returnedAt)))
+          .limit(1);
+
+        if (activeBreak !== undefined) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Вы на личной отлучке — сначала отметьте возвращение',
+          });
         }
 
         const distance = await measureDistanceToBranch(tx, openShift.branchId, input);

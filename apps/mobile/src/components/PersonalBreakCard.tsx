@@ -13,6 +13,10 @@ import { Card, CardTitle, Pill } from './Card';
  * смену. Заявляет срок сам, потолок общий для всех (тридцать минут),
  * возврат отмечает тем же жестом, каким отлучку начинал.
  *
+ * Рабочее время на отлучке стоит: это личное время, и оплачивать его как
+ * рабочее не за что. Так же ведёт себя выезд на установку — оба вычитаются
+ * из часов одним и тем же выражением на сервере.
+ *
  * Показывается только при открытой смене — карточка сама решает, рисовать
  * ли себя, и родительский экран (`CheckInOutScreen`) её всегда монтирует;
  * так экрану не нужно знать про состояние отлучки, только про смену.
@@ -23,11 +27,18 @@ export function PersonalBreakCard({
   readonly shiftOpen: boolean;
 }): ReactElement | null {
   const current = trpc.shifts.currentBreak.useQuery(undefined, { enabled: shiftOpen });
+  const utils = trpc.useUtils();
+
+  /* Кольцо таймера берёт паузу из `shifts.current`: без обновления этого
+     запроса время на экране продолжало бы идти после начала отлучки. */
+  const refresh = async (): Promise<void> => {
+    await Promise.all([current.refetch(), utils.shifts.current.invalidate()]);
+  };
 
   const startBreak = trpc.shifts.startBreak.useMutation({
     async onSuccess() {
       notifySuccess();
-      await current.refetch();
+      await refresh();
     },
     onError(error) {
       notifyError();
@@ -38,7 +49,7 @@ export function PersonalBreakCard({
   const endBreak = trpc.shifts.endBreak.useMutation({
     async onSuccess() {
       notifySuccess();
-      await current.refetch();
+      await refresh();
     },
     onError(error) {
       notifyError();
@@ -70,7 +81,8 @@ export function PersonalBreakCard({
       <Card>
         <CardTitle title="Личная отлучка" icon="deadline" />
         <Text style={styles.hint}>
-          Отходите по своим делам — выберите срок, и коллеги увидят, когда вас ждать
+          Отходите по своим делам — выберите срок. Рабочее время встанет на паузу, а
+          коллеги увидят, когда вас ждать.
         </Text>
         <View style={styles.chips}>
           {PERSONAL_BREAK_DURATION_OPTIONS.map((minutes) => (
