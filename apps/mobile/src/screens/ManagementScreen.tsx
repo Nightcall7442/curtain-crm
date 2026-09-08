@@ -17,7 +17,6 @@ type ManagementRoute =
   | 'DayOffApprovals'
   | 'PayrollApprovals'
   | 'TaskAssign'
-  | 'RetailStock'
   | 'PurchasePrices';
 
 /**
@@ -93,18 +92,16 @@ export function ManagementScreen(): ReactElement {
       badge: tasks.data?.total ?? null,
     },
     {
-      route: 'RetailStock',
-      icon: 'orders',
-      title: 'Витрина',
-      hint: 'Прайс, остатки и чужие чеки',
-      badge: items.data?.length ?? null,
-    },
-    {
+      /*
+        Витрина живёт внутри закупочных материалов, отдельным пунктом её
+        больше нет: и прайс поставщика, и полка кассы — про один и тот же
+        привезённый в цех товар, и правят их за один заход.
+      */
       route: 'PurchasePrices',
       icon: 'payroll',
-      title: 'Закупочные цены',
-      hint: 'Почём мы покупаем — влияет на маржу',
-      badge: null,
+      title: 'Закупочные материалы',
+      hint: 'Почём покупаем и что стоит на витрине',
+      badge: items.data?.length ?? null,
     },
   ];
 

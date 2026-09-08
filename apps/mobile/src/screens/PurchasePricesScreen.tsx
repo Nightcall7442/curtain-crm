@@ -18,11 +18,13 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
-import { Field, MoneyInput } from '../components/Field';
+import { ChipSelect, Field, MoneyInput } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+
+import { RetailStockScreen } from './RetailStockScreen';
 
 /**
  * Закупочные цены: почём фирма покупает то, из чего шьёт.
@@ -39,7 +41,43 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * Новые позиции заводятся в панели: там есть выбор категории и единицы
  * списком, а на телефоне нужен один жест — поправить цену.
  */
-export function PurchasePricesScreen(): ReactElement {
+/**
+ * Закупочные материалы: почём покупаем и что стоит на витрине.
+ *
+ * Два раздела в одном экране, а не два пункта в меню: и то и другое — товар,
+ * который привозят в цех, и руководитель, приехав с рынка, правит их за один
+ * заход. Прежде «Витрина» и «Закупочные цены» стояли в меню порознь, хотя
+ * открывались одна за другой.
+ */
+export function PurchaseMaterialsScreen(): ReactElement {
+  const [section, setSection] = useState<'purchase' | 'retail'>('purchase');
+
+  const header = (
+    <View style={styles.sections}>
+      <ChipSelect
+        value={section}
+        onChange={setSection}
+        options={[
+          { value: 'purchase', label: 'Закупка' },
+          { value: 'retail', label: 'Витрина' },
+        ]}
+      />
+    </View>
+  );
+
+  return section === 'purchase' ? (
+    <PurchasePricesScreen header={header} />
+  ) : (
+    <RetailStockScreen header={header} />
+  );
+}
+
+export function PurchasePricesScreen({
+  header,
+}: {
+  /** Переключатель разделов сверху; отдельно экран не открывается. */
+  readonly header?: ReactElement;
+} = {}): ReactElement {
   const { t } = useLocale();
   const utils = trpc.useUtils();
 
@@ -88,6 +126,8 @@ export function PurchasePricesScreen(): ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {header}
+
         <Card>
           <CardTitle title="Закупочные цены" icon="paid" />
           <Text style={styles.hint}>
@@ -185,6 +225,9 @@ export function PurchasePricesScreen(): ReactElement {
 }
 
 const styles = StyleSheet.create({
+  sections: {
+    marginBottom: spacing.sm,
+  },
   flex: {
     flex: 1,
   },

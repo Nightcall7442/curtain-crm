@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
 import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
-import { PurchasePricesScreen } from '../screens/PurchasePricesScreen';
+import { PurchaseMaterialsScreen } from '../screens/PurchasePricesScreen';
 import { CashDeskScreen } from '../screens/CashDeskScreen';
 import { DayOffScreen } from '../screens/DayOffScreen';
 import { DayOffApprovalsScreen } from '../screens/DayOffApprovalsScreen';
@@ -14,7 +14,6 @@ import { ManagementScreen } from '../screens/ManagementScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
 import { ReadyMadeStockScreen } from '../screens/ReadyMadeStockScreen';
 import { Icon } from '../components/Icon';
-import { RetailStockScreen } from '../screens/RetailStockScreen';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
@@ -151,19 +150,14 @@ export function RootNavigator(): ReactElement {
         options={{ title: 'Склад готовых штор' }}
       />
       <Stack.Screen
-        name="RetailStock"
-        component={RetailStockScreen}
-        options={{ title: 'Витрина' }}
-      />
-      <Stack.Screen
         name="TaskDetail"
         component={TaskDetailScreen}
         options={{ title: 'Поручение' }}
       />
       <Stack.Screen
         name="PurchasePrices"
-        component={PurchasePricesScreen}
-        options={{ title: 'Закупочные цены' }}
+        component={PurchaseMaterialsScreen}
+        options={{ title: 'Закупочные материалы' }}
       />
       <Stack.Screen
         name="Employees"

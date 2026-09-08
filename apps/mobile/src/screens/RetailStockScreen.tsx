@@ -32,7 +32,12 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * метров» — то, что происходит на самом деле. Списание делается тем же
  * полем с минусом, и обе операции попадают в журнал действий.
  */
-export function RetailStockScreen(): ReactElement {
+export function RetailStockScreen({
+  header,
+}: {
+  /** Переключатель разделов сверху — его рисует экран закупочных материалов. */
+  readonly header?: ReactElement;
+} = {}): ReactElement {
   const { t } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
@@ -72,6 +77,8 @@ export function RetailStockScreen(): ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {header}
+
         <Card>
           <CardTitle title="Прайс и остатки" icon="orders" />
 
