@@ -256,6 +256,13 @@ export const shiftsRouter = router({
    * Отлучка не пишется в аудит и не рассылает уведомления: это рутинное
    * самообслуживание, как чек-ин, а не событие, о котором нужно оповещать.
    * Видимость руководству — не пуш, а этот список по запросу.
+   *
+   * `isNull(shifts.endedAt)` обязателен — как и в `currentBreak` выше.
+   * Без него отлучка, которую сотрудник не закрыл (забыл нажать «вернулся»,
+   * а смену потом закрыли или она просто оборвалась), висела бы «активной»
+   * вечно: новая смена назавтра открывается новой строкой в `shifts`,
+   * старая — с незакрытой отлучкой — никуда не девается, и директор видел
+   * бы человека одновременно на смене и на отлучке трёхдневной давности.
    */
   activeBreaks: managementProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
@@ -271,7 +278,7 @@ export const shiftsRouter = router({
       .innerJoin(shifts, eq(shifts.id, personalBreaks.shiftId))
       .innerJoin(users, eq(users.id, shifts.userId))
       .innerJoin(branches, eq(branches.id, shifts.branchId))
-      .where(isNull(personalBreaks.returnedAt))
+      .where(and(isNull(shifts.endedAt), isNull(personalBreaks.returnedAt)))
       .orderBy(personalBreaks.startedAt);
 
     return rows;

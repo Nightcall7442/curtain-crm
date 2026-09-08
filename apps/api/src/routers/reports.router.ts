@@ -433,11 +433,18 @@ export const reportsRouter = router({
           // Просроченная отлучка: план (начало + заявленные минуты) уже в прошлом,
           // а возврат ещё не отмечен. Филиалом не фильтруется — сама отлучка
           // к филиалу не привязана.
+          //
+          // `isNull(shifts.endedAt)` обязателен: без него отлучка, которую
+          // сотрудник не закрыл (смену потом закрыли или она оборвалась),
+          // считалась бы просроченной вечно — плитка «требует внимания»
+          // копила бы мёртвые записи неделями.
           const [row] = await ctx.db
             .select({ value: count() })
             .from(personalBreaks)
+            .innerJoin(shifts, eq(shifts.id, personalBreaks.shiftId))
             .where(
               and(
+                isNull(shifts.endedAt),
                 isNull(personalBreaks.returnedAt),
                 sql`${personalBreaks.startedAt} + (${personalBreaks.plannedMinutes} || ' minutes')::interval < now()`,
               ),
