@@ -218,6 +218,103 @@ export const readyMadeRouter = router({
     }),
 
   /**
+   * Правка карточки шторы: модель, код, описание, размер, цена, снимок.
+   *
+   * Без неё опечатка в коде или неверная цена жили на полке до конца дней:
+   * оставалось снять штору с витрины и завести заново, потеряв и остаток, и
+   * историю. Остаток правится своей процедурой (`setQuantity`) — пересчёт
+   * стопки и правка ценника это разные события, и в журнале они разные.
+   *
+   * Снимок заменяется целиком: прислали новый — старый удаляется из
+   * хранилища, не прислали — остаётся прежний. Снять снимок совсем нельзя,
+   * и это намеренно: штора без снимка в продаже безлика, а «убрал случайно»
+   * дороже, чем «висит старый».
+   */
+  update: orderIntakeProcedure
+    .input(
+      z.object({
+        id: idSchema,
+        model: nonEmptyString(200, 'Укажите модель').optional(),
+        code: optionalText(100),
+        widthCm: dimensionSchema.optional(),
+        heightCm: dimensionSchema.optional(),
+        price: moneySchema.optional(),
+        comment: optionalText(500),
+        photo: base64FileSchema.optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const item = await loadItem(ctx.db, input.id);
+      assertBranchAllowed(ctx.user, item.branchId);
+
+      // Файл кладём до транзакции — как в `create`.
+      const stored =
+        input.photo === undefined
+          ? null
+          : await getStorage().upload({
+              key: buildStorageKey(
+                ['ready-made', item.branchId.toString()],
+                input.photo.mimeType,
+              ),
+              body: decodeBase64Payload(input.photo, {
+                allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
+                maxBytes: getEnv().MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+              }),
+              mimeType: input.photo.mimeType,
+            });
+
+      try {
+        const updated = await ctx.db.transaction(async (tx) => {
+          const patch = {
+            ...(input.model === undefined ? {} : { model: input.model }),
+            ...(input.code === undefined ? {} : { code: input.code }),
+            ...(input.comment === undefined ? {} : { comment: input.comment }),
+            ...(input.widthCm === undefined ? {} : { widthCm: input.widthCm.toFixed(1) }),
+            ...(input.heightCm === undefined ? {} : { heightCm: input.heightCm.toFixed(1) }),
+            ...(input.price === undefined
+              ? {}
+              : { price: moneyToDecimalString(parseMoney(input.price)) }),
+            ...(stored === null ? {} : { photoKey: stored.key }),
+          };
+
+          const [row] = await tx
+            .update(readyMadeItems)
+            .set({ ...patch, updatedAt: new Date() })
+            .where(eq(readyMadeItems.id, item.id))
+            .returning();
+
+          if (row === undefined) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Готовая штора не найдена' });
+          }
+
+          await recordAudit(tx, {
+            actorId: ctx.user.id,
+            action: 'ready_made_item.updated',
+            entityType: 'ready_made_item',
+            entityId: item.id,
+            details: { model: row.model, changed: Object.keys(patch) },
+            ipAddress: ctx.ipAddress,
+          });
+
+          return row;
+        });
+
+        /*
+          Прежний снимок удаляем только после успешной транзакции: упади она
+          после удаления — карточка осталась бы со ссылкой в никуда.
+        */
+        if (stored !== null && item.photoKey !== null) {
+          await getStorage().delete(item.photoKey).catch(() => undefined);
+        }
+
+        return updated;
+      } catch (error) {
+        if (stored !== null) await getStorage().delete(stored.key).catch(() => undefined);
+        throw error;
+      }
+    }),
+
+  /**
    * Изменение остатка: приход из цеха или списание.
    *
    * Числом «сколько стало», а не «сколько прибавить»: продавец пересчитывает

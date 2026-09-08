@@ -168,6 +168,7 @@ export const AUDIT_ACTIONS = [
   'retail_sale.created',
 
   'ready_made_item.created',
+  'ready_made_item.updated',
   'ready_made_item.stock_changed',
   'ready_made_item.activated',
   'ready_made_item.deactivated',

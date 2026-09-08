@@ -28,6 +28,19 @@ export default function ReadyMadePage(): ReactElement {
   const utils = trpc.useUtils();
 
   const [adding, setAdding] = useState(false);
+  /**
+   * Правится существующая штора или заводится новая.
+   *
+   * `null` — новая. Форма одна на оба случая: поля те же, и вторая её копия
+   * разошлась бы с первой на первой же правке. Филиал и остаток при правке
+   * не показываются: филиал у лежащей на полке шторы не меняется, а остаток
+   * ведётся пересчётом — это разные события и в журнале они разные.
+   */
+  const [editingId, setEditingId] = useState<number | null>(null);
+  /** Снимок, который уже есть у правимой шторы. */
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string | null>(null);
+  /** Строка поиска по списку — по модели, коду и описанию. */
+  const [search, setSearch] = useState('');
   const [model, setModel] = useState('');
   const [branchId, setBranchId] = useState('');
   const [code, setCode] = useState('');
@@ -66,19 +79,26 @@ export default function ReadyMadePage(): ReactElement {
     void utils.readyMade.list.invalidate();
   };
 
+  /** Закрывает форму и стирает черновик — общая для создания и правки. */
+  const closeForm = (): void => {
+    setAdding(false);
+    setEditingId(null);
+    setModel('');
+    setBranchId('');
+    setCode('');
+    setComment('');
+    setWidthCm('');
+    setHeightCm('');
+    setPrice('');
+    setQuantity('1');
+    setPhoto(null);
+    setPhotoError(null);
+    setCurrentPhotoUrl(null);
+  };
+
   const create = trpc.readyMade.create.useMutation({
     onSuccess(item) {
-      setAdding(false);
-      setModel('');
-      setBranchId('');
-      setPhoto(null);
-      setPhotoError(null);
-      setCode('');
-      setComment('');
-      setWidthCm('');
-      setHeightCm('');
-      setPrice('');
-      setQuantity('1');
+      closeForm();
       toast.success('Добавлено', `${item.model}: ${item.quantity.toString()} шт`);
       refresh();
     },
@@ -96,6 +116,17 @@ export default function ReadyMadePage(): ReactElement {
     },
     onError: (error) => {
       toast.error('Не удалось изменить остаток', error.message);
+    },
+  });
+
+  const update = trpc.readyMade.update.useMutation({
+    onSuccess(item) {
+      closeForm();
+      toast.success('Сохранено', item.model);
+      refresh();
+    },
+    onError: (error) => {
+      toast.error('Не удалось сохранить', error.message);
     },
   });
 
@@ -119,12 +150,23 @@ export default function ReadyMadePage(): ReactElement {
     );
   }
 
-  const rows = items.data ?? [];
-  const inStock = rows.filter((row) => row.isActive && row.quantity > 0);
+  const all = items.data ?? [];
+
+  /* Поиск по тому, что человек помнит: модель, бирка, описание. */
+  const needle = search.trim().toLowerCase();
+  const rows =
+    needle === ''
+      ? all
+      : all.filter((row) =>
+          [row.model, row.code ?? '', row.comment ?? ''].some((field) =>
+            field.toLowerCase().includes(needle),
+          ),
+        );
+  const inStock = all.filter((row) => row.isActive && row.quantity > 0);
   const stockValue = inStock.reduce((sum, row) => sum + parseMoney(row.price) * row.quantity, 0);
   const pieces = inStock.reduce((sum, row) => sum + row.quantity, 0);
 
-  const errors = fieldErrors(create.error);
+  const errors = fieldErrors(editingId === null ? create.error : update.error);
 
   return (
     <div className="space-y-6">
@@ -141,7 +183,7 @@ export default function ReadyMadePage(): ReactElement {
         />
         <StatCard
           label="Всего записей"
-          value={rows.length.toString()}
+          value={all.length.toString()}
           caption="Включая снятые с продажи"
         />
       </section>
@@ -154,6 +196,7 @@ export default function ReadyMadePage(): ReactElement {
               size="sm"
               icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
               onClick={() => {
+                closeForm();
                 create.reset();
                 setAdding(true);
               }}
@@ -163,11 +206,25 @@ export default function ReadyMadePage(): ReactElement {
           }
         />
 
+        <div className="px-4 pb-3">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+            }}
+            placeholder="Поиск по модели, коду или описанию"
+          />
+        </div>
+
         <DataTable
           isLoading={items.isLoading}
           rows={rows}
           rowKey={(row) => row.id}
-          emptyMessage="Готовых штор нет — добавьте первую"
+          emptyMessage={
+            needle === ''
+              ? 'Готовых штор нет — добавьте первую'
+              : 'По этому запросу ничего нет'
+          }
           columns={[
             {
               key: 'model',
@@ -239,6 +296,29 @@ export default function ReadyMadePage(): ReactElement {
                     size="sm"
                     variant="secondary"
                     onClick={() => {
+                      update.reset();
+                      create.reset();
+                      setEditingId(row.id);
+                      setModel(row.model);
+                      setCode(row.code ?? '');
+                      setComment(row.comment ?? '');
+                      setWidthCm(Number.parseFloat(row.widthCm).toString());
+                      setHeightCm(Number.parseFloat(row.heightCm).toString());
+                      /* Цена в форме — в сумах, как её и вводят: `parseMoney`
+                         дал бы тийины, и 450 000 превратились бы в 45 000 000. */
+                      setPrice(Number.parseFloat(row.price).toString());
+                      setPhoto(null);
+                      setPhotoError(null);
+                      setCurrentPhotoUrl(row.photoUrl);
+                      setAdding(true);
+                    }}
+                  >
+                    Изменить
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
                       setCounting({ id: row.id, model: row.model });
                       setCountValue(row.quantity.toString());
                       setQuantityMutation.reset();
@@ -264,26 +344,24 @@ export default function ReadyMadePage(): ReactElement {
 
       <Modal
         open={adding}
-        title="Новая готовая штора"
-        onClose={() => {
-          setAdding(false);
-        }}
+        title={editingId === null ? 'Новая готовая штора' : 'Правка готовой шторы'}
+        onClose={closeForm}
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setAdding(false);
-              }}
-            >
+            <Button variant="secondary" onClick={closeForm}>
               Отмена
             </Button>
             <Button
-              loading={create.isPending}
+              loading={create.isPending || update.isPending}
               onClick={() => {
-                create.mutate({
+                /* Общие поля карточки — их спрашивают и при заведении, и при правке. */
+                const card = {
                   model: model.trim(),
-                  ...(branchId === '' ? {} : { branchId: Number.parseInt(branchId, 10) }),
+                  code: code.trim() === '' ? null : code.trim(),
+                  comment: comment.trim() === '' ? null : comment.trim(),
+                  widthCm: Number.parseFloat(widthCm.replace(',', '.')) || 0,
+                  heightCm: Number.parseFloat(heightCm.replace(',', '.')) || 0,
+                  price: Number.parseFloat(price.replace(',', '.')) || 0,
                   ...(photo === null
                     ? {}
                     : {
@@ -293,16 +371,20 @@ export default function ReadyMadePage(): ReactElement {
                           content: photo.content,
                         },
                       }),
-                  ...(code.trim() === '' ? {} : { code: code.trim() }),
-                  ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
-                  widthCm: Number.parseFloat(widthCm.replace(',', '.')) || 0,
-                  heightCm: Number.parseFloat(heightCm.replace(',', '.')) || 0,
-                  price: Number.parseFloat(price.replace(',', '.')) || 0,
-                  quantity: Math.max(0, Number.parseInt(quantity, 10) || 0),
-                });
+                };
+
+                if (editingId === null) {
+                  create.mutate({
+                    ...card,
+                    ...(branchId === '' ? {} : { branchId: Number.parseInt(branchId, 10) }),
+                    quantity: Math.max(0, Number.parseInt(quantity, 10) || 0),
+                  });
+                } else {
+                  update.mutate({ id: editingId, ...card });
+                }
               }}
             >
-              Поставить на склад
+              {editingId === null ? 'Поставить на склад' : 'Сохранить'}
             </Button>
           </>
         }
@@ -333,6 +415,12 @@ export default function ReadyMadePage(): ReactElement {
             находит штору, когда клиент называет её по телефону. Описание
             рядом заполняется руками: справочнику здесь взяться неоткуда.
           */}
+          {/*
+            Филиал и остаток спрашиваются только у новой шторы: лежащая на
+            полке не переезжает между цехами, а остаток ведётся пересчётом —
+            своей кнопкой и своей записью в журнале.
+          */}
+          {editingId === null && (
           <Field label="Филиал" hint="По умолчанию — ваш основной">
             <Select
               value={branchId}
@@ -346,6 +434,7 @@ export default function ReadyMadePage(): ReactElement {
               }))}
             />
           </Field>
+          )}
 
           <Field label="Код" hint="Бирка на шторе — по нему её найдут в продаже">
             <Input
@@ -373,6 +462,15 @@ export default function ReadyMadePage(): ReactElement {
           */}
           <Field label="Снимок" hint="Продавец показывает штору клиенту" error={photoError ?? undefined}>
             <div className="flex items-center gap-3">
+              {photo === null && currentPhotoUrl !== null && (
+                /* Снимок, который уже стоит у шторы: новый файл его заменит,
+                   а если файл не выбирать — останется этот. */
+                <img
+                  src={currentPhotoUrl}
+                  alt=""
+                  className="h-16 w-16 shrink-0 rounded-tile object-cover"
+                />
+              )}
               {photo !== null && (
                 /* Обычный img: это локальный data-URL, оптимизатору Next
                    его оптимизировать нечем и незачем. */
@@ -457,20 +555,20 @@ export default function ReadyMadePage(): ReactElement {
                 placeholder="450 000"
               />
             </Field>
-            <Field label="Количество" error={errors['quantity']}>
-              <Input
-                value={quantity}
-                onChange={(event) => {
-                  setQuantity(event.target.value);
-                }}
-                placeholder="1"
-              />
-            </Field>
+            {editingId === null && (
+              <Field label="Количество" error={errors['quantity']}>
+                <Input
+                  value={quantity}
+                  onChange={(event) => {
+                    setQuantity(event.target.value);
+                  }}
+                  placeholder="1"
+                />
+              </Field>
+            )}
           </div>
 
-          <p className="text-overline text-muted">
-            Снимок добавляется из мобильного приложения — там штору фотографируют на месте.
-          </p>
+
         </div>
       </Modal>
 
