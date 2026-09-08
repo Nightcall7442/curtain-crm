@@ -3,7 +3,7 @@
 import { formatMoney, parseMoney } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
-import { Button, Field, fieldErrors, FormError, Input, Modal, Textarea } from '@/components/ui/Form';
+import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
 /**
@@ -271,23 +271,17 @@ export function SellReadyMadeDialog({
             </div>
 
             <Field label="Цена, сум" error={errors['workPrice']}>
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 value={workPrice}
-                onChange={(event) => {
-                  setWorkPrice(event.target.value);
-                }}
+                onChange={setWorkPrice}
                 placeholder="1200000"
               />
             </Field>
 
             <Field label="Предоплата, сум" error={errors['deposit']} className="sm:col-span-2 lg:col-span-1">
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 value={deposit}
-                onChange={(event) => {
-                  setDeposit(event.target.value);
-                }}
+                onChange={setDeposit}
                 placeholder="0"
               />
             </Field>

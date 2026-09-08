@@ -27,7 +27,7 @@ import {
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
-import { ChipSelect, Field, Input } from '../components/Field';
+import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
@@ -412,21 +412,19 @@ export function OrderCreateScreen(): ReactElement {
           <View style={styles.money}>
             <View style={styles.moneyItem}>
               <Field label="Стоимость работ">
-                <Input
+                <MoneyInput
                   value={workPrice}
                   onChangeText={setWorkPrice}
                   placeholder="0"
-                  keyboardType="numeric"
                 />
               </Field>
             </View>
             <View style={styles.moneyItem}>
               <Field label="Предоплата">
-                <Input
+                <MoneyInput
                   value={deposit}
                   onChangeText={setDeposit}
                   placeholder="0"
-                  keyboardType="numeric"
                 />
               </Field>
             </View>

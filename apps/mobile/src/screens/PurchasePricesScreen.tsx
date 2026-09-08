@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
-import { Field, Input } from '../components/Field';
+import { Field, MoneyInput } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -150,10 +150,9 @@ export function PurchasePricesScreen(): ReactElement {
                 {editing === item.id && (
                   <View style={styles.editor}>
                     <Field label="Новая цена, сум">
-                      <Input
+                      <MoneyInput
                         value={price}
                         onChangeText={setPrice}
-                        keyboardType="numeric"
                         autoFocus
                       />
                     </Field>

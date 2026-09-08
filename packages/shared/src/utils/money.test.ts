@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMoneyShort, parseMoney } from './money';
+import { formatMoneyShort, groupDigits, parseMoney, ungroupDigits } from './money';
 
 /**
  * Компактный формат сумм — только он: остальная денежная арифметика
@@ -40,5 +40,36 @@ describe('formatMoneyShort', () => {
     expect(formatMoneyShort(parseMoney('13800000'), { locale: 'uz' })).toBe(
       "13,8 mln so'm",
     );
+  });
+});
+
+describe('ввод суммы руками', () => {
+  it('разряды расставляются по три цифры', () => {
+    expect(groupDigits('1000000')).toBe('1\u00A0000\u00A0000');
+    expect(groupDigits('999')).toBe('999');
+    expect(groupDigits('')).toBe('');
+  });
+
+  it('дробная часть не разбивается', () => {
+    expect(groupDigits('1000000,5')).toBe('1\u00A0000\u00A0000,5');
+  });
+
+  it('лишние символы отбрасываются', () => {
+    expect(groupDigits('12x34')).toBe('1\u00A0234');
+  });
+
+  it('обратное преобразование убирает разряды и приводит запятую к точке', () => {
+    expect(ungroupDigits('1\u00A0000\u00A0000')).toBe('1000000');
+    expect(ungroupDigits('1 000,50')).toBe('1000.50');
+  });
+
+  /*
+    Главная проверка этой пары: сумма с разрядами не должна превращаться в
+    единицу. `parseFloat('1 000 000')` останавливается о первый пробел и
+    возвращает 1 — молча, без ошибки, и такая зарплата уходит в ведомость.
+  */
+  it('сумма с разрядами разбирается целиком, а не до первого пробела', () => {
+    expect(parseMoney('1\u00A0000\u00A0000')).toBe(parseMoney('1000000'));
+    expect(parseMoney('1 250 000')).toBe(parseMoney('1250000'));
   });
 });

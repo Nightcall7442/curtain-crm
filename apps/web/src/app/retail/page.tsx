@@ -17,7 +17,7 @@ import { Suspense, useState, type ReactElement } from 'react';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
-import { Button, Field, fieldErrors, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -426,12 +426,9 @@ function RetailInner({
           </div>
 
           <Field label="Цена для клиента, сум" required error={errors['price']}>
-            <Input
-              inputMode="decimal"
+            <MoneyInput
               value={price}
-              onChange={(event) => {
-                setPrice(event.target.value);
-              }}
+              onChange={setPrice}
               placeholder="45000"
             />
           </Field>

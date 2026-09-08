@@ -18,7 +18,7 @@ import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Row, Skeleton } from './Card';
-import { Field, Input } from './Field';
+import { Field, Input, MoneyInput } from './Field';
 
 /**
  * Управление заказом: назначение, цена, расценки, отмена.
@@ -260,20 +260,18 @@ export function OrderManagement({
         </Text>
 
         <Field label="Стоимость работы, сум">
-          <Input
+          <MoneyInput
             value={price}
             onChangeText={setPrice}
             placeholder={trimAmount(workPrice)}
-            keyboardType="numeric"
           />
         </Field>
 
         <Field label="Предоплата, сум">
-          <Input
+          <MoneyInput
             value={prepaid}
             onChangeText={setPrepaid}
             placeholder={trimAmount(deposit)}
-            keyboardType="numeric"
           />
         </Field>
 

@@ -10,7 +10,7 @@ import {
 } from '@curtain-crm/shared';
 import { useMemo, useState, type ReactElement } from 'react';
 
-import { Button, Field, fieldErrors, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
 /**
@@ -34,6 +34,9 @@ import { trpc } from '@/lib/trpc';
  * `PAYROLL_SCHEME_REQUIRED_FIELDS` — того же источника, что использует
  * сервер и check-констрейнт таблицы. Трёх копий правила не существует.
  */
+
+/** Поля, которые считаются деньгами: у них показываются разряды. */
+const MONEY_FIELDS = new Set(['baseAmount', 'rate']);
 
 const FIELD_LABELS: Readonly<Record<string, { label: string; hint: string }>> = {
   baseAmount: { label: 'Оклад за месяц, сум', hint: 'Начисляется независимо от выработки' },
@@ -197,14 +200,27 @@ export function SchemeDialog({
               required
               error={errors[key]}
             >
-              <Input
-                inputMode="decimal"
-                value={values[key] ?? ''}
-                onChange={(event) => {
-                  setValues((current) => ({ ...current, [key]: event.target.value }));
-                }}
-                invalid={errors[key] !== undefined}
-              />
+              {/* Разряды — только у денег. План KPI это число заказов, а
+                  процент — доля: «3 000» вместо «3000» там сбивало бы с
+                  толку, а не помогало читать. */}
+              {MONEY_FIELDS.has(key) ? (
+                <MoneyInput
+                  value={values[key] ?? ''}
+                  onChange={(next) => {
+                    setValues((current) => ({ ...current, [key]: next }));
+                  }}
+                  invalid={errors[key] !== undefined}
+                />
+              ) : (
+                <Input
+                  inputMode="decimal"
+                  value={values[key] ?? ''}
+                  onChange={(event) => {
+                    setValues((current) => ({ ...current, [key]: event.target.value }));
+                  }}
+                  invalid={errors[key] !== undefined}
+                />
+              )}
             </Field>
           );
         })}

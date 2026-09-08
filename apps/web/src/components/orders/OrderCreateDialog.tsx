@@ -17,17 +17,7 @@ import {
 import { Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
 
-import {
-  Button,
-  ChipSelect,
-  Field,
-  fieldErrors,
-  FormError,
-  Input,
-  Modal,
-  Select,
-  Textarea,
-} from '@/components/ui/Form';
+import { Button, ChipSelect, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 import { formatQuantity } from '@/lib/utils';
 
@@ -489,23 +479,17 @@ export function OrderCreateDialog({
             </Field>
 
             <Field label="Стоимость работ, сум" error={errors['workPrice']}>
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 value={workPrice}
-                onChange={(event) => {
-                  setWorkPrice(event.target.value);
-                }}
+                onChange={setWorkPrice}
                 placeholder="5000000"
               />
             </Field>
 
             <Field label="Предоплата, сум" error={errors['deposit']}>
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 value={deposit}
-                onChange={(event) => {
-                  setDeposit(event.target.value);
-                }}
+                onChange={setDeposit}
                 placeholder="2000000"
               />
             </Field>

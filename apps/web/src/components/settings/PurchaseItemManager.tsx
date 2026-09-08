@@ -17,7 +17,7 @@ import { useState, type ReactElement } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { Button, Field, FormError, IconButton, Input, Modal, Select } from '@/components/ui/Form';
+import { Button, Field, FormError, IconButton, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 
@@ -270,12 +270,9 @@ export function PurchaseItemManager(): ReactElement {
             </Field>
 
             <Field label="Цена, сум" required>
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 value={price}
-                onChange={(event) => {
-                  setPrice(event.target.value);
-                }}
+                onChange={setPrice}
                 placeholder="85000"
               />
             </Field>

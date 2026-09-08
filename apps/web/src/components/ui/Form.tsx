@@ -1,5 +1,6 @@
 'use client';
 
+import { groupDigits, ungroupDigits } from '@curtain-crm/shared';
 import { Loader2, X } from 'lucide-react';
 import { useEffect, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -207,6 +208,44 @@ export function Input({
         invalid === true && 'border-danger',
         className,
       )}
+    />
+  );
+}
+
+/**
+ * Поле для суммы: показывает разряды, отдаёт чистое число.
+ *
+ * Владелец попросил, чтобы суммы везде читались как «1 000 000», а не
+ * сплошной лентой цифр: в «1000000» и «10000000» разница видна только
+ * пересчётом нулей пальцем по экрану, а ошибка на порядок в цене заказа
+ * стоит дорого.
+ *
+ * Разряды — ТОЛЬКО показ. В состоянии формы и в `onChange` значение
+ * остаётся без пробелов, поэтому отправка на сервер и проверки не меняются
+ * ни в одном вызывающем месте: они видят ровно то же, что видели раньше.
+ */
+export function MoneyInput({
+  value,
+  onChange,
+  ...rest
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size' | 'value' | 'onChange' | 'type'> & {
+  readonly invalid?: boolean;
+  readonly size?: ControlSize;
+  /** Чистое значение без пробелов: `1000000`. */
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}): ReactElement {
+  return (
+    <Input
+      {...rest}
+      /* `text`, а не `number`: у числового поля браузер не покажет пробелы
+         вовсе — он считает такую строку недопустимой и очищает её. */
+      type="text"
+      inputMode="decimal"
+      value={groupDigits(value)}
+      onChange={(event) => {
+        onChange(ungroupDigits(event.target.value));
+      }}
     />
   );
 }

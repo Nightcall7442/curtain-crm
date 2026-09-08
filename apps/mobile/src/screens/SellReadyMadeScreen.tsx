@@ -16,7 +16,7 @@ import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
-import { ChipSelect, Field, Input } from '../components/Field';
+import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -175,21 +175,19 @@ export function SellReadyMadeScreen(): ReactElement {
           <View style={styles.money}>
             <View style={styles.moneyItem}>
               <Field label="Цена">
-                <Input
+                <MoneyInput
                   value={workPrice}
                   onChangeText={setWorkPrice}
                   placeholder="0"
-                  keyboardType="numeric"
                 />
               </Field>
             </View>
             <View style={styles.moneyItem}>
               <Field label="Предоплата">
-                <Input
+                <MoneyInput
                   value={deposit}
                   onChangeText={setDeposit}
                   placeholder="0"
-                  keyboardType="numeric"
                 />
               </Field>
             </View>

@@ -9,7 +9,7 @@ import {
 } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 
-import { Field, Input } from '@/components/ui/Form';
+import { Field, MoneyInput } from '@/components/ui/Form';
 
 /**
  * Сдельные расценки по этапам — сколько получит каждый исполнитель за этот
@@ -109,11 +109,10 @@ export function StageFeesFields({
           label={`${ORDER_STAGE_FEE_LABELS_RU[stage]}, сум`}
           error={errors[ERROR_FIELD[stage]]}
         >
-          <Input
-            inputMode="decimal"
+          <MoneyInput
             value={value[stage]}
-            onChange={(event) => {
-              onChange({ ...value, [stage]: event.target.value });
+            onChange={(next) => {
+              onChange({ ...value, [stage]: next });
             }}
             placeholder="0"
           />

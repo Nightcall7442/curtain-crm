@@ -15,7 +15,7 @@ import {
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
-import { Field, Input } from '../components/Field';
+import { Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -281,13 +281,12 @@ export function ReadyMadeStockScreen(): ReactElement {
             <View style={styles.row}>
               <View style={styles.half}>
                 <Field label="Цена, сум" required>
-                  <Input
+                  <MoneyInput
                     value={form.price}
                     onChangeText={(price) => {
                       patch({ price });
                     }}
-                    keyboardType="decimal-pad"
-                    placeholder="450000"
+                    placeholder="450 000"
                   />
                 </Field>
               </View>

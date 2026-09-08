@@ -6,7 +6,7 @@ import { useState, type ReactElement } from 'react';
 
 import { useToast } from '@/components/providers/ToastProvider';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
-import { Button, Field, fieldErrors, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -337,12 +337,10 @@ export default function ReadyMadePage(): ReactElement {
               />
             </Field>
             <Field label="Цена, сум" required error={errors['price']}>
-              <Input
+              <MoneyInput
                 value={price}
-                onChange={(event) => {
-                  setPrice(event.target.value);
-                }}
-                placeholder="450000"
+                onChange={setPrice}
+                placeholder="450 000"
               />
             </Field>
             <Field label="Количество" error={errors['quantity']}>

@@ -1,3 +1,4 @@
+import { groupDigits, ungroupDigits } from '@curtain-crm/shared';
 import { forwardRef, type ReactElement, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
@@ -67,6 +68,39 @@ export const Input = forwardRef<TextInput, TextInputProps & { readonly invalid?:
     );
   },
 );
+
+/**
+ * Поле для суммы: показывает разряды, отдаёт чистое число.
+ *
+ * Владелец попросил, чтобы суммы везде читались как «1 000 000», а не
+ * сплошной лентой цифр: в «1000000» и «10000000» разница видна только
+ * пересчётом нулей пальцем по экрану, а ошибка на порядок в цене заказа
+ * стоит дорого. Особенно на телефоне, где сумму набирают стоя у клиента.
+ *
+ * Разряды — ТОЛЬКО показ. В состоянии формы значение остаётся без пробелов,
+ * поэтому отправка и проверки в вызывающих экранах не меняются.
+ */
+export function MoneyInput({
+  value,
+  onChangeText,
+  ...rest
+}: Omit<TextInputProps, 'value' | 'onChangeText' | 'keyboardType'> & {
+  readonly invalid?: boolean;
+  /** Чистое значение без пробелов: `1000000`. */
+  readonly value: string;
+  readonly onChangeText: (value: string) => void;
+}): ReactElement {
+  return (
+    <Input
+      {...rest}
+      keyboardType="decimal-pad"
+      value={groupDigits(value)}
+      onChangeText={(next) => {
+        onChangeText(ungroupDigits(next));
+      }}
+    />
+  );
+}
 
 /**
  * Выбор одного значения из нескольких.

@@ -12,7 +12,7 @@ import {
 import { useState, type ReactElement } from 'react';
 
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
-import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui/Form';
+import { Button, Field, FormError, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
 import { StageFeesFields, toStageFeesInput, type StageFeesDraft } from './StageFeesFields';
@@ -203,22 +203,16 @@ export function OrderManagePanel({
           <FormError message={setPrice.error?.message ?? null} />
 
           <Field label="Стоимость работ, сум">
-            <Input
-              inputMode="decimal"
+            <MoneyInput
               value={nextWorkPrice}
-              onChange={(event) => {
-                setNextWorkPrice(event.target.value);
-              }}
+              onChange={setNextWorkPrice}
             />
           </Field>
 
           <Field label="Предоплата, сум">
-            <Input
-              inputMode="decimal"
+            <MoneyInput
               value={nextDeposit}
-              onChange={(event) => {
-                setNextDeposit(event.target.value);
-              }}
+              onChange={setNextDeposit}
             />
           </Field>
 

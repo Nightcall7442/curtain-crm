@@ -59,7 +59,17 @@ const roundHalfAwayFromZero = (value: number): number =>
  *   разбора превратилась бы в «зарплата 0» без единого следа в логах.
  */
 export function parseMoney(value: string | number): MoneyMinor {
-  const major = typeof value === 'string' ? Number.parseFloat(value) : value;
+  /*
+    Пробелы вычищаются ДО разбора — в том числе неразрывные.
+
+    Суммы в полях ввода показываются разрядами («1 000 000»), и то же самое
+    попадает в буфер обмена, когда сумму копируют из таблицы. `parseFloat`
+    на такой строке останавливается о первый пробел и возвращает 1 — молча,
+    без ошибки. Один вычищенный пробел здесь дешевле, чем зарплата, которая
+    в миллион раз меньше положенной.
+  */
+  const major =
+    typeof value === 'string' ? Number.parseFloat(value.replace(/[\s\u00A0]/g, '')) : value;
 
   if (!Number.isFinite(major)) {
     throw new RangeError(`Некорректная денежная сумма: ${String(value)}`);
@@ -81,6 +91,48 @@ export function tryParseMoney(value: string | number | null | undefined): MoneyM
   } catch {
     return null;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Ввод суммы руками                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * То, что человек набрал, — в вид с разрядами: `1000000` → `1 000 000`.
+ *
+ * Владелец попросил, чтобы суммы везде читались разрядами, а не сплошной
+ * лентой цифр: в «1000000» и «10000000» разница видна только пересчётом
+ * нулей пальцем по экрану, и ошибка на порядок в цене заказа стоит дорого.
+ *
+ * Работает со строкой поля ввода, а не с числом: пока сумму набирают, она
+ * ещё не число — может быть пустой, может кончаться запятой. Всё, что не
+ * цифра и не разделитель дробной части, отбрасывается; дробная часть
+ * остаётся неразделённой.
+ *
+ * Разделитель — неразрывный пробел: сумма не должна разрываться переносом
+ * строки посередине, ровно как в `formatMoney`.
+ */
+export function groupDigits(raw: string): string {
+  const cleaned = raw.replace(/[^\d.,]/g, '');
+  if (cleaned === '') return '';
+
+  const separator = /[.,]/.exec(cleaned);
+  const whole = separator === null ? cleaned : cleaned.slice(0, separator.index);
+  const rest = separator === null ? '' : cleaned.slice(separator.index).replace(/[.,]/g, (m, i) => (i === 0 ? m : ''));
+
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
+  return `${grouped}${rest}`;
+}
+
+/**
+ * Обратная операция: `1 000 000` → `1000000`, `1 000,50` → `1000.50`.
+ *
+ * Нужна на отправке: сервер принимает число, а не запись для чтения.
+ * Запятая приводится к точке — на телефоне десятичный разделитель зависит
+ * от раскладки, и человек наберёт тот, который у него на клавиатуре.
+ */
+export function ungroupDigits(raw: string): string {
+  return raw.replace(/[\s\u00A0]/g, '').replace(',', '.');
 }
 
 /** Строка для записи в колонку `numeric(14, 2)`: `"1250000.00"`. */
@@ -183,5 +235,5 @@ export function formatMoneyShort(
   const amount = rounded.toString().replace('.', ',');
 
   // Пробелы неразрывные, как в `formatMoney`: сумма не рвётся переносом.
-  return [amount, scaled.unit[locale], CURRENCY_SYMBOL[locale]].join(' ');
+  return [amount, scaled.unit[locale], CURRENCY_SYMBOL[locale]].join('\u00A0');
 }
