@@ -687,19 +687,11 @@ function Styles({ copy }: { readonly copy: LandingCopy }): ReactElement {
 /*                              Полоса показателей                            */
 /* -------------------------------------------------------------------------- */
 
-/**
- * ЗАГЛУШКА: значения — прочерки. Настоящие цифры (клиенты, коллекции
- * тканей, годы на рынке) должен дать владелец — писать на публичной
- * странице числа, которые никто не проверял, значит выдавать догадку за
- * факт о его бизнесе, а это не мне решать.
- */
-const STATS_PLACEHOLDER = '—';
-
 function StatsBand({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const stats = [
-    { icon: Users, value: STATS_PLACEHOLDER, label: copy.statsClientsLabel },
-    { icon: Gem, value: STATS_PLACEHOLDER, label: copy.statsFabricsLabel },
-    { icon: Star, value: STATS_PLACEHOLDER, label: copy.statsYearsLabel },
+    { icon: Users, value: copy.statsClientsValue, label: copy.statsClientsLabel },
+    { icon: Gem, value: copy.statsFabricsValue, label: copy.statsFabricsLabel },
+    { icon: Star, value: copy.statsYearsValue, label: copy.statsYearsLabel },
   ] as const;
 
   return (
@@ -858,8 +850,11 @@ interface LandingCopy {
   readonly stylesEyebrow: string;
   readonly stylesTitle: string;
   readonly styles: readonly StyleCard[];
+  readonly statsClientsValue: string;
   readonly statsClientsLabel: string;
+  readonly statsFabricsValue: string;
   readonly statsFabricsLabel: string;
+  readonly statsYearsValue: string;
   readonly statsYearsLabel: string;
   readonly statsTagline: string;
   readonly aboutEyebrow: string;
@@ -899,8 +894,11 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
       { name: 'Hi-Tech', caption: 'Умные решения для комфорта', photo: 'hiTech' },
       { name: 'Premium', caption: 'Эксклюзивные коллекции', photo: 'premium' },
     ],
+    statsClientsValue: '1000+',
     statsClientsLabel: 'Довольных клиентов',
+    statsFabricsValue: '50+',
     statsFabricsLabel: 'Коллекций тканей',
+    statsYearsValue: '5 лет',
     statsYearsLabel: 'Доверия и качества',
     statsTagline: 'Уют начинается с деталей',
     aboutEyebrow: 'О мастерской',
@@ -945,8 +943,11 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
       { name: 'Hi-Tech', caption: 'Qulaylik uchun aqlli yechimlar', photo: 'hiTech' },
       { name: 'Premium', caption: 'Eksklyuziv kolleksiyalar', photo: 'premium' },
     ],
+    statsClientsValue: '1000+',
     statsClientsLabel: 'Mamnun mijozlar',
+    statsFabricsValue: '50+',
     statsFabricsLabel: 'Mato kolleksiyalari',
+    statsYearsValue: '5 yil',
     statsYearsLabel: 'Ishonch va sifat',
     statsTagline: "Qulaylik mayda detallardan boshlanadi",
     aboutEyebrow: 'Ustaxona haqida',
