@@ -183,6 +183,13 @@
       "when": 1788900419015,
       "tag": "0025_ready_made_code",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788906796315,
+      "tag": "0026_fabric_stock",
+      "breakpoints": true
     }
   ]
 }

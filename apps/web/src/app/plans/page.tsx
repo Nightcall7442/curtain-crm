@@ -4,7 +4,6 @@ import {
   CalendarRange,
   FileText,
   GraduationCap,
-  Package,
   Target,
   TrendingUp,
   UserSquare,
@@ -47,12 +46,6 @@ const PLANNED: readonly {
     label: 'Продажи',
     icon: TrendingUp,
     summary: 'Воронка и конверсия — сейчас нет учёта обращений, делить закрытые заказы не на что.',
-  },
-  {
-    href: '/warehouse',
-    label: 'Склад тканей',
-    icon: Package,
-    summary: 'Остатки и списание при раскрое — складского учёта в системе пока нет.',
   },
   {
     href: '/training',

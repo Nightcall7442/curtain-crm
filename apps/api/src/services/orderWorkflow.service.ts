@@ -27,6 +27,7 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
+import { writeOffOrderFabric } from './fabricStock.service';
 import { accrueForClosedOrder } from './payroll.service';
 import {
   notifyOrderAssigned,
@@ -444,6 +445,21 @@ export async function changeOrderStatus(
   */
   if (toStatus === OrderStatus.COMPLETED) {
     await accrueForClosedOrder(executor, updated);
+  }
+
+  /*
+    6b. Ткань уходит со склада на входе в пошив — то есть при раскрое.
+
+    Не при создании заказа: пока админ его не утвердил, кроить нечего, а
+    метраж проставляет как раз он. И не по факту «швея сказала»: списание
+    привязано к событию, которое и так фиксируется, иначе остаток отстаёт от
+    полки ровно настолько, насколько занят тот, кто должен был отметить.
+
+    Дважды не списывается: заказ может вернуться на доработку и уйти в пошив
+    снова, а метры к тому времени уже ушли (`fabric_written_off_at`).
+  */
+  if (toStatus === OrderStatus.SEWING_IN_PROGRESS && updated.fabricWrittenOffAt === null) {
+    await writeOffOrderFabric(executor, updated, actor.id, params.ipAddress ?? null);
   }
 
   /* 7. История — только добавление, никогда перезапись. */

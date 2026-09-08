@@ -218,6 +218,18 @@ export const CURTAIN_MOUNT_KIND_LABELS_RU = CURTAIN_MOUNT_KIND_LABELS.ru;
 export const curtainMountKindOf = (value: string | null | undefined): CurtainMountKind =>
   value === CurtainMountKind.PIPE ? CurtainMountKind.PIPE : CurtainMountKind.CORNICE;
 
+/** Строки материала позиции — в том порядке, в каком их спрашивает форма. */
+export const MATERIAL_SLOTS = [
+  'portiere',
+  'tulle',
+  'protection',
+  'cornice',
+  'plastic',
+  'pipe',
+] as const;
+
+export type MaterialSlot = (typeof MATERIAL_SLOTS)[number];
+
 /** Справочник кодов для каждой строки материала в форме заказа. */
 export const MATERIAL_CODE_KINDS = {
   portiere: CatalogKind.PORTIERE_CODE,
@@ -226,7 +238,49 @@ export const MATERIAL_CODE_KINDS = {
   cornice: CatalogKind.CORNICE_CODE,
   plastic: CatalogKind.PLASTIC_CODE,
   pipe: CatalogKind.PIPE_CODE,
-} as const;
+} as const satisfies Readonly<Record<MaterialSlot, CatalogKind>>;
+
+/** Виды справочников, по которым ведётся склад тканей. */
+export const MATERIAL_CODE_KIND_LIST = MATERIAL_SLOTS.map(
+  (slot) => MATERIAL_CODE_KINDS[slot],
+);
+
+/**
+ * Строка материала по виду справочника — обратная сторона `MATERIAL_CODE_KINDS`.
+ *
+ * Нужна складу: остаток хранится видом справочника (`portiere_code`), а
+ * человеку показывается словом «Портьера».
+ */
+export const MATERIAL_SLOT_BY_CODE_KIND: Readonly<Partial<Record<CatalogKind, MaterialSlot>>> =
+  Object.fromEntries(MATERIAL_SLOTS.map((slot) => [MATERIAL_CODE_KINDS[slot], slot]));
+
+/** Короткие названия строк материала — для колонки «Вид» на складе. */
+export const MATERIAL_SLOT_LABELS: Translated<MaterialSlot> = {
+  ru: {
+    portiere: 'Портьера',
+    tulle: 'Тюль',
+    protection: 'Защита',
+    cornice: 'Карниз',
+    plastic: 'Пластик',
+    pipe: 'Труба',
+  },
+  uz: {
+    portiere: 'Parda',
+    tulle: 'Tyul',
+    protection: 'Himoya',
+    cornice: 'Karniz',
+    plastic: 'Plastik',
+    pipe: 'Truba',
+  },
+};
+
+export const MATERIAL_SLOT_LABELS_RU = MATERIAL_SLOT_LABELS.ru;
+
+/** Название вида склада: «Портьера» вместо «Коды портьер». */
+export function materialKindLabel(kind: CatalogKind): string {
+  const slot = MATERIAL_SLOT_BY_CODE_KIND[kind];
+  return slot === undefined ? CATALOG_KIND_LABELS_RU[kind] : MATERIAL_SLOT_LABELS_RU[slot];
+}
 
 /** Категории закупочных товаров (`purchase_items.category`). */
 export const PURCHASE_CATEGORIES = [

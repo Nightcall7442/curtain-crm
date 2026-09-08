@@ -4,6 +4,7 @@ import { authRouter } from './auth.router';
 import { branchesRouter } from './branches.router';
 import { catalogRouter } from './catalog.router';
 import { dayOffRouter } from './dayOff.router';
+import { fabricRouter } from './fabric.router';
 import { notificationsRouter } from './notifications.router';
 import { orderCommentsRouter } from './orderComments.router';
 import { orderPhotosRouter } from './orderPhotos.router';
@@ -38,6 +39,8 @@ export const appRouter = router({
   shifts: shiftsRouter,
   catalog: catalogRouter,
   purchases: purchasesRouter,
+  /* Склад тканей: остатки по коду с этикетки и приход рулонов. */
+  fabric: fabricRouter,
   orders: ordersRouter,
   orderPhotos: orderPhotosRouter,
   orderComments: orderCommentsRouter,
