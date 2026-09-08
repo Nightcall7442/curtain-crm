@@ -27,6 +27,7 @@ import { useState, type ReactElement } from 'react';
 import { OrderManagePanel } from '@/components/orders/OrderManagePanel';
 import { stageFeesFromOrder } from '@/components/orders/StageFeesFields';
 import { OrderPhotos } from '@/components/orders/OrderPhotos';
+import { ItemMeters } from '@/components/orders/ItemMeters';
 import { OrderPurchases } from '@/components/orders/OrderPurchases';
 import { VoiceRecorder } from '@/components/orders/VoiceRecorder';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -523,6 +524,12 @@ export default function OrderDetailPage(): ReactElement {
                     {item.comment !== null && (
                       <p className="mt-2 text-footnote text-muted">{item.comment}</p>
                     )}
+
+                    {/*
+                      Метраж проставляет руководство: продавец у клиента дома
+                      его не считает, а «на глазок» всплывает потом в раскрое.
+                    */}
+                    {isManagement && <ItemMeters orderId={orderId} item={item} />}
                   </li>
                 ))}
               </ul>

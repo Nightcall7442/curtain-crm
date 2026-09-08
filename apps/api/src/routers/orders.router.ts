@@ -28,6 +28,7 @@ import {
   OrderItemKind,
   orderItemKindSchema,
   orderItemMaterialSchema,
+  type OrderItemMaterial,
   orderStatusSchema,
   parseDimensions,
   OrderStatus,
@@ -358,6 +359,26 @@ async function loadItems(executor: DbExecutor, orderIds: readonly number[]) {
 }
 
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Метраж одного материала: то же ограничение, что и в самой строке
+ * материала (`orderItemMaterialSchema`), — потолок один на всю систему.
+ */
+const materialMetersSchema = z.number().positive().max(10000).nullable();
+
+/**
+ * Проставляет метраж в строку материала.
+ *
+ * Материала нет (код не заполнен) — метражу неоткуда взяться; поле не
+ * прислано — прежнее значение остаётся.
+ */
+function withMeters(
+  material: OrderItemMaterial | null,
+  meters: number | null | undefined,
+): OrderItemMaterial | null {
+  if (material === null || meters === undefined) return material;
+  return { ...material, meters };
+}
 
 export const ordersRouter = router({
   /** Список заказов с фильтрами. Основная выдача раздела «Заказы». */
@@ -1014,6 +1035,86 @@ export const ordersRouter = router({
         });
 
         return maskStageFees(updated, ctx.user);
+      }),
+    ),
+
+  /**
+   * Метраж материалов позиции.
+   *
+   * Продавец вводит только код с этикетки: сколько метров ткани уйдёт, он у
+   * клиента дома не считает, а цифра «на глазок» потом всплывает в раскрое.
+   * Метраж проставляет админ или директор — уже по заказу целиком, когда
+   * позиции пересчитаны.
+   *
+   * `null` в поле снимает ранее проставленный метраж, отсутствующее поле не
+   * трогает его вовсе: это разные вещи, и `??` их бы склеил.
+   */
+  setItemMeters: managementProcedure
+    .input(
+      z.object({
+        itemId: idSchema,
+        /* По одному значению на портьеру, в том же порядке, что и в позиции. */
+        portieres: z.array(materialMetersSchema).max(MAX_PORTIERES_PER_ITEM).optional(),
+        tulle: materialMetersSchema.optional(),
+        protection: materialMetersSchema.optional(),
+        cornice: materialMetersSchema.optional(),
+        plastic: materialMetersSchema.optional(),
+        pipe: materialMetersSchema.optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const [item] = await tx
+          .select()
+          .from(orderItems)
+          .where(eq(orderItems.id, input.itemId))
+          .limit(1);
+
+        if (item === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Позиция заказа не найдена' });
+        }
+
+        // Блокируем заказ, а не позицию: метраж — часть его состава.
+        const order = await loadOrderForUpdate(tx, item.orderId);
+
+        /* Локальная привязка: внутри `map` сужение по `input` уже не живёт. */
+        const portiereMeters = input.portieres;
+
+        const patch = {
+          portieres:
+            portiereMeters === undefined
+              ? item.portieres
+              : item.portieres.map((portiere, index) => {
+                  const meters = portiereMeters[index];
+                  return meters === undefined ? portiere : { ...portiere, meters };
+                }),
+          tulle: withMeters(item.tulle, input.tulle),
+          protection: withMeters(item.protection, input.protection),
+          cornice: withMeters(item.cornice, input.cornice),
+          plastic: withMeters(item.plastic, input.plastic),
+          pipe: withMeters(item.pipe, input.pipe),
+        };
+
+        const [updated] = await tx
+          .update(orderItems)
+          .set(patch)
+          .where(eq(orderItems.id, item.id))
+          .returning();
+
+        if (updated === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Позиция заказа не найдена' });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'order.item_meters_changed',
+          entityType: 'order',
+          entityId: order.id,
+          details: { itemId: item.id, meters: input },
+          ipAddress: ctx.ipAddress,
+        });
+
+        return updated;
       }),
     ),
 

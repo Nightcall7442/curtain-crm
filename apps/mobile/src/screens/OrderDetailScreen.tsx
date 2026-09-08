@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 
 import { BottomSheet } from '../components/BottomSheet';
+import { ItemMeters } from '../components/ItemMeters';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { OrderManagement } from '../components/OrderManagement';
 import { Icon } from '../components/Icon';
@@ -490,6 +491,12 @@ export function OrderDetailScreen({
                 <Text style={styles.itemDetail}>{`Труба: ${formatMaterial(item.pipe)}`}</Text>
               )}
               {item.comment !== null && <Text style={styles.itemComment}>{item.comment}</Text>}
+
+              {/*
+                Метраж проставляет руководство: продавец у клиента дома его
+                не считает, а «на глазок» всплывает потом в раскрое.
+              */}
+              {isManager && <ItemMeters orderId={data.id} item={item} />}
             </View>
           ))
         )}

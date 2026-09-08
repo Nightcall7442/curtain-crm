@@ -156,6 +156,7 @@ export const AUDIT_ACTIONS = [
   'order.assignee_changed',
   'order.price_changed',
   'order.stage_fees_changed',
+  'order.item_meters_changed',
   'order.cornice_taken',
   'order.cornice_done',
 
