@@ -927,9 +927,9 @@ function Team({
           </p>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-x-6 gap-y-12 sm:gap-x-10">
-          {team.data.map((member, index) => (
-            <TeamCard key={member.id} member={member} locale={locale} index={index} />
+        <div className="flex flex-wrap justify-center gap-x-8 gap-y-10 sm:gap-x-10">
+          {team.data.map((member) => (
+            <TeamCard key={member.id} member={member} locale={locale} />
           ))}
         </div>
       </div>
@@ -938,24 +938,18 @@ function Team({
 }
 
 /**
- * Размер и сдвиг по кругу — заданы индексом по кругу из четырёх, а не
- * случайно: страница выглядит одинаково у всех посетителей и при каждой
- * перезагрузке. Волна размеров (крупный–средний–средний–мелкий) не
- * привязана к должности: подчёркивать директора крупным кругом на витрине
- * значило бы говорить о статусе, а не о том, что мастерская сильна
- * командой целиком.
+ * Диаметр круга — один на всех.
+ *
+ * Здесь была «волна»: четыре размера вперемешку и сдвиг по вертикали, чтобы
+ * ряд не выглядел строем. Читалось это не витриной, а небрежностью — будто
+ * фотографии вставляли на глаз. Одинаковый круг и общая сетка честнее: люди
+ * в мастерской равны, и размер круга ничего о них не сообщает.
  */
-const TEAM_RHYTHM = [
-  { size: 132, lift: -10 },
-  { size: 112, lift: 12 },
-  { size: 118, lift: -4 },
-  { size: 100, lift: 8 },
-] as const;
+const TEAM_AVATAR_SIZE = 116;
 
 function TeamCard({
   member,
   locale,
-  index,
 }: {
   readonly member: {
     readonly id: number;
@@ -965,15 +959,13 @@ function TeamCard({
     readonly avatarUrl: string;
   };
   readonly locale: 'ru' | 'uz';
-  readonly index: number;
 }): ReactElement {
   const role = member.jobTitle ?? DEPARTMENT_LABELS[locale][member.department];
-  const rhythm = TEAM_RHYTHM[index % TEAM_RHYTHM.length] ?? TEAM_RHYTHM[0];
 
   return (
     <div
       className="reveal-item flex flex-col items-center gap-3 transition-transform duration-200 hover:-translate-y-1"
-      style={{ transform: `translateY(${String(rhythm.lift)}px)`, width: rhythm.size }}
+      style={{ width: TEAM_AVATAR_SIZE }}
     >
       {/*
         Обычный `<img>`, а не `next/image`: адрес фото зависит от того, где
@@ -985,16 +977,26 @@ function TeamCard({
       <div
         className="relative overflow-hidden rounded-full"
         style={{
-          width: rhythm.size,
-          height: rhythm.size,
+          width: TEAM_AVATAR_SIZE,
+          height: TEAM_AVATAR_SIZE,
           boxShadow: `0 0 0 2px ${CREAM}, 0 0 0 3px ${GOLD}55`,
         }}
       >
+        {/*
+          Кадр берётся от ВЕРХНЕГО края снимка, а не от середины.
+
+          Корпоративная съёмка портретная, а круг квадратный, и обычный
+          `cover` срезает сверху и снизу поровну — у всех оказывалась
+          отрезана макушка. Голова у портрета сверху, поэтому лишнее должно
+          уходить снизу. Ровно так же кадрирует мобильное приложение
+          (`components/Avatar.tsx`), чтобы одно и то же лицо выглядело
+          одинаково и там, и здесь.
+        */}
         <img
           src={member.avatarUrl}
           alt={member.fullName}
           loading="lazy"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover object-top"
         />
       </div>
       <div className="text-center">

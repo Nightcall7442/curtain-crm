@@ -340,7 +340,7 @@ function EmployeesInner({
                     <img
                       src={row.avatarUrl}
                       alt=""
-                      className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover"
+                      className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover object-top"
                     />
                   )}
                   <span className="block min-w-0">
