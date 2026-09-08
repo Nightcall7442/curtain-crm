@@ -777,10 +777,6 @@ export const ordersRouter = router({
                   : {
                       widthCm: Number.parseFloat(stock.widthCm),
                       heightCm: Number.parseFloat(stock.heightCm),
-                      ...(stock.color === null ? {} : { color: stock.color }),
-                      ...(stock.code === null
-                        ? {}
-                        : { characteristics: `Код ткани: ${stock.code}` }),
                     }),
                 ...(item.comment === undefined ? {} : { comment: item.comment }),
               },

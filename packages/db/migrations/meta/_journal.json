@@ -155,6 +155,13 @@
       "when": 1788871187443,
       "tag": "0021_installation_trips",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788886790576,
+      "tag": "0022_ready_made_drop_code_color",
+      "breakpoints": true
     }
   ]
 }

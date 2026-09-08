@@ -249,9 +249,7 @@ export function SellReadyMadeDialog({
                               ).toString()} см`}
                             </span>
                             <span className="block text-overline text-muted">
-                              {[row.color, row.code, row.branchName]
-                                .filter((part) => part !== null)
-                                .join(' · ')}
+                              {row.branchName}
                             </span>
                           </span>
                           <span className="shrink-0 text-right">

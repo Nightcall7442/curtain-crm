@@ -306,8 +306,6 @@ export function SellReadyMadeScreen(): ReactElement {
                               {`${Number.parseFloat(entry.widthCm).toString()}×${Number.parseFloat(
                                 entry.heightCm,
                               ).toString()} см`}
-                              {entry.color === null ? '' : ` · ${entry.color}`}
-                              {entry.code === null ? '' : ` · ${entry.code}`}
                             </Text>
                             <Text style={styles.stockMeta}>
                               {`${entry.branchName} · ${entry.quantity.toString()} шт`}

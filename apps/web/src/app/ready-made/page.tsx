@@ -29,8 +29,6 @@ export default function ReadyMadePage(): ReactElement {
 
   const [adding, setAdding] = useState(false);
   const [model, setModel] = useState('');
-  const [code, setCode] = useState('');
-  const [color, setColor] = useState('');
   const [widthCm, setWidthCm] = useState('');
   const [heightCm, setHeightCm] = useState('');
   const [price, setPrice] = useState('');
@@ -55,8 +53,6 @@ export default function ReadyMadePage(): ReactElement {
     onSuccess(item) {
       setAdding(false);
       setModel('');
-      setCode('');
-      setColor('');
       setWidthCm('');
       setHeightCm('');
       setPrice('');
@@ -171,9 +167,6 @@ export default function ReadyMadePage(): ReactElement {
                     <span className={row.isActive ? 'text-primary' : 'text-muted line-through'}>
                       {row.model}
                     </span>
-                    <span className="block text-footnote text-muted">
-                      {[row.color, row.code].filter((part) => part !== null).join(' · ')}
-                    </span>
                   </span>
                 </span>
               ),
@@ -269,8 +262,6 @@ export default function ReadyMadePage(): ReactElement {
                   heightCm: Number.parseFloat(heightCm.replace(',', '.')) || 0,
                   price: Number.parseFloat(price.replace(',', '.')) || 0,
                   quantity: Math.max(0, Number.parseInt(quantity, 10) || 0),
-                  ...(code.trim().length > 0 ? { code: code.trim() } : {}),
-                  ...(color.trim().length > 0 ? { color: color.trim() } : {}),
                 });
               }}
             >
@@ -316,24 +307,6 @@ export default function ReadyMadePage(): ReactElement {
                   setHeightCm(event.target.value);
                 }}
                 placeholder="200"
-              />
-            </Field>
-            <Field label="Код ткани" error={errors['code']}>
-              <Input
-                value={code}
-                onChange={(event) => {
-                  setCode(event.target.value);
-                }}
-                placeholder="Например: П-31"
-              />
-            </Field>
-            <Field label="Цвет" error={errors['color']}>
-              <Input
-                value={color}
-                onChange={(event) => {
-                  setColor(event.target.value);
-                }}
-                placeholder="Бежевый"
               />
             </Field>
             <Field label="Цена, сум" required error={errors['price']}>

@@ -35,8 +35,6 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
 
 interface FormState {
   readonly model: string;
-  readonly code: string;
-  readonly color: string;
   readonly widthCm: string;
   readonly heightCm: string;
   readonly price: string;
@@ -47,8 +45,6 @@ interface FormState {
 
 const emptyForm = (): FormState => ({
   model: '',
-  code: '',
-  color: '',
   widthCm: '',
   heightCm: '',
   price: '',
@@ -168,8 +164,6 @@ export function ReadyMadeStockScreen(): ReactElement {
       heightCm: toNumber(form.heightCm),
       price: toNumber(form.price),
       quantity: Math.max(0, Number.parseInt(form.quantity, 10) || 0),
-      ...(form.code.trim() === '' ? {} : { code: form.code.trim() }),
-      ...(form.color.trim() === '' ? {} : { color: form.color.trim() }),
       ...(form.comment.trim() === '' ? {} : { comment: form.comment.trim() }),
       ...(form.photo === null
         ? {}
@@ -248,31 +242,6 @@ export function ReadyMadeStockScreen(): ReactElement {
                     }}
                     keyboardType="decimal-pad"
                     placeholder="200"
-                  />
-                </Field>
-              </View>
-            </View>
-
-            <View style={styles.row}>
-              <View style={styles.half}>
-                <Field label="Код ткани">
-                  <Input
-                    value={form.code}
-                    onChangeText={(code) => {
-                      patch({ code });
-                    }}
-                    placeholder="Например: П-31"
-                  />
-                </Field>
-              </View>
-              <View style={styles.half}>
-                <Field label="Цвет">
-                  <Input
-                    value={form.color}
-                    onChangeText={(color) => {
-                      patch({ color });
-                    }}
-                    placeholder="Бежевый"
                   />
                 </Field>
               </View>
@@ -385,8 +354,6 @@ export function ReadyMadeStockScreen(): ReactElement {
                       {`${Number.parseFloat(item.widthCm).toString()}×${Number.parseFloat(
                         item.heightCm,
                       ).toString()} см`}
-                      {item.color === null ? '' : ` · ${item.color}`}
-                      {item.code === null ? '' : ` · ${item.code}`}
                     </Text>
                     <Text style={styles.itemMeta}>{item.branchName}</Text>
                   </View>

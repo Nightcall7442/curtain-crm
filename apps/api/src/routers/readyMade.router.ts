@@ -1,7 +1,7 @@
 import { branches, readyMadeItems, type DbExecutor } from '@curtain-crm/db';
 import { isManagement, moneyToDecimalString, parseMoney } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq, gt, ilike, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, ilike } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { base64FileSchema, idSchema, moneySchema, nonEmptyString, optionalText } from '../lib/schemas';
@@ -97,8 +97,6 @@ export const readyMadeRouter = router({
           branchId: readyMadeItems.branchId,
           branchName: branches.name,
           model: readyMadeItems.model,
-          code: readyMadeItems.code,
-          color: readyMadeItems.color,
           widthCm: readyMadeItems.widthCm,
           heightCm: readyMadeItems.heightCm,
           price: readyMadeItems.price,
@@ -119,11 +117,7 @@ export const readyMadeRouter = router({
               : [ilike(readyMadeItems.model, `%${input.model}%`)]),
             ...(input.search === undefined
               ? []
-              : [
-                  sql`(${readyMadeItems.model} ilike ${`%${input.search}%`}
-                       or ${readyMadeItems.code} ilike ${`%${input.search}%`}
-                       or ${readyMadeItems.color} ilike ${`%${input.search}%`})`,
-                ]),
+              : [ilike(readyMadeItems.model, `%${input.search}%`)]),
           ),
         )
         .orderBy(asc(readyMadeItems.model), asc(readyMadeItems.widthCm))
@@ -138,8 +132,6 @@ export const readyMadeRouter = router({
       z.object({
         branchId: idSchema.optional(),
         model: nonEmptyString(200, 'Укажите модель'),
-        code: optionalText(100),
-        color: optionalText(100),
         widthCm: dimensionSchema,
         heightCm: dimensionSchema,
         price: moneySchema,
@@ -179,8 +171,6 @@ export const readyMadeRouter = router({
             .values({
               branchId,
               model: input.model,
-              code: input.code ?? null,
-              color: input.color ?? null,
               widthCm: input.widthCm.toFixed(1),
               heightCm: input.heightCm.toFixed(1),
               price: moneyToDecimalString(parseMoney(input.price)),
