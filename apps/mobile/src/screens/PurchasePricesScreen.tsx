@@ -24,6 +24,7 @@ import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
+import { FabricStockScreen } from './FabricStockScreen';
 import { RetailStockScreen } from './RetailStockScreen';
 
 /**
@@ -44,13 +45,12 @@ import { RetailStockScreen } from './RetailStockScreen';
 /**
  * Закупочные материалы: почём покупаем и что стоит на витрине.
  *
- * Два раздела в одном экране, а не два пункта в меню: и то и другое — товар,
- * который привозят в цех, и руководитель, приехав с рынка, правит их за один
- * заход. Прежде «Витрина» и «Закупочные цены» стояли в меню порознь, хотя
- * открывались одна за другой.
+ * Три раздела в одном экране, а не три пункта в меню: закупочные цены,
+ * витрина кассы и склад тканей — про один и тот же привезённый в цех товар,
+ * и руководитель, приехав с рынка, правит их за один заход.
  */
 export function PurchaseMaterialsScreen(): ReactElement {
-  const [section, setSection] = useState<'purchase' | 'retail'>('purchase');
+  const [section, setSection] = useState<'purchase' | 'retail' | 'fabric'>('purchase');
 
   const header = (
     <View style={styles.sections}>
@@ -60,16 +60,15 @@ export function PurchaseMaterialsScreen(): ReactElement {
         options={[
           { value: 'purchase', label: 'Закупка' },
           { value: 'retail', label: 'Витрина' },
+          { value: 'fabric', label: 'Ткани' },
         ]}
       />
     </View>
   );
 
-  return section === 'purchase' ? (
-    <PurchasePricesScreen header={header} />
-  ) : (
-    <RetailStockScreen header={header} />
-  );
+  if (section === 'purchase') return <PurchasePricesScreen header={header} />;
+  if (section === 'retail') return <RetailStockScreen header={header} />;
+  return <FabricStockScreen header={header} />;
 }
 
 export function PurchasePricesScreen({
