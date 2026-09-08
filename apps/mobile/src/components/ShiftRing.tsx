@@ -132,13 +132,24 @@ function useElapsed(
     паузы вычитаются (`workedSecondsExpression` на сервере). Закрытые
     приходят суммой, открытая — моментом начала: с него время не растёт.
   */
-  const away = pausedSince === null ? 0 : Math.max(0, (now - pausedSince.getTime()) / 1000);
+  /*
+    Проверка на «дату, которой нет», а не перестраховка: сервер однажды уже
+    отдал момент паузы строкой Postgres, Hermes её не разобрал, и на экране
+    смены висело «NaN:NaN:NaN» вместо часов. Час без паузы честнее, чем
+    отсутствие часов вовсе.
+  */
+  const pausedAt =
+    pausedSince === null || !Number.isFinite(pausedSince.getTime()) ? null : pausedSince;
+
+  const away = pausedAt === null ? 0 : Math.max(0, (now - pausedAt.getTime()) / 1000);
 
   // Отрицательное значение возможно при расхождении часов телефона и сервера;
   // показывать «-1:59:59» нельзя, поэтому отсчёт начинается с нуля.
   const seconds = Math.max(
     0,
-    Math.floor((now - startedAt.getTime()) / 1000 - pausedSeconds - away),
+    Math.floor(
+      (now - startedAt.getTime()) / 1000 - (Number.isFinite(pausedSeconds) ? pausedSeconds : 0) - away,
+    ),
   );
 
   const pad = (value: number): string => value.toString().padStart(2, '0');

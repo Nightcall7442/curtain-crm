@@ -74,17 +74,25 @@ export const shiftsRouter = router({
           where ${personalBreaks.shiftId} = ${shifts.id}
             and ${personalBreaks.returnedAt} is not null
         ), 0)`,
-        /** Начало незакрытого выезда: с этого момента таймер стоит. */
-        tripSince: sql<Date | null>`(
-          select ${installationTrips.startedAt}
+        /*
+          Начало незакрытой паузы — секундами эпохи, а не отметкой времени.
+
+          Значение из `sql` мимо схемы драйвер отдаёт как есть, и до телефона
+          доезжала строка Postgres («2026-09-09 00:25:37.46+05»). Node её
+          разбирает, Hermes в мобильном приложении — нет, и таймер смены
+          показывал «NaN:NaN:NaN». Число разбирать нечем: оно одинаково
+          читается везде.
+        */
+        tripSince: sql<string | null>`(
+          select extract(epoch from ${installationTrips.startedAt})
           from ${installationTrips}
           where ${installationTrips.shiftId} = ${shifts.id}
             and ${installationTrips.returnedAt} is null
           limit 1
         )`,
         /** То же для незакрытой личной отлучки. */
-        breakSince: sql<Date | null>`(
-          select ${personalBreaks.startedAt}
+        breakSince: sql<string | null>`(
+          select extract(epoch from ${personalBreaks.startedAt})
           from ${personalBreaks}
           where ${personalBreaks.shiftId} = ${shifts.id}
             and ${personalBreaks.returnedAt} is null
@@ -100,6 +108,16 @@ export const shiftsRouter = router({
 
     const { tripSince, breakSince, ...rest } = shift;
 
+    /** Секунды эпохи в момент времени. `null` — паузы нет. */
+    const momentOf = (epochSeconds: string | null): Date | null => {
+      if (epochSeconds === null) return null;
+      const seconds = Number.parseFloat(epochSeconds);
+      return Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
+    };
+
+    const tripStart = momentOf(tripSince);
+    const breakStart = momentOf(breakSince);
+
     /*
       Причина паузы нужна экрану, чтобы подписать таймер: «на установке» и
       «на перерыве» — разные вещи для того, кто смотрит явку. Одновременно
@@ -109,8 +127,9 @@ export const shiftsRouter = router({
     return {
       ...rest,
       pausedSeconds: Math.max(0, Math.round(Number.parseFloat(shift.pausedSeconds) || 0)),
-      pausedSince: tripSince ?? breakSince ?? null,
-      pausedReason: tripSince !== null ? ('trip' as const) : breakSince !== null ? ('break' as const) : null,
+      pausedSince: tripStart ?? breakStart ?? null,
+      pausedReason:
+        tripStart !== null ? ('trip' as const) : breakStart !== null ? ('break' as const) : null,
     };
   }),
 
