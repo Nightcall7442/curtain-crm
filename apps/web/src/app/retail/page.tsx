@@ -429,7 +429,7 @@ function RetailInner({
             <MoneyInput
               value={price}
               onChange={setPrice}
-              placeholder="45000"
+              placeholder={'45\u00A0000'}
             />
           </Field>
 

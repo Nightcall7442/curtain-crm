@@ -119,7 +119,10 @@ export default function LoginPage(): ReactElement {
           {FACTS.map((fact) => (
             <div key={fact.label} className="flex flex-col gap-1">
               <dt className="sr-only">{fact.label}</dt>
-              <dd className="font-mono text-title font-medium text-accent-muted">{fact.value}</dd>
+              {/* Антиква с табличными цифрами — как показатели во всей панели. */}
+              <dd className="font-display text-title font-medium tabular-nums text-accent-muted">
+                {fact.value}
+              </dd>
               <p aria-hidden className="text-overline tracking-[0.04em] text-base/50">
                 {fact.label}
               </p>
@@ -172,7 +175,7 @@ export default function LoginPage(): ReactElement {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
             <label className="flex flex-col gap-1.5">
-              <span className="text-overline uppercase tracking-[0.08em] text-muted">
+              <span className="text-overline uppercase tracking-[0.08em] text-brass-ink">
                 Номер телефона
               </span>
               <input
@@ -193,7 +196,7 @@ export default function LoginPage(): ReactElement {
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-overline uppercase tracking-[0.08em] text-muted">Пароль</span>
+              <span className="text-overline uppercase tracking-[0.08em] text-brass-ink">Пароль</span>
               <input
                 type="password"
                 autoComplete="current-password"

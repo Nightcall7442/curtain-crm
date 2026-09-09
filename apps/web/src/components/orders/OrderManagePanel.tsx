@@ -12,18 +12,22 @@ import {
 import { useState, type ReactElement } from 'react';
 
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
-import { Button, Field, FormError, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
+import { Button, Field, FormError, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
 import { StageFeesFields, toStageFeesInput, type StageFeesDraft } from './StageFeesFields';
 
 /**
- * Управление заказом: назначение исполнителей, цена и отмена.
+ * Управление заказом: назначение исполнителей, цена и расценки.
  *
  * Панель показывается только руководству — но, как везде, это лишь удобство:
- * `orders.assign`, `orders.setPrice`, `orders.setStageFees` и `orders.cancel`
- * объявлены как `managementProcedure`, и продавец получит `FORBIDDEN`, даже
- * если доберётся до кнопки.
+ * `orders.assign`, `orders.setPrice` и `orders.setStageFees` объявлены как
+ * `managementProcedure`, и продавец получит `FORBIDDEN`, даже если доберётся
+ * до кнопки.
+ *
+ * Отмены здесь нет: она живёт среди переходов статуса в «Действиях по
+ * заказу» — там же, где остальные способы сдвинуть заказ, и с той же
+ * обязательной причиной.
  *
  * Расценки исполнителям — отдельная кнопка, а не поля в «Изменить цену»:
  * `workPrice` платит клиент, а расценки получает цех, и смешивать их в одном
@@ -55,11 +59,9 @@ export function OrderManagePanel({
 
   const [priceOpen, setPriceOpen] = useState(false);
   const [feesOpen, setFeesOpen] = useState(false);
-  const [cancelOpen, setCancelOpen] = useState(false);
   const [nextWorkPrice, setNextWorkPrice] = useState(workPrice);
   const [nextDeposit, setNextDeposit] = useState(deposit);
   const [nextFees, setNextFees] = useState(stageFees);
-  const [reason, setReason] = useState('');
 
   const refresh = async (): Promise<void> => {
     await Promise.all([
@@ -80,13 +82,6 @@ export function OrderManagePanel({
   const setStageFees = trpc.orders.setStageFees.useMutation({
     async onSuccess() {
       setFeesOpen(false);
-      await refresh();
-    },
-  });
-  const cancel = trpc.orders.cancel.useMutation({
-    async onSuccess() {
-      setCancelOpen(false);
-      setReason('');
       await refresh();
     },
   });
@@ -126,14 +121,16 @@ export function OrderManagePanel({
                 >
                   Изменить цену
                 </Button>
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    setCancelOpen(true);
-                  }}
-                >
-                  Отменить заказ
-                </Button>
+                {/*
+                  Кнопки отмены здесь нет намеренно.
+
+                  Она стояла в двух соседних блоках сразу: в «Действиях по
+                  заказу» — как переход статуса, и здесь — как отдельное
+                  действие. Делали они одно и то же, включая обязательную
+                  причину, а рядом две красные кнопки с одинаковой подписью
+                  заставляли выбирать между ними. Отмена — это смена статуса,
+                  и живёт она среди других переходов.
+                */}
               </>
             )}
           </div>
@@ -276,56 +273,6 @@ export function OrderManagePanel({
         </div>
       </Modal>
 
-      {/* --- Отмена ----------------------------------------------------- */}
-      <Modal
-        open={cancelOpen}
-        title="Отмена заказа"
-        onClose={() => {
-          setCancelOpen(false);
-        }}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setCancelOpen(false);
-              }}
-            >
-              Не отменять
-            </Button>
-            <Button
-              variant="danger"
-              loading={cancel.isPending}
-              disabled={reason.trim().length < 3}
-              onClick={() => {
-                cancel.mutate({ id: orderId, reason: reason.trim() });
-              }}
-            >
-              Отменить заказ
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <FormError message={cancel.error?.message ?? null} />
-
-          <p className="text-caption text-secondary">
-            Заказ не удаляется: он останется в архиве вместе с причиной и всей
-            историей. Отменить отмену нельзя.
-          </p>
-
-          <Field label="Причина отмены" required>
-            <Textarea
-              rows={3}
-              value={reason}
-              onChange={(event) => {
-                setReason(event.target.value);
-              }}
-              placeholder="Например: клиент отказался от заказа"
-            />
-          </Field>
-        </div>
-      </Modal>
     </Card>
   );
 }

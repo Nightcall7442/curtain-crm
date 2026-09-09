@@ -535,7 +535,7 @@ export function OrderCreateDialog({
               <MoneyInput
                 value={workPrice}
                 onChange={setWorkPrice}
-                placeholder="5000000"
+                placeholder={'5\u00A0000\u00A0000'}
               />
             </Field>
 
@@ -543,7 +543,7 @@ export function OrderCreateDialog({
               <MoneyInput
                 value={deposit}
                 onChange={setDeposit}
-                placeholder="2000000"
+                placeholder={'2\u00A0000\u00A0000'}
               />
             </Field>
           </div>

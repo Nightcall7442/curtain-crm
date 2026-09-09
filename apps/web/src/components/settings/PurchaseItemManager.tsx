@@ -273,7 +273,7 @@ export function PurchaseItemManager(): ReactElement {
               <MoneyInput
                 value={price}
                 onChange={setPrice}
-                placeholder="85000"
+                placeholder={'85\u00A0000'}
               />
             </Field>
           </div>

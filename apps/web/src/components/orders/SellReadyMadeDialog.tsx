@@ -296,7 +296,7 @@ export function SellReadyMadeDialog({
               <MoneyInput
                 value={workPrice}
                 onChange={setWorkPrice}
-                placeholder="1200000"
+                placeholder={'1\u00A0200\u00A0000'}
               />
             </Field>
 
