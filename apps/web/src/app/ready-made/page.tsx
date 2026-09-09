@@ -225,6 +225,22 @@ export default function ReadyMadePage(): ReactElement {
               ? 'Готовых штор нет — добавьте первую'
               : 'По этому запросу ничего нет'
           }
+          /* Кнопка стоит там же, где сказано «добавьте»: искать её в шапке
+             карточки человеку незачем. По результату поиска — нечего. */
+          emptyAction={
+            needle === '' ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  closeForm();
+                  create.reset();
+                  setAdding(true);
+                }}
+              >
+                Добавить готовые шторы
+              </Button>
+            ) : undefined
+          }
           columns={[
             {
               key: 'model',

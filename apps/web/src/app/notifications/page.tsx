@@ -90,18 +90,32 @@ export default function NotificationsPage(): ReactElement {
         ) : (
           <ul className="space-y-2">
             {query.data.items.map((item) => (
+              /*
+                Непрочитанное отличается от прочитанного тремя вещами сразу:
+                латунной полосой слева, заголовком в полный вес и подложкой.
+                Прежде разница была в подложке пятипроцентной прозрачности —
+                на льняном фоне её не видно, и список из семи непрочитанных
+                выглядел ровно так же, как список из семи прочитанных.
+              */
               <li
                 key={item.id}
                 className={cn(
-                  'rounded border p-3 transition-colors',
+                  'rounded border p-3 pl-4 transition-colors',
                   item.isRead
                     ? 'border-subtle bg-base/30'
-                    : 'border-accent-muted/40 bg-accent/5',
+                    : 'border-l-2 border-brass border-l-brass bg-accent-soft/70',
                 )}
               >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-caption font-medium text-primary">{item.title}</p>
+                    <p
+                      className={cn(
+                        'text-caption text-primary',
+                        item.isRead ? 'font-medium' : 'font-semibold',
+                      )}
+                    >
+                      {item.title}
+                    </p>
                     <p className="mt-0.5 text-footnote text-secondary">{item.body}</p>
                     <p className="mt-1 text-overline text-muted">
                       {formatDateTime(item.createdAt)}

@@ -147,7 +147,25 @@ export function CatalogManager(): ReactElement {
         {list.isLoading ? (
           <Skeleton className="h-20" />
         ) : list.data === undefined || list.data.length === 0 ? (
-          <EmptyState message="В этом справочнике пока пусто" hint="Добавьте первую позицию" />
+          <EmptyState
+            message="В этом справочнике пока пусто"
+            hint="Добавьте первую позицию"
+            action={
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingId(null);
+                  setName('');
+                  setDescription('');
+                  setMountKind('cornice');
+                  setSortOrder('0');
+                  setDialogOpen(true);
+                }}
+              >
+                Добавить позицию
+              </Button>
+            }
+          />
         ) : (
           /*
             Позиция справочника — не «текст с двумя значками сбоку», а пара

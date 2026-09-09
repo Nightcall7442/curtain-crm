@@ -83,17 +83,33 @@ export function CardBody({
  * Отдельный компонент, потому что пустая карточка без объяснения читается как
  * сбой загрузки. Формулировка всегда говорит, ПОЧЕМУ пусто.
  */
+/**
+ * Пустое место — приглашение к делу, а не сообщение о том, что дела нет.
+ *
+ * Раньше здесь были две строки текста по центру, и на этом всё: «Готовых
+ * штор нет — добавьте первую». Сказать «добавьте» и не дать чем — значит
+ * отправить человека искать кнопку самому, обычно в другой конец экрана.
+ * Действие теперь стоит прямо здесь, под подсказкой.
+ *
+ * Латунная черта над сообщением — тот же знак, что у заголовков разделов:
+ * пустая карточка перестаёт выглядеть недогруженной.
+ */
 export function EmptyState({
   message,
   hint,
+  action,
 }: {
   readonly message: string;
   readonly hint?: string;
+  /** Кнопка, которой это пустое место заполняют. */
+  readonly action?: ReactNode;
 }): ReactElement {
   return (
     <div className="flex flex-col items-center justify-center gap-1 px-4 py-10 text-center">
+      <span aria-hidden className="mb-2 h-px w-8 bg-brass" />
       <p className="text-caption text-secondary">{message}</p>
       {hint !== undefined && <p className="text-footnote text-muted">{hint}</p>}
+      {action !== undefined && <div className="mt-3">{action}</div>}
     </div>
   );
 }

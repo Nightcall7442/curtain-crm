@@ -70,6 +70,7 @@ export function DataTable<TRow>({
   columns,
   rowKey,
   emptyMessage = 'Нет данных',
+  emptyAction,
   isLoading = false,
   onRowClick,
   rowHref,
@@ -80,6 +81,14 @@ export function DataTable<TRow>({
   readonly columns: readonly Column<TRow>[];
   readonly rowKey: (row: TRow, index: number) => RowKey;
   readonly emptyMessage?: string;
+  /**
+   * Кнопка под сообщением о пустой таблице.
+   *
+   * Пустая таблица — это место, где человеку нужно что-то завести, а не
+   * сообщение о том, что заводить нечего. Кнопка стоит прямо в ней, а не
+   * только в шапке карточки.
+   */
+  readonly emptyAction?: ReactNode;
   readonly isLoading?: boolean;
   /**
    * Нажатие на строку.
@@ -267,7 +276,11 @@ export function DataTable<TRow>({
                 colSpan={columns.length + (selection === undefined ? 0 : 1)}
                 className="px-3 py-10 text-center text-caption text-muted"
               >
+                <span aria-hidden className="mx-auto mb-2 block h-px w-8 bg-brass" />
                 {emptyMessage}
+                {emptyAction !== undefined && (
+                  <span className="mt-3 flex justify-center">{emptyAction}</span>
+                )}
               </td>
             </tr>
           )}

@@ -216,6 +216,20 @@ export default function WarehousePage(): ReactElement {
               ? 'Склад пуст — запишите первый приход'
               : 'По этому запросу ничего нет'
           }
+          emptyAction={
+            all.length === 0 ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  receive.reset();
+                  closeForm();
+                  setReceiving(true);
+                }}
+              >
+                Записать приход
+              </Button>
+            ) : undefined
+          }
           columns={[
             {
               key: 'code',

@@ -141,8 +141,24 @@ export function isNavItemActive(item: Pick<NavItem, 'href' | 'exact'>, pathname:
 }
 
 /** Заголовок страницы по адресу — показывается в шапке. */
+/**
+ * Заголовки страниц, которых нет в меню.
+ *
+ * Уведомления и профиль открываются из шапки, пунктов у них нет — и шапка
+ * писала над ними «Design House», то есть название фирмы вместо названия
+ * страницы. Запасной вариант остаётся, но теперь он на своём месте: для
+ * адреса, о котором не знает никто.
+ */
+const EXTRA_TITLES: Readonly<Record<string, string>> = {
+  '/notifications': 'Уведомления',
+  '/profile': 'Мой профиль',
+};
+
 export function pageTitle(pathname: string): string {
   if (pathname === '/dashboard') return 'Главная панель';
+
+  const extra = EXTRA_TITLES[pathname];
+  if (extra !== undefined) return extra;
 
   for (const item of NAVIGATION) {
     const child = item.children?.find((entry) => entry.href === pathname);

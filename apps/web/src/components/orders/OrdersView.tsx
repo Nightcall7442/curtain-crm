@@ -550,6 +550,23 @@ export function OrdersView({
         rows={rows}
         rowKey={(row) => row.id}
         emptyMessage={preset?.emptyMessage ?? emptyMessage}
+        /*
+          Кнопка появляется, только когда список пуст ЦЕЛИКОМ, а не когда
+          ничего не нашлось по фильтру: предлагать «завести заказ» в ответ на
+          неудачный поиск — значит отвечать не на тот вопрос.
+        */
+        emptyAction={
+          canCreate && search.trim() === '' && status === '' ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreateOpen(true);
+              }}
+            >
+              Новый заказ
+            </Button>
+          ) : undefined
+        }
         activeRowKey={activeId}
         selection={{
           selected: checked,
