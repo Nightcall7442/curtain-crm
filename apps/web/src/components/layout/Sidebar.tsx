@@ -36,23 +36,47 @@ export function Sidebar({
         collapsed ? 'w-[68px]' : 'w-[228px]',
       )}
     >
-      {/* Логотип */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-white/10 px-4">
-        <span
-          aria-hidden
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-tile bg-accent-bright font-display text-heading text-on-accent"
-        >
-          DH
-        </span>
-        {!collapsed && (
-          <span className="min-w-0">
-            <span className="block truncate font-display text-subhead tracking-[0.01em] text-nav-text">
-              Design House
-            </span>
-            <span className="block truncate text-overline tracking-[0.04em] text-nav-text/55">
-              шторы премиум класса
-            </span>
+      {/*
+        Шапка меню — фирменный знак, а не квадрат с буквами «DH».
+
+        Знак нарисован, им подписаны вывеска, лендинг и экран входа; в панели
+        вместо него стояла заглушка из двух букв, и панель выглядела сервисом,
+        купленным отдельно от мастерской. Развёрнутое меню показывает знак
+        целиком — вместе с набранным в нём названием, поэтому подпись рядом
+        больше не нужна и снята: одно и то же слово дважды в одной строке.
+
+        Свёрнутое меню шириной 68 точек знак целиком не вмещает — там
+        остаются инициалы: они читаются и в 28 точках, чего о полном
+        начертании сказать нельзя.
+
+        Картинка кладётся МАСКОЙ по цвету текста навигации: один файл
+        работает и на тёмной панели, и на светлой, и перекрашивается вместе
+        со схемой — вместо двух версий логотипа под каждую тему.
+      */}
+      <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-4">
+        {collapsed ? (
+          <span
+            aria-hidden
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-tile bg-accent-bright font-display text-heading text-on-accent"
+          >
+            DH
           </span>
+        ) : (
+          <span
+            role="img"
+            aria-label="Design House — шторы премиум класса"
+            className="block h-10 w-[150px] bg-nav-text"
+            style={{
+              WebkitMaskImage: 'url(/logo.png)',
+              maskImage: 'url(/logo.png)',
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              WebkitMaskPosition: 'left center',
+              maskPosition: 'left center',
+            }}
+          />
         )}
       </div>
 
