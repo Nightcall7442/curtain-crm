@@ -115,6 +115,7 @@ function MaterialFields({
   description,
   onChange,
   onScan,
+  hint,
 }: {
   readonly label: string;
   readonly placeholder: string;
@@ -122,9 +123,14 @@ function MaterialFields({
   readonly description: string | null;
   readonly onChange: (patch: Partial<MaterialDraft>) => void;
   readonly onScan: () => void;
+  /*
+    Подсказка про камеру нужна один раз на позицию: под каждым из шести
+    полей одна и та же фраза читалась как шум и отодвигала следующее поле.
+  */
+  readonly hint?: string;
 }): ReactElement {
   return (
-    <Field label={label} hint="Код с этикетки — можно считать камерой">
+    <Field label={label} hint={hint}>
       <CodeInput
         value={value.code}
         placeholder={placeholder}
@@ -663,9 +669,16 @@ export function OrderCreateScreen(): ReactElement {
                   </Pressable>
                 </View>
 
-                {item.portieres.length === 0 ? (
-                  <Text style={styles.accessoriesHint}>Код ткани с этикетки</Text>
-                ) : (
+                {/*
+                  Подсказка про камеру стоит здесь, у первой строки кода: она
+                  одна на всю позицию, и повторять её под каждым из шести
+                  полей значило бы шесть раз сказать одно и то же.
+                */}
+                <Text style={styles.accessoriesHint}>
+                  Код с этикетки — можно считать камерой
+                </Text>
+
+                {item.portieres.length === 0 ? null : (
                   item.portieres.map((portiere) => (
                     <View key={portiere.id} style={styles.accessoryRow}>
                       <View style={styles.accessoryName}>
@@ -700,9 +713,12 @@ export function OrderCreateScreen(): ReactElement {
                         >
                           <Icon name="remove" size={18} color={colors.danger} />
                         </Pressable>
-                      ) : (
-                        <View style={styles.accessoryRemove} />
-                      )}
+                      ) : null}
+                      {/*
+                        Пустого места под кнопку удаления не оставляем: с ним
+                        поле единственной портьеры было короче остальных пяти
+                        кодов — ряд полей переставал держать общий край.
+                      */}
                     </View>
                   ))
                 )}
@@ -753,7 +769,7 @@ export function OrderCreateScreen(): ReactElement {
               {mountOf(item.model) === CurtainMountKind.PIPE ? (
                 <MaterialFields
                   label="Труба"
-                  placeholder="Код трубы"
+                  placeholder="Например: ТР-08"
                   value={item.pipe}
                   description={describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code)}
                   onChange={(patch) => {
@@ -784,7 +800,7 @@ export function OrderCreateScreen(): ReactElement {
 
                   <MaterialFields
                     label="Пластик"
-                    placeholder="Код пластика"
+                    placeholder="Например: ПЛ-12"
                     value={item.plastic}
                     description={describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code)}
                     onChange={(patch) => {
@@ -808,7 +824,9 @@ export function OrderCreateScreen(): ReactElement {
                     });
                   }}
                   options={[
-                    { value: '', label: 'Не задан' },
+                    /* «Нет» вместо «Не задан»: четыре чипа влезают в строку,
+                       а рядом с подписью «Поворот карниза» смысл тот же. */
+                    { value: '', label: 'Нет' },
                     ...CORNICE_ROTATIONS.map((value) => ({
                       value,
                       label: t(CORNICE_ROTATION_LABELS, value),
@@ -1059,6 +1077,9 @@ const styles = StyleSheet.create({
   accessoriesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    /* Заголовок слева, «+ Добавить» справа: без этого они слипались в
+       «Аксессуары+ Добавить» — читалось как одно слово. */
+    justifyContent: 'space-between',
     marginBottom: spacing.xs,
   },
   accessoriesTitle: {

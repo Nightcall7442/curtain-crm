@@ -317,55 +317,52 @@ export function WorkScreen(): ReactElement {
       )}
 
       {/*
-        Касса — отдельной строкой под приёмом заказа.
+        Касса и раздел руководителя — одной строкой, ниже приёма заказа.
 
-        Рядом с «Новым заказом» её ставить нельзя: заказ и чек — разные по
-        весу события, а две одинаковые кнопки в ряд заставляют читать
-        подписи вместо того, чтобы нажимать не глядя.
+        Рядом с «Новым заказом» их ставить нельзя: заказ и чек — события
+        разного веса, и две одинаковые кнопки в ряд заставляют читать
+        подписи вместо того, чтобы нажимать не глядя. А между собой они
+        равны: обе уводят в соседний раздел, и каждой отдельная строка
+        стоила слишком дорого — до заказов приходилось прокручивать треть
+        экрана. Отдельной вкладки руководителю не дали намеренно: нижняя
+        панель одна на всех, и пятая вкладка, видимая двоим из восемнадцати,
+        сделала бы её разной у разных людей.
       */}
-      {canCreate && (
+      {(canCreate || isManager) && (
         <View style={styles.createRow}>
-          <Pressable
-            onPress={() => {
-              navigation.navigate('CashDesk');
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.createSecondary,
-              styles.createFlex,
-              pressed ? styles.createPressed : null,
-            ]}
-          >
-            <Icon name="paid" size={18} color={colors.accentStrong} />
-            <Text style={styles.createSecondaryText}>Касса — тюль и аксессуары</Text>
-          </Pressable>
-        </View>
-      )}
+          {canCreate && (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('CashDesk');
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.createSecondary,
+                styles.createFlex,
+                pressed ? styles.createPressed : null,
+              ]}
+            >
+              <Icon name="paid" size={18} color={colors.accentStrong} />
+              <Text style={styles.createSecondaryText}>Касса</Text>
+            </Pressable>
+          )}
 
-      {/*
-        Вход в раздел руководителя.
-
-        Отдельной вкладки ему не дали: нижняя панель одна на всех, и пятая
-        вкладка, видимая двоим из восемнадцати, сделала бы её разной у
-        разных людей. Кнопка здесь — «Работа» и так экран, с которого
-        руководитель начинает день.
-      */}
-      {isManager && (
-        <View style={styles.createRow}>
-          <Pressable
-            onPress={() => {
-              navigation.navigate('Management');
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.createSecondary,
-              styles.createFlex,
-              pressed ? styles.createPressed : null,
-            ]}
-          >
-            <Icon name="roles" size={18} color={colors.accentStrong} />
-            <Text style={styles.createSecondaryText}>Руководство</Text>
-          </Pressable>
+          {isManager && (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('Management');
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.createSecondary,
+                styles.createFlex,
+                pressed ? styles.createPressed : null,
+              ]}
+            >
+              <Icon name="roles" size={18} color={colors.accentStrong} />
+              <Text style={styles.createSecondaryText}>Руководство</Text>
+            </Pressable>
+          )}
         </View>
       )}
 

@@ -18,7 +18,6 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
-import { CatalogPicker } from '../components/CatalogPicker';
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
@@ -60,6 +59,7 @@ export function FabricStockScreen({
   const [countValue, setCountValue] = useState('');
 
   const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState('');
   const [scanning, setScanning] = useState(false);
   const [slot, setSlot] = useState<MaterialSlot>('portiere');
   const [code, setCode] = useState('');
@@ -76,6 +76,18 @@ export function FabricStockScreen({
         .map((entry) => entry.name),
     [catalog.data, slot],
   );
+
+  /*
+    Подсказки: коды выбранного вида, суженные набранным началом. Шесть —
+    столько влезает в строку прокрутки, не превращая её в список.
+  */
+  const suggestions = useMemo(() => {
+    const needle = code.trim().toLowerCase();
+    return codeOptions
+      .filter((option) => needle === '' || option.toLowerCase().includes(needle))
+      .filter((option) => option.toLowerCase() !== needle)
+      .slice(0, 6);
+  }, [codeOptions, code]);
 
   const refresh = async (): Promise<void> => {
     await utils.fabric.list.invalidate();
@@ -118,7 +130,14 @@ export function FabricStockScreen({
     );
   }
 
-  const items = rows.data ?? [];
+  const all = rows.data ?? [];
+  const needle = search.trim().toLowerCase();
+  const items =
+    needle === ''
+      ? all
+      : all.filter((row) =>
+          [row.code, row.description ?? ''].some((field) => field.toLowerCase().includes(needle)),
+        );
 
   return (
     <KeyboardAvoidingView
@@ -129,19 +148,30 @@ export function FabricStockScreen({
         {header}
 
         <Card>
-          <CardTitle title="Приход ткани" icon="payroll" />
+          {/*
+            Приход и остатки — в одной карточке: отдельная карточка ради
+            одной кнопки съедала треть экрана и повторяла слово «приход»
+            дважды — в заголовке и на кнопке.
+          */}
+          <CardTitle
+            title="Склад тканей"
+            icon="window"
+            action={
+              adding ? undefined : (
+                <Pressable
+                  onPress={() => {
+                    setAdding(true);
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.addButton, pressed ? styles.pressed : null]}
+                >
+                  <Text style={styles.addButtonText}>Приход</Text>
+                </Pressable>
+              )
+            }
+          />
 
-          {!adding ? (
-            <Pressable
-              onPress={() => {
-                setAdding(true);
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
-            >
-              <Text style={styles.submitText}>Записать приход</Text>
-            </Pressable>
-          ) : (
+          {adding && (
             <>
               <Field label="Что привезли">
                 <ChipSelect
@@ -158,18 +188,16 @@ export function FabricStockScreen({
               </Field>
 
               {/*
-                Код выбирается из справочника, но его можно и набрать: на
-                рулоне бывает бирка, которой в справочнике ещё нет, и не
-                принять её значило бы не принять привезённую ткань.
+                Одно поле, а не два.
+
+                Сначала здесь стояли выбор из справочника и поле ввода друг
+                под другом — два одинаковых прямоугольника под одной
+                подписью, хотя значение у них одно. Теперь код набирают
+                (или сканируют), а справочник подсказывает снизу чипами:
+                видно, что уже заведено, и по-прежнему можно записать бирку,
+                которой в справочнике ещё нет.
               */}
-              <Field label="Код с этикетки" hint="Из справочника или руками">
-                <CatalogPicker
-                  value={code}
-                  placeholder="Выбрать из справочника"
-                  options={codeOptions}
-                  sheetTitle="Коды"
-                  onChange={setCode}
-                />
+              <Field label="Код с этикетки" hint="Наберите, отсканируйте или выберите ниже">
                 <View style={styles.codeRow}>
                   <View style={styles.codeInput}>
                     <Input value={code} onChangeText={setCode} placeholder="Например: П-31" />
@@ -190,6 +218,31 @@ export function FabricStockScreen({
                     <Icon name="camera" size={18} color={colors.accent} />
                   </Pressable>
                 </View>
+
+                {suggestions.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.suggestions}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {suggestions.map((option) => (
+                      <Pressable
+                        key={option}
+                        onPress={() => {
+                          setCode(option);
+                        }}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [
+                          styles.suggestion,
+                          pressed ? styles.pressed : null,
+                        ]}
+                      >
+                        <Text style={styles.suggestionText}>{option}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                )}
               </Field>
 
               <Field label="Сколько метров">
@@ -241,15 +294,28 @@ export function FabricStockScreen({
               </View>
             </>
           )}
-        </Card>
 
-        <Card>
-          <CardTitle title="Остатки" icon="orders" />
+          {/*
+            Поиск появляется, когда кодов становится много: на пяти строках
+            он лишний ряд, на сорока — единственный способ найти рулон.
+          */}
+          {items.length > 8 && (
+            <View style={styles.search}>
+              <Input
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Поиск по коду или описанию"
+              />
+            </View>
+          )}
 
           {rows.data === undefined ? (
             <Skeleton />
           ) : items.length === 0 ? (
-            <Empty message="Склад пуст" hint="Запишите первый приход" />
+            <Empty
+              message={all.length === 0 ? 'Склад пуст' : 'Ничего не нашлось'}
+              hint={all.length === 0 ? 'Запишите первый приход' : 'Проверьте код'}
+            />
           ) : (
             items.map((row) => {
               const left = Number.parseFloat(row.meters);
@@ -402,6 +468,41 @@ const styles = StyleSheet.create({
   countBox: {
     paddingVertical: spacing.sm,
     gap: spacing.sm,
+  },
+  addButton: {
+    height: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: hairline,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    ...typography.footnote,
+    color: colors.accentStrong,
+    fontWeight: '600',
+  },
+  search: {
+    marginTop: spacing.sm,
+  },
+  suggestions: {
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+  },
+  suggestion: {
+    height: 30,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: hairline,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionText: {
+    ...typography.footnote,
+    color: colors.textSecondary,
   },
   submit: {
     height: 44,

@@ -71,6 +71,12 @@ export function TabNavigator(): ReactElement {
          */
         tabBarStyle: [styles.tabBar, { bottom: Math.max(insets.bottom, 10) }],
         tabBarLabelStyle: styles.tabLabel,
+        /*
+          Ячейка без боковых отступов: с ними «Уведомления» не помещались и
+          обрезались до «Уведомле…» — единственная подпись в панели, которая
+          выглядела как ошибка вёрстки.
+        */
+        tabBarItemStyle: styles.tabItem,
         /**
          * Подпись всегда ПОД иконкой.
          *
@@ -264,7 +270,18 @@ const styles = StyleSheet.create({
    * при этом остался полным: там места достаточно.
    */
   tabLabel: {
-    fontSize: 10,
+    /*
+      9 пикселей, а не 10: на 375-точечном экране пять ячеек оставляют
+      подписи 60 точек, а «Уведомлениям» при десяти нужно 64 — и панель
+      показывала «Уведомле…». Сокращать слово до «Уведомл.» значило бы
+      написать в интерфейсе то, что человек не говорит вслух.
+    */
+    fontSize: 9,
+    paddingHorizontal: 0,
+    marginHorizontal: 0,
+  },
+  tabItem: {
+    paddingHorizontal: 0,
   },
   checkInButton: {
     width: 52,

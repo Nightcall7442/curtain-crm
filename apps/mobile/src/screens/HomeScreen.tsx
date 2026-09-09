@@ -132,9 +132,8 @@ export function HomeScreen(): ReactElement {
           <View style={styles.heroText}>
             <Text style={styles.heroGreeting}>{greeting()}</Text>
             <Text style={styles.heroName} numberOfLines={1}>
-              {`${firstName(user?.fullName ?? '')}! 👋`}
+              {`${firstName(user?.fullName ?? '')}!`}
             </Text>
-            <Text style={styles.heroHint}>Хорошего рабочего дня!</Text>
           </View>
           {/*
             Фото сотрудника и вход в профиль.
@@ -210,7 +209,7 @@ export function HomeScreen(): ReactElement {
             </View>
           ) : (
             <Text style={styles.shiftHint}>
-              Отметьтесь на вкладке Check In/Out, когда будете на месте
+              Отметьтесь на вкладке «Явка», когда будете на месте
             </Text>
           )}
         </Card>

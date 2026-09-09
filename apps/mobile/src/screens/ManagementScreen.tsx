@@ -55,7 +55,6 @@ export function ManagementScreen(): ReactElement {
     month: now.getMonth() + 1,
   });
   const tasks = trpc.tasks.list.useQuery({ status: 'open' });
-  const items = trpc.retail.items.list.useQuery({ includeInactive: true });
 
   /*
     Расчёты, требующие внимания, — черновики и утверждённые.
@@ -101,7 +100,11 @@ export function ManagementScreen(): ReactElement {
       icon: 'payroll',
       title: 'Закупочные материалы',
       hint: 'Почём покупаем и что стоит на витрине',
-      badge: items.data?.length ?? null,
+      /*
+        Бейджем помечается то, что ждёт решения (отгулы, зарплата). Число
+        позиций витрины ничего не ждёт — оно просто было под рукой.
+      */
+      badge: null,
     },
   ];
 
