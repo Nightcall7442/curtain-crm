@@ -79,7 +79,6 @@ export function BranchManager(): ReactElement {
     <Card>
       <CardHeader
         title="Филиалы и радиус отметки"
-        icon={<MapPin className="h-4 w-4" />}
         level={3}
         action={
           <Button onClick={openCreate} icon={<Plus className="h-3.5 w-3.5" aria-hidden />}>

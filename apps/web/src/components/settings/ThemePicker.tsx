@@ -51,7 +51,7 @@ export function ThemePicker(): ReactElement {
 
   return (
     <Card>
-      <CardHeader title="Светлая и тёмная схема" icon={<Sun className="h-4 w-4" />} level={3} />
+      <CardHeader title="Светлая и тёмная схема" level={3} />
       <CardBody>
         <p className="mb-3 text-caption text-secondary">
           Тёмная схема — не перевёрнутая светлая: у неё свои цвета этапов и своя

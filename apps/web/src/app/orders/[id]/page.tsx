@@ -19,7 +19,7 @@ import {
   type AssignableRole,
   type OrderStatus,
 } from '@curtain-crm/shared';
-import { ArrowLeft, MessageSquare, Phone, Send } from 'lucide-react';
+import { ArrowLeft, Phone, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
@@ -585,7 +585,7 @@ export default function OrderDetailPage(): ReactElement {
         </Card>
 
         <Card>
-          <CardHeader title="Комментарии" icon={<MessageSquare className="h-4 w-4" />} />
+          <CardHeader title="Комментарии" />
           <CardBody>
             <form
               onSubmit={(event) => {

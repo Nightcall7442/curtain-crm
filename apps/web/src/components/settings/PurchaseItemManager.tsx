@@ -12,7 +12,7 @@ import {
   PurchaseUnit,
   type PurchaseUnit as PurchaseUnitName,
 } from '@curtain-crm/shared';
-import { EyeOff, Eye, Package, Pencil, Plus } from 'lucide-react';
+import { EyeOff, Eye, Pencil, Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
@@ -74,7 +74,6 @@ export function PurchaseItemManager(): ReactElement {
     <Card className="overflow-hidden">
       <CardHeader
         title="Каталог закупочных товаров"
-        icon={<Package className="h-4 w-4" />}
         level={3}
         action={
           <Button

@@ -10,7 +10,7 @@ import {
   type CatalogKind,
   type CurtainMountKind,
 } from '@curtain-crm/shared';
-import { EyeOff, Eye, ListTree, Pencil, Plus } from 'lucide-react';
+import { EyeOff, Eye, Pencil, Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { Card, CardBody, CardHeader, EmptyState, Skeleton } from '@/components/ui/Card';
@@ -80,7 +80,6 @@ export function CatalogManager(): ReactElement {
     <Card>
       <CardHeader
         title="Справочники характеристик заказа"
-        icon={<ListTree className="h-4 w-4" />}
         level={3}
         action={
           <Button

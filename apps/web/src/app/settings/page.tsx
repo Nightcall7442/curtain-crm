@@ -1,6 +1,5 @@
 'use client';
 
-import { KeyRound } from 'lucide-react';
 import { useState, type ReactElement, type ReactNode } from 'react';
 
 import { BranchManager } from '@/components/settings/BranchManager';
@@ -163,7 +162,7 @@ function PasswordCard(): ReactElement {
 
   return (
     <Card>
-      <CardHeader title="Безопасность" icon={<KeyRound className="h-4 w-4" />} level={3} />
+      <CardHeader title="Безопасность" level={3} />
       <CardBody className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <p className="min-w-0 flex-1 text-caption text-secondary">

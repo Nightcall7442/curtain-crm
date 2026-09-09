@@ -18,7 +18,7 @@ import {
   type PresenceStatus as PresenceStatusName,
   type Role,
 } from '@curtain-crm/shared';
-import { Cake, Clock, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState, type ReactElement } from 'react';
 
@@ -208,7 +208,7 @@ function EmployeesInner({
       */}
       {(activeBreaks.data?.length ?? 0) > 0 && (
         <Card>
-          <CardHeader title="Сейчас в отлучке" icon={<Clock className="h-4 w-4" />} />
+          <CardHeader title="Сейчас в отлучке" />
           <CardBody>
             <ul className="divide-y divide-subtle">
               {activeBreaks.data?.map((entry) => {
@@ -652,7 +652,7 @@ function EmployeesInner({
       </section>
 
       <Card>
-        <CardHeader title="Дни рождения (30 дней)" icon={<Cake className="h-4 w-4" />} />
+        <CardHeader title="Дни рождения (30 дней)" />
         <CardBody>
           {birthdays.isLoading ? (
             <Skeleton className="h-20" />

@@ -1,7 +1,7 @@
 'use client';
 
 import { formatMoney, formatMoneyShort, OrderStatus } from '@curtain-crm/shared';
-import { AlertTriangle, Trophy } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
@@ -283,7 +283,7 @@ export function ManagementDashboard(): ReactElement {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader title="Лучшие сотрудники месяца" icon={<Trophy className="h-4 w-4" />} />
+          <CardHeader title="Лучшие сотрудники месяца" />
           <CardBody>
             {performers.isLoading ? (
               <Skeleton className="h-24" />

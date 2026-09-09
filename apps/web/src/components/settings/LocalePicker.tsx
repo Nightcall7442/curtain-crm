@@ -1,7 +1,6 @@
 'use client';
 
 import { LOCALE_INFO, LOCALES } from '@curtain-crm/shared';
-import { Languages } from 'lucide-react';
 import type { ReactElement } from 'react';
 
 import { useLocale } from '@/components/providers/LocaleProvider';
@@ -22,7 +21,6 @@ export function LocalePicker(): ReactElement {
     <Card>
       <CardHeader
         title="Язык интерфейса"
-        icon={<Languages className="h-4 w-4" />}
         level={3}
       />
       <CardBody>

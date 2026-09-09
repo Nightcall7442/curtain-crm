@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type ReactElement } from 'react';
-import { Minus, Trophy, TrendingDown, TrendingUp } from 'lucide-react';
+import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
 
 import {
   formatDayRange,
@@ -66,7 +66,6 @@ export default function RatingPage(): ReactElement {
       <Card>
         <CardHeader
           title="Период рейтинга"
-          icon={<Trophy className="h-4 w-4" />}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <div

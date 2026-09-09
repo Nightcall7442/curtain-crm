@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Palette } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useEffect, useState, type ReactElement } from 'react';
 
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
@@ -40,7 +40,7 @@ export function SkinPicker(): ReactElement {
 
   return (
     <Card>
-      <CardHeader title="Оформление панели" icon={<Palette className="h-4 w-4" />} level={3} />
+      <CardHeader title="Оформление панели" level={3} />
       <CardBody>
         <p className="mb-3 text-caption text-secondary">
           Выбор сохраняется в этом браузере и не влияет на других сотрудников: освещение

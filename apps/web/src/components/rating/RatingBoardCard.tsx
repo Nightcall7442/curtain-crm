@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import { Trophy } from 'lucide-react';
 import Link from 'next/link';
 
 import { ROLE_LABELS_RU } from '@curtain-crm/shared';
@@ -42,7 +41,6 @@ export function RatingBoardCard({
     <Card>
       <CardHeader
         title="Рейтинг сотрудников"
-        icon={<Trophy className="h-4 w-4" />}
         action={
           <Link
             href="/rating"
