@@ -1,16 +1,7 @@
 'use client';
 
 import { formatMoney, formatMoneyShort, OrderStatus } from '@curtain-crm/shared';
-import {
-  AlertTriangle,
-  Banknote,
-  CalendarRange,
-  Layers,
-  PackagePlus,
-  ShoppingBag,
-  TrendingUp,
-  Trophy,
-} from 'lucide-react';
+import { AlertTriangle, Trophy } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
@@ -111,31 +102,23 @@ export function ManagementDashboard(): ReactElement {
                   value={data.ordersToday.toString()}
                   caption={`Вчера: ${data.ordersYesterday.toString()}`}
                   deltaPercent={data.ordersTodayDelta}
-                  icon={PackagePlus}
-                  tone="info"
                 />
                 <StatCard
                   label="Заказы за неделю"
                   value={data.ordersThisWeek.toString()}
                   caption={`Прошлая неделя: ${data.ordersPrevWeek.toString()}`}
                   deltaPercent={data.ordersWeekDelta}
-                  icon={CalendarRange}
-                  tone="info"
                 />
                 <StatCard
                   label="Заказы за месяц"
                   value={data.ordersThisMonth.toString()}
                   caption={`Прошлый месяц: ${data.ordersPrevMonth.toString()}`}
                   deltaPercent={data.ordersMonthDelta}
-                  icon={ShoppingBag}
-                  tone="accent"
                 />
                 <StatCard
                   label="Выполнено за месяц"
                   value={data.completedThisMonth.toString()}
                   caption="Закрытых заказов"
-                  icon={TrendingUp}
-                  tone="positive"
                 />
                 <StatCard
                   // Компактно: «115,1 млн сум» читается с плитки мгновенно,
@@ -144,15 +127,11 @@ export function ManagementDashboard(): ReactElement {
                   value={formatMoneyShort(data.revenueThisMonthMinor)}
                   caption={`Точно: ${data.revenueThisMonthFormatted} · прошлый месяц: ${formatMoneyShort(data.revenuePrevMonthMinor)}`}
                   deltaPercent={data.revenueMonthDelta}
-                  icon={Banknote}
-                  tone="accent"
                 />
                 <StatCard
                   label="Заказы в работе"
                   value={data.activeOrders.toString()}
                   caption={`На смене сейчас: ${data.employeesOnShift.toString()}`}
-                  icon={Layers}
-                  tone="warning"
                 />
               </>
             )}
@@ -220,12 +199,10 @@ export function ManagementDashboard(): ReactElement {
             <StageRow
               label="Брак, на доработке"
               {...rowFor(OrderStatus.QC_FAILED)}
-              tone="danger"
             />
             <StageRow
               label="Контроль пройден"
               {...rowFor(OrderStatus.QC_PASSED)}
-              tone="positive"
             />
           </CardBody>
         </Card>
@@ -279,7 +256,6 @@ export function ManagementDashboard(): ReactElement {
                   label="Просрочено"
                   value={installQueue.data.overdue}
                   href="/orders?stage=ready_for_install"
-                  tone="danger"
                 />
                 <StageRow
                   label="Срок сегодня"
@@ -556,19 +532,28 @@ function AttentionStrip({
         ) : (
           alerts.map((entry) => {
             const href = ATTENTION_HREFS[entry.key];
+            /*
+              Цвет несёт САМО ЧИСЛО, а не точка перед ним.
+
+              Три цветные точки подряд читались легендой к графику, которого
+              нет: глаз сперва разбирал кружки, и только потом добирался до
+              цифр. Окрашенное число говорит то же самое — и остаётся числом.
+              Срочность при этом продублирована порядком: тревоги идут от
+              высокой к низкой.
+            */
             const body = (
               <>
                 <span
-                  aria-hidden
                   className={
                     entry.severity === 'high'
-                      ? 'h-2 w-2 shrink-0 rounded-full bg-danger'
+                      ? 'font-semibold text-danger'
                       : entry.severity === 'medium'
-                        ? 'h-2 w-2 shrink-0 rounded-full bg-warning'
-                        : 'h-2 w-2 shrink-0 rounded-full bg-info'
+                        ? 'font-semibold text-warning'
+                        : 'font-semibold text-info'
                   }
-                />
-                <span className="font-semibold text-primary">{entry.count}</span>
+                >
+                  {entry.count}
+                </span>
                 <span className="text-secondary">{entry.label}</span>
               </>
             );

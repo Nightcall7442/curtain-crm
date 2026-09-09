@@ -18,7 +18,7 @@ import {
   type PresenceStatus as PresenceStatusName,
   type Role,
 } from '@curtain-crm/shared';
-import { CalendarPlus, Cake, Clock, Plus, UserCheck, UserMinus, Users, Wallet } from 'lucide-react';
+import { Cake, Clock, Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState, type ReactElement } from 'react';
 
@@ -168,25 +168,21 @@ function EmployeesInner({
                   label="Всего сотрудников"
                   value={summary.total.toString()}
                   caption={`Активных: ${summary.active.toString()} · Неактивных: ${summary.inactive.toString()}`}
-                  icon={Users}
                 />
                 <StatCard
                   label="На работе сегодня"
                   value={summary.atWorkToday.toString()}
                   caption={`Из ${summary.active.toString()} активных`}
-                  icon={UserCheck}
                 />
                 <StatCard
                   label="Отсутствуют сегодня"
                   value={summary.absentToday.toString()}
                   caption="Смена не открыта"
-                  icon={UserMinus}
                 />
                 <StatCard
                   label="Приняты в этом месяце"
                   value={summary.hiredThisMonth.toString()}
                   caption={`Уволены: ${summary.firedThisMonth.toString()}`}
-                  icon={CalendarPlus}
                 />
                 <StatCard
                   // Компактно, точная сумма — в подписи: плитка — сводка,
@@ -194,13 +190,11 @@ function EmployeesInner({
                   label="Фонд зарплаты (месяц)"
                   value={formatMoneyShort(payrollFund)}
                   caption={`Точно: ${formatMoney(payrollFund)} · выплачено: ${formatMoneyShort(payrollPaid)}`}
-                  icon={Wallet}
                 />
                 <StatCard
                   label="Средняя З/П (месяц)"
                   value={formatMoneyShort(averageSalary)}
                   caption="На активного сотрудника"
-                  icon={Wallet}
                 />
               </>
             )}

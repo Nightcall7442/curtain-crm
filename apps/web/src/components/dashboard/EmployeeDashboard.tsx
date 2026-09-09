@@ -1,7 +1,6 @@
 'use client';
 
 import { ROLE_LABELS_RU } from '@curtain-crm/shared';
-import { Bell, ClipboardList, Clock, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
@@ -69,7 +68,7 @@ export function EmployeeDashboard(): ReactElement {
                 ? 'Открывается в мобильном приложении'
                 : `${openShift.branchName}, с ${formatDateTime(openShift.startedAt)}`
             }
-            icon={openShift === null ? Clock : MapPin}
+
           />
         )}
 
@@ -80,7 +79,6 @@ export function EmployeeDashboard(): ReactElement {
             label="Отработано за месяц"
             value={formatDuration(summary.data?.workedHours ?? 0)}
             caption={`${period.month.toString().padStart(2, '0')}.${period.year.toString()}`}
-            icon={Clock}
           />
         )}
 
@@ -91,7 +89,6 @@ export function EmployeeDashboard(): ReactElement {
             label="Мои заказы в работе"
             value={(orders.data?.total ?? 0).toString()}
             caption="Закрытые и отменённые — в «Архиве»"
-            icon={ClipboardList}
           />
         )}
 
@@ -102,7 +99,6 @@ export function EmployeeDashboard(): ReactElement {
             label="Непрочитанные уведомления"
             value={(unread.data ?? 0).toString()}
             caption={roles.length > 0 ? `Ваши роли: ${roles}` : undefined}
-            icon={Bell}
           />
         )}
       </section>
@@ -163,7 +159,7 @@ export function EmployeeDashboard(): ReactElement {
       <Card>
         <CardHeader
           title="Последние уведомления"
-          icon={<Bell className="h-4 w-4" />}
+
           action={
             <Link href="/notifications" className="text-footnote text-accent hover:underline">
               Все уведомления

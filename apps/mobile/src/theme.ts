@@ -15,12 +15,19 @@ import { StyleSheet } from 'react-native';
  */
 
 export const colors = {
-  /** Фон экрана — холодный светло-серый. */
-  background: '#F4F6F4',
+  /**
+   * Фон экрана — тёплый лён.
+   *
+   * Был холодный светло-серый, отличавшийся от белой карточки на три
+   * процента яркости: карточки сливались с фоном, и приложение выглядело
+   * бесцветным. Лён отделяет белую карточку как вещь на столе — то же
+   * решение, что и в панели, и палитра остаётся общей.
+   */
+  background: '#F1EDE4',
   /** Карточки. */
   surface: '#FFFFFF',
   /** Вторичная поверхность: полосы прогресса, чипы, разделители-подложки. */
-  surfaceMuted: '#EBF0ED',
+  surfaceMuted: '#F6F2EA',
 
   /** Шапка и панель вкладок — глубокая хвоя. */
   header: '#142E24',
@@ -81,7 +88,15 @@ export const colors = {
    */
   textMuted: '#5F6B65',
 
-  border: '#E2E8E4',
+  /* Тёплая рамка: холодная на льняном фоне читалась грязью по краю. */
+  border: '#E5DED1',
+
+  /**
+   * Латунь — второй цвет мастерской: волосяные линии и подписи разделов.
+   * Тон фурнитуры (кольца, наконечники), а не «золотой градиент».
+   */
+  brass: '#B08D3D',
+  brassInk: '#7A5F1E',
 
   /**
    * Состояния.
@@ -162,9 +177,10 @@ export type ThemeStageColors = { readonly [K in keyof typeof stageColors]: strin
  * них, подписи на заливках, текст шапки — проходят пороги.
  */
 export const darkColors: ThemeColors = {
-  background: '#101613',
-  surface: '#18211C',
-  surfaceMuted: '#212C26',
+  /* Хвоя ночью: фон глубже и зеленее, карточка заметно выше него. */
+  background: '#0D1512',
+  surface: '#19251F',
+  surfaceMuted: '#24332B',
 
   header: '#0B100D',
   headerRaised: '#16201A',
@@ -182,7 +198,10 @@ export const darkColors: ThemeColors = {
   textSecondary: '#AFBCB5',
   textMuted: '#93A19A',
 
-  border: '#28332D',
+  border: '#2F3C33',
+
+  brass: '#C9A24C',
+  brassInk: '#D6B468',
 
   danger: '#E8757F',
   dangerSoft: '#2C1A1C',
