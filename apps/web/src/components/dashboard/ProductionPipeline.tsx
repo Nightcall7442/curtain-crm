@@ -1,18 +1,7 @@
 'use client';
 
 import type { ProductionStageKey } from '@curtain-crm/shared';
-import {
-  CheckCircle2,
-  ChevronRight,
-  ClipboardCheck,
-  Drill,
-  Ruler,
-  Scissors,
-  Search,
-  Sparkles,
-  Wand2,
-  type LucideIcon,
-} from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { Fragment, type ReactElement } from 'react';
 
@@ -27,17 +16,24 @@ import { Fragment, type ReactElement } from 'react';
  * дашборд должен вести к работе, а не только показывать цифру.
  */
 
-const STAGE_VISUALS: Readonly<
-  Record<ProductionStageKey, { readonly icon: LucideIcon; readonly color: string }>
-> = {
-  new: { icon: Sparkles, color: 'rgb(var(--stage-new))' },
-  measurement: { icon: Ruler, color: 'rgb(var(--stage-measurement))' },
-  cutting: { icon: Scissors, color: 'rgb(var(--stage-cutting))' },
-  sewing: { icon: Wand2, color: 'rgb(var(--stage-sewing))' },
-  qc: { icon: Search, color: 'rgb(var(--stage-qc))' },
-  ready_for_install: { icon: ClipboardCheck, color: 'rgb(var(--stage-ready))' },
-  installation: { icon: Drill, color: 'rgb(var(--stage-installation))' },
-  done: { icon: CheckCircle2, color: 'rgb(var(--stage-done))' },
+/**
+ * Цвет этапа — и всё.
+ *
+ * Иконок здесь больше нет. Ножницы, линейка, волшебная палочка и дрель
+ * стояли над числами восемью разными картинками: этап у каждой плитки уже
+ * назван словом и посчитан числом, а рисунок добавлял только пестроту —
+ * ровно ту, из-за которой панель выглядела набором из шаблона. Осталось
+ * то, что несёт смысл: подпись, число и цвет этапа на них.
+ */
+const STAGE_COLOR: Readonly<Record<ProductionStageKey, string>> = {
+  new: 'rgb(var(--stage-new))',
+  measurement: 'rgb(var(--stage-measurement))',
+  cutting: 'rgb(var(--stage-cutting))',
+  sewing: 'rgb(var(--stage-sewing))',
+  qc: 'rgb(var(--stage-qc))',
+  ready_for_install: 'rgb(var(--stage-ready))',
+  installation: 'rgb(var(--stage-installation))',
+  done: 'rgb(var(--stage-done))',
 };
 
 export interface PipelineStage {
@@ -70,8 +66,7 @@ export function ProductionPipeline({
     */
     <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
       {stages.map((stage, index) => {
-        const visuals = STAGE_VISUALS[stage.key];
-        const Icon = visuals.icon;
+        const color = STAGE_COLOR[stage.key];
 
         return (
           <Fragment key={stage.key}>
@@ -82,8 +77,8 @@ export function ProductionPipeline({
                 ~1000 px все восемь этапов встают в одну строку без прокрутки —
                 конвейер, который надо листать вбок, не читается как конвейер.
               */
-              className="card-link group flex min-w-[92px] flex-1 flex-col items-center gap-1 rounded-tile border bg-base/40 px-2 py-2 hover:bg-raised/50"
-              style={{ borderColor: `color-mix(in srgb, ${visuals.color} 45%, transparent)` }}
+              className="card-link group flex min-w-[92px] flex-1 flex-col items-center gap-1.5 rounded-tile border bg-base/40 px-2 py-2.5 hover:bg-raised/50"
+              style={{ borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}
             >
               <span
                 className="text-center text-overline font-semibold uppercase leading-tight text-secondary"
@@ -91,10 +86,13 @@ export function ProductionPipeline({
               >
                 {stage.label}
               </span>
-              <Icon className="h-5 w-5" style={{ color: visuals.color }} aria-hidden />
+              {/*
+                Число — центр плитки: антиквой и крупнее прежнего, раз место
+                иконки освободилось. Цвет этапа теперь несёт оно и рамка.
+              */}
               <span
-                className="text-title font-semibold leading-none tabular-nums"
-                style={{ color: visuals.color }}
+                className="font-display text-[26px] font-medium leading-none tabular-nums"
+                style={{ color }}
               >
                 {stage.count}
               </span>

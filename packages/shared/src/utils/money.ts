@@ -199,6 +199,10 @@ export function formatMoney(
   return withCurrency ? `${amount}\u00A0${CURRENCY_SYMBOL[locale]}` : amount;
 }
 
+
+/** Неразрывный пробел: сумма не должна рваться переносом строки. */
+const NBSP = '\u00A0';
+
 /**
  * Компактная сумма для плотных списков: `13,8 млн сум` вместо
  * `13 800 000 сум`.
@@ -213,7 +217,18 @@ export function formatMoney(
  */
 export function formatMoneyShort(
   minor: MoneyMinor,
-  options?: { readonly locale?: Locale },
+  options?: {
+    readonly locale?: Locale;
+    /**
+     * Убрать «сум» из самой суммы.
+     *
+     * Нужно таблицам: валюта, повторённая в тридцати строках подряд, ничего
+     * не сообщает и утяжеляет колонку. Там она стоит один раз — в заголовке
+     * колонки. Множитель («млн», «тыс.») остаётся: он у каждой строки свой
+     * и читается вместе с числом.
+     */
+    readonly withoutCurrency?: boolean;
+  },
 ): string {
   const locale = options?.locale ?? 'ru';
   const soums = minor / MINOR_UNITS_PER_MAJOR;
@@ -228,12 +243,22 @@ export function formatMoneyShort(
           ? { value: soums / 1_000, unit: { ru: 'тыс.', uz: 'ming' } as const }
           : null;
 
-  if (scaled === null) return formatMoney(minor, { locale });
+  if (scaled === null) {
+    const full = formatMoney(minor, { locale });
+    return options?.withoutCurrency === true
+      ? full.replace(NBSP + CURRENCY_SYMBOL[locale], '')
+      : full;
+  }
 
   // Один знак после запятой, без хвостового нуля: «14 млн», а не «14,0 млн».
   const rounded = Math.round(scaled.value * 10) / 10;
   const amount = rounded.toString().replace('.', ',');
 
   // Пробелы неразрывные, как в `formatMoney`: сумма не рвётся переносом.
-  return [amount, scaled.unit[locale], CURRENCY_SYMBOL[locale]].join('\u00A0');
+  const parts =
+    options?.withoutCurrency === true
+      ? [amount, scaled.unit[locale]]
+      : [amount, scaled.unit[locale], CURRENCY_SYMBOL[locale]];
+
+  return parts.join(NBSP);
 }

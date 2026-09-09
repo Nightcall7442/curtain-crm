@@ -26,17 +26,20 @@ import { cn } from '@/lib/utils';
 type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'accent';
 
 /**
- * Тона на светлом фоне держатся на слабой заливке и чуть более заметной
- * рамке: сплошной цвет в списке из двадцати строк начинает кричать, а рамка
- * сохраняет форму метки даже там, где заливка почти сливается с карточкой.
+ * Тона на светлом фоне держатся на РАМКЕ, а не на заливке.
+ *
+ * Заливка была вдвое плотнее, и двадцать строк подряд превращались в набор
+ * пастельных таблеток — на льняном фоне это первое, что выдавало дешёвый
+ * шаблон. Теперь цвет несут рамка и текст, а фон под меткой почти чистый:
+ * форма метки остаётся, крика нет.
  */
 const TONE_CLASSES: Readonly<Record<Tone, string>> = {
-  neutral: 'border-strong bg-raised text-secondary',
-  positive: 'border-positive/25 bg-positive/[0.08] text-positive',
-  warning: 'border-warning/25 bg-warning/[0.09] text-warning',
-  danger: 'border-danger/25 bg-danger/[0.07] text-danger',
-  info: 'border-info/25 bg-info/[0.07] text-info',
-  accent: 'border-accent/25 bg-accent/[0.07] text-accent',
+  neutral: 'border-strong bg-raised/60 text-secondary',
+  positive: 'border-positive/35 bg-positive/[0.05] text-positive',
+  warning: 'border-warning/35 bg-warning/[0.05] text-warning',
+  danger: 'border-danger/35 bg-danger/[0.04] text-danger',
+  info: 'border-info/35 bg-info/[0.04] text-info',
+  accent: 'border-accent/35 bg-accent/[0.04] text-accent',
 };
 
 export function Badge({
@@ -51,7 +54,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-medium leading-4',
+        /*
+          Скругление 6 пикселей, а не таблетка. Круглые пилюли — язык
+          мессенджера; здесь же метка стоит в таблице рядом с прямыми углами
+          строк, и мягкий прямоугольник встаёт в ряд, а не выпадает из него.
+        */
+        'inline-flex items-center whitespace-nowrap rounded-[6px] border px-2 py-[3px] text-overline font-medium leading-4',
         TONE_CLASSES[tone],
         className,
       )}

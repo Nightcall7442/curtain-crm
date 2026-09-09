@@ -78,17 +78,25 @@ export function Sidebar({
                       : 'text-nav-text/70 hover:bg-white/[0.07] hover:text-nav-text',
                   )}
                 >
-                  {/* Зелёная метка активного пункта */}
+                  {/*
+                    Метка активного пункта — латунная.
+
+                    Зелёная стояла на зеленоватой подсветке строки: два
+                    близких зелёных друг на друге давали мутное пятно вместо
+                    отметки. Латунь — единственный второй цвет системы, и
+                    здесь она делает ровно то, для чего заведена: отмечает
+                    место, где человек сейчас находится.
+                  */}
                   {active && (
                     <span
                       aria-hidden
-                      className="absolute inset-y-1.5 left-0 w-[3px] rounded-r bg-accent-bright"
+                      className="absolute inset-y-1.5 left-0 w-[3px] rounded-r bg-brass"
                     />
                   )}
                   <Icon
                     className={cn(
                       'h-[18px] w-[18px] shrink-0',
-                      active && 'text-accent-bright',
+                      active && 'text-brass',
                     )}
                   />
                   {!collapsed && <span className="truncate">{item.label}</span>}

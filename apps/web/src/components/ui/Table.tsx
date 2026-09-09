@@ -182,7 +182,12 @@ export function DataTable<TRow>({
           от «111 457 653» по смыслу.
         */}
         <thead className="sticky top-0 z-10">
-          <tr className="border-b border-subtle bg-raised/95 backdrop-blur">
+          {/*
+            Шапка отделена от строк заметной линией, а не такой же волосяной,
+            как между строками: без этого первая строка данных читалась как
+            вторая строка заголовка.
+          */}
+          <tr className="border-b border-strong bg-raised/95 backdrop-blur">
             {selection !== undefined && (
               <th scope="col" className="w-10 px-3.5 py-2.5">
                 <Checkbox
@@ -243,7 +248,7 @@ export function DataTable<TRow>({
           </tr>
         </thead>
 
-        <tbody>
+        <tbody className="[font-variant-numeric:tabular-nums]">
           {isLoading &&
             Array.from({ length: 5 }, (_unused, index) => (
               <tr key={`skeleton-${index.toString()}`} className="border-b border-subtle/60">

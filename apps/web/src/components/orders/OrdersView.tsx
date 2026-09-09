@@ -654,7 +654,7 @@ export function OrdersView({
           },
           {
             key: 'price',
-            header: 'Сумма',
+            header: 'Сумма, сум',
             align: 'right',
             sortValue: (row) => parseMoney(row.workPrice),
             render: (row) => (
@@ -664,13 +664,13 @@ export function OrdersView({
                 className="font-mono text-primary"
                 title={formatMoney(parseMoney(row.workPrice), { locale })}
               >
-                {formatMoneyShort(parseMoney(row.workPrice), { locale })}
+                {formatMoneyShort(parseMoney(row.workPrice), { locale, withoutCurrency: true })}
               </span>
             ),
           },
           {
             key: 'remaining',
-            header: 'Остаток',
+            header: 'Остаток, сум',
             align: 'right',
             sortValue: (row) =>
               row.remainingPayment === null ? 0 : parseMoney(row.remainingPayment),
@@ -683,7 +683,7 @@ export function OrdersView({
               }
               return (
                 <span className="font-mono font-medium text-danger">
-                  {formatMoneyShort(remaining, { locale })}
+                  {formatMoneyShort(remaining, { locale, withoutCurrency: true })}
                 </span>
               );
             },
