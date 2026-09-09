@@ -36,37 +36,44 @@ export function Header({
 
   return (
     /*
-      Под шапкой — латунная волосяная линия поверх обычной границы.
+      ШАПКА — ФИРМЕННОЙ ХВОИ, как в мобильном приложении.
 
-      Шапка стеклянная, и на светлом фоне её нижний край терялся: страница
-      начиналась без начала. Латунь здесь та же, что у подписей разделов, —
-      она отмечает границу листа, а не украшает её.
+      Была светлой: зелень оставалась только в узкой полосе меню слева, и
+      панель выглядела чужой рядом с телефоном, где верх экрана зелёный. Тут
+      же обнаруживалось и второе: светлая шапка на льняном фоне ничем от него
+      не отличалась, и страница начиналась без начала — латунную линию под
+      ней пришлось заводить как раз поэтому.
+
+      Тёмный верх решает оба: меню и шапка складываются в единую фирменную
+      рамку, а лист содержимого внутри неё виден сразу. Латунная линия
+      осталась — теперь она отделяет рамку от листа, а не спасает границу.
     */
-    <header className="glass-light sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-subtle px-4 shadow-[0_1px_0_rgb(var(--brass)_/_0.35)]">
+    <header className="glass-nav sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 px-4 shadow-[0_1px_0_rgb(var(--brass)_/_0.45)]">
       <button
         type="button"
         onClick={onToggleSidebar}
         aria-label="Свернуть меню"
-        className="grid h-9 w-9 place-items-center rounded-tile text-secondary transition-colors hover:bg-raised hover:text-primary"
+        className="grid h-9 w-9 place-items-center rounded-tile text-nav-text/75 transition-colors hover:bg-white/10 hover:text-nav-text"
       >
         <Menu className="h-[18px] w-[18px]" />
       </button>
 
-      <h1 className="truncate font-display text-title text-primary">
+      <h1 className="truncate font-display text-title text-nav-text">
         {pageTitle(pathname)}
       </h1>
 
       <div className="ml-auto flex items-center gap-2">
         {/* Текущая дата — на макете она в шапке рядом с выбором периода */}
-        <span className="hidden items-center gap-2 rounded-tile border border-subtle bg-panel px-3 py-1.5 text-caption text-secondary md:flex">
-          <CalendarDays className="h-4 w-4 text-accent" />
+        {/* На тёмной шапке плашки держатся не рамкой, а осветлением. */}
+        <span className="hidden items-center gap-2 rounded-tile bg-white/10 px-3 py-1.5 text-caption text-nav-text/85 md:flex">
+          <CalendarDays className="h-4 w-4 text-brass" />
           {formatDate(new Date())}
         </span>
 
         <Link
           href="/notifications"
           aria-label={`Уведомления${unread > 0 ? `, непрочитанных: ${unread.toString()}` : ''}`}
-          className="relative grid h-9 w-9 place-items-center rounded-tile text-secondary transition-colors hover:bg-raised hover:text-primary"
+          className="relative grid h-9 w-9 place-items-center rounded-tile text-nav-text/75 transition-colors hover:bg-white/10 hover:text-nav-text"
         >
           <Bell className="h-[18px] w-[18px]" />
           {unread > 0 && (
@@ -88,22 +95,22 @@ export function Header({
           )}
         </Link>
 
-        <div className="flex items-center gap-2 rounded-tile border border-subtle bg-panel px-2 py-1.5">
+        <div className="flex items-center gap-2 rounded-tile bg-white/10 px-2 py-1.5">
           <span
             aria-hidden
-            className="grid h-7 w-7 place-items-center rounded-full bg-accent-soft text-overline font-semibold text-accent"
+            className="grid h-7 w-7 place-items-center rounded-full bg-brass/25 text-overline font-semibold text-nav-text"
           >
             {user === null ? '—' : initials(user.fullName)}
           </span>
           <span className="hidden min-w-0 leading-tight sm:block">
-            <span className="block truncate text-caption text-primary">
+            <span className="block truncate text-caption text-nav-text">
               {user?.fullName ?? '—'}
             </span>
-            <span className="block truncate text-overline text-muted">
+            <span className="block truncate text-overline text-nav-text/60">
               {primaryRole === undefined ? 'Design House' : ROLE_LABELS_RU[primaryRole]}
             </span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <ChevronDown className="h-4 w-4 shrink-0 text-nav-text/60" aria-hidden />
         </div>
       </div>
     </header>
