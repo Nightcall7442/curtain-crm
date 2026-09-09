@@ -65,17 +65,44 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
     return <>{children}</>;
   }
 
-  // Пока профиль загружается, оболочку не рисуем: иначе на долю секунды
-  // мелькнёт меню с пустыми правами, а затем перестроится под роли.
+  /*
+    Пока профиль загружается, оболочку с ПУНКТАМИ не рисуем: иначе на долю
+    секунды мелькнёт меню с пустыми правами, а затем перестроится под роли.
+
+    Но и крутящийся кружок посреди пустой страницы показывать незачем: это
+    самый дешёвый из возможных экранов ожидания, и он ничего не обещает.
+    Здесь стоит остов той самой страницы, которая сейчас откроется — тёмное
+    меню, шапка, карточки: за полсекунды глаз успевает найти будущие места
+    заголовка и данных, и появление содержимого читается как продолжение,
+    а не как смена экрана.
+  */
   if (isLoading || user === null) {
     return (
-      <div className="grid min-h-screen place-items-center bg-base">
-        <div className="flex flex-col items-center gap-3">
-          <span
-            aria-hidden
-            className="h-8 w-8 animate-spin rounded-full border-2 border-strong border-t-accent"
-          />
-          <span className="text-caption text-muted">Загрузка…</span>
+      <div className="flex h-dvh overflow-hidden bg-base" role="status" aria-busy="true">
+        <span className="sr-only">Загрузка панели</span>
+
+        <div className="hidden w-[228px] shrink-0 flex-col gap-2 bg-nav p-4 lg:flex">
+          <span className="h-10 w-[150px] rounded bg-white/10" />
+          <span className="mt-4 h-8 w-full rounded-tile bg-white/[0.07]" />
+          <span className="h-8 w-full rounded-tile bg-white/[0.07]" />
+          <span className="h-8 w-full rounded-tile bg-white/[0.07]" />
+          <span className="h-8 w-full rounded-tile bg-white/[0.07]" />
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-16 shrink-0 items-center gap-4 border-b border-subtle px-4">
+            <span className="h-5 w-40 rounded bg-raised" />
+            <span className="ml-auto h-9 w-32 rounded-tile bg-raised" />
+          </div>
+
+          <div className="flex-1 space-y-4 p-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <span className="h-[104px] rounded-panel border border-subtle bg-panel" />
+              <span className="h-[104px] rounded-panel border border-subtle bg-panel" />
+              <span className="h-[104px] rounded-panel border border-subtle bg-panel" />
+            </div>
+            <span className="block h-64 rounded-panel border border-subtle bg-panel" />
+          </div>
         </div>
       </div>
     );

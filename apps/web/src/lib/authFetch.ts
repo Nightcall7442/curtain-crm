@@ -98,7 +98,24 @@ export const authFetch: typeof fetch = async (input, init) => {
     headers: withAuthorization(init?.headers, tokenStorage.getAccessToken()),
   };
 
-  return fetch(input, retryInit);
+  const retried = await fetch(input, retryInit);
+
+  /*
+    Второй отказ подряд — уже с только что полученным токеном — означает, что
+    сессия мертва, сколько её ни обновляй: пользователя отключили, роль сняли
+    или сервер перевыпустил ключи.
+
+    Раньше этот ответ возвращался молча. Запросы страницы отказывали один за
+    другим, оболочка оставалась на «Загрузка…», и приложение висело так, пока
+    человек сам не перезагрузит вкладку. Теперь исход тот же, что и у
+    неудавшегося обновления: токены стираются, и провайдер уводит на вход.
+  */
+  if (retried.status === 401) {
+    tokenStorage.clear();
+    onSessionExpired?.();
+  }
+
+  return retried;
 };
 
 function withAuthorization(headers: HeadersInit | undefined, token: string | null): Headers {
