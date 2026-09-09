@@ -873,6 +873,66 @@
  * убираются: серая заливка тени на принтере выходит грязью.
  */
 @media print {
+  /*
+    НА БУМАГЕ ВСЕГДА СВЕТЛАЯ СХЕМА.
+
+    Отчёты и ведомости печатают. У того, у кого система стоит в тёмной теме,
+    страница уходила на принтер белым текстом по белому листу: экранная
+    схема — свойство экрана, а не документа. Здесь токены возвращаются к
+    светлым значениям поверх любой схемы, поэтому печатать можно из любой.
+
+    Фон листа делаем чистым белым, а не льняным: лён — материал экрана, на
+    бумаге он превратился бы в серую заливку и съел бы тонер.
+  */
+  :root,
+  :root[data-theme='dark'],
+  :root:not([data-theme='light']) {
+    color-scheme: light;
+
+    --surface-base: 255 255 255;
+    --surface-panel: 255 255 255;
+    --surface-raised: 246 242 234;
+    --border-subtle: 214 205 190;
+    --border-strong: 178 166 148;
+
+    --text-primary: 20 35 29;
+    --text-secondary: 68 80 74;
+    --text-muted: 88 99 93;
+
+    --accent: 31 93 69;
+    --accent-strong: 22 70 52;
+    --accent-bright: 42 125 92;
+    --accent-muted: 155 189 175;
+    --accent-soft: 238 244 241;
+    --text-on-accent: 255 255 255;
+
+    --brass: 176 141 61;
+    --brass-ink: 122 95 30;
+
+    --positive: 21 116 57;
+    --warning: 146 105 12;
+    --danger: 176 32 42;
+    --info: 39 106 172;
+
+    --stage-new: 46 111 182;
+    --stage-measurement: 11 90 99;
+    --stage-cutting: 143 99 0;
+    --stage-sewing: 142 61 122;
+    --stage-qc: 90 107 18;
+    --stage-ready: 178 80 20;
+    --stage-installation: 90 79 163;
+    --stage-done: 34 104 63;
+
+    --series-current: 31 93 69;
+    --series-previous: 120 130 125;
+  }
+
+  /* Тени на бумаге — серые пятна по краям карточек. */
+  .shadow-panel,
+  .shadow-raised {
+    box-shadow: none !important;
+  }
+
   .glass-light {
     background-color: #ffffff;
     backdrop-filter: none;

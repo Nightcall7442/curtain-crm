@@ -76,14 +76,24 @@ export function CardTitle({
   readonly action?: ReactNode;
 }): ReactElement {
   return (
-    <View style={styles.titleRow}>
-      {icon !== undefined && (
-        <View style={styles.titleIcon}>
-          <Icon name={icon} size={16} color={colors.accent} />
-        </View>
-      )}
-      <Text style={styles.title}>{title}</Text>
-      {action !== undefined && <View style={styles.titleAction}>{action}</View>}
+    <View>
+      {/*
+        Латунная черта над заголовком — тот же знак раздела, что и в
+        веб-панели. Одна деталь, повторённая на каждой карточке в обоих
+        приложениях: панель и телефон должны узнаваться как одна вещь, а
+        не как два продукта с общим логотипом.
+      */}
+      <View style={styles.titleRule} />
+
+      <View style={styles.titleRow}>
+        {icon !== undefined && (
+          <View style={styles.titleIcon}>
+            <Icon name={icon} size={16} color={colors.accent} />
+          </View>
+        )}
+        <Text style={styles.title}>{title}</Text>
+        {action !== undefined && <View style={styles.titleAction}>{action}</View>}
+      </View>
     </View>
   );
 }
@@ -318,6 +328,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     ...cardShadow,
+  },
+  titleRule: {
+    width: 14,
+    height: 1,
+    backgroundColor: colors.brass,
+    marginBottom: spacing.sm,
   },
   titleRow: {
     flexDirection: 'row',

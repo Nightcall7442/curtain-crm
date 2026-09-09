@@ -35,7 +35,14 @@ export function Header({
   const primaryRole = user?.roles[0];
 
   return (
-    <header className="glass-light sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-subtle px-4">
+    /*
+      Под шапкой — латунная волосяная линия поверх обычной границы.
+
+      Шапка стеклянная, и на светлом фоне её нижний край терялся: страница
+      начиналась без начала. Латунь здесь та же, что у подписей разделов, —
+      она отмечает границу листа, а не украшает её.
+    */
+    <header className="glass-light sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-subtle px-4 shadow-[0_1px_0_rgb(var(--brass)_/_0.35)]">
       <button
         type="button"
         onClick={onToggleSidebar}

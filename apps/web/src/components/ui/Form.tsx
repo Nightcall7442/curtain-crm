@@ -151,8 +151,17 @@ export function Field({
  * в пиксель, поменявшая оттенок, на светлом фоне почти не видна, а поля
  * заполняют с клавиатуры.
  */
+/*
+  Поле — углубление в карточке, а не наклейка на ней.
+
+  Тень внутрь на один пиксель: край поля ловит свет сверху, как настоящая
+  выемка, и белая карточка перестаёт выглядеть листом с нарисованными
+  прямоугольниками. Величина намеренно на грани заметности — поле не должно
+  спорить с данными, которые в нём набраны.
+*/
 const CONTROL_BASE =
   'w-full rounded-tile border border-subtle bg-base text-primary transition-colors ' +
+  'shadow-[inset_0_1px_2px_rgb(58_45_20_/_0.05)] ' +
   'placeholder:text-muted/70 focus:border-accent-muted focus:outline-none ' +
   'focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60';
 
@@ -408,7 +417,14 @@ export function Button({
      * запись была двусмысленной и зависела от порядка правил в собранном
      * CSS. Двусмысленности в основном классе кнопки быть не должно.
      */
-    primary: 'bg-accent text-on-accent hover:bg-accent-strong shadow-panel',
+    /*
+      У главной кнопки есть тело: светлый кант по верхней кромке и тень
+      цвета самой кнопки под ней. Плоский зелёный прямоугольник читался
+      наклейкой; с кантом он читается нажимаемой вещью.
+    */
+    primary:
+      'bg-accent text-on-accent hover:bg-accent-strong ' +
+      'shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-4px_rgb(31_93_69_/_0.55)]',
     secondary: 'border border-subtle bg-panel text-secondary hover:bg-raised hover:text-primary',
     // Опасное действие контурное, а не залитое: сплошная красная кнопка
     // притягивает нажатие ровно там, где оно должно быть обдуманным.
