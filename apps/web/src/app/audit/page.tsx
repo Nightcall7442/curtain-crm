@@ -36,6 +36,8 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   task: 'Поручение',
   retail_item: 'Товар витрины',
   retail_sale: 'Чек',
+  ready_made_item: 'Готовая штора',
+  fabric_stock: 'Ткань на складе',
 };
 
 /**
@@ -88,6 +90,20 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'order.assignee_changed': 'Исполнитель изменён',
   'order.price_changed': 'Цена изменена',
   'order.stage_fees_changed': 'Расценки по этапам изменены',
+  'order.item_meters_changed': 'Метраж позиции изменён',
+  'order.cornice_taken': 'Карниз взят в работу',
+  'order.cornice_done': 'Карниз повешен',
+
+  'fabric_stock.received': 'Приход ткани',
+  'fabric_stock.counted': 'Ткань пересчитана',
+  'fabric_stock.written_off': 'Ткань списана на заказ',
+
+  'ready_made_item.created': 'Готовая штора заведена',
+  'ready_made_item.updated': 'Готовая штора изменена',
+  'ready_made_item.stock_changed': 'Остаток готовых штор изменён',
+  'ready_made_item.activated': 'Готовая штора возвращена в продажу',
+  'ready_made_item.deactivated': 'Готовая штора снята с продажи',
+  'ready_made_item.sold': 'Готовая штора продана',
 
   'retail_item.created': 'Товар витрины создан',
   'retail_item.updated': 'Товар витрины изменён',
@@ -97,6 +113,13 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'retail_sale.created': 'Чек пробит',
 
   'task.created': 'Поручение выдано',
+  'task.completed': 'Поручение выполнено',
+  'task.cancelled': 'Поручение отменено',
+
+  'dayoff.requested': 'Отгул запрошен',
+  'dayoff.approved': 'Отгул одобрен',
+  'dayoff.rejected': 'Отгул отклонён',
+  'dayoff.cancelled': 'Отгул отменён',
   'user.avatar_changed': 'Фото сотрудника изменено',
 
   'purchase_item.created': 'Товар закупки создан',

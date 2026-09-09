@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react';
 import {
+  materialKindLabel,
   ORDER_STATUS_LABELS_RU,
   ROLE_LABELS_RU,
+  type CatalogKind,
   type OrderStatus,
   type Role,
 } from '@curtain-crm/shared';
@@ -110,6 +112,23 @@ function formatValue(key: string, raw: unknown): string {
   if (DATE_KEYS.has(key)) {
     return formatDateTime(text);
   }
+  if (KIND_KEYS.has(key)) {
+    /*
+      «вид portiere_code» читалось кодом таблицы. Тот же словарь, что и на
+      самом складе: там колонка «Вид» называет материал словом.
+    */
+    return materialKindLabel(text as CatalogKind);
+  }
+
+  /*
+    Метраж приходит из `numeric(12,3)` строкой с хвостовыми нулями: «57.500»,
+    «-4.000». В журнале это читается точностью, которой нет: склад ведут до
+    сантиметра, а не до микрона.
+  */
+  if (NUMERIC_TEXT.test(text)) {
+    const number = Number.parseFloat(text);
+    if (Number.isFinite(number)) return number.toLocaleString('ru-RU');
+  }
 
   return text;
 }
@@ -148,6 +167,10 @@ function rank(path: string): number {
 const STATUS_KEYS = new Set(['fromStatus', 'toStatus', 'status']);
 const ROLE_KEYS = new Set(['role', 'roles']);
 const DATE_KEYS = new Set(['startedAt', 'endedAt', 'periodStart', 'periodEnd']);
+const KIND_KEYS = new Set(['kind']);
+
+/** Число с дробной частью, записанное строкой: «57.500», «-4.000». */
+const NUMERIC_TEXT = /^-?\d+\.\d+$/;
 
 /**
  * Подпись поля.
@@ -217,4 +240,18 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   paid: 'выплачено',
   skipped: 'пропущено',
   failures: 'ошибок',
+
+  // склад тканей, метраж и готовые шторы
+  code: 'код',
+  meters: 'метров',
+  stockAfter: 'остаток после',
+  orderId: 'заказ',
+  orderNumber: 'номер заказа',
+  itemId: 'позиция',
+  quantity: 'количество',
+  model: 'модель',
+  description: 'описание',
+  changed: 'изменены поля',
+  mountKind: 'крепление',
+  branchId: 'филиал',
 };
