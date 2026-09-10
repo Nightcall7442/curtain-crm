@@ -190,6 +190,19 @@ export function SchemeDialog({
           </Field>
         </div>
 
+        {/*
+          У сдельной полей нет вовсе, и пустое место между «Типом» и «Действует
+          с» читается как несохранённая форма. Строка говорит, где стоит сумма:
+          в заказе, у админа.
+        */}
+        {required.length === 0 && (
+          <p className="rounded-tile border border-subtle bg-raised px-3 py-2 text-footnote text-secondary">
+            Заполнять нечего: сотрудник получает расценки за этапы, которые админ
+            назначает в самом заказе. В ведомости они станут строкой «Сдельно за этапы
+            заказов».
+          </p>
+        )}
+
         {required.map((key) => {
           const meta = FIELD_LABELS[key];
           return (

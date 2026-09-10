@@ -9,6 +9,7 @@ import {
   calculateKpi,
   calculatePayroll,
   calculatePerOrder,
+  calculatePieceRate,
   payableRoles,
   withStageFees,
   type PayrollInputs,
@@ -226,6 +227,33 @@ describe('calculatePerOrder', () => {
     expect(() =>
       calculatePerOrder(scheme({ type: PayrollSchemeType.PER_ORDER }), NO_INPUTS),
     ).toThrow(TRPCError);
+  });
+});
+
+describe('calculatePieceRate', () => {
+  const pieceScheme = scheme({ type: PayrollSchemeType.PIECE_RATE });
+
+  it('сам по себе не начисляет ничего', () => {
+    expect(calculatePieceRate().amount).toBe(0);
+  });
+
+  /*
+   * Ради этого тип и заведён: у сдельщика в ведомости должны стоять расценки
+   * заказов и ничего больше. Считаем через диспетчер, потому что расценки
+   * добавляет он.
+   */
+  it('приносит ровно расценки за этапы', () => {
+    const result = calculatePayroll(
+      pieceScheme,
+      inputs({ stageFeesAmount: parseMoney('1250000') }),
+    );
+
+    expect(result.amount).toBe(parseMoney('1250000'));
+    expect(result.breakdown).toHaveLength(1);
+  });
+
+  it('без заполненных полей схемы не падает', () => {
+    expect(() => calculatePayroll(pieceScheme, NO_INPUTS)).not.toThrow();
   });
 });
 

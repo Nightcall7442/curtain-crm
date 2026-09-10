@@ -21,6 +21,7 @@ export const PAYROLL_SCHEME_TYPES = [
   'kpi',
   'commission',
   'per_order',
+  'piece_rate',
 ] as const;
 
 export type PayrollSchemeType = (typeof PAYROLL_SCHEME_TYPES)[number];
@@ -42,6 +43,15 @@ export const PayrollSchemeType = {
   COMMISSION: 'commission',
   /** Фиксированная сумма (`rate`) за каждый закрытый заказ сотрудника. */
   PER_ORDER: 'per_order',
+  /**
+   * Только расценки за этапы: сколько назначено в заказах, столько и вышло.
+   *
+   * Ни оклада, ни часов, ни ставки в самих условиях — расценку ставит админ
+   * при приёме заказа, потому что сложность работы знает он, а не схема.
+   * Раньше сдельщика приходилось заводить окладом в ноль: сумма получалась
+   * верная, но в ведомости стояло «Оклад», и человек искал в ней оклад.
+   */
+  PIECE_RATE: 'piece_rate',
 } as const satisfies Record<string, PayrollSchemeType>;
 
 export const payrollSchemeTypeSchema = z.enum(PAYROLL_SCHEME_TYPES);
@@ -53,6 +63,7 @@ export const PAYROLL_SCHEME_TYPE_LABELS: Translated<PayrollSchemeType> = {
     kpi: 'Оклад + KPI',
     commission: 'Процент от заказов',
     per_order: 'Фикс за заказ',
+    piece_rate: 'От расценки',
   },
   uz: {
     fixed: 'Maosh',
@@ -60,6 +71,7 @@ export const PAYROLL_SCHEME_TYPE_LABELS: Translated<PayrollSchemeType> = {
     kpi: 'Maosh + KPI',
     commission: 'Buyurtmalardan foiz',
     per_order: 'Har buyurtma uchun belgilangan summa',
+    piece_rate: "Ish narxi bo'yicha",
   },
 };
 
@@ -77,6 +89,8 @@ export const PAYROLL_SCHEME_REQUIRED_FIELDS: Readonly<
   kpi: ['baseAmount', 'rate', 'kpiTarget'],
   commission: ['commissionPercent'],
   per_order: ['rate'],
+  // Пусто намеренно: расценка живёт в заказе, а не в условиях сотрудника.
+  piece_rate: [],
 };
 
 /* -------------------------------------------------------------------------- */

@@ -234,6 +234,19 @@ export function calculatePerOrder(
 }
 
 /**
+ * Сдельная: у самой схемы суммы нет.
+ *
+ * Всё, что получает такой сотрудник, — расценки за выполненные этапы, и их
+ * добавляет `withStageFees` ниже, общая для всех схем. Отдельный тип нужен
+ * не расчёту, а человеку: в ведомости видно, что оклада здесь нет и не
+ * должно быть, а в условиях не приходится заполнять ставку, которая ни на
+ * что не влияет.
+ */
+export function calculatePieceRate(): PayrollCalculation {
+  return { amount: 0, kpiPercent: null, breakdown: [] };
+}
+
+/**
  * Добавляет к начислению сдельные расценки за выполненные этапы.
  *
  * Отдельной строкой, а не слитой суммой: если у сотрудника схема
@@ -286,6 +299,8 @@ export function calculatePayroll(
         return calculateCommission(scheme, inputs);
       case PayrollSchemeType.PER_ORDER:
         return calculatePerOrder(scheme, inputs);
+      case PayrollSchemeType.PIECE_RATE:
+        return calculatePieceRate();
     }
   };
 

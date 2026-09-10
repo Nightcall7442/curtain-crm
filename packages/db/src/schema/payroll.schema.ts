@@ -102,7 +102,8 @@ export const payrollSchemes = pgTable(
             and ${table.rate} is not null
             and ${table.kpiTarget} is not null and ${table.kpiTarget} > 0)
        or (${table.type} = 'commission' and ${table.commissionPercent} is not null)
-       or (${table.type}::text = 'per_order' and ${table.rate} is not null)`,
+       or (${table.type}::text = 'per_order' and ${table.rate} is not null)
+       or (${table.type}::text = 'piece_rate')`,
     ),
     check(
       'payroll_schemes_amounts_non_negative',

@@ -204,6 +204,13 @@
       "when": 1789042295185,
       "tag": "0028_stock_codes_only",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789043630022,
+      "tag": "0029_payroll_piece_rate",
+      "breakpoints": true
     }
   ]
 }
