@@ -36,6 +36,13 @@ export const CATALOG_KINDS = [
   'cornice_code',
   'plastic_code',
   'pipe_code',
+  /*
+    Коды аксессуаров — держатели, султанчики, бубоны, сачак.
+
+    Отдельно от справочника названий (`accessory`): в заказе аксессуар
+    называют словом, а на складе считают по бирке поставщика, как ткань.
+  */
+  'accessory_code',
 ] as const;
 
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
@@ -55,6 +62,7 @@ export const CatalogKind = {
   CORNICE_CODE: 'cornice_code',
   PLASTIC_CODE: 'plastic_code',
   PIPE_CODE: 'pipe_code',
+  ACCESSORY_CODE: 'accessory_code',
 } as const satisfies Record<string, CatalogKind>;
 
 export const CATALOG_KIND_LABELS: Translated<CatalogKind> = {
@@ -73,6 +81,7 @@ export const CATALOG_KIND_LABELS: Translated<CatalogKind> = {
     cornice_code: 'Коды карнизов',
     plastic_code: 'Коды пластика',
     pipe_code: 'Коды труб',
+    accessory_code: 'Коды аксессуаров',
   },
   uz: {
     curtain_model: 'Parda modeli',
@@ -89,6 +98,7 @@ export const CATALOG_KIND_LABELS: Translated<CatalogKind> = {
     cornice_code: 'Karniz kodlari',
     plastic_code: 'Plastik kodlari',
     pipe_code: 'Truba kodlari',
+    accessory_code: 'Aksessuar kodlari',
   },
 };
 
@@ -175,6 +185,7 @@ export const DEFAULT_CATALOG_ITEMS: Readonly<Record<CatalogKind, readonly string
   cornice_code: [],
   plastic_code: [],
   pipe_code: [],
+  accessory_code: [],
 };
 
 /**
@@ -240,10 +251,44 @@ export const MATERIAL_CODE_KINDS = {
   pipe: CatalogKind.PIPE_CODE,
 } as const satisfies Readonly<Record<MaterialSlot, CatalogKind>>;
 
-/** Виды справочников, по которым ведётся склад тканей. */
+/** Виды справочников, по которым ведётся склад. */
 export const MATERIAL_CODE_KIND_LIST = MATERIAL_SLOTS.map(
   (slot) => MATERIAL_CODE_KINDS[slot],
 );
+
+/**
+ * Что лежит на складе.
+ *
+ * Материалы позиции плюс аксессуары. Аксессуара нет среди строк материала
+ * (`MATERIAL_SLOTS`) намеренно: в заказе его называют словом и считают
+ * штуками отдельным списком, а на складе он лежит рядом с тканью и
+ * учитывается так же — по бирке.
+ */
+export const STOCK_KINDS = [...MATERIAL_CODE_KIND_LIST, CatalogKind.ACCESSORY_CODE] as const;
+
+export type StockKind = (typeof STOCK_KINDS)[number];
+
+/** Короткое название вида на складе. */
+export const STOCK_KIND_LABELS_RU: Readonly<Record<StockKind, string>> = {
+  portiere_code: 'Портьера',
+  tulle_code: 'Тюль',
+  protection_code: 'Защита',
+  cornice_code: 'Карниз',
+  plastic_code: 'Пластик',
+  pipe_code: 'Труба',
+  accessory_code: 'Аксессуар',
+};
+
+/**
+ * Единица измерения вида.
+ *
+ * Ткань и трубу меряют метрами, аксессуары считают штуками. Одна колонка
+ * количества на складе и две подписи — потому что «12 метров держателей»
+ * это не опечатка в числе, а неправда о товаре.
+ */
+export function stockUnitLabel(kind: StockKind): string {
+  return kind === CatalogKind.ACCESSORY_CODE ? 'шт' : 'м';
+}
 
 /**
  * Строка материала по виду справочника — обратная сторона `MATERIAL_CODE_KINDS`.
@@ -278,6 +323,7 @@ export const MATERIAL_SLOT_LABELS_RU = MATERIAL_SLOT_LABELS.ru;
 
 /** Название вида склада: «Портьера» вместо «Коды портьер». */
 export function materialKindLabel(kind: CatalogKind): string {
+  if (kind === CatalogKind.ACCESSORY_CODE) return STOCK_KIND_LABELS_RU.accessory_code;
   const slot = MATERIAL_SLOT_BY_CODE_KIND[kind];
   return slot === undefined ? CATALOG_KIND_LABELS_RU[kind] : MATERIAL_SLOT_LABELS_RU[slot];
 }

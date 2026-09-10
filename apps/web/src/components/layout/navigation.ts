@@ -100,10 +100,10 @@ export const NAVIGATION: readonly NavItem[] = [
   */
   { href: '/ready-made', label: 'Готовые шторы', icon: Package, roles: ORDER_INTAKE_ROLES },
   /*
-    Склад тканей — руководству: приход и пересчёт это деньги. Списание при
-    раскрое система делает сама, и цеху сюда заходить незачем.
+    Склад — руководству: остатки и их правка это деньги. Списание при раскрое
+    система делает сама, и цеху сюда заходить незачем.
   */
-  { href: '/warehouse', label: 'Склад тканей', icon: Boxes, roles: MANAGEMENT_ROLES },
+  { href: '/warehouse', label: 'Склад', icon: Boxes, roles: MANAGEMENT_ROLES },
   { href: '/payroll', label: 'Зарплаты', icon: Wallet, roles: MANAGEMENT_ROLES },
   { href: '/rating', label: 'Рейтинг', icon: Trophy, roles: MANAGEMENT_ROLES },
   { href: '/reports', label: 'Отчёты', icon: BarChart3, roles: MANAGEMENT_ROLES },

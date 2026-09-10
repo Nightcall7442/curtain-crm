@@ -46,8 +46,8 @@ import { RetailStockScreen } from './RetailStockScreen';
  * Закупочные материалы: почём покупаем и что стоит на витрине.
  *
  * Три раздела в одном экране, а не три пункта в меню: закупочные цены,
- * витрина кассы и склад тканей — про один и тот же привезённый в цех товар,
- * и руководитель, приехав с рынка, правит их за один заход.
+ * витрина кассы и склад — про один и тот же привезённый в цех товар, и
+ * руководитель, приехав с рынка, правит их за один заход.
  */
 export function PurchaseMaterialsScreen(): ReactElement {
   const [section, setSection] = useState<'purchase' | 'retail' | 'fabric'>('purchase');
@@ -60,7 +60,7 @@ export function PurchaseMaterialsScreen(): ReactElement {
         options={[
           { value: 'purchase', label: 'Закупка' },
           { value: 'retail', label: 'Витрина' },
-          { value: 'fabric', label: 'Ткани' },
+          { value: 'fabric', label: 'Склад' },
         ]}
       />
     </View>

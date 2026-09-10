@@ -1,11 +1,11 @@
 'use client';
 
 import {
-  MATERIAL_CODE_KINDS,
-  MATERIAL_SLOT_LABELS_RU,
-  MATERIAL_SLOTS,
   materialKindLabel,
-  type MaterialSlot,
+  STOCK_KIND_LABELS_RU,
+  STOCK_KINDS,
+  stockUnitLabel,
+  type StockKind,
 } from '@curtain-crm/shared';
 import { Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
@@ -19,85 +19,89 @@ import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
 
 /**
- * Склад тканей: сколько метров какого кода лежит в цехе.
+ * Склад: что лежит в цехе и сколько.
  *
- * До него складского учёта не было вовсе — закупки давали себестоимость
- * заказа, а на вопрос «сколько метров П-31 осталось» отвечали, пересчитывая
- * рулоны глазами.
+ * Ткани, карнизы, пластик, трубы и аксессуары — одним списком: кладовщик
+ * ходит вдоль одних и тех же полок, и делить их на два раздела значило бы
+ * заставлять его помнить, в каком из них искать.
  *
- * Учёт идёт по коду с этикетки: тому же, который продавец вводит в заказе, а
- * руководитель заводит в справочнике. Приход заносится руками — привезли
- * рулон, записали; расход система списывает сама, когда заказ уходит в
- * пошив, то есть когда ткань раскроили.
+ * Позиция — это код с бирки, мини-описание к нему и остаток. Прихода как
+ * отдельного действия нет: пришла партия — остаток пересчитывают. Расход
+ * система списывает сама, когда заказ уходит в пошив, то есть когда
+ * материал раскроили.
  *
- * Отрицательный остаток разрешён и показан красным: ткань, которую забыли
- * оприходовать, всё равно раскроили, и минус — это видимый долг учёта, а не
- * ошибка. Обрезать его до нуля значило бы спрятать и метры, и ошибку.
+ * Отрицательный остаток разрешён и показан красным: то, что забыли завести,
+ * всё равно раскроили, и минус — видимый долг учёта, а не ошибка.
  */
 
-/** Метраж строкой: «12,5» и «12.5» вводят одинаково часто. */
-const toMeters = (raw: string): number => Number.parseFloat(raw.replace(',', '.')) || 0;
+/** Количество строкой: «12,5» и «12.5» вводят одинаково часто. */
+const toQuantity = (raw: string): number => Number.parseFloat(raw.replace(',', '.')) || 0;
 
-const formatMeters = (raw: string): string => {
+const formatQuantity = (raw: string, kind: StockKind): string => {
   const value = Number.parseFloat(raw);
-  return `${value.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} м`;
+  return `${value.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${stockUnitLabel(kind)}`;
 };
 
 export default function WarehousePage(): ReactElement {
   const toast = useToast();
   const utils = trpc.useUtils();
 
-  const [receiving, setReceiving] = useState(false);
-  const [slot, setSlot] = useState<MaterialSlot>('portiere');
-  const [branchId, setBranchId] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  /** Позиция, которую правят. `null` — заводится новая. */
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [kind, setKind] = useState<StockKind>('portiere_code');
   const [code, setCode] = useState('');
-  const [meters, setMeters] = useState('');
-  const [comment, setComment] = useState('');
+  const [description, setDescription] = useState('');
+  const [quantity, setQuantity] = useState('0');
 
   /** Позиция, которой правят остаток пересчётом. `null` — окно закрыто. */
   const [counting, setCounting] = useState<{ id: number; code: string } | null>(null);
   const [countValue, setCountValue] = useState('');
 
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<MaterialSlot | 'all'>('all');
+  const [filter, setFilter] = useState<StockKind | 'all'>('all');
 
   const rows = trpc.fabric.list.useQuery({});
-  const branches = trpc.branches.list.useQuery({});
-
-  /*
-    Коды подсказываются из справочника: приход заводят по той же бирке, что
-    продавец вводит в заказе, и набранный на слух код разошёлся бы с ней.
-  */
-  const catalog = trpc.catalog.list.useQuery({ kind: MATERIAL_CODE_KINDS[slot] });
 
   const refresh = (): void => {
     void utils.fabric.list.invalidate();
   };
 
   const closeForm = (): void => {
-    setReceiving(false);
+    setFormOpen(false);
+    setEditingId(null);
     setCode('');
-    setMeters('');
-    setComment('');
-    setBranchId('');
+    setDescription('');
+    setQuantity('0');
   };
 
-  const receive = trpc.fabric.receive.useMutation({
+  const create = trpc.fabric.create.useMutation({
     onSuccess(row) {
       closeForm();
-      toast.success('Приход записан', `${row.code}: ${formatMeters(row.meters)}`);
+      toast.success('Позиция заведена', row.code);
       refresh();
     },
     onError: (error) => {
-      toast.error('Не удалось записать приход', error.message);
+      toast.error('Не удалось завести позицию', error.message);
     },
   });
 
-  const setMetersMutation = trpc.fabric.setMeters.useMutation({
+  const update = trpc.fabric.update.useMutation({
+    onSuccess(row) {
+      closeForm();
+      toast.success('Сохранено', row.code);
+      refresh();
+    },
+    onError: (error) => {
+      toast.error('Не удалось сохранить', error.message);
+    },
+  });
+
+  const setQuantityMutation = trpc.fabric.setMeters.useMutation({
     onSuccess(row) {
       setCounting(null);
       setCountValue('');
-      toast.success('Остаток обновлён', `${row.code}: ${formatMeters(row.meters)}`);
+      toast.success('Остаток обновлён', row.code);
       refresh();
     },
     onError: (error) => {
@@ -122,51 +126,64 @@ export default function WarehousePage(): ReactElement {
   const needle = search.trim().toLowerCase();
 
   const visible = all.filter((row) => {
-    const bySlot = filter === 'all' || row.kind === MATERIAL_CODE_KINDS[filter];
+    const byKind = filter === 'all' || row.kind === filter;
     const byText =
       needle === '' ||
       [row.code, row.description ?? ''].some((field) => field.toLowerCase().includes(needle));
-    return bySlot && byText;
+    return byKind && byText;
   });
 
-  const totalMeters = all.reduce((sum, row) => sum + Number.parseFloat(row.meters), 0);
+  /*
+    Метры и штуки складывать нельзя: «сто два» из шестидесяти метров ткани и
+    сорока двух держателей — число ни о чём. Поэтому в шапке два счёта.
+  */
+  const fabricMeters = all
+    .filter((row) => row.kind !== 'accessory_code')
+    .reduce((sum, row) => sum + Number.parseFloat(row.meters), 0);
+  const accessoryPieces = all
+    .filter((row) => row.kind === 'accessory_code')
+    .reduce((sum, row) => sum + Number.parseFloat(row.meters), 0);
   const debts = all.filter((row) => Number.parseFloat(row.meters) < 0);
 
-  const errors = fieldErrors(receive.error);
+  const errors = fieldErrors(editingId === null ? create.error : update.error);
+
+  const openNew = (): void => {
+    create.reset();
+    update.reset();
+    closeForm();
+    setFormOpen(true);
+  };
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-3">
         <StatCard
           label="Метров на складе"
-          value={totalMeters.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}
-          caption={`Кодов: ${all.length.toString()}`}
+          value={fabricMeters.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}
+          caption="Ткань, карнизы, пластик и трубы"
         />
         <StatCard
-          label="Кодов в минусе"
-          value={debts.length.toString()}
-          caption="Раскроили то, что не оприходовали"
+          label="Аксессуаров, шт"
+          value={accessoryPieces.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
+          caption="Держатели, султанчики, бубоны"
         />
-        {/*
-          Третьей карточки нет намеренно: «списывается при раскрое» — это
-          правило, а не показатель, и место числа оно занимало зря.
-        */}
+        <StatCard
+          label="Позиций в минусе"
+          value={debts.length.toString()}
+          caption="Раскроили то, что не завели"
+        />
       </section>
 
       <Card>
         <CardHeader
-          title="Склад тканей"
+          title="Склад"
           action={
             <Button
               size="sm"
               icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => {
-                receive.reset();
-                closeForm();
-                setReceiving(true);
-              }}
+              onClick={openNew}
             >
-              Приход
+              Позиция
             </Button>
           }
         />
@@ -174,7 +191,7 @@ export default function WarehousePage(): ReactElement {
         <div className="space-y-3 px-4 pb-3">
           {/* Виды — рядом кнопок, как справочники в настройках. */}
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Вид материала">
-            {(['all', ...MATERIAL_SLOTS] as const).map((value) => {
+            {(['all', ...STOCK_KINDS] as const).map((value) => {
               const active = value === filter;
 
               return (
@@ -192,7 +209,7 @@ export default function WarehousePage(): ReactElement {
                       : 'border-subtle bg-panel text-secondary hover:bg-raised hover:text-primary',
                   )}
                 >
-                  {value === 'all' ? 'Все' : MATERIAL_SLOT_LABELS_RU[value]}
+                  {value === 'all' ? 'Все' : STOCK_KIND_LABELS_RU[value]}
                 </button>
               );
             })}
@@ -212,21 +229,12 @@ export default function WarehousePage(): ReactElement {
           rows={visible}
           rowKey={(row) => row.id}
           emptyMessage={
-            all.length === 0
-              ? 'Склад пуст — запишите первый приход'
-              : 'По этому запросу ничего нет'
+            all.length === 0 ? 'Склад пуст — заведите первую позицию' : 'По этому запросу ничего нет'
           }
           emptyAction={
             all.length === 0 ? (
-              <Button
-                size="sm"
-                onClick={() => {
-                  receive.reset();
-                  closeForm();
-                  setReceiving(true);
-                }}
-              >
-                Записать приход
+              <Button size="sm" onClick={openNew}>
+                Завести позицию
               </Button>
             ) : undefined
           }
@@ -235,14 +243,7 @@ export default function WarehousePage(): ReactElement {
               key: 'code',
               header: 'Код',
               sortValue: (row) => row.code,
-              render: (row) => (
-                <span className="block">
-                  <span className="block text-primary">{row.code}</span>
-                  {row.description !== null && (
-                    <span className="block text-footnote text-muted">{row.description}</span>
-                  )}
-                </span>
-              ),
+              render: (row) => <span className="text-primary">{row.code}</span>,
             },
             {
               key: 'kind',
@@ -251,23 +252,29 @@ export default function WarehousePage(): ReactElement {
               render: (row) => materialKindLabel(row.kind),
             },
             {
-              key: 'branch',
-              header: 'Филиал',
-              sortValue: (row) => row.branchName,
-              render: (row) => row.branchName,
+              /*
+                Вместо филиала — описание: филиал у кладовщика один и тот же
+                весь день, а чем эта партия отличается от такой же — вопрос,
+                который задают у полки.
+              */
+              key: 'description',
+              header: 'Описание',
+              sortValue: (row) => row.description ?? '',
+              render: (row) =>
+                row.description === null ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <span className="text-secondary">{row.description}</span>
+                ),
             },
             {
-              key: 'meters',
+              key: 'quantity',
               header: 'Остаток',
               align: 'right',
               sortValue: (row) => Number.parseFloat(row.meters),
               render: (row) => (
-                <span
-                  className={
-                    Number.parseFloat(row.meters) < 0 ? 'text-danger' : 'text-primary'
-                  }
-                >
-                  {formatMeters(row.meters)}
+                <span className={Number.parseFloat(row.meters) < 0 ? 'text-danger' : 'text-primary'}>
+                  {formatQuantity(row.meters, row.kind as StockKind)}
                 </span>
               ),
             },
@@ -281,9 +288,24 @@ export default function WarehousePage(): ReactElement {
                     size="sm"
                     variant="secondary"
                     onClick={() => {
+                      create.reset();
+                      update.reset();
+                      setEditingId(row.id);
+                      setKind(row.kind as StockKind);
+                      setCode(row.code);
+                      setDescription(row.description ?? '');
+                      setFormOpen(true);
+                    }}
+                  >
+                    Изменить
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
                       setCounting({ id: row.id, code: row.code });
                       setCountValue(Number.parseFloat(row.meters).toString());
-                      setMetersMutation.reset();
+                      setQuantityMutation.reset();
                     }}
                   >
                     Пересчитать
@@ -296,8 +318,8 @@ export default function WarehousePage(): ReactElement {
       </Card>
 
       <Modal
-        open={receiving}
-        title="Приход ткани"
+        open={formOpen}
+        title={editingId === null ? 'Новая позиция склада' : 'Правка позиции'}
         onClose={closeForm}
         footer={
           <>
@@ -305,19 +327,22 @@ export default function WarehousePage(): ReactElement {
               Отмена
             </Button>
             <Button
-              loading={receive.isPending}
-              disabled={code.trim() === '' || toMeters(meters) <= 0}
+              loading={create.isPending || update.isPending}
+              disabled={code.trim() === ''}
               onClick={() => {
-                receive.mutate({
-                  kind: MATERIAL_CODE_KINDS[slot],
+                const card = {
                   code: code.trim(),
-                  meters: toMeters(meters),
-                  ...(branchId === '' ? {} : { branchId: Number.parseInt(branchId, 10) }),
-                  ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
-                });
+                  description: description.trim() === '' ? null : description.trim(),
+                };
+
+                if (editingId === null) {
+                  create.mutate({ ...card, kind, quantity: toQuantity(quantity) });
+                } else {
+                  update.mutate({ id: editingId, ...card });
+                }
               }}
             >
-              Записать приход
+              {editingId === null ? 'Завести' : 'Сохранить'}
             </Button>
           </>
         }
@@ -325,88 +350,64 @@ export default function WarehousePage(): ReactElement {
         <div className="space-y-4">
           <FormError
             message={
-              receive.error !== null && Object.keys(errors).length === 0
-                ? receive.error.message
-                : null
+              editingId === null
+                ? create.error !== null && Object.keys(errors).length === 0
+                  ? create.error.message
+                  : null
+                : update.error !== null && Object.keys(errors).length === 0
+                  ? update.error.message
+                  : null
             }
           />
 
-          <Field label="Что привезли" required>
-            <Select
-              value={slot}
-              onChange={(event) => {
-                setSlot(event.target.value as MaterialSlot);
-                setCode('');
-              }}
-              options={MATERIAL_SLOTS.map((value) => ({
-                value,
-                label: MATERIAL_SLOT_LABELS_RU[value],
-              }))}
-            />
-          </Field>
+          {/* Вид у заведённой позиции не меняется: это другой остаток. */}
+          {editingId === null && (
+            <Field label="Что это" required>
+              <Select
+                value={kind}
+                onChange={(event) => {
+                  setKind(event.target.value as StockKind);
+                }}
+                options={STOCK_KINDS.map((value) => ({
+                  value,
+                  label: STOCK_KIND_LABELS_RU[value],
+                }))}
+              />
+            </Field>
+          )}
 
-          <Field
-            label="Код с этикетки"
-            required
-            error={errors['code']}
-            hint="Тот же, что продавец вводит в заказе"
-          >
+          <Field label="Код с бирки" required error={errors['code']}>
             <Input
               value={code}
               onChange={(event) => {
                 setCode(event.target.value);
               }}
               placeholder="Например: П-31"
-              list="fabric-codes"
             />
-            {/*
-              Подсказка списком, а не выбором из справочника: код на рулоне
-              бывает и такой, которого в справочнике ещё нет, — не принимать
-              его значило бы не принять привезённую ткань.
-            */}
-            <datalist id="fabric-codes">
-              {(catalog.data ?? []).map((entry) => (
-                <option key={entry.id} value={entry.name}>
-                  {entry.description ?? ''}
-                </option>
-              ))}
-            </datalist>
           </Field>
 
-          <Field label="Сколько метров" required error={errors['meters']}>
+          <Field label="Мини-описание" hint="Чем эта партия отличается: оттенок, плотность, размер">
             <Input
-              inputMode="decimal"
-              value={meters}
+              value={description}
               onChange={(event) => {
-                setMeters(event.target.value);
+                setDescription(event.target.value);
               }}
-              placeholder="63"
+              placeholder="Например: тёмная сторона, плотный блэкаут"
             />
           </Field>
 
-          <Field label="Филиал" hint="По умолчанию — ваш основной">
-            <Select
-              value={branchId}
-              onChange={(event) => {
-                setBranchId(event.target.value);
-              }}
-              placeholder="Основной филиал"
-              options={(branches.data ?? []).map((branch) => ({
-                value: branch.id.toString(),
-                label: branch.name,
-              }))}
-            />
-          </Field>
-
-          <Field label="Комментарий" hint="Например: поставщик и накладная">
-            <Input
-              value={comment}
-              onChange={(event) => {
-                setComment(event.target.value);
-              }}
-              placeholder="Не обязательно"
-            />
-          </Field>
+          {editingId === null && (
+            <Field label={`Остаток, ${stockUnitLabel(kind)}`} error={errors['quantity']}>
+              <Input
+                inputMode="decimal"
+                value={quantity}
+                onChange={(event) => {
+                  setQuantity(event.target.value);
+                }}
+                placeholder="0"
+              />
+            </Field>
+          )}
         </div>
       </Modal>
 
@@ -427,12 +428,12 @@ export default function WarehousePage(): ReactElement {
               Отмена
             </Button>
             <Button
-              loading={setMetersMutation.isPending}
+              loading={setQuantityMutation.isPending}
               onClick={() => {
                 if (counting === null) return;
-                setMetersMutation.mutate({
+                setQuantityMutation.mutate({
                   id: counting.id,
-                  meters: toMeters(countValue),
+                  meters: toQuantity(countValue),
                 });
               }}
             >
@@ -441,7 +442,7 @@ export default function WarehousePage(): ReactElement {
           </>
         }
       >
-        <Field label="Сколько метров намерили" hint="Число «сколько стало», а не «сколько прибавить»">
+        <Field label="Сколько намерили" hint="Число «сколько стало», а не «сколько прибавить»">
           <Input
             inputMode="decimal"
             value={countValue}

@@ -1,10 +1,10 @@
 import {
-  MATERIAL_CODE_KINDS,
-  MATERIAL_SLOT_LABELS,
-  MATERIAL_SLOTS,
-  type MaterialSlot,
+  STOCK_KIND_LABELS_RU,
+  STOCK_KINDS,
+  stockUnitLabel,
+  type StockKind,
 } from '@curtain-crm/shared';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,29 +21,29 @@ import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
-import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 /**
- * Склад тканей с телефона: сколько метров какого кода лежит в цехе.
+ * Склад с телефона: что лежит в цехе и сколько.
  *
- * Рулоны привозят в цех, и записать приход удобнее там же, где их считают, —
- * ровно та причина, по которой на телефон попали закупочные цены и витрина.
+ * Ткани, карнизы, пластик, трубы и аксессуары — одним списком: кладовщик
+ * ходит вдоль одних и тех же полок.
  *
- * Расход эта карточка не трогает: ткань списывается сама, когда заказ уходит
- * в пошив (раскроили — значит, ушло). Здесь только приход и пересчёт.
+ * Позиция — это код с бирки, мини-описание и остаток. Прихода как отдельного
+ * действия нет: пришла партия — остаток пересчитывают. Расход система
+ * списывает сама, когда заказ уходит в пошив.
  *
- * Отрицательный остаток показан красным и не считается ошибкой: ткань,
- * которую забыли оприходовать, всё равно раскроили.
+ * Отрицательный остаток показан красным и ошибкой не считается: то, что
+ * забыли завести, всё равно раскроили.
  */
 
-/** Метраж строкой: «12,5» и «12.5» набирают одинаково часто. */
-const toMeters = (raw: string): number => Number.parseFloat(raw.replace(',', '.'));
+/** Количество строкой: «12,5» и «12.5» набирают одинаково часто. */
+const toQuantity = (raw: string): number => Number.parseFloat(raw.replace(',', '.'));
 
-const showMeters = (raw: string): string =>
-  `${Number.parseFloat(raw).toLocaleString('ru-RU', { maximumFractionDigits: 3 })} м`;
+const showQuantity = (raw: string, kind: StockKind): string =>
+  `${Number.parseFloat(raw).toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${stockUnitLabel(kind)}`;
 
 export function FabricStockScreen({
   header,
@@ -51,70 +51,69 @@ export function FabricStockScreen({
   /** Переключатель разделов сверху — его рисует экран закупочных материалов. */
   readonly header?: ReactElement;
 } = {}): ReactElement {
-  const { t } = useLocale();
   const utils = trpc.useUtils();
 
   /** Позиция, которой правят остаток пересчётом. `null` — никакая. */
   const [counting, setCounting] = useState<number | null>(null);
   const [countValue, setCountValue] = useState('');
 
-  const [adding, setAdding] = useState(false);
+  /** Открыта карточка позиции: `null` — новая, число — правка. */
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [scanning, setScanning] = useState(false);
-  const [slot, setSlot] = useState<MaterialSlot>('portiere');
+  const [kind, setKind] = useState<StockKind>('portiere_code');
   const [code, setCode] = useState('');
-  const [meters, setMeters] = useState('');
+  const [description, setDescription] = useState('');
+  const [quantity, setQuantity] = useState('0');
 
   const rows = trpc.fabric.list.useQuery({});
-  const catalog = trpc.catalog.list.useQuery({});
-
-  /** Коды из справочника — по виду, который сейчас выбран в приходе. */
-  const codeOptions = useMemo(
-    () =>
-      (catalog.data ?? [])
-        .filter((entry) => entry.kind === MATERIAL_CODE_KINDS[slot])
-        .map((entry) => entry.name),
-    [catalog.data, slot],
-  );
-
-  /*
-    Подсказки: коды выбранного вида, суженные набранным началом. Шесть —
-    столько влезает в строку прокрутки, не превращая её в список.
-  */
-  const suggestions = useMemo(() => {
-    const needle = code.trim().toLowerCase();
-    return codeOptions
-      .filter((option) => needle === '' || option.toLowerCase().includes(needle))
-      .filter((option) => option.toLowerCase() !== needle)
-      .slice(0, 6);
-  }, [codeOptions, code]);
 
   const refresh = async (): Promise<void> => {
     await utils.fabric.list.invalidate();
   };
 
-  const receive = trpc.fabric.receive.useMutation({
+  const closeForm = (): void => {
+    setFormOpen(false);
+    setEditingId(null);
+    setCode('');
+    setDescription('');
+    setQuantity('0');
+  };
+
+  const create = trpc.fabric.create.useMutation({
     async onSuccess(row) {
       notifySuccess();
-      setAdding(false);
-      setCode('');
-      setMeters('');
+      closeForm();
       await refresh();
-      Alert.alert('Приход записан', `${row.code}: ${showMeters(row.meters)}`);
+      Alert.alert('Позиция заведена', row.code);
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось записать приход', error.message);
+      Alert.alert('Не удалось завести позицию', error.message);
     },
   });
 
-  const setMetersMutation = trpc.fabric.setMeters.useMutation({
+  const update = trpc.fabric.update.useMutation({
+    async onSuccess(row) {
+      notifySuccess();
+      closeForm();
+      await refresh();
+      Alert.alert('Сохранено', row.code);
+    },
+    onError(error) {
+      notifyError();
+      Alert.alert('Не удалось сохранить', error.message);
+    },
+  });
+
+  const setQuantityMutation = trpc.fabric.setMeters.useMutation({
     async onSuccess(row) {
       notifySuccess();
       setCounting(null);
       setCountValue('');
       await refresh();
-      Alert.alert('Остаток обновлён', `${row.code}: ${showMeters(row.meters)}`);
+      Alert.alert('Остаток обновлён', row.code);
     },
     onError(error) {
       notifyError();
@@ -148,64 +147,53 @@ export function FabricStockScreen({
         {header}
 
         <Card>
-          {/*
-            Приход и остатки — в одной карточке: отдельная карточка ради
-            одной кнопки съедала треть экрана и повторяла слово «приход»
-            дважды — в заголовке и на кнопке.
-          */}
           <CardTitle
-            title="Склад тканей"
+            title="Склад"
             icon="window"
             action={
-              adding ? undefined : (
+              formOpen ? undefined : (
                 <Pressable
                   onPress={() => {
-                    setAdding(true);
+                    setEditingId(null);
+                    setCode('');
+                    setDescription('');
+                    setQuantity('0');
+                    setFormOpen(true);
                   }}
                   accessibilityRole="button"
                   style={({ pressed }) => [styles.addButton, pressed ? styles.pressed : null]}
                 >
-                  <Text style={styles.addButtonText}>Приход</Text>
+                  <Text style={styles.addButtonText}>Позиция</Text>
                 </Pressable>
               )
             }
           />
 
-          {adding && (
+          {formOpen && (
             <>
-              <Field label="Что привезли">
-                <ChipSelect
-                  value={slot}
-                  onChange={(value) => {
-                    setSlot(value);
-                    setCode('');
-                  }}
-                  options={MATERIAL_SLOTS.map((value) => ({
-                    value,
-                    label: t(MATERIAL_SLOT_LABELS, value),
-                  }))}
-                />
-              </Field>
+              {/* Вид у заведённой позиции не меняется: это другой остаток. */}
+              {editingId === null && (
+                <Field label="Что это">
+                  <ChipSelect
+                    value={kind}
+                    onChange={setKind}
+                    options={STOCK_KINDS.map((value) => ({
+                      value,
+                      label: STOCK_KIND_LABELS_RU[value],
+                    }))}
+                  />
+                </Field>
+              )}
 
-              {/*
-                Одно поле, а не два.
-
-                Сначала здесь стояли выбор из справочника и поле ввода друг
-                под другом — два одинаковых прямоугольника под одной
-                подписью, хотя значение у них одно. Теперь код набирают
-                (или сканируют), а справочник подсказывает снизу чипами:
-                видно, что уже заведено, и по-прежнему можно записать бирку,
-                которой в справочнике ещё нет.
-              */}
-              <Field label="Код с этикетки" hint="Наберите, отсканируйте или выберите ниже">
+              <Field label="Код с бирки" hint="Наберите или отсканируйте">
                 <View style={styles.codeRow}>
                   <View style={styles.codeInput}>
                     <Input value={code} onChangeText={setCode} placeholder="Например: П-31" />
                   </View>
                   {/*
-                    Рулон с кодом в руках — сканер здесь уместнее всего:
-                    приход заводят по той самой этикетке, которую потом
-                    считает продавец в заказе.
+                    Рулон с биркой в руках — сканер здесь уместнее всего: код
+                    попадает на склад тем же, каким его потом считает продавец
+                    в заказе.
                   */}
                   <Pressable
                     onPress={() => {
@@ -218,49 +206,31 @@ export function FabricStockScreen({
                     <Icon name="camera" size={18} color={colors.accent} />
                   </Pressable>
                 </View>
-
-                {suggestions.length > 0 && (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.suggestions}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    {suggestions.map((option) => (
-                      <Pressable
-                        key={option}
-                        onPress={() => {
-                          setCode(option);
-                        }}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [
-                          styles.suggestion,
-                          pressed ? styles.pressed : null,
-                        ]}
-                      >
-                        <Text style={styles.suggestionText}>{option}</Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                )}
               </Field>
 
-              <Field label="Сколько метров">
+              <Field label="Мини-описание" hint="Чем эта партия отличается">
                 <Input
-                  value={meters}
-                  onChangeText={setMeters}
-                  keyboardType="decimal-pad"
-                  placeholder="63"
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Например: тёмная сторона, плотный"
+                  multiline
                 />
               </Field>
 
+              {editingId === null && (
+                <Field label={`Остаток, ${stockUnitLabel(kind)}`}>
+                  <Input
+                    value={quantity}
+                    onChangeText={setQuantity}
+                    keyboardType="numbers-and-punctuation"
+                    placeholder="0"
+                  />
+                </Field>
+              )}
+
               <View style={styles.formRow}>
                 <Pressable
-                  onPress={() => {
-                    setAdding(false);
-                    setCode('');
-                    setMeters('');
-                  }}
+                  onPress={closeForm}
                   accessibilityRole="button"
                   style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
                 >
@@ -269,15 +239,19 @@ export function FabricStockScreen({
 
                 <Pressable
                   onPress={() => {
-                    const value = toMeters(meters);
-                    if (code.trim() === '' || !Number.isFinite(value) || value <= 0) return;
-                    receive.mutate({
-                      kind: MATERIAL_CODE_KINDS[slot],
+                    if (code.trim() === '') return;
+                    const card = {
                       code: code.trim(),
-                      meters: value,
-                    });
+                      description: description.trim() === '' ? null : description.trim(),
+                    };
+
+                    if (editingId === null) {
+                      create.mutate({ ...card, kind, quantity: toQuantity(quantity) || 0 });
+                    } else {
+                      update.mutate({ id: editingId, ...card });
+                    }
                   }}
-                  disabled={receive.isPending}
+                  disabled={create.isPending || update.isPending}
                   accessibilityRole="button"
                   style={({ pressed }) => [
                     styles.submit,
@@ -285,10 +259,12 @@ export function FabricStockScreen({
                     pressed ? styles.pressed : null,
                   ]}
                 >
-                  {receive.isPending ? (
+                  {create.isPending || update.isPending ? (
                     <ActivityIndicator color={colors.onAccent} size="small" />
                   ) : (
-                    <Text style={styles.submitText}>Записать</Text>
+                    <Text style={styles.submitText}>
+                      {editingId === null ? 'Завести' : 'Сохранить'}
+                    </Text>
                   )}
                 </Pressable>
               </View>
@@ -296,10 +272,10 @@ export function FabricStockScreen({
           )}
 
           {/*
-            Поиск появляется, когда кодов становится много: на пяти строках
-            он лишний ряд, на сорока — единственный способ найти рулон.
+            Поиск появляется, когда позиций становится много: на пяти строках
+            он лишний ряд, на сорока — единственный способ найти нужную.
           */}
-          {items.length > 8 && (
+          {all.length > 8 && (
             <View style={styles.search}>
               <Input
                 value={search}
@@ -314,14 +290,12 @@ export function FabricStockScreen({
           ) : items.length === 0 ? (
             <Empty
               message={all.length === 0 ? 'Склад пуст' : 'Ничего не нашлось'}
-              hint={all.length === 0 ? 'Запишите первый приход' : 'Проверьте код'}
+              hint={all.length === 0 ? 'Заведите первую позицию' : 'Проверьте код'}
             />
           ) : (
             items.map((row) => {
+              const rowKind = row.kind as StockKind;
               const left = Number.parseFloat(row.meters);
-              const slotName = MATERIAL_SLOTS.find(
-                (value) => MATERIAL_CODE_KINDS[value] === row.kind,
-              );
 
               return (
                 <View key={row.id}>
@@ -330,20 +304,29 @@ export function FabricStockScreen({
                       setCounting(counting === row.id ? null : row.id);
                       setCountValue(left.toString());
                     }}
+                    onLongPress={() => {
+                      create.reset();
+                      update.reset();
+                      setEditingId(row.id);
+                      setKind(rowKind);
+                      setCode(row.code);
+                      setDescription(row.description ?? '');
+                      setFormOpen(true);
+                    }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Пересчитать «${row.code}»`}
+                    accessibilityLabel={`Пересчитать «${row.code}», долгое нажатие — правка`}
                     style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
                   >
                     <View style={styles.itemText}>
                       <Text style={styles.itemName}>{row.code}</Text>
                       <Text style={styles.itemMeta} numberOfLines={2}>
-                        {`${slotName === undefined ? '' : `${t(MATERIAL_SLOT_LABELS, slotName)} · `}${
-                          row.description ?? row.branchName
+                        {`${STOCK_KIND_LABELS_RU[rowKind]}${
+                          row.description === null ? '' : ` · ${row.description}`
                         }`}
                       </Text>
                     </View>
                     <Text style={[styles.itemMeters, left < 0 ? styles.itemDebt : null]}>
-                      {showMeters(row.meters)}
+                      {showQuantity(row.meters, rowKind)}
                     </Text>
                   </Pressable>
 
@@ -360,15 +343,15 @@ export function FabricStockScreen({
 
                       <Pressable
                         onPress={() => {
-                          const value = toMeters(countValue);
+                          const value = toQuantity(countValue);
                           if (!Number.isFinite(value)) return;
-                          setMetersMutation.mutate({ id: row.id, meters: value });
+                          setQuantityMutation.mutate({ id: row.id, meters: value });
                         }}
-                        disabled={setMetersMutation.isPending}
+                        disabled={setQuantityMutation.isPending}
                         accessibilityRole="button"
                         style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
                       >
-                        {setMetersMutation.isPending ? (
+                        {setQuantityMutation.isPending ? (
                           <ActivityIndicator color={colors.onAccent} size="small" />
                         ) : (
                           <Text style={styles.submitText}>Сохранить остаток</Text>
@@ -383,13 +366,14 @@ export function FabricStockScreen({
 
           <Text style={styles.note}>
             Расход списывается сам, когда заказ уходит в пошив: раскроили — значит, ушло.
+            Долгое нажатие на позицию — правка кода и описания.
           </Text>
         </Card>
       </ScrollView>
 
       <CodeScanner
         visible={scanning}
-        label="Код рулона"
+        label="Код с бирки"
         onScan={setCode}
         onClose={() => {
           setScanning(false);
@@ -417,7 +401,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.sm,
   },
   codeInput: {
     flex: 1,
@@ -436,6 +419,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center',
+  },
+  search: {
+    marginTop: spacing.sm,
   },
   itemRow: {
     flexDirection: 'row',
@@ -482,27 +468,6 @@ const styles = StyleSheet.create({
     ...typography.footnote,
     color: colors.accentStrong,
     fontWeight: '600',
-  },
-  search: {
-    marginTop: spacing.sm,
-  },
-  suggestions: {
-    gap: spacing.xs,
-    paddingTop: spacing.sm,
-  },
-  suggestion: {
-    height: 30,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: hairline,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  suggestionText: {
-    ...typography.footnote,
-    color: colors.textSecondary,
   },
   submit: {
     height: 44,

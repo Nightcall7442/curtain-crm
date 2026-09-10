@@ -190,6 +190,13 @@
       "when": 1788906796315,
       "tag": "0026_fabric_stock",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789038855341,
+      "tag": "0027_stock_accessories",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { branches, catalogItems, fabricStock, type DbExecutor } from '@curtain-crm/db';
-import { isManagement, MATERIAL_CODE_KIND_LIST, type Role } from '@curtain-crm/shared';
+import { isManagement, STOCK_KINDS, type Role } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -27,13 +27,10 @@ import { router } from '../trpc';
  * склада тогда, когда её раскроили, а не когда кто-то вспомнил отметить.
  */
 
-const kindSchema = z.enum([
-  MATERIAL_CODE_KIND_LIST[0] ?? 'portiere_code',
-  ...MATERIAL_CODE_KIND_LIST.slice(1),
-]);
+const kindSchema = z.enum([STOCK_KINDS[0], ...STOCK_KINDS.slice(1)]);
 
-/** Метраж: до тысячных, как и колонка. Ноль запрещён — это не движение. */
-const metersSchema = z.number().positive().max(100000);
+/** Количество: метры у тканей, штуки у аксессуаров. Колонка одна. */
+const quantitySchema = z.number().min(-100000).max(100000);
 
 const branchAllowed = (
   user: { roles: readonly Role[]; branchIds: readonly number[] },
@@ -88,7 +85,12 @@ export const fabricRouter = router({
           kind: fabricStock.kind,
           code: fabricStock.code,
           meters: fabricStock.meters,
-          description: catalogItems.description,
+          /*
+            Описание позиции — своё, но если его не заполнили, показывается
+            описание кода из справочника: оно про тот же материал и лучше
+            пустоты.
+          */
+          description: sql<string | null>`coalesce(${fabricStock.description}, ${catalogItems.description})`,
           updatedAt: fabricStock.updatedAt,
         })
         .from(fabricStock)
@@ -120,20 +122,24 @@ export const fabricRouter = router({
     }),
 
   /**
-   * Приход: привезли рулон.
+   * Завести позицию склада: код, вид, описание и остаток.
    *
-   * Прибавляет к остатку, а не заменяет его: «привезли ещё шестьдесят три
-   * метра» — то, что происходит на самом деле. Строки может не быть вовсе —
-   * первый приход кода её и создаёт.
+   * Прихода как отдельного действия здесь нет намеренно — так попросил
+   * владелец. Склад ведётся списком того, что лежит: код с бирки, что это за
+   * материал и сколько его. Пришла новая партия — остаток пересчитывают
+   * (`setMeters`), а не складывают приходы в уме.
+   *
+   * Код уникален внутри пары «филиал + вид»: заводить второй такой же —
+   * значит раздвоить остаток, и процедура откажет.
    */
-  receive: managementProcedure
+  create: managementProcedure
     .input(
       z.object({
         branchId: idSchema.optional(),
         kind: kindSchema,
-        code: nonEmptyString(100, 'Укажите код с этикетки'),
-        meters: metersSchema,
-        comment: optionalText(300),
+        code: nonEmptyString(100, 'Укажите код с бирки'),
+        description: optionalText(300),
+        quantity: quantitySchema.default(0),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -147,32 +153,100 @@ export const fabricRouter = router({
       branchAllowed(ctx.user, branchId);
 
       return ctx.db.transaction(async (tx) => {
-        const updated = await addMeters(tx, {
-          branchId,
-          kind: input.kind,
-          code: input.code,
-          meters: input.meters,
-          userId: ctx.user.id,
-        });
+        const code = input.code.trim();
+
+        const [existing] = await tx
+          .select({ id: fabricStock.id })
+          .from(fabricStock)
+          .where(
+            and(
+              eq(fabricStock.branchId, branchId),
+              eq(fabricStock.kind, input.kind),
+              sql`lower(${fabricStock.code}) = lower(${code})`,
+            ),
+          )
+          .limit(1);
+
+        if (existing !== undefined) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: `«${code}» уже есть на складе — поправьте остаток у него`,
+          });
+        }
+
+        const [created] = await tx
+          .insert(fabricStock)
+          .values({
+            branchId,
+            kind: input.kind,
+            code,
+            description: input.description ?? null,
+            meters: input.quantity.toFixed(3),
+            createdBy: ctx.user.id,
+          })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Не удалось завести позицию склада',
+          });
+        }
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'fabric_stock.received',
           entityType: 'fabric_stock',
-          entityId: updated.id,
-          details: {
-            code: updated.code,
-            kind: updated.kind,
-            meters: input.meters,
-            stockAfter: updated.meters,
-            comment: input.comment ?? null,
-          },
+          entityId: created.id,
+          details: { code: created.code, kind: created.kind, meters: created.meters },
+          ipAddress: ctx.ipAddress,
+        });
+
+        return created;
+      });
+    }),
+
+  /** Правка карточки позиции: код и описание. Остаток — своей процедурой. */
+  update: managementProcedure
+    .input(
+      z.object({
+        id: idSchema,
+        code: nonEmptyString(100, 'Укажите код с бирки').optional(),
+        description: optionalText(300),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const row = await loadRow(tx, input.id);
+        branchAllowed(ctx.user, row.branchId);
+
+        const patch = {
+          ...(input.code === undefined ? {} : { code: input.code.trim() }),
+          ...(input.description === undefined ? {} : { description: input.description }),
+        };
+
+        const [updated] = await tx
+          .update(fabricStock)
+          .set({ ...patch, updatedAt: new Date() })
+          .where(eq(fabricStock.id, row.id))
+          .returning();
+
+        if (updated === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Позиция склада не найдена' });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'fabric_stock.counted',
+          entityType: 'fabric_stock',
+          entityId: row.id,
+          details: { code: updated.code, changed: Object.keys(patch) },
           ipAddress: ctx.ipAddress,
         });
 
         return updated;
-      });
-    }),
+      }),
+    ),
 
   /**
    * Пересчёт: числом «сколько стало», а не «сколько прибавить».
@@ -184,7 +258,7 @@ export const fabricRouter = router({
     .input(
       z.object({
         id: idSchema,
-        meters: z.number().min(-100000).max(100000),
+        meters: quantitySchema,
         comment: optionalText(300),
       }),
     )
@@ -221,75 +295,3 @@ export const fabricRouter = router({
       }),
     ),
 });
-
-/**
- * Прибавляет метры к остатку кода, создавая строку при первом приходе.
- *
- * Вынесено из процедуры: тем же путём списывается ткань при раскрое, только
- * с отрицательным числом (`orderWorkflow.service.ts`).
- */
-export async function addMeters(
-  executor: DbExecutor,
-  input: {
-    readonly branchId: number;
-    readonly kind: (typeof MATERIAL_CODE_KIND_LIST)[number];
-    readonly code: string;
-    readonly meters: number;
-    readonly userId: number;
-  },
-) {
-  const code = input.code.trim();
-
-  const [existing] = await executor
-    .select()
-    .from(fabricStock)
-    .where(
-      and(
-        eq(fabricStock.branchId, input.branchId),
-        eq(fabricStock.kind, input.kind),
-        sql`lower(${fabricStock.code}) = lower(${code})`,
-      ),
-    )
-    .limit(1);
-
-  if (existing === undefined) {
-    const [created] = await executor
-      .insert(fabricStock)
-      .values({
-        branchId: input.branchId,
-        kind: input.kind,
-        code,
-        meters: input.meters.toFixed(3),
-        createdBy: input.userId,
-      })
-      .returning();
-
-    if (created === undefined) {
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Не удалось создать позицию склада',
-      });
-    }
-    return created;
-  }
-
-  const [updated] = await executor
-    .update(fabricStock)
-    .set({
-      meters: sql`${fabricStock.meters} + ${input.meters.toFixed(3)}`,
-      updatedAt: new Date(),
-    })
-    .where(eq(fabricStock.id, existing.id))
-    .returning();
-
-  if (updated === undefined) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Позиция склада не найдена' });
-  }
-  return updated;
-}
-
-/** Виды, по которым ведётся склад — для проверки в сервисе списания. */
-export const isFabricKind = (
-  kind: string,
-): kind is (typeof MATERIAL_CODE_KIND_LIST)[number] =>
-  (MATERIAL_CODE_KIND_LIST as readonly string[]).includes(kind);
