@@ -14,6 +14,7 @@ import {
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
+import { MonthSchedule } from '../components/MonthSchedule';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -96,6 +97,12 @@ export function DayOffScreen(): ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/*
+          График — первым: чаще всего сюда заходят посмотреть, работаю ли я
+          в четверг, а не просить новый выходной.
+        */}
+        <MonthSchedule />
+
         <Card>
           <CardTitle title="Новый запрос" icon="calendar" />
 

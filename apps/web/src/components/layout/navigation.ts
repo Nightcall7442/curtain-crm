@@ -88,7 +88,6 @@ export const NAVIGATION: readonly NavItem[] = [
       { href: '/employees/tasks', label: 'Доп работы', roles: MANAGEMENT_ROLES },
       { href: '/employees/personal-works', label: 'Личные работы', roles: MANAGEMENT_ROLES },
       { href: '/employees/day-off', label: 'Выходные', roles: MANAGEMENT_ROLES },
-      { href: '/employees/department', label: 'Ведомость', roles: MANAGEMENT_ROLES },
       { href: '/employees/timesheet', label: 'Табель', roles: MANAGEMENT_ROLES },
     ],
   },

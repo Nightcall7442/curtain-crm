@@ -1,9 +1,10 @@
 'use client';
 
 import { DAY_OFF_STATUS_LABELS_RU, DayOffStatus, DAY_OFF_STATUSES, type DayOffStatus as DayOffStatusName } from '@curtain-crm/shared';
-import { Check } from 'lucide-react';
+import { CalendarPlus, Check } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
+import { AssignDayOffDialog } from '@/components/employees/AssignDayOffDialog';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
@@ -13,12 +14,16 @@ import { trpc } from '@/lib/trpc';
 import { formatDate } from '@/lib/utils';
 
 /**
- * Запросы на выходные.
+ * Выходные.
  *
- * Сотрудник просит один или несколько дней подряд не выходить на смену
- * (со своего телефона — экран «Профиль → Запрос на выходные»), руководитель
- * одобряет или отклоняет здесь. Решение ни на что не влияет автоматически —
- * это заметка для руководства, а не команда расписанию.
+ * Два пути в один список. Сотрудник просит дни со своего телефона, и
+ * руководитель одобряет или отклоняет их здесь. Он же может назначить
+ * выходной сам — график цеха составляет он, и раньше поставить человека на
+ * отдых можно было только дождавшись, пока тот попросит.
+ *
+ * Назначенный выходной согласован сразу и не ждёт рассмотрения. Сотрудник
+ * видит его в своём графике в приложении, а руководство — буквой «В» в
+ * табеле.
  */
 export default function DayOffRequestsPage(): ReactElement {
   const toast = useToast();
@@ -27,6 +32,7 @@ export default function DayOffRequestsPage(): ReactElement {
   /** Запрос, ожидающий причину отказа. `null` — окно закрыто. */
   const [rejecting, setRejecting] = useState<{ id: number; period: string } | null>(null);
   const [reason, setReason] = useState('');
+  const [assigning, setAssigning] = useState(false);
 
   const utils = trpc.useUtils();
   const query = trpc.dayOff.list.useQuery(status === '' ? {} : { status });
@@ -34,6 +40,16 @@ export default function DayOffRequestsPage(): ReactElement {
   const refresh = (): void => {
     void utils.dayOff.list.invalidate();
   };
+
+  const withdraw = trpc.dayOff.withdraw.useMutation({
+    onSuccess() {
+      toast.success('Выходной снят');
+      refresh();
+    },
+    onError(error) {
+      toast.error('Не удалось снять', error.message);
+    },
+  });
 
   const approve = trpc.dayOff.approve.useMutation({
     onSuccess() {
@@ -72,10 +88,28 @@ export default function DayOffRequestsPage(): ReactElement {
 
   return (
     <Card>
+      <AssignDayOffDialog
+        open={assigning}
+        onClose={() => {
+          setAssigning(false);
+        }}
+      />
+
       <CardHeader
-        title="Запросы на выходные"
+        title="Выходные"
         action={
           <FilterBar>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<CalendarPlus className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => {
+                setAssigning(true);
+              }}
+            >
+              Назначить
+            </Button>
+
             <Select
               size="sm"
               value={status}
@@ -217,7 +251,22 @@ export default function DayOffRequestsPage(): ReactElement {
             align: 'right',
             className: 'whitespace-nowrap',
             render: (row) =>
-              row.status === DayOffStatus.PENDING ? (
+              /*
+                Согласованный выходной снимается: назначили не тому или не на
+                тот день — иначе исправлять пришлось бы через базу.
+              */
+              row.status === DayOffStatus.APPROVED ? (
+                <button
+                  type="button"
+                  disabled={withdraw.isPending}
+                  onClick={() => {
+                    withdraw.mutate({ id: row.id });
+                  }}
+                  className="rounded border border-subtle px-2 py-1 text-footnote text-secondary hover:bg-raised disabled:opacity-50"
+                >
+                  Снять
+                </button>
+              ) : row.status === DayOffStatus.PENDING ? (
                 <span className="inline-flex items-center gap-1.5">
                   <button
                     type="button"

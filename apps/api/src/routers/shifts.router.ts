@@ -20,6 +20,7 @@ import {
 } from '../services/geolocation.service';
 import { notifyShiftAdjusted } from '../services/notifications.service';
 import { calculateWorkedHours, periodBounds, workedSecondsExpression } from '../services/shifts.service';
+import { buildTimesheet } from '../services/timesheet.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
@@ -795,6 +796,37 @@ export const shiftsRouter = router({
     ),
 
   /** Сводка отработанных часов по сотрудникам за месяц. Для раздела «Табель». */
+  /**
+   * Табель за месяц: по дням, с часами и выходными.
+   *
+   * Итог за месяц отвечал «сколько всего», но не «когда»: выходил ли человек
+   * во вторник, приходилось выяснять по журналу смен.
+   */
+  timesheet: managementProcedure
+    .input(periodSchema.extend({ branchId: idSchema.optional() }))
+    .query(async ({ ctx, input }) =>
+      buildTimesheet(ctx.db, {
+        period: { year: input.year, month: input.month },
+        ...(input.branchId === undefined ? {} : { branchId: input.branchId }),
+      }),
+    ),
+
+  /**
+   * Свой месяц: когда работал и когда отдыхаю.
+   *
+   * Отдельная процедура вместо параметра к табелю: там `managementProcedure`,
+   * и «сотрудник видит только себя» держится не проверкой внутри, а тем, что
+   * чужой `userId` в неё просто неоткуда взять.
+   */
+  myMonth: protectedProcedure
+    .input(periodSchema)
+    .query(async ({ ctx, input }) =>
+      buildTimesheet(ctx.db, {
+        period: { year: input.year, month: input.month },
+        userIds: [ctx.user.id],
+      }),
+    ),
+
   summary: managementProcedure
     .input(periodSchema.extend({ branchId: idSchema.optional() }))
     .query(async ({ ctx, input }) => {

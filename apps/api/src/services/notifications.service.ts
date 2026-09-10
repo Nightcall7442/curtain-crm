@@ -441,6 +441,25 @@ export async function notifyDayOffApproved(
   });
 }
 
+/**
+ * Выходной назначен руководителем — узнаёт сотрудник.
+ *
+ * Отдельно от «одобрены»: там человек сам просил и ждёт ответа, здесь — не
+ * просил, и «одобрены» в уведомлении звучало бы ответом на незаданный вопрос.
+ */
+export async function notifyDayOffAssigned(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly startDate: string; readonly endDate: string; readonly assignedByName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.DAY_OFF_APPROVED,
+    title: 'Вам назначен выходной',
+    body: `${params.assignedByName}: ${formatPeriod(params.startDate, params.endDate)}`,
+  });
+}
+
 /** Запрос на выходные отклонён — узнаёт сотрудник. */
 export async function notifyDayOffRejected(
   executor: DbExecutor,

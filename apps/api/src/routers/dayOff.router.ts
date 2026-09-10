@@ -17,6 +17,7 @@ import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import {
   notifyDayOffApproved,
+  notifyDayOffAssigned,
   notifyDayOffRejected,
   notifyDayOffRequested,
 } from '../services/notifications.service';
@@ -216,6 +217,128 @@ export const dayOffRouter = router({
             reviewerName: ctx.user.fullName,
           });
         }
+
+        return updated;
+      }),
+    ),
+
+  /**
+   * Назначить выходной сотруднику.
+   *
+   * Раньше выходной существовал только как просьба снизу: руководитель мог
+   * одобрить или отказать, но не мог сам поставить человека на отдых —
+   * а график цеха составляет он. Запись сразу согласована: это не просьба,
+   * которую кто-то ещё будет рассматривать.
+   */
+  assign: managementProcedure
+    .input(
+      z
+        .object({
+          userId: idSchema,
+          startDate: z.string().date(),
+          endDate: z.string().date(),
+          reason: optionalText(MAX_DAY_OFF_REASON_LENGTH),
+        })
+        .refine(isValidPeriod, PERIOD_ERROR),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const person = await tx.query.users.findFirst({ where: eq(users.id, input.userId) });
+        if (person === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден' });
+        }
+        if (!person.isActive) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Сотрудник не работает — выходной ему не нужен',
+          });
+        }
+
+        const now = new Date();
+        const [created] = await tx
+          .insert(dayOffRequests)
+          .values({
+            userId: input.userId,
+            startDate: input.startDate,
+            endDate: input.endDate,
+            reason: input.reason ?? null,
+            status: DayOffStatus.APPROVED,
+            reviewedBy: ctx.user.id,
+            reviewedAt: now,
+          })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Не удалось назначить выходной',
+          });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'dayoff.assigned',
+          entityType: 'day_off_request',
+          entityId: created.id,
+          details: {
+            userId: input.userId,
+            startDate: input.startDate,
+            endDate: input.endDate,
+          },
+          ipAddress: ctx.ipAddress,
+        });
+
+        if (input.userId !== ctx.user.id) {
+          await notifyDayOffAssigned(tx, input.userId, {
+            startDate: input.startDate,
+            endDate: input.endDate,
+            assignedByName: ctx.user.fullName,
+          });
+        }
+
+        return created;
+      }),
+    ),
+
+  /**
+   * Снять согласованный выходной: назначили не тому или не на тот день.
+   *
+   * Рецензент при этом стирается — так требует инвариант БД «решён
+   * руководством ⇒ есть рецензент»: снятый выходной больше не решение, а
+   * отменённая запись. Кто и когда его снял, остаётся в журнале действий.
+   */
+  withdraw: managementProcedure
+    .input(z.object({ id: idSchema }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const request = await tx.query.dayOffRequests.findFirst({
+          where: eq(dayOffRequests.id, input.id),
+        });
+
+        if (request === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Запись не найдена' });
+        }
+        if (request.status !== DayOffStatus.APPROVED) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Снять можно только согласованный выходной',
+          });
+        }
+
+        const [updated] = await tx
+          .update(dayOffRequests)
+          .set({ status: DayOffStatus.CANCELLED, reviewedBy: null, reviewedAt: null })
+          .where(eq(dayOffRequests.id, input.id))
+          .returning();
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'dayoff.withdrawn',
+          entityType: 'day_off_request',
+          entityId: input.id,
+          details: { startDate: request.startDate, endDate: request.endDate },
+          ipAddress: ctx.ipAddress,
+        });
 
         return updated;
       }),

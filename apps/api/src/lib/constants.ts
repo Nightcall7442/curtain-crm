@@ -200,6 +200,8 @@ export const AUDIT_ACTIONS = [
   'dayoff.approved',
   'dayoff.rejected',
   'dayoff.cancelled',
+  'dayoff.assigned',
+  'dayoff.withdrawn',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
