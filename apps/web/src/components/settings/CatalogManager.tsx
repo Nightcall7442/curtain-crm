@@ -25,8 +25,24 @@ import { cn } from '@/lib/utils';
  * значение текстом, но исчезнувшая из справочника позиция ломает аналитику
  * по моделям и материалам.
  */
-export function CatalogManager(): ReactElement {
-  const [kind, setKind] = useState<CatalogKind>('curtain_model');
+export function CatalogManager({
+  kinds = CATALOG_KINDS,
+  title = 'Справочники характеристик заказа',
+  hint,
+}: {
+  /**
+   * Какие справочники показывать.
+   *
+   * По умолчанию все — так он стоит в настройках. На складе передаются только
+   * справочники кодов: коды заводит кладовщик, и гонять его за ними в
+   * настройки, в другой раздел, значило бы разложить одну работу по двум
+   * экранам.
+   */
+  readonly kinds?: readonly CatalogKind[];
+  readonly title?: string;
+  readonly hint?: string;
+} = {}): ReactElement {
+  const [kind, setKind] = useState<CatalogKind>(kinds[0] ?? 'curtain_model');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
@@ -79,7 +95,7 @@ export function CatalogManager(): ReactElement {
   return (
     <Card>
       <CardHeader
-        title="Справочники характеристик заказа"
+        title={title}
         level={3}
         action={
           <Button
@@ -114,7 +130,7 @@ export function CatalogManager(): ReactElement {
           мобильном приложении, у фильтров списка заказов.
         */}
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Справочник">
-          {CATALOG_KINDS.map((value) => {
+          {kinds.map((value) => {
             const active = value === kind;
 
             return (
@@ -139,7 +155,7 @@ export function CatalogManager(): ReactElement {
         </div>
 
         <p className="text-footnote text-muted">
-          Эти значения предлагаются в форме заказа. Нажатие на позицию
+          {hint ?? 'Эти значения предлагаются в форме заказа.'} Нажатие на позицию
           переименовывает её, кнопка с глазом — выводит из обращения: выведенные
           не показываются продавцу, но остаются в старых заказах.
         </p>

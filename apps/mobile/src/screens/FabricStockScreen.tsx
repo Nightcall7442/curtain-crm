@@ -69,6 +69,35 @@ export function FabricStockScreen({
 
   const rows = trpc.fabric.list.useQuery({});
 
+  /*
+    Справочник кодов — здесь же, под остатками.
+
+    Код с бирки заводит кладовщик, и он же ведёт их список. Раньше список
+    жил только в веб-панели: чтобы завести код, человек со склада должен был
+    дойти до компьютера, то есть отложить дело до вечера.
+  */
+  const [codesKind, setCodesKind] = useState<StockKind>('portiere_code');
+  const [codeFormOpen, setCodeFormOpen] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [newCodeDescription, setNewCodeDescription] = useState('');
+
+  const catalog = trpc.catalog.list.useQuery({ kind: codesKind, includeInactive: false });
+
+  const addCode = trpc.catalog.create.useMutation({
+    async onSuccess(entry) {
+      notifySuccess();
+      setCodeFormOpen(false);
+      setNewCode('');
+      setNewCodeDescription('');
+      await utils.catalog.list.invalidate();
+      Alert.alert('Код заведён', entry.name);
+    },
+    onError(error) {
+      notifyError();
+      Alert.alert('Не удалось завести код', error.message);
+    },
+  });
+
   const refresh = async (): Promise<void> => {
     await utils.fabric.list.invalidate();
   };
@@ -367,6 +396,130 @@ export function FabricStockScreen({
           <Text style={styles.note}>
             Расход списывается сам, когда заказ уходит в пошив: раскроили — значит, ушло.
             Долгое нажатие на позицию — правка кода и описания.
+          </Text>
+        </Card>
+
+        <Card>
+          <CardTitle
+            title="Коды"
+            icon="orders"
+            action={
+              codeFormOpen ? undefined : (
+                <Pressable
+                  onPress={() => {
+                    addCode.reset();
+                    setCodeFormOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.addButton, pressed ? styles.pressed : null]}
+                >
+                  <Text style={styles.addButtonText}>Код</Text>
+                </Pressable>
+              )
+            }
+          />
+
+          <Field label="Чьи коды">
+            <ChipSelect
+              value={codesKind}
+              onChange={(value) => {
+                setCodesKind(value);
+                setCodeFormOpen(false);
+              }}
+              options={STOCK_KINDS.map((value) => ({
+                value,
+                label: STOCK_KIND_LABELS_RU[value],
+              }))}
+            />
+          </Field>
+
+          {codeFormOpen && (
+            <>
+              <Field label="Код с бирки">
+                <Input
+                  value={newCode}
+                  onChangeText={setNewCode}
+                  placeholder="Например: П-31"
+                  autoFocus
+                />
+              </Field>
+
+              <Field
+                label="Мини-описание"
+                hint="Его увидит продавец сразу после ввода кода в заказе"
+              >
+                <Input
+                  value={newCodeDescription}
+                  onChangeText={setNewCodeDescription}
+                  placeholder="Например: тёмная сторона, плотный блэкаут"
+                  multiline
+                />
+              </Field>
+
+              <View style={styles.formRow}>
+                <Pressable
+                  onPress={() => {
+                    setCodeFormOpen(false);
+                    setNewCode('');
+                    setNewCodeDescription('');
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
+                >
+                  <Text style={styles.cancelText}>Отмена</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    const name = newCode.trim();
+                    if (name === '') return;
+                    addCode.mutate({
+                      kind: codesKind,
+                      name,
+                      description:
+                        newCodeDescription.trim() === '' ? null : newCodeDescription.trim(),
+                    });
+                  }}
+                  disabled={addCode.isPending}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.submit,
+                    styles.submitFlex,
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  {addCode.isPending ? (
+                    <ActivityIndicator color={colors.onAccent} size="small" />
+                  ) : (
+                    <Text style={styles.submitText}>Завести код</Text>
+                  )}
+                </Pressable>
+              </View>
+            </>
+          )}
+
+          {catalog.data === undefined ? (
+            <Skeleton />
+          ) : catalog.data.length === 0 ? (
+            <Empty message="Кодов пока нет" hint="Заведите первый — его увидит продавец" />
+          ) : (
+            catalog.data.map((entry) => (
+              <View key={entry.id} style={styles.itemRow}>
+                <View style={styles.itemText}>
+                  <Text style={styles.itemName}>{entry.name}</Text>
+                  {entry.description !== null && (
+                    <Text style={styles.itemMeta} numberOfLines={2}>
+                      {entry.description}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))
+          )}
+
+          <Text style={styles.note}>
+            Эти коды продавец вводит в заказе, а вы — в позициях склада. Переименовать или
+            вывести код из обращения можно в веб-панели.
           </Text>
         </Card>
       </ScrollView>

@@ -2,15 +2,18 @@
 
 import {
   materialKindLabel,
+  MATERIAL_CODE_KINDS,
   STOCK_KIND_LABELS_RU,
   STOCK_KINDS,
   stockUnitLabel,
+  CatalogKind,
   type StockKind,
 } from '@curtain-crm/shared';
 import { Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { useToast } from '@/components/providers/ToastProvider';
+import { CatalogManager } from '@/components/settings/CatalogManager';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, Field, fieldErrors, FormError, Input, Modal, Select } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
@@ -33,6 +36,22 @@ import { cn } from '@/lib/utils';
  * Отрицательный остаток разрешён и показан красным: то, что забыли завести,
  * всё равно раскроили, и минус — видимый долг учёта, а не ошибка.
  */
+
+/**
+ * Справочники кодов, которые ведутся прямо здесь.
+ *
+ * Ровно те же виды, по которым лежит остаток: пятый вид на складе и шестой
+ * в справочнике означали бы, что где-то код завести можно, а положить нельзя.
+ */
+const CODE_KINDS = [
+  MATERIAL_CODE_KINDS.portiere,
+  MATERIAL_CODE_KINDS.tulle,
+  MATERIAL_CODE_KINDS.protection,
+  MATERIAL_CODE_KINDS.cornice,
+  MATERIAL_CODE_KINDS.plastic,
+  MATERIAL_CODE_KINDS.pipe,
+  CatalogKind.ACCESSORY_CODE,
+] as const;
 
 /** Количество строкой: «12,5» и «12.5» вводят одинаково часто. */
 const toQuantity = (raw: string): number => Number.parseFloat(raw.replace(',', '.')) || 0;
@@ -316,6 +335,23 @@ export default function WarehousePage(): ReactElement {
           ]}
         />
       </Card>
+
+      {/*
+        Справочник кодов — здесь же, под остатками.
+
+        Код с бирки заводит кладовщик, и он же ведёт список кодов: гонять его
+        за этим в настройки, в другой раздел, значило бы разложить одну работу
+        по двум экранам. В настройках справочники остались — там они стоят
+        рядом с моделями и цветами, которые ведёт руководитель.
+
+        Описание, заведённое здесь, подставляется продавцу в заказе, когда он
+        вводит код, и в позицию склада, если своего описания у неё нет.
+      */}
+      <CatalogManager
+        kinds={CODE_KINDS}
+        title="Коды материалов и аксессуаров"
+        hint="Эти коды продавец вводит в заказе, а вы — в позициях склада."
+      />
 
       <Modal
         open={formOpen}
