@@ -83,9 +83,12 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
         </Pressable>
       ))}
 
-      <Text style={styles.note}>
-        Пока отмечено не всё, заказ не уйдёт в «Установка идёт».
-      </Text>
+      {/* Собранному заказу напоминание про «не уйдёт» уже ни к чему. */}
+      {!ready && (
+        <Text style={styles.note}>
+          Пока отмечено не всё, заказ не уйдёт в «Установка идёт».
+        </Text>
+      )}
     </Card>
   );
 }

@@ -101,9 +101,12 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
           ))}
         </ul>
 
-        <p className="mt-3 text-footnote text-muted">
-          Пока отмечено не всё, заказ не уйдёт в «Установка идёт».
-        </p>
+        {/* Собранному заказу напоминание про «не уйдёт» уже ни к чему. */}
+        {!ready && (
+          <p className="mt-3 text-footnote text-muted">
+            Пока отмечено не всё, заказ не уйдёт в «Установка идёт».
+          </p>
+        )}
       </CardBody>
     </Card>
   );
