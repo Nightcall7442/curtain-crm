@@ -280,17 +280,6 @@ export const STOCK_KIND_LABELS_RU: Readonly<Record<StockKind, string>> = {
 };
 
 /**
- * Единица измерения вида.
- *
- * Ткань и трубу меряют метрами, аксессуары считают штуками. Одна колонка
- * количества на складе и две подписи — потому что «12 метров держателей»
- * это не опечатка в числе, а неправда о товаре.
- */
-export function stockUnitLabel(kind: StockKind): string {
-  return kind === CatalogKind.ACCESSORY_CODE ? 'шт' : 'м';
-}
-
-/**
  * Строка материала по виду справочника — обратная сторона `MATERIAL_CODE_KINDS`.
  *
  * Нужна складу: остаток хранится видом справочника (`portiere_code`), а

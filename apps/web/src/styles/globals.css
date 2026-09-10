@@ -948,4 +948,82 @@
   .glass-edge {
     box-shadow: none;
   }
+
+  /*
+    ЛИСТ ДЛЯ ПЕЧАТИ.
+
+    Раздел, у которого есть «печатный» вид, кладёт его в `.print-sheet` —
+    на экране блок скрыт, а на бумаге он единственное, что видно. Печатать
+    саму страницу целиком нельзя: на лист уехали бы боковое меню, шапка и
+    кнопки «Изменить» — ряд ссылок, по которым на бумаге не нажать.
+
+    Прячем видимостью, а не `display`: сохранённое место в потоке позволяет
+    вынести лист поверх страницы, не пересобирая её разметку.
+
+    Условие `:has` обязательно: без него правило погасило бы и те разделы, у
+    которых печатного листа нет, — с принтера пошли бы пустые страницы.
+  */
+  body:has(.print-sheet) * {
+    visibility: hidden;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+
+  .print-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block;
+    width: 100%;
+    padding: 0;
+    color: rgb(var(--text-primary));
+  }
+
+  .print-sheet h1 {
+    margin: 0 0 2mm;
+    font-size: 16pt;
+    font-weight: 600;
+  }
+
+  .print-sheet p {
+    margin: 0 0 4mm;
+    font-size: 9pt;
+    color: rgb(var(--text-muted));
+  }
+
+  .print-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+
+  .print-sheet th,
+  .print-sheet td {
+    padding: 1.6mm 2mm;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 0.2mm solid rgb(var(--border-subtle));
+  }
+
+  .print-sheet th {
+    font-weight: 600;
+    border-bottom-width: 0.4mm;
+    border-bottom-color: rgb(var(--border-strong));
+  }
+
+  /* Строка не должна разрываться между листами пополам. */
+  .print-sheet tr {
+    break-inside: avoid;
+  }
+
+  .print-sheet thead {
+    display: table-header-group;
+  }
+}
+
+/* На экране печатный лист не нужен: то же самое показано таблицей. */
+.print-sheet {
+  display: none;
 }

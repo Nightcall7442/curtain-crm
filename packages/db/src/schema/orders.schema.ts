@@ -181,16 +181,6 @@ export const orders = pgTable(
     }),
     corniceDoneAt: timestamp('cornice_done_at', { withTimezone: true }),
 
-    /**
-     * Когда с заказа списали ткань со склада.
-     *
-     * Списание происходит один раз — на входе в пошив, когда раскраивают.
-     * Отметка нужна как раз для этого «один раз»: заказ может вернуться на
-     * доработку и уйти в пошив второй раз, а метры со склада к тому времени
-     * уже ушли, и второе списание вычло бы их дважды.
-     */
-    fabricWrittenOffAt: timestamp('fabric_written_off_at', { withTimezone: true }),
-
     /* --- Отметки времени ---------------------------------------------------- */
 
     completedAt: timestamp('completed_at', { withTimezone: true }),

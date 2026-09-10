@@ -161,6 +161,89 @@ export const catalogRouter = router({
       }),
     ),
 
+  /**
+   * Загрузка кодов списком — тем самым, который выгрузили в Excel.
+   *
+   * Коды приезжают от поставщика таблицей, и заводить их по одному через
+   * форму — работа на вечер. Уже известный код не задваивается: у него
+   * дополняется описание, если в файле оно есть, а название остаётся своим —
+   * файл может отличаться регистром, а заказы ссылаются на код текстом.
+   */
+  importItems: managementProcedure
+    .input(
+      z.object({
+        items: z
+          .array(
+            z.object({
+              kind: kindSchema,
+              name: nonEmptyString(200, 'Укажите код'),
+              description: descriptionSchema.default(null),
+            }),
+          )
+          .min(1)
+          .max(1000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const existing = await tx
+          .select({
+            id: catalogItems.id,
+            kind: catalogItems.kind,
+            name: catalogItems.name,
+            description: catalogItems.description,
+          })
+          .from(catalogItems);
+
+        const keyOf = (kind: string, name: string): string => `${kind} ${name.toLowerCase()}`;
+        const known = new Map(existing.map((row) => [keyOf(row.kind, row.name), row]));
+
+        const fresh: { kind: (typeof input.items)[number]['kind']; name: string; description: string | null; createdBy: number }[] = [];
+        const seen = new Set<string>();
+        let updated = 0;
+
+        for (const item of input.items) {
+          const name = item.name.trim();
+          const description = item.description === null || item.description === '' ? null : item.description;
+          const key = keyOf(item.kind, name);
+
+          const found = known.get(key);
+          if (found === undefined) {
+            // Дубли внутри самого файла — обычное дело: код встречается в
+            // нескольких строках накладной.
+            if (seen.has(key)) continue;
+            seen.add(key);
+            fresh.push({ kind: item.kind, name, description, createdBy: ctx.user.id });
+            continue;
+          }
+
+          // Пустое описание в файле не стирает заведённое руками.
+          if (description === null || description === found.description) continue;
+
+          await tx
+            .update(catalogItems)
+            .set({ description })
+            .where(eq(catalogItems.id, found.id));
+          updated += 1;
+        }
+
+        if (fresh.length > 0) {
+          await tx.insert(catalogItems).values(fresh);
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'catalog.items_imported',
+          entityType: 'catalog_item',
+          entityId: null,
+          details: { created: fresh.length, updated, received: input.items.length },
+          ipAddress: ctx.ipAddress,
+        });
+
+        return { created: fresh.length, updated, received: input.items.length };
+      }),
+    ),
+
   /** Вывод позиции из обращения. Физического удаления нет намеренно. */
   setActive: managementProcedure
     .input(z.object({ id: idSchema, isActive: z.boolean() }))

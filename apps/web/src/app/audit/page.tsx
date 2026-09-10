@@ -135,6 +135,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'catalog.item_created': 'Позиция справочника создана',
   'catalog.item_updated': 'Позиция справочника изменена',
   'catalog.item_deactivated': 'Позиция справочника отключена',
+  'catalog.items_imported': 'Коды загружены файлом',
 };
 
 export default function AuditPage(): ReactElement {
