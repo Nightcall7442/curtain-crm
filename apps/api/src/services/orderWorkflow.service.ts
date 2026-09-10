@@ -27,6 +27,7 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
+import { assertOrderPacked } from './packList.service';
 import { accrueForClosedOrder } from './payroll.service';
 import {
   notifyOrderAssigned,
@@ -392,9 +393,25 @@ export async function changeOrderStatus(
     }
   }
 
+  const wasRollback = isRollback(fromStatus, toStatus, order.orderType);
+
+  /*
+    5c. На установку не выезжают, не собравшись.
+
+    Держатель, забытый в цехе, вспоминается у клиента — и стоит второго
+    выезда через весь город. Поэтому перед выходом в «Установка идёт»
+    установщик проходит по сборочному листу заказа и отмечает, что положил
+    в машину; непройденный лист останавливает переход и называет, чего в нём
+    не хватает.
+
+    Откат сюда же не попадает: возврат на переделку ничего не собирает.
+  */
+  if (toStatus === OrderStatus.INSTALLATION_IN_PROGRESS && !wasRollback) {
+    await assertOrderPacked(executor, order.id);
+  }
+
   /* 6. Запись нового статуса. */
   const now = new Date();
-  const wasRollback = isRollback(fromStatus, toStatus, order.orderType);
 
   /*
     5b. Карниз уходит карнизчикам ровно на выходе из проверки админом.

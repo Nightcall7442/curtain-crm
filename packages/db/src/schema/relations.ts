@@ -5,6 +5,7 @@ import { branches } from './branches.schema';
 import { catalogItems } from './catalog.schema';
 import { notifications } from './notifications.schema';
 import { orderComments } from './orderComments.schema';
+import { orderPackChecks } from './orderPackChecks.schema';
 import { orderPhotos } from './orderPhotos.schema';
 import { orderStatusHistory } from './orderStatusHistory.schema';
 import { orderInstallationTeam, orderItems, orders } from './orders.schema';
@@ -148,6 +149,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   items: many(orderItems),
   statusHistory: many(orderStatusHistory),
   photos: many(orderPhotos),
+  packChecks: many(orderPackChecks),
   comments: many(orderComments),
   purchases: many(purchases),
   installationTeam: many(orderInstallationTeam),
@@ -164,6 +166,11 @@ export const orderStatusHistoryRelations = relations(orderStatusHistory, ({ one 
     fields: [orderStatusHistory.changedBy],
     references: [users.id],
   }),
+}));
+
+export const orderPackChecksRelations = relations(orderPackChecks, ({ one }) => ({
+  order: one(orders, { fields: [orderPackChecks.orderId], references: [orders.id] }),
+  checkedByUser: one(users, { fields: [orderPackChecks.checkedBy], references: [users.id] }),
 }));
 
 export const orderPhotosRelations = relations(orderPhotos, ({ one }) => ({

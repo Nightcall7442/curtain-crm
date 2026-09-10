@@ -1,6 +1,7 @@
 import {
   orderInstallationTeam,
   orderItems,
+  orderPackChecks,
   orderPhotos,
   orders,
   orderStatusHistory,
@@ -62,6 +63,7 @@ import {
   changeOrderStatus,
   loadOrderForUpdate,
 } from '../services/orderWorkflow.service';
+import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
@@ -1341,6 +1343,62 @@ export const ordersRouter = router({
         .innerJoin(users, eq(users.id, orderInstallationTeam.userId))
         .where(eq(orderInstallationTeam.orderId, input.id))
         .orderBy(asc(users.fullName));
+    }),
+
+  /**
+   * Сборочный лист заказа: что везти и что уже положили в машину.
+   *
+   * Читать может любой участник заказа: админ смотрит, собрались ли, продавец
+   * отвечает клиенту на вопрос «когда». Ставить отметки — только тот, кто
+   * едет (`setPacked`).
+   */
+  packList: protectedProcedure
+    .input(z.object({ id: idSchema }))
+    .query(async ({ ctx, input }) => {
+      const order = await ctx.db.query.orders.findFirst({ where: eq(orders.id, input.id) });
+      if (order === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
+      }
+      assertCanAccessOrder(order, ctx.user);
+
+      return loadPackList(ctx.db, input.id);
+    }),
+
+  /**
+   * Отметка «взял» — и снятие её же.
+   *
+   * Снятая отметка удаляется, а не гасится флагом: «не брал» и «ещё не
+   * смотрел» перед выездом означают одно и то же — вещь не в машине.
+   */
+  setPacked: protectedProcedure
+    .input(z.object({ id: idSchema, key: nonEmptyString(200), packed: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await ctx.db.query.orders.findFirst({ where: eq(orders.id, input.id) });
+      if (order === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
+      }
+      assertCanAccessOrder(order, ctx.user);
+      await assertCanPack(ctx.db, order, ctx.user);
+
+      // Ключ должен существовать в листе: иначе отметка повисла бы на строке,
+      // которой нет, и лист считался бы недособранным вечно.
+      const rows = await loadPackList(ctx.db, input.id);
+      if (!rows.some((row) => row.key === input.key)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'В сборочном листе нет такой строки' });
+      }
+
+      if (input.packed) {
+        await ctx.db
+          .insert(orderPackChecks)
+          .values({ orderId: input.id, key: input.key, checkedBy: ctx.user.id })
+          .onConflictDoNothing();
+      } else {
+        await ctx.db
+          .delete(orderPackChecks)
+          .where(and(eq(orderPackChecks.orderId, input.id), eq(orderPackChecks.key, input.key)));
+      }
+
+      return loadPackList(ctx.db, input.id);
     }),
 
   addTeamMember: managementProcedure

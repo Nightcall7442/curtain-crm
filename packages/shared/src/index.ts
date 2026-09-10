@@ -30,6 +30,7 @@ export * from './constants/calendar';
 export * from './constants/catalog';
 export * from './constants/rating';
 export * from './constants/personalBreak';
+export * from './constants/packList';
 export * from './constants/stageFee';
 
 /* Типы */

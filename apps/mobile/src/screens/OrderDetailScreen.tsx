@@ -7,6 +7,7 @@ import {
   formatPhone,
   ORDER_STAGE_FEE_LABELS,
   ORDER_STATUS_LABELS,
+  ORDER_STATUS_PHASE,
   ORDER_TYPE_LABELS,
   OrderType,
   parseMoney,
@@ -33,6 +34,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { ItemMeters } from '../components/ItemMeters';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { OrderManagement } from '../components/OrderManagement';
+import { OrderPackList } from '../components/OrderPackList';
 import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { Stepper } from '../components/Stepper';
@@ -501,6 +503,13 @@ export function OrderDetailScreen({
           ))
         )}
       </Card>
+
+      {/*
+        --- Сбор на выезд -----------------------------------------------------
+
+        Только на этапе установки: до него собирать нечего — шторы ещё шьют.
+      */}
+      {ORDER_STATUS_PHASE[data.status] === 'installation' && <OrderPackList orderId={data.id} />}
 
       {/* --- Карниз ---------------------------------------------------------- */}
       {data.corniceStatus !== CorniceStatus.NOT_REQUIRED && (

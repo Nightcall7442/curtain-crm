@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ORDER_STATUS_PHASE,
   CORNICE_ROTATION_LABELS_RU,
   CORNICE_STATUS_LABELS_RU,
   CorniceStatus,
@@ -25,6 +26,7 @@ import { useParams } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
 
 import { OrderManagePanel } from '@/components/orders/OrderManagePanel';
+import { OrderPackList } from '@/components/orders/OrderPackList';
 import { stageFeesFromOrder } from '@/components/orders/StageFeesFields';
 import { OrderPhotos } from '@/components/orders/OrderPhotos';
 import { ItemMeters } from '@/components/orders/ItemMeters';
@@ -538,6 +540,14 @@ export default function OrderDetailPage(): ReactElement {
         </Card>
 
       </section>
+
+      {/*
+        --- Сбор на выезд ---------------------------------------------------
+
+        Только на этапе установки: до него собирать нечего — шторы ещё шьют,
+        а карточка со списком стояла бы неделю немым укором.
+      */}
+      {ORDER_STATUS_PHASE[data.status] === 'installation' && <OrderPackList orderId={orderId} />}
 
       {/* --- Закупки и фото ------------------------------------------------- */}
       <OrderPurchases orderId={orderId} />
