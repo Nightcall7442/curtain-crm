@@ -75,9 +75,9 @@
       тёплой подложке, как раскрой на столе. Разница по яркости — восемь
       процентов, по температуре — заметная, и ряд карточек читается сразу.
     */
-    --surface-base: 234 242 238; /* #F1EDE4 — тёплый лён */
+    --surface-base: 243 246 244; /* #F1EDE4 — тёплый лён */
     --surface-panel: 255 255 255; /* #FFFFFF — карточки */
-    --surface-raised: 243 248 245; /* #F6F2EA — элементы внутри карточек, ховер */
+    --surface-raised: 240 245 242; /* #F6F2EA — элементы внутри карточек, ховер */
 
     /**
      * Навигация — глубокая хвоя.
@@ -85,21 +85,21 @@
      * Тёмная, а не светлая: в макете шапка тёмно-зелёная, и это же решение
      * разводит навигацию и содержимое без единой лишней линии.
      */
-    --surface-nav: 16 32 25; /* #142E24 */
-    --surface-nav-raised: 26 48 38; /* #1E4234 */
+    --surface-nav: 13 28 21; /* #142E24 */
+    --surface-nav-raised: 22 44 34; /* #1E4234 */
     --text-on-nav: 234 245 238; /* #E8F0EC — 12,52:1 к шапке */
 
     /*
       Границы тёплые — они обводят белое по льну, а не серое по серому.
       Холодная рамка на тёплом фоне читалась как грязь по краю карточки.
     */
-    --border-subtle: 212 226 219; /* #E5DED1 */
-    --border-strong: 184 206 196; /* #D2C7B4 */
+    --border-subtle: 222 231 226; /* #E5DED1 */
+    --border-strong: 198 212 205; /* #D2C7B4 */
 
     /* Текст: чернильная гамма с зелёным уклоном, не чистый чёрный */
-    --text-primary: 14 30 23; /* #14231D — 15,01:1 к фону */
-    --text-secondary: 72 96 86; /* #4E5B55 — 6,55:1 */
-    --text-muted: 106 130 120; /* #5F6B65 — 4,82:1 даже на самой тёмной поверхности */
+    --text-primary: 12 26 20; /* #14231D — 15,01:1 к фону */
+    --text-secondary: 70 92 82; /* #4E5B55 — 6,55:1 */
+    --text-muted: 110 130 121; /* #5F6B65 — 4,82:1 даже на самой тёмной поверхности */
 
     /**
      * Зелёный — акцент бренда. Приглушённая тёмная хвоя, а не «зелёный
@@ -116,11 +116,11 @@
      *  `muted` (#9BBDAF) — рамки и выключенные состояния, текстом нельзя;
      *  `soft` (#EAF2EE) — мягкая подложка под метки и выбранные чипы.
      */
-    --accent: 18 150 92; /* #1F5D45 */
-    --accent-strong: 14 122 76; /* #164634 */
-    --accent-bright: 38 196 126; /* #2A7D5C */
-    --accent-muted: 170 222 196; /* #9BBDAF */
-    --accent-soft: 224 246 235; /* #EAF2EE */
+    --accent: 14 143 87; /* #1F5D45 */
+    --accent-strong: 11 122 74; /* #164634 */
+    --accent-bright: 22 176 108; /* #2A7D5C */
+    --accent-muted: 178 220 198; /* #9BBDAF */
+    --accent-soft: 228 245 236; /* #EAF2EE */
 
     /**
      * Цвет подписи НА залитой акцентом кнопке.
@@ -154,10 +154,10 @@
      * означает «сюда нажимать», успех — «это уже хорошо». Совпади они,
      * зелёная метка статуса читалась бы как кнопка.
      */
-    --positive: 18 150 92;
-    --warning: 176 112 8;
-    --danger: 200 40 56;
-    --info: 30 100 200;
+    --positive: 14 143 87;
+    --warning: 170 108 6;
+    --danger: 196 38 54;
+    --info: 28 96 196;
 
     /**
      * Цвета этапов производственного конвейера.
@@ -191,8 +191,8 @@
      * это опорная линия сравнения, а не равноправная категория. Идентичность
      * серий несут легенда и подписи значений на концах линий.
      */
-    --series-current: 18 150 92;
-    --series-previous: 150 170 162;
+    --series-current: 14 143 87;
+    --series-previous: 160 178 170;
 
     /**
      * Стекло.
@@ -203,12 +203,12 @@
      * ляжет прямо на прокручивающееся содержимое.
      */
     --glass-blur: 16px;
-    --glass-ink: 16 40 30;
+    --glass-ink: 12 26 20;
     --glass-fill: 255 255 255;
-    --glass-control-alpha: 0.85;
+    --glass-control-alpha: 0.92;
     --glass-light: 255 255 255;
-    --glass-light-alpha: 0.7;
-    --glass-nav-alpha: 0.9;
+    --glass-light-alpha: 0.78;
+    --glass-nav-alpha: 0.96;
 
     /**
      * Образцы цвета для переключателя оформления.
@@ -928,27 +928,6 @@
       0 30px 60px -30px rgb(0 0 0 / 0.7);
   }
 
-  /* На светлом — белое стекло: заливка плотнее, иначе карточка не отделяется от холста. */
-  :root:not([data-theme='dark']) .surface-card {
-    background-image: linear-gradient(
-      150deg,
-      rgb(255 255 255 / 0.82) 0%,
-      rgb(255 255 255 / 0.66) 60%,
-      rgb(255 255 255 / 0.74) 100%
-    );
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) .surface-card {
-      background-image: linear-gradient(
-        150deg,
-        rgb(var(--glass-fill) / 0.13) 0%,
-        rgb(var(--glass-fill) / 0.06) 45%,
-        rgb(var(--surface-raised) / 0.40) 100%
-      );
-    }
-  }
-
   /* Блик — размытое пятно света в верхнем левом углу, как на настоящем стекле. */
   .surface-card::before {
     content: '';
@@ -980,6 +959,29 @@
       0 0 80px -20px rgb(var(--accent) / 0.35);
   }
 
+  .hero-number {
+    color: var(--hero-number, currentColor);
+  }
+
+  .hero-chip {
+    border: 1px solid rgb(0 0 0 / 0.10);
+    background-color: rgb(0 0 0 / 0.15);
+  }
+
+  .hero-chip:hover {
+    background-color: rgb(0 0 0 / 0.25);
+  }
+
+  /*
+    СВЕТЛАЯ СХЕМА — не «тёмная, но белая».
+
+    Стекло на светлом не работает: сквозь белую полупрозрачную карточку
+    видно зелёное пятно холста, и края мутнеют. Поэтому на светлом холст
+    почти ровный, карточки — плотные белые с мягкой тенью, а неон живёт на
+    ТЁМНЫХ поверхностях: рейке, карточке выручки, активной плитке. Так
+    контраст держит светлая подложка, а фирменный цвет остаётся тем же.
+  */
+
   /* Стекло для полей, плашек и строк таблицы — тот же язык, тоньше слой. */
   .glass-control {
     background-color: rgb(var(--glass-fill) / var(--glass-control-alpha));
@@ -994,6 +996,116 @@
       inset 0 0 0 1px rgb(var(--accent) / 0.6),
       inset 0 1px 0 rgb(var(--glass-fill) / 0.12),
       0 0 0 3px rgb(var(--accent) / 0.15);
+  }
+
+  /* --- Светлые правила: явный выбор --------------------------------------- */
+  :root[data-theme='light'] .app-canvas {
+    background-image:
+      radial-gradient(900px 520px at 0% 0%, rgb(var(--accent) / 0.10), transparent 60%),
+      radial-gradient(700px 480px at 100% 100%, rgb(var(--accent-bright) / 0.08), transparent 60%),
+      linear-gradient(180deg, rgb(248 250 249) 0%, rgb(var(--surface-base)) 100%);
+  }
+
+  :root[data-theme='light'] .app-canvas::before,
+  :root[data-theme='light'] .app-canvas::after {
+    opacity: 0.35;
+  }
+
+  :root[data-theme='light'] .surface-card {
+    background-image: none;
+    background-color: rgb(255 255 255 / 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--glass-ink) / 0.07),
+      0 1px 2px rgb(var(--glass-ink) / 0.04),
+      0 14px 36px -22px rgb(var(--glass-ink) / 0.28);
+  }
+
+  :root[data-theme='light'] .surface-card::before {
+    background: none;
+  }
+
+  :root[data-theme='light'] .surface-hero {
+    --hero-number: rgb(61 255 160);
+    color: rgb(234 245 238);
+    background-image:
+      radial-gradient(420px 260px at 90% -10%, rgb(61 255 160 / 0.30), transparent 60%),
+      radial-gradient(300px 220px at 0% 100%, rgb(61 255 160 / 0.12), transparent 60%),
+      linear-gradient(150deg, rgb(18 44 33) 0%, rgb(12 30 22) 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      0 24px 48px -28px rgb(12 30 22 / 0.7);
+  }
+
+  :root[data-theme='light'] .hero-chip {
+    border-color: rgb(255 255 255 / 0.12);
+    background-color: rgb(255 255 255 / 0.10);
+  }
+
+  :root[data-theme='light'] .hero-chip:hover {
+    background-color: rgb(255 255 255 / 0.18);
+  }
+
+  :root[data-theme='light'] .glass-light {
+    box-shadow: 0 1px 0 rgb(var(--glass-ink) / 0.06);
+  }
+
+  /* --- Светлые правила: системная схема ------------------------------------ */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) .app-canvas {
+      background-image:
+        radial-gradient(900px 520px at 0% 0%, rgb(var(--accent) / 0.10), transparent 60%),
+        radial-gradient(700px 480px at 100% 100%, rgb(var(--accent-bright) / 0.08), transparent 60%),
+        linear-gradient(180deg, rgb(248 250 249) 0%, rgb(var(--surface-base)) 100%);
+    }
+
+    :root:not([data-theme='dark']) .app-canvas::before,
+    :root:not([data-theme='dark']) .app-canvas::after {
+      opacity: 0.35;
+    }
+
+    :root:not([data-theme='dark']) .surface-card {
+      background-image: none;
+      background-color: rgb(255 255 255 / 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow:
+        inset 0 0 0 1px rgb(var(--glass-ink) / 0.07),
+        0 1px 2px rgb(var(--glass-ink) / 0.04),
+        0 14px 36px -22px rgb(var(--glass-ink) / 0.28);
+    }
+
+    :root:not([data-theme='dark']) .surface-card::before {
+      background: none;
+    }
+
+    :root:not([data-theme='dark']) .surface-hero {
+      --hero-number: rgb(61 255 160);
+      color: rgb(234 245 238);
+      background-image:
+        radial-gradient(420px 260px at 90% -10%, rgb(61 255 160 / 0.30), transparent 60%),
+        radial-gradient(300px 220px at 0% 100%, rgb(61 255 160 / 0.12), transparent 60%),
+        linear-gradient(150deg, rgb(18 44 33) 0%, rgb(12 30 22) 100%);
+      box-shadow:
+        inset 0 1px 0 rgb(255 255 255 / 0.12),
+        inset 0 0 0 1px rgb(255 255 255 / 0.06),
+        0 24px 48px -28px rgb(12 30 22 / 0.7);
+    }
+
+    :root:not([data-theme='dark']) .hero-chip {
+      border-color: rgb(255 255 255 / 0.12);
+      background-color: rgb(255 255 255 / 0.10);
+    }
+
+    :root:not([data-theme='dark']) .hero-chip:hover {
+      background-color: rgb(255 255 255 / 0.18);
+    }
+
+    :root:not([data-theme='dark']) .glass-light {
+      box-shadow: 0 1px 0 rgb(var(--glass-ink) / 0.06);
+    }
   }
 
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

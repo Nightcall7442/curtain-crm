@@ -36,7 +36,7 @@ export function DeltaPill({
       className={cn(
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-footnote font-semibold',
         onHero
-          ? 'bg-black/15 text-on-accent'
+          ? 'hero-chip text-current'
           : flat
             ? 'bg-ink/[0.06] text-muted'
             : up
@@ -92,7 +92,7 @@ export function HeroCard({
       <h2 className="font-hero text-heading font-semibold tracking-[-0.01em]">{title}</h2>
 
       <p className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-hero text-[44px] font-extrabold leading-none tracking-[-0.04em] [font-variant-numeric:tabular-nums]">
+        <span className="hero-number font-hero text-[44px] font-extrabold leading-none tracking-[-0.04em] [font-variant-numeric:tabular-nums]">
           {value}
         </span>
         {unit !== undefined && <span className="text-subhead font-medium opacity-80">{unit}</span>}
@@ -112,13 +112,13 @@ export function HeroCard({
             </>
           );
           const className =
-            'inline-flex items-center gap-2 rounded-full border border-black/10 bg-black/15 px-3 py-1.5 text-caption backdrop-blur-sm';
+            'hero-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption backdrop-blur-sm';
           return (
             <li key={chip.label}>
               {chip.href === undefined ? (
                 <span className={className}>{body}</span>
               ) : (
-                <Link href={chip.href} className={cn(className, 'transition-colors hover:bg-black/25')}>
+                <Link href={chip.href} className={cn(className, 'transition-colors')}>
                   {body}
                 </Link>
               )}
