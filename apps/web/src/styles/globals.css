@@ -998,32 +998,54 @@
       0 0 0 3px rgb(var(--accent) / 0.15);
   }
 
-  /* --- Светлые правила: явный выбор --------------------------------------- */
-  :root[data-theme='light'] .app-canvas {
+  /*
+    Светлое стекло.
+
+    Стеклу нужно, чтобы под ним было что размывать. На светлом это не
+    зелёное пятно одного тона (получалась грязь), а несколько пастельных
+    пятен разного цвета — мята, аква, лайм — которые медленно плывут под
+    карточками. Сама карточка — матовый белый на 55 %, сильное размытие с
+    насыщением, белая кромка и блик по верхнему краю: как матовое стекло
+    на витрине, а не как белый лист.
+  */
+    :root[data-theme='light'] .app-canvas {
+    background-color: rgb(var(--surface-base));
     background-image:
-      radial-gradient(900px 520px at 0% 0%, rgb(var(--accent) / 0.10), transparent 60%),
-      radial-gradient(700px 480px at 100% 100%, rgb(var(--accent-bright) / 0.08), transparent 60%),
-      linear-gradient(180deg, rgb(248 250 249) 0%, rgb(var(--surface-base)) 100%);
+      radial-gradient(900px 560px at 0% 0%, rgb(61 255 160 / 0.48), transparent 60%),
+      radial-gradient(760px 520px at 100% 10%, rgb(110 231 240 / 0.42), transparent 58%),
+      radial-gradient(900px 620px at 60% 115%, rgb(200 255 138 / 0.50), transparent 60%),
+      linear-gradient(180deg, rgb(244 248 246) 0%, rgb(232 240 236) 100%);
   }
 
-  :root[data-theme='light'] .app-canvas::before,
+  :root[data-theme='light'] .app-canvas::before {
+    background: radial-gradient(circle, rgb(61 255 160 / 0.65), transparent 65%);
+  }
+
   :root[data-theme='light'] .app-canvas::after {
-    opacity: 0.35;
+    background: radial-gradient(circle, rgb(110 231 240 / 0.60), transparent 65%);
   }
 
   :root[data-theme='light'] .surface-card {
-    background-image: none;
-    background-color: rgb(255 255 255 / 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background-image: linear-gradient(
+      150deg,
+      rgb(255 255 255 / 0.52) 0%,
+      rgb(255 255 255 / 0.36) 55%,
+      rgb(255 255 255 / 0.46) 100%
+    );
+    backdrop-filter: blur(34px) saturate(200%);
+    -webkit-backdrop-filter: blur(34px) saturate(200%);
     box-shadow:
-      inset 0 0 0 1px rgb(var(--glass-ink) / 0.07),
-      0 1px 2px rgb(var(--glass-ink) / 0.04),
-      0 14px 36px -22px rgb(var(--glass-ink) / 0.28);
+      inset 0 0 0 1px rgb(255 255 255 / 0.85),
+      inset 0 1px 0 rgb(255 255 255 / 1),
+      inset 0 -1px 0 rgb(var(--glass-ink) / 0.05),
+      0 1px 2px rgb(var(--glass-ink) / 0.05),
+      0 20px 50px -24px rgb(var(--glass-ink) / 0.30);
   }
 
   :root[data-theme='light'] .surface-card::before {
-    background: none;
+    background:
+      radial-gradient(360px 180px at 14% 0%, rgb(255 255 255 / 0.55), transparent 70%),
+      radial-gradient(260px 140px at 100% 100%, rgb(61 255 160 / 0.10), transparent 70%);
   }
 
   :root[data-theme='light'] .surface-hero {
@@ -1048,37 +1070,68 @@
     background-color: rgb(255 255 255 / 0.18);
   }
 
-  :root[data-theme='light'] .glass-light {
-    box-shadow: 0 1px 0 rgb(var(--glass-ink) / 0.06);
+  :root[data-theme='light'] .glass-control {
+    background-color: rgb(255 255 255 / 0.62);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.9),
+      0 0 0 1px rgb(var(--glass-ink) / 0.08);
   }
 
-  /* --- Светлые правила: системная схема ------------------------------------ */
+  :root[data-theme='light'] .glass-control:focus,
+  :root[data-theme='light'] .glass-control:focus-within {
+    background-color: rgb(255 255 255 / 0.85);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.9),
+      0 0 0 1px rgb(var(--accent) / 0.6),
+      0 0 0 4px rgb(var(--accent) / 0.12);
+  }
+
+  :root[data-theme='light'] .glass-light {
+    background-color: rgb(255 255 255 / 0.55);
+    box-shadow:
+      inset 0 -1px 0 rgb(255 255 255 / 0.8),
+      0 1px 0 rgb(var(--glass-ink) / 0.06);
+  }
+
   @media (prefers-color-scheme: light) {
     :root:not([data-theme='dark']) .app-canvas {
+      background-color: rgb(var(--surface-base));
       background-image:
-        radial-gradient(900px 520px at 0% 0%, rgb(var(--accent) / 0.10), transparent 60%),
-        radial-gradient(700px 480px at 100% 100%, rgb(var(--accent-bright) / 0.08), transparent 60%),
-        linear-gradient(180deg, rgb(248 250 249) 0%, rgb(var(--surface-base)) 100%);
+        radial-gradient(900px 560px at 0% 0%, rgb(61 255 160 / 0.48), transparent 60%),
+        radial-gradient(760px 520px at 100% 10%, rgb(110 231 240 / 0.42), transparent 58%),
+        radial-gradient(900px 620px at 60% 115%, rgb(200 255 138 / 0.50), transparent 60%),
+        linear-gradient(180deg, rgb(244 248 246) 0%, rgb(232 240 236) 100%);
     }
 
-    :root:not([data-theme='dark']) .app-canvas::before,
+    :root:not([data-theme='dark']) .app-canvas::before {
+      background: radial-gradient(circle, rgb(61 255 160 / 0.65), transparent 65%);
+    }
+
     :root:not([data-theme='dark']) .app-canvas::after {
-      opacity: 0.35;
+      background: radial-gradient(circle, rgb(110 231 240 / 0.60), transparent 65%);
     }
 
     :root:not([data-theme='dark']) .surface-card {
-      background-image: none;
-      background-color: rgb(255 255 255 / 0.92);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background-image: linear-gradient(
+        150deg,
+        rgb(255 255 255 / 0.52) 0%,
+        rgb(255 255 255 / 0.36) 55%,
+        rgb(255 255 255 / 0.46) 100%
+      );
+      backdrop-filter: blur(34px) saturate(200%);
+      -webkit-backdrop-filter: blur(34px) saturate(200%);
       box-shadow:
-        inset 0 0 0 1px rgb(var(--glass-ink) / 0.07),
-        0 1px 2px rgb(var(--glass-ink) / 0.04),
-        0 14px 36px -22px rgb(var(--glass-ink) / 0.28);
+        inset 0 0 0 1px rgb(255 255 255 / 0.85),
+        inset 0 1px 0 rgb(255 255 255 / 1),
+        inset 0 -1px 0 rgb(var(--glass-ink) / 0.05),
+        0 1px 2px rgb(var(--glass-ink) / 0.05),
+        0 20px 50px -24px rgb(var(--glass-ink) / 0.30);
     }
 
     :root:not([data-theme='dark']) .surface-card::before {
-      background: none;
+      background:
+        radial-gradient(360px 180px at 14% 0%, rgb(255 255 255 / 0.55), transparent 70%),
+        radial-gradient(260px 140px at 100% 100%, rgb(61 255 160 / 0.10), transparent 70%);
     }
 
     :root:not([data-theme='dark']) .surface-hero {
@@ -1103,8 +1156,27 @@
       background-color: rgb(255 255 255 / 0.18);
     }
 
+    :root:not([data-theme='dark']) .glass-control {
+      background-color: rgb(255 255 255 / 0.62);
+      box-shadow:
+        inset 0 0 0 1px rgb(255 255 255 / 0.9),
+        0 0 0 1px rgb(var(--glass-ink) / 0.08);
+    }
+
+    :root:not([data-theme='dark']) .glass-control:focus,
+    :root:not([data-theme='dark']) .glass-control:focus-within {
+      background-color: rgb(255 255 255 / 0.85);
+      box-shadow:
+        inset 0 0 0 1px rgb(255 255 255 / 0.9),
+        0 0 0 1px rgb(var(--accent) / 0.6),
+        0 0 0 4px rgb(var(--accent) / 0.12);
+    }
+
     :root:not([data-theme='dark']) .glass-light {
-      box-shadow: 0 1px 0 rgb(var(--glass-ink) / 0.06);
+      background-color: rgb(255 255 255 / 0.55);
+      box-shadow:
+        inset 0 -1px 0 rgb(255 255 255 / 0.8),
+        0 1px 0 rgb(var(--glass-ink) / 0.06);
     }
   }
 
