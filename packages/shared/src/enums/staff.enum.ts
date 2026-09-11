@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Translated } from '../i18n/locale';
+import type { Locale, Translated } from '../i18n/locale';
 import { PLURAL_MONTHS, PLURAL_YEARS, pluralize } from '../utils/plural';
 
 import { Role, type Role as RoleName } from './role.enum';
@@ -170,7 +170,11 @@ export function formatEmployeeCode(year: number, sequence: number): string {
 }
 
 /** Стаж работы в человекочитаемом виде: `4 года 7 месяцев`. */
-export function formatTenure(hiredAt: Date | string | null, now: Date = new Date()): string {
+export function formatTenure(
+  hiredAt: Date | string | null,
+  now: Date = new Date(),
+  locale: Locale = 'ru',
+): string {
   if (hiredAt === null) return '—';
 
   const start = hiredAt instanceof Date ? hiredAt : new Date(hiredAt);
@@ -185,6 +189,12 @@ export function formatTenure(hiredAt: Date | string | null, now: Date = new Date
   const restMonths = months % 12;
 
   const parts: string[] = [];
+  if (locale === 'uz') {
+    // В узбекском числительное не склоняет существительное: «3 yil 2 oy».
+    if (years > 0) parts.push(`${years.toString()} yil`);
+    if (restMonths > 0) parts.push(`${restMonths.toString()} oy`);
+    return parts.length === 0 ? 'bir oydan kam' : parts.join(' ');
+  }
   if (years > 0) parts.push(pluralize(years, PLURAL_YEARS));
   if (restMonths > 0) {
     parts.push(pluralize(restMonths, PLURAL_MONTHS));

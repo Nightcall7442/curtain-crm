@@ -5,6 +5,7 @@ import { Card, CardTitle, Skeleton } from './Card';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Сбор на выезд — на телефоне, у машины.
@@ -17,6 +18,7 @@ import { colors, hairline, opacity, radius, spacing, typography } from '../theme
  * сервер, поэтому обойти список, не открывая его, не получится.
  */
 export function OrderPackList({ orderId }: { readonly orderId: number }): ReactElement | null {
+  const { m } = useLocale();
   const utils = trpc.useUtils();
   const rows = trpc.orders.packList.useQuery({ id: orderId });
 
@@ -27,7 +29,7 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отметить', error.message);
+      Alert.alert(m('pack.error'), error.message);
     },
   });
 
@@ -43,11 +45,11 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
   return (
     <Card>
       <CardTitle
-        title="Сбор на выезд"
+        title={m('pack.title')}
         icon="orders"
         action={
           <Text style={[styles.counter, ready ? styles.counterReady : null]}>
-            {ready ? 'Всё в машине' : `${packed.toString()} из ${items.length.toString()}`}
+            {ready ? m('pack.ready') : m('pack.count', { a: packed, b: items.length })}
           </Text>
         }
       />
@@ -77,7 +79,7 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
             </Text>
             {row.detail !== null && <Text style={styles.detail}>{row.detail}</Text>}
             {row.checkedBy !== null && (
-              <Text style={styles.detail}>{`Отметил: ${row.checkedBy}`}</Text>
+              <Text style={styles.detail}>{m('pack.checkedBy', { name: row.checkedBy })}</Text>
             )}
           </View>
         </Pressable>
@@ -85,9 +87,7 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
 
       {/* Собранному заказу напоминание про «не уйдёт» уже ни к чему. */}
       {!ready && (
-        <Text style={styles.note}>
-          Пока отмечено не всё, заказ не уйдёт в «Установка идёт».
-        </Text>
+        <Text style={styles.note}>{m('pack.note')}</Text>
       )}
     </Card>
   );

@@ -14,6 +14,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, typography, opacity } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Голосовые комментарии к заказу: запись и воспроизведение.
@@ -45,6 +46,7 @@ const formatSeconds = (seconds: number): string => {
 /* -------------------------------------------------------------------------- */
 
 export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): ReactElement {
+  const { m } = useLocale();
   const utils = trpc.useUtils();
 
   const [isRecording, setIsRecording] = useState(false);
@@ -68,7 +70,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
       await utils.orderComments.listByOrder.invalidate({ orderId });
     },
     onError(error) {
-      Alert.alert('Не удалось отправить запись', error.message);
+      Alert.alert(m('voice.sendError'), error.message);
     },
   });
 
@@ -94,7 +96,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
   const start = async (): Promise<void> => {
     const permission = await requestRecordingPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Нет доступа', 'Разрешите доступ к микрофону в настройках телефона.');
+      Alert.alert(m('photo.noAccess'), m('voice.allowMic'));
       return;
     }
 
@@ -122,7 +124,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
       }, 1000);
     } catch {
       setIsRecording(false);
-      Alert.alert('Не удалось начать запись', 'Проверьте, не занят ли микрофон другим приложением.');
+      Alert.alert(m('voice.startError'), m('voice.startErrorHint'));
     }
   };
 
@@ -166,7 +168,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     removeTemp(uri);
 
     if (content === null) {
-      Alert.alert('Не удалось прочитать запись', 'Попробуйте ещё раз.');
+      Alert.alert(m('voice.readError'), m('common.tryAgain'));
       return;
     }
 
@@ -181,15 +183,15 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     return (
       <View style={styles.recordingRow}>
         <View style={styles.recordingDot} />
-        <Text style={styles.recordingText}>{`Идёт запись · ${formatSeconds(elapsed)}`}</Text>
+        <Text style={styles.recordingText}>{m('voice.recording', { t: formatSeconds(elapsed) })}</Text>
 
         <Pressable
           onPress={() => void finish(false)}
           style={styles.secondaryButton}
           accessibilityRole="button"
-          accessibilityLabel="Отменить запись"
+          accessibilityLabel={m('voice.cancel')}
         >
-          <Text style={styles.secondaryText}>Отмена</Text>
+          <Text style={styles.secondaryText}>{m('common.cancel')}</Text>
         </Pressable>
 
         <Pressable
@@ -197,7 +199,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
           style={styles.primaryButton}
           accessibilityRole="button"
         >
-          <Text style={styles.primaryText}>Отправить</Text>
+          <Text style={styles.primaryText}>{m('common.send')}</Text>
         </Pressable>
       </View>
     );
@@ -213,7 +215,7 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
       {addVoice.isPending ? (
         <ActivityIndicator color={colors.accent} size="small" />
       ) : (
-        <Text style={styles.recordText}>🎤 Записать голосом</Text>
+        <Text style={styles.recordText}>{m('voice.record')}</Text>
       )}
     </Pressable>
   );
@@ -241,6 +243,7 @@ export function VoiceCommentPlayer({
   readonly url: string | null;
   readonly durationSeconds: number | null;
 }): ReactElement {
+  const { m } = useLocale();
   const player = useAudioPlayer(url ?? undefined);
   const status = useAudioPlayerStatus(player);
 
@@ -272,7 +275,7 @@ export function VoiceCommentPlayer({
   };
 
   if (url === null) {
-    return <Text style={styles.unavailable}>🎤 Запись недоступна</Text>;
+    return <Text style={styles.unavailable}>{m('voice.unavailable')}</Text>;
   }
 
   return (
@@ -280,7 +283,7 @@ export function VoiceCommentPlayer({
       onPress={toggle}
       style={({ pressed }) => [styles.player, pressed ? styles.pressed : null]}
       accessibilityRole="button"
-      accessibilityLabel={status.playing ? 'Пауза' : 'Воспроизвести голосовое сообщение'}
+      accessibilityLabel={status.playing ? m('voice.pause') : m('voice.play')}
     >
       {status.isBuffering ? (
         <ActivityIndicator color={colors.accent} size="small" />
@@ -288,7 +291,7 @@ export function VoiceCommentPlayer({
         <Text style={styles.playerGlyph}>{status.playing ? '⏸' : '▶'}</Text>
       )}
       <Text style={styles.playerText}>
-        {durationSeconds === null ? 'Голосовое сообщение' : formatSeconds(durationSeconds)}
+        {durationSeconds === null ? m('voice.message') : formatSeconds(durationSeconds)}
       </Text>
     </Pressable>
   );

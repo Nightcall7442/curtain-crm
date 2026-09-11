@@ -54,12 +54,12 @@ export function OrderCard({
   readonly workPrice: string | null;
   readonly onPress: () => void;
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const isOverdue =
     deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
 
   const deadlineLabel =
-    deadline === null ? 'Срок не указан' : `до ${formatIsoDateShort(deadline)}`;
+    deadline === null ? m('orderCard.noDeadline') : m('orderCard.until', { date: formatIsoDateShort(deadline) });
 
   const card = (
     <View style={styles.card}>
@@ -69,7 +69,7 @@ export function OrderCard({
             styles.stripe,
             { backgroundColor: priority === Priority.CRITICAL ? colors.danger : colors.warning },
           ]}
-          accessibilityLabel={`Приоритет: ${t(PRIORITY_LABELS, priority)}`}
+          accessibilityLabel={m('orderCard.priority', { p: t(PRIORITY_LABELS, priority) })}
         />
       )}
 
@@ -89,7 +89,7 @@ export function OrderCard({
 
       <View style={styles.footer}>
         <Text style={[styles.deadline, isOverdue ? styles.overdue : null]} numberOfLines={1}>
-          {isOverdue ? `просрочен · ${formatIsoDateShort(deadline)}` : deadlineLabel}
+          {isOverdue ? m('orderCard.overdue', { date: formatIsoDateShort(deadline) }) : deadlineLabel}
         </Text>
         {workPrice !== null && (
           <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
@@ -106,7 +106,7 @@ export function OrderCard({
             ? undefined
             : {
                 icon: 'call',
-                label: 'Позвонить',
+                label: m('orderCard.call'),
                 color: colors.accentBright,
                 onTrigger: () => {
                   void Linking.openURL(`tel:${clientPhone}`);
@@ -115,14 +115,14 @@ export function OrderCard({
         }
         right={{
           icon: 'forward',
-          label: 'Открыть',
+          label: m('orderCard.open'),
           color: colors.header,
           onTrigger: onPress,
         }}
       >
         <PressableScale
           onPress={onPress}
-          accessibilityLabel={`Заказ ${orderNumber}, клиент ${clientName}, статус ${t(ORDER_STATUS_LABELS, status)}`}
+          accessibilityLabel={m('orderCard.a11y', { n: orderNumber, client: clientName, status: t(ORDER_STATUS_LABELS, status) })}
         >
           {card}
         </PressableScale>

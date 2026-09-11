@@ -26,6 +26,7 @@ import { colors, opacity } from '../theme';
 import type { RootStackParamList } from '../types';
 
 import { TabNavigator } from './TabNavigator';
+import { useLocale } from '../hooks/useLocale';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,6 +39,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  */
 export function RootNavigator(): ReactElement {
   const { user, isRestoring } = useAuth();
+  const { m } = useLocale();
 
   if (isRestoring) {
     return (
@@ -64,14 +66,14 @@ export function RootNavigator(): ReactElement {
       <Stack.Screen
         name="OrderDetail"
         component={OrderDetailScreen}
-        options={{ title: 'Заказ' }}
+        options={{ title: m('nav.order') }}
       />
-      <Stack.Screen name="TaskList" component={TaskListScreen} options={{ title: 'Мои задачи' }} />
-      <Stack.Screen name="Rating" component={RatingScreen} options={{ title: 'Рейтинг' }} />
+      <Stack.Screen name="TaskList" component={TaskListScreen} options={{ title: m('nav.taskList') }} />
+      <Stack.Screen name="Rating" component={RatingScreen} options={{ title: m('nav.rating') }} />
       <Stack.Screen
         name="OrderCreate"
         component={OrderCreateScreen}
-        options={{ title: 'Новый заказ' }}
+        options={{ title: m('nav.orderCreate') }}
       />
       {/*
         Склад открывается из шапки самой продажи, а не отдельной кнопкой на
@@ -86,14 +88,14 @@ export function RootNavigator(): ReactElement {
         name="SellReadyMade"
         component={SellReadyMadeScreen}
         options={({ navigation }) => ({
-          title: 'Готовые шторы',
+          title: m('nav.readyMade'),
           headerRight: () => (
             <Pressable
               onPress={() => {
                 navigation.navigate('ReadyMadeStock');
               }}
               accessibilityRole="button"
-              accessibilityLabel="Склад готовых штор"
+              accessibilityLabel={m('nav.readyMadeStock')}
               hitSlop={10}
               /* Нажатие показывается прозрачностью, а не цветом: на тёмной
                  шапке любой акцентный зелёный темнее её же текста. */
@@ -107,62 +109,62 @@ export function RootNavigator(): ReactElement {
       <Stack.Screen
         name="DayOff"
         component={DayOffScreen}
-        options={{ title: 'Запрос на выходные' }}
+        options={{ title: m('nav.dayOff') }}
       />
       <Stack.Screen
         name="PersonalWorkCreate"
         component={PersonalWorkCreateScreen}
-        options={{ title: 'Личная работа' }}
+        options={{ title: m('nav.personalWork') }}
       />
       <Stack.Screen
         name="CashDesk"
         component={CashDeskScreen}
-        options={{ title: 'Касса' }}
+        options={{ title: m('nav.cashDesk') }}
       />
       <Stack.Screen
         name="SaleDetail"
         component={SaleDetailScreen}
-        options={{ title: 'Чек' }}
+        options={{ title: m('nav.receipt') }}
       />
       <Stack.Screen
         name="Management"
         component={ManagementScreen}
-        options={{ title: 'Руководство' }}
+        options={{ title: m('nav.management') }}
       />
       <Stack.Screen
         name="DayOffApprovals"
         component={DayOffApprovalsScreen}
-        options={{ title: 'Отгулы' }}
+        options={{ title: m('nav.dayOffApprovals') }}
       />
       <Stack.Screen
         name="PayrollApprovals"
         component={PayrollApprovalsScreen}
-        options={{ title: 'Зарплата' }}
+        options={{ title: m('nav.payroll') }}
       />
       <Stack.Screen
         name="TaskAssign"
         component={TaskAssignScreen}
-        options={{ title: 'Поручения' }}
+        options={{ title: m('nav.tasks') }}
       />
       <Stack.Screen
         name="ReadyMadeStock"
         component={ReadyMadeStockScreen}
-        options={{ title: 'Склад готовых штор' }}
+        options={{ title: m('nav.readyMadeStock') }}
       />
       <Stack.Screen
         name="TaskDetail"
         component={TaskDetailScreen}
-        options={{ title: 'Поручение' }}
+        options={{ title: m('nav.task') }}
       />
       <Stack.Screen
         name="PurchasePrices"
         component={PurchaseMaterialsScreen}
-        options={{ title: 'Закупочные материалы' }}
+        options={{ title: m('nav.purchasePrices') }}
       />
       <Stack.Screen
         name="Employees"
         component={EmployeesScreen}
-        options={{ title: 'Сотрудники' }}
+        options={{ title: m('nav.employees') }}
       />
     </Stack.Navigator>
   );

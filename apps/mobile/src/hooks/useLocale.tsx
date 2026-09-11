@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_LOCALE, isLocale, type Locale, type Translated } from '@curtain-crm/shared';
+
+import { MESSAGES, type MessageKey } from '../i18n/messages';
 import {
   createContext,
   useCallback,
@@ -33,7 +35,20 @@ interface LocaleContextValue {
   readonly setLocale: (next: Locale) => void;
   /** Значение из переведённого словаря на текущем языке. */
   readonly t: <TKey extends string>(dictionary: Translated<TKey>, key: TKey) => string;
+  /** Строка интерфейса из `i18n/messages.ts`; `{name}` заменяется на `params.name`. */
+  readonly m: (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string;
 }
+
+function format(template: string, params?: Readonly<Record<string, string | number>>): string {
+  if (params === undefined) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = params[name];
+    return value === undefined ? match : String(value);
+  });
+}
+
+/** Тип `m` — для вспомогательных функций вне компонентов, которым передают переводчик. */
+export type Translate = LocaleContextValue['m'];
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
@@ -74,6 +89,7 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
       locale,
       setLocale,
       t: (dictionary, key) => dictionary[locale][key],
+      m: (key, params) => format(MESSAGES[locale][key], params),
     }),
     [locale, setLocale],
   );

@@ -19,6 +19,7 @@ import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
+import type { MessageKey } from '../i18n/messages';
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
 
@@ -40,7 +41,7 @@ import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../th
  * на первом экране хуже, чем показать другое, но настоящее.
  */
 export function HomeScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -130,9 +131,9 @@ export function HomeScreen(): ReactElement {
       <View style={[styles.hero, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.heroRow}>
           <View style={styles.heroText}>
-            <Text style={styles.heroGreeting}>{greeting()}</Text>
+            <Text style={styles.heroGreeting}>{m(greeting())}</Text>
             <Text style={styles.heroName} numberOfLines={1}>
-              {`${firstName(user?.fullName ?? '')}!`}
+              {`${firstName(user?.fullName ?? '') ?? m('home.colleague')}!`}
             </Text>
           </View>
           {/*
@@ -152,7 +153,7 @@ export function HomeScreen(): ReactElement {
               navigation.navigate('Profile');
             }}
             accessibilityRole="button"
-            accessibilityLabel="Мой профиль"
+            accessibilityLabel={m('home.profile')}
             style={({ pressed }) => (pressed ? styles.avatarPressed : null)}
           >
             <Avatar
@@ -188,7 +189,7 @@ export function HomeScreen(): ReactElement {
       */}
       <View style={isManager ? styles.afterOverlap : styles.overlap}>
         <Card>
-          <CardTitle title="Текущая смена" />
+          <CardTitle title={m('home.currentShift')} />
 
           {/*
             Общая плашка, а не своя.
@@ -198,19 +199,17 @@ export function HomeScreen(): ReactElement {
             оно обязано одинаково во всех трёх местах.
           */}
           <Pill
-            text={isOnShift ? 'Смена открыта' : 'Смена не открыта'}
+            text={isOnShift ? m('home.shiftOpen') : m('home.shiftClosed')}
             tone={isOnShift ? 'positive' : 'warning'}
           />
 
           {shift.data !== null && shift.data !== undefined ? (
             <View style={styles.shiftDetails}>
-              <Row label="Филиал" value={shift.data.branchName} />
-              <Row label="Начало смены" value={timeOf(shift.data.startedAt)} />
+              <Row label={m('home.branch')} value={shift.data.branchName} />
+              <Row label={m('home.shiftStart')} value={timeOf(shift.data.startedAt)} />
             </View>
           ) : (
-            <Text style={styles.shiftHint}>
-              Отметьтесь на вкладке «Явка», когда будете на месте
-            </Text>
+            <Text style={styles.shiftHint}>{m('home.shiftHint')}</Text>
           )}
         </Card>
       </View>
@@ -243,24 +242,24 @@ export function HomeScreen(): ReactElement {
       */}
       <View style={styles.tiles}>
         <StatTile
-          label="Заказы в работе"
+          label={m('home.activeOrders')}
           icon="work"
           value={count(orders.data?.total, orders.isError)}
         />
         <StatTile
-          label="Просрочено"
+          label={m('home.overdue')}
           icon="deadline"
           value={count(overdueCount.data?.total, overdueCount.isError)}
           tone={(overdueCount.data?.total ?? 0) > 0 ? 'danger' : 'neutral'}
         />
         <StatTile
-          label="Уведомления"
+          label={m('home.notifications')}
           icon="notifications"
           value={count(unread.data, unread.isError)}
           tone={(unread.data ?? 0) > 0 ? 'accent' : 'neutral'}
         />
         <StatTile
-          label="Закрыто за месяц"
+          label={m('home.closedThisMonth')}
           icon="completed"
           value={count(rating.data?.me?.ordersCount, rating.isError)}
           tone="accent"
@@ -270,7 +269,7 @@ export function HomeScreen(): ReactElement {
       <View style={styles.section}>
         <Card>
           <CardTitle
-            title="Ближайшие сроки"
+            title={m('home.upcoming')}
             icon="deadline"
             action={
               // Единственный вход на экран «Мои задачи»: он показывает заказы,
@@ -285,7 +284,7 @@ export function HomeScreen(): ReactElement {
               >
                 {({ pressed }) => (
                   <Text style={[styles.taskLink, pressed ? styles.pressed : null]}>
-                    Мои задачи
+                    {m('home.myTasks')}
                   </Text>
                 )}
               </Pressable>
@@ -293,8 +292,8 @@ export function HomeScreen(): ReactElement {
           />
           {upcoming.length === 0 ? (
             <Empty
-              message="Активных заказов нет"
-              hint="Новые заказы появятся здесь, как только вас на них назначат"
+              message={m('home.noActiveOrders')}
+              hint={m('home.noActiveOrdersHint')}
             />
           ) : (
             <View>
@@ -318,7 +317,7 @@ export function HomeScreen(): ReactElement {
 
       {overdue.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionHeading}>Просроченные заказы</Text>
+          <Text style={styles.sectionHeading}>{m('home.overdueOrders')}</Text>
           {overdue.slice(0, 5).map((order) => (
             <OrderCard
               key={order.id}
@@ -360,14 +359,14 @@ export function HomeScreen(): ReactElement {
  * Час берётся локальный, а не UTC: «Доброе утро» в восемь вечера — мелочь,
  * которая сразу читается как неработающее приложение.
  */
-function greeting(): string {
+function greeting(): MessageKey {
   const hour = new Date().getHours();
 
-  if (hour < 6) return 'Доброй ночи,';
-  if (hour < 12) return 'Доброе утро,';
-  if (hour < 18) return 'Добрый день,';
+  if (hour < 6) return 'home.greetingNight';
+  if (hour < 12) return 'home.greetingMorning';
+  if (hour < 18) return 'home.greetingDay';
 
-  return 'Добрый вечер,';
+  return 'home.greetingEvening';
 }
 
 /**
@@ -386,12 +385,12 @@ function greeting(): string {
  * Одно слово в ФИО — берём его: у человека без фамилии в базе имя всё
  * равно единственное, что есть.
  */
-function firstName(fullName: string): string {
+function firstName(fullName: string): string | null {
   const parts = fullName.trim().split(/\s+/).filter((part) => part.length > 0);
 
   // Пустое ФИО в базе технически возможно, а приветствие «Доброе утро, !»
-  // выглядит как сбой. Нейтральное обращение честнее пустоты.
-  return parts[1] ?? parts[0] ?? 'коллега';
+  // выглядит как сбой. `null` — и экран подставит нейтральное обращение.
+  return parts[1] ?? parts[0] ?? null;
 }
 
 /**
@@ -469,6 +468,7 @@ function StatTile({
  * сводке, что требует действия сегодня.
  */
 function WorkshopSummary(): ReactElement {
+  const { m } = useLocale();
   const dashboard = trpc.reports.dashboard.useQuery({});
 
   /*
@@ -496,12 +496,12 @@ function WorkshopSummary(): ReactElement {
 
   return (
     <Card>
-      <CardTitle title="Цех сегодня" icon="branch" />
+      <CardTitle title={m('home.workshopToday')} icon="branch" />
 
-      <Row label="Заказов в работе" value={data.activeOrders.toString()} />
-      <Row label="На смене" value={`${data.employeesOnShift.toString()} чел.`} />
-      <Row label="В производстве" value={attention.toString()} />
-      <Row label="Выручка за месяц" value={data.revenueThisMonthFormatted} />
+      <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
+      <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
+      <Row label={m('home.inProduction')} value={attention.toString()} />
+      <Row label={m('home.revenueMonth')} value={data.revenueThisMonthFormatted} />
 
       {/*
         Маржа рядом с выручкой, а не вместо неё: выручка говорит, сколько
@@ -513,7 +513,7 @@ function WorkshopSummary(): ReactElement {
       */}
       {finance.data !== undefined && (
         <Row
-          label="Маржа за месяц"
+          label={m('home.marginMonth')}
           value={
             finance.data.marginPercent === null
               ? finance.data.marginFormatted

@@ -7,6 +7,7 @@ import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Выезд на установку: сотрудник уходит с объекта работы, но не с работы.
@@ -37,6 +38,7 @@ export function InstallationTripCard({
 
   /* Кольцо таймера берёт паузу из `shifts.current`: без обновления этого
      запроса время на экране продолжало бы идти после нажатия кнопки. */
+  const { m } = useLocale();
   const refresh = async (): Promise<void> => {
     await Promise.all([current.refetch(), utils.shifts.current.invalidate()]);
   };
@@ -48,7 +50,7 @@ export function InstallationTripCard({
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отметить выезд', error.message);
+      Alert.alert(m('trip.startError'), error.message);
     },
   });
 
@@ -59,7 +61,7 @@ export function InstallationTripCard({
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отметить возвращение', error.message);
+      Alert.alert(m('trip.endError'), error.message);
     },
   });
 
@@ -97,11 +99,8 @@ export function InstallationTripCard({
   if (active === null) {
     return (
       <Card>
-        <CardTitle title="Установка" icon="deadline" />
-        <Text style={styles.hint}>
-          Уезжаете на объект — отметьтесь. Смена не закроется, но рабочее время
-          встанет на паузу и продолжится с того же места, когда вернётесь.
-        </Text>
+        <CardTitle title={m('trip.title')} icon="deadline" />
+        <Text style={styles.hint}>{m('trip.hint')}</Text>
 
         {locationError !== null && <Text style={styles.error}>{locationError}</Text>}
 
@@ -122,7 +121,7 @@ export function InstallationTripCard({
           {busy ? (
             <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.actionText}>Выхожу на установку</Text>
+            <Text style={styles.actionText}>{m('trip.start')}</Text>
           )}
         </Pressable>
       </Card>
@@ -131,21 +130,21 @@ export function InstallationTripCard({
 
   const startedAt = new Date(active.startedAt);
   const minutes = Math.max(0, Math.floor((now - startedAt.getTime()) / 60_000));
-  const away = `${Math.floor(minutes / 60).toString()} ч ${(minutes % 60).toString()} мин`;
+  const away = m('trip.away', { h: Math.floor(minutes / 60), m: minutes % 60 });
 
   return (
     <Card>
       <CardTitle
-        title="Установка"
+        title={m('trip.title')}
         icon="deadline"
-        action={<Pill text="На установке" tone="info" />}
+        action={<Pill text={m('trip.onSite')} tone="info" />}
       />
 
       <View style={styles.status}>
         <Text style={styles.away}>{away}</Text>
         <Text style={styles.hint}>
-          {`С ${startedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`}
-          {active.orderNumber === null ? '' : ` · заказ ${active.orderNumber}`}
+          {m('trip.since', { time: startedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) })}
+          {active.orderNumber === null ? '' : m('trip.order', { n: active.orderNumber })}
         </Text>
       </View>
 
@@ -168,7 +167,7 @@ export function InstallationTripCard({
         {busy ? (
           <ActivityIndicator color={colors.onAccent} />
         ) : (
-          <Text style={styles.actionText}>Пришёл с установки</Text>
+          <Text style={styles.actionText}>{m('trip.end')}</Text>
         )}
       </Pressable>
     </Card>

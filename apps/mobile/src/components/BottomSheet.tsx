@@ -3,6 +3,7 @@ import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Нижняя шторка — действия поверх контекста, по макету «Хвоя UI».
@@ -25,6 +26,7 @@ export function BottomSheet({
   readonly onClose: () => void;
   readonly children: ReactNode;
 }): ReactElement {
+  const { m } = useLocale();
   const slide = useRef(new Animated.Value(SHEET_SHIFT)).current;
   const insets = useSafeAreaInsets();
 
@@ -44,7 +46,7 @@ export function BottomSheet({
           style={styles.backdrop}
           onPress={onClose}
           accessibilityRole="button"
-          accessibilityLabel="Закрыть"
+          accessibilityLabel={m('common.close')}
         />
         <Animated.View
           style={[

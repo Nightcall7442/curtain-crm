@@ -6,6 +6,7 @@ import { colors, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Empty, Progress } from './Card';
 import { Icon } from './Icon';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Чем закрыта сумма, пока её не открыли.
@@ -13,7 +14,6 @@ import { Icon } from './Icon';
  * Длина примерно равна длине настоящей суммы: с более короткой маской
  * карточка заметно дёргается в момент открытия.
  */
-const MASKED_AMOUNT = '••• ••• сум';
 
 /**
  * Зарплата за период.
@@ -40,6 +40,7 @@ export function KpiCard({
   readonly kpiPercent: string | null;
   readonly isLoading: boolean;
 }): ReactElement {
+  const { m } = useLocale();
   const percent = kpiPercent === null ? null : Number.parseFloat(kpiPercent);
 
   /*
@@ -57,12 +58,12 @@ export function KpiCard({
   const [revealed, setRevealed] = useState(false);
 
   const money = (value: string): string =>
-    revealed ? formatMoney(parseMoney(value)) : MASKED_AMOUNT;
+    revealed ? formatMoney(parseMoney(value)) : m('kpi.masked');
 
   return (
     <Card style={styles.card}>
       <CardTitle
-        title="Зарплата"
+        title={m('kpi.title')}
         icon="payroll"
         action={
           <View style={styles.titleAction}>
@@ -73,7 +74,7 @@ export function KpiCard({
                   setRevealed((current) => !current);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={revealed ? 'Скрыть зарплату' : 'Показать зарплату'}
+                accessibilityLabel={revealed ? m('kpi.hide') : m('kpi.show')}
                 hitSlop={12}
                 style={({ pressed }) => (pressed ? styles.eyePressed : null)}
               >
@@ -89,24 +90,24 @@ export function KpiCard({
       />
 
       {isLoading ? (
-        <Empty message="Загружаем расчёт…" />
+        <Empty message={m('kpi.loading')} />
       ) : calculatedAmount === null ? (
         <Empty
-          message="Расчёта за этот месяц пока нет"
-          hint="Он появится после того, как руководство проведёт начисление"
+          message={m('kpi.none')}
+          hint={m('kpi.noneHint')}
         />
       ) : (
         <>
           {targetAmount !== null && (
             <>
-              <Text style={styles.label}>Целевая зарплата</Text>
+              <Text style={styles.label}>{m('kpi.target')}</Text>
               <Text style={styles.amountMuted}>{money(targetAmount)}</Text>
             </>
           )}
 
           {percent !== null && (
             <View style={styles.kpiBlock}>
-              <Text style={styles.label}>Выполнено KPI</Text>
+              <Text style={styles.label}>{m('kpi.done')}</Text>
               <Text
                 style={[
                   styles.percent,
@@ -123,7 +124,7 @@ export function KpiCard({
           )}
 
           <View style={styles.totalBlock}>
-            <Text style={styles.label}>Начислено</Text>
+            <Text style={styles.label}>{m('kpi.accrued')}</Text>
             <Text style={styles.amount}>{money(calculatedAmount)}</Text>
           </View>
         </>

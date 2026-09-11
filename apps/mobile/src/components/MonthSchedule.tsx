@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardTitle, Skeleton } from './Card';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Мой график: когда я работал и когда отдыхаю.
@@ -19,7 +20,7 @@ import { colors, hairline, opacity, radius, spacing, typography } from '../theme
  * уже прошли, а отдых ещё предстоит.
  */
 
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+const WEEKDAYS = ['week.mon', 'week.tue', 'week.wed', 'week.thu', 'week.fri', 'week.sat', 'week.sun'] as const;
 
 /** Седьмая часть ширины — литералом: вычисленную строку типы RN не принимают. */
 const COLUMN_WIDTH = '14.2857%';
@@ -44,6 +45,7 @@ const cellHours = (hours: number): string =>
   hours.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 
 export function MonthSchedule(): ReactElement {
+  const { m, locale } = useLocale();
   const today = workshopToday();
   const [year, setYear] = useState(today.year);
   const [month, setMonth] = useState(today.month);
@@ -84,7 +86,7 @@ export function MonthSchedule(): ReactElement {
   return (
     <Card>
       <CardTitle
-        title="Мой график"
+        title={m('schedule.title')}
         icon="calendar"
         action={
           <View style={styles.nav}>
@@ -93,20 +95,20 @@ export function MonthSchedule(): ReactElement {
                 step(-1);
               }}
               accessibilityRole="button"
-              accessibilityLabel="Предыдущий месяц"
+              accessibilityLabel={m('schedule.prevMonth')}
               style={({ pressed }) => [styles.navButton, pressed ? styles.pressed : null]}
             >
               <Text style={styles.navText}>‹</Text>
             </Pressable>
 
-            <Text style={styles.period}>{formatMonthPeriod(year, month)}</Text>
+            <Text style={styles.period}>{formatMonthPeriod(year, month, locale)}</Text>
 
             <Pressable
               onPress={() => {
                 step(1);
               }}
               accessibilityRole="button"
-              accessibilityLabel="Следующий месяц"
+              accessibilityLabel={m('schedule.nextMonth')}
               style={({ pressed }) => [styles.navButton, pressed ? styles.pressed : null]}
             >
               <Text style={styles.navText}>›</Text>
@@ -122,7 +124,7 @@ export function MonthSchedule(): ReactElement {
           <View style={styles.week}>
             {WEEKDAYS.map((name) => (
               <Text key={name} style={styles.weekday}>
-                {name}
+                {m(name)}
               </Text>
             ))}
           </View>
@@ -148,7 +150,7 @@ export function MonthSchedule(): ReactElement {
                 >
                   <Text style={styles.cellDay}>{day}</Text>
                   <Text style={styles.cellValue}>
-                    {hours === undefined ? (isOff ? 'В' : ' ') : cellHours(hours)}
+                    {hours === undefined ? (isOff ? m('week.dayOffGlyph') : ' ') : cellHours(hours)}
                   </Text>
                 </View>
               );
@@ -156,12 +158,12 @@ export function MonthSchedule(): ReactElement {
           </View>
 
           <View style={styles.legend}>
-            <Text style={styles.legendText}>Число в клетке — часы за день</Text>
-            <Text style={styles.legendText}>«В» — выходной</Text>
+            <Text style={styles.legendText}>{m('schedule.legendHours')}</Text>
+            <Text style={styles.legendText}>{m('schedule.legendOff')}</Text>
           </View>
 
           <Text style={styles.total}>
-            {`За месяц: ${(row?.shiftsCount ?? 0).toString()} смен · ${cellHours(row?.totalHours ?? 0)} ч`}
+            {m('schedule.total', { shifts: row?.shiftsCount ?? 0, hours: cellHours(row?.totalHours ?? 0) })}
           </Text>
         </>
       )}
