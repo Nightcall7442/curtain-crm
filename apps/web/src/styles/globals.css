@@ -338,22 +338,22 @@
         дешевле светлой. Здесь фон уходит глубже и зеленее, карточка встаёт
         заметно выше него, а рамка — тёплая, в сторону латуни.
       */
-      --surface-base: 7 15 11;
-      --surface-panel: 14 29 22;
-      --surface-raised: 22 43 33;
-      --surface-nav: 9 20 15;
-      --surface-nav-raised: 18 38 29;
+      --surface-base: 14 28 22;
+      --surface-panel: 26 48 38;
+      --surface-raised: 38 66 52;
+      --surface-nav: 16 32 25;
+      --surface-nav-raised: 26 48 38;
       --text-on-nav: 234 245 238;
-      --border-subtle: 30 56 44;
-      --border-strong: 44 82 63;
+      --border-subtle: 48 82 66;
+      --border-strong: 66 108 86;
       --text-primary: 237 246 240;
-      --text-secondary: 170 194 181;
-      --text-muted: 124 150 137;
+      --text-secondary: 184 208 195;
+      --text-muted: 146 176 161;
       --accent: 61 255 160;
       --accent-strong: 124 255 192;
       --accent-bright: 46 224 139;
-      --accent-muted: 38 96 70;
-      --accent-soft: 17 49 36;
+      --accent-muted: 52 122 90;
+      --accent-soft: 24 64 46;
       --text-on-accent: 5 21 14;
       --series-current: 61 255 160;
       --series-previous: 110 132 122;
@@ -373,9 +373,9 @@
       --stage-done: 61 255 160;
 
       /* Стекло в темноте — затемняющее, а не осветляющее. */
-      --glass-light: 9 20 15;
-      --glass-light-alpha: 0.55;
-      --glass-nav-alpha: 0.45;
+      --glass-light: 16 32 25;
+      --glass-light-alpha: 0.5;
+      --glass-nav-alpha: 0.35;
 
       --swatch-forest: #3dffa0;
       --swatch-indigo: #8d9bd4;
@@ -443,22 +443,22 @@
     color-scheme: dark;
 
     /* Те же значения, что в медиазапросе выше: хвоя ночью, карточка выше фона. */
-    --surface-base: 7 15 11;
-    --surface-panel: 14 29 22;
-    --surface-raised: 22 43 33;
-    --surface-nav: 9 20 15;
-    --surface-nav-raised: 18 38 29;
+    --surface-base: 14 28 22;
+    --surface-panel: 26 48 38;
+    --surface-raised: 38 66 52;
+    --surface-nav: 16 32 25;
+    --surface-nav-raised: 26 48 38;
     --text-on-nav: 234 245 238;
-    --border-subtle: 30 56 44;
-    --border-strong: 44 82 63;
+    --border-subtle: 48 82 66;
+    --border-strong: 66 108 86;
     --text-primary: 237 246 240;
-    --text-secondary: 170 194 181;
-    --text-muted: 124 150 137;
+    --text-secondary: 184 208 195;
+    --text-muted: 146 176 161;
     --accent: 61 255 160;
     --accent-strong: 124 255 192;
     --accent-bright: 46 224 139;
-    --accent-muted: 38 96 70;
-    --accent-soft: 17 49 36;
+    --accent-muted: 52 122 90;
+    --accent-soft: 24 64 46;
     --text-on-accent: 5 21 14;
     --series-current: 61 255 160;
     --series-previous: 110 132 122;
@@ -477,9 +477,9 @@
     --stage-installation: 166 160 255;
     --stage-done: 61 255 160;
 
-    --glass-light: 9 20 15;
-    --glass-light-alpha: 0.55;
-    --glass-nav-alpha: 0.45;
+    --glass-light: 16 32 25;
+    --glass-light-alpha: 0.5;
+    --glass-nav-alpha: 0.35;
 
     --swatch-forest: #3dffa0;
     --swatch-indigo: #8d9bd4;
@@ -823,11 +823,16 @@
     position: relative;
     isolation: isolate;
     background-color: rgb(var(--surface-base));
+    /*
+      Холст освещён, а не чёрный: слева сверху — большое зелёное пятно
+      света, справа снизу — глуше. Как на макете, где панель светится
+      изнутри, а не лежит в яме.
+    */
     background-image:
-      radial-gradient(1100px 640px at 8% -12%, rgb(var(--accent) / 0.22), transparent 60%),
-      radial-gradient(760px 520px at 102% 2%, rgb(var(--accent-bright) / 0.16), transparent 58%),
-      radial-gradient(900px 640px at 55% 115%, rgb(var(--accent-muted) / 0.45), transparent 60%),
-      linear-gradient(180deg, rgb(var(--surface-base)) 0%, rgb(var(--surface-nav)) 100%);
+      radial-gradient(1200px 720px at 6% -10%, rgb(var(--accent) / 0.30), transparent 60%),
+      radial-gradient(820px 560px at 104% 0%, rgb(var(--accent-bright) / 0.20), transparent 58%),
+      radial-gradient(1000px 700px at 50% 118%, rgb(var(--accent-muted) / 0.55), transparent 60%),
+      linear-gradient(160deg, rgb(var(--surface-panel)) 0%, rgb(var(--surface-base)) 55%, rgb(var(--surface-nav)) 100%);
     background-attachment: fixed;
   }
 
@@ -853,7 +858,7 @@
     height: 560px;
     left: 8%;
     top: 4%;
-    background: radial-gradient(circle, rgb(var(--accent) / 0.32), transparent 65%);
+    background: radial-gradient(circle, rgb(var(--accent) / 0.40), transparent 65%);
     animation: canvas-drift-a 26s ease-in-out infinite alternate;
   }
 
@@ -862,7 +867,7 @@
     height: 640px;
     right: -6%;
     top: 30%;
-    background: radial-gradient(circle, rgb(var(--accent-bright) / 0.22), transparent 65%);
+    background: radial-gradient(circle, rgb(var(--accent-bright) / 0.30), transparent 65%);
     animation: canvas-drift-b 34s ease-in-out infinite alternate;
   }
 
@@ -896,24 +901,24 @@
     /* Заливка почти прозрачная: холст с бликами должен читаться сквозь неё. */
     background-image: linear-gradient(
       150deg,
-      rgb(255 255 255 / 0.085) 0%,
-      rgb(255 255 255 / 0.035) 45%,
-      rgb(var(--surface-panel) / 0.35) 100%
+      rgb(255 255 255 / 0.13) 0%,
+      rgb(255 255 255 / 0.06) 45%,
+      rgb(var(--surface-raised) / 0.40) 100%
     );
-    backdrop-filter: blur(28px) saturate(170%) brightness(1.06);
-    -webkit-backdrop-filter: blur(28px) saturate(170%) brightness(1.06);
+    backdrop-filter: blur(28px) saturate(170%) brightness(1.12);
+    -webkit-backdrop-filter: blur(28px) saturate(170%) brightness(1.12);
     /*
       Кромка стекла: тонкая рамка, яркий блик по верхней кромке и слабый по
       левой, мягкая тень наружу и глубокая под низом. Так стекло выглядит
       объёмным, а не нарисованным прямоугольником.
     */
     box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.10),
-      inset 0 1px 0 rgb(255 255 255 / 0.28),
-      inset 1px 0 0 rgb(255 255 255 / 0.08),
-      inset 0 -1px 0 rgb(0 0 0 / 0.25),
-      0 1px 2px rgb(0 0 0 / 0.30),
-      0 30px 60px -30px rgb(0 0 0 / 0.9);
+      inset 0 0 0 1px rgb(255 255 255 / 0.14),
+      inset 0 1px 0 rgb(255 255 255 / 0.34),
+      inset 1px 0 0 rgb(255 255 255 / 0.10),
+      inset 0 -1px 0 rgb(0 0 0 / 0.20),
+      0 1px 2px rgb(0 0 0 / 0.25),
+      0 30px 60px -30px rgb(0 0 0 / 0.7);
   }
 
   /* Блик — размытое пятно света в верхнем левом углу, как на настоящем стекле. */
@@ -924,8 +929,8 @@
     border-radius: inherit;
     pointer-events: none;
     background:
-      radial-gradient(320px 160px at 14% 0%, rgb(255 255 255 / 0.14), transparent 70%),
-      radial-gradient(240px 120px at 100% 100%, rgb(var(--accent) / 0.08), transparent 70%);
+      radial-gradient(360px 180px at 14% 0%, rgb(255 255 255 / 0.18), transparent 70%),
+      radial-gradient(260px 140px at 100% 100%, rgb(var(--accent) / 0.12), transparent 70%);
   }
 
   .surface-card > * {
@@ -949,7 +954,7 @@
 
   /* Стекло для полей, плашек и строк таблицы — тот же язык, тоньше слой. */
   .glass-control {
-    background-color: rgb(255 255 255 / 0.05);
+    background-color: rgb(255 255 255 / 0.07);
     box-shadow:
       inset 0 0 0 1px rgb(255 255 255 / 0.10),
       inset 0 1px 0 rgb(255 255 255 / 0.10);
