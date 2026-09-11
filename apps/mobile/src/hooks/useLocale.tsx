@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_LOCALE, isLocale, type Locale, type Translated } from '@curtain-crm/shared';
 
+import { useQueryClient } from '@tanstack/react-query';
+
 import { MESSAGES, type MessageKey } from '../i18n/messages';
 import { setRequestLocale } from '../lib/authFetch';
 import {
@@ -78,17 +80,26 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
     };
   }, []);
 
-  // Сервер тоже должен знать язык: на нём приходят сообщения об ошибках.
+  const queryClient = useQueryClient();
+
+  // Сервер тоже должен знать язык: на нём приходят ошибки и уведомления.
   useEffect(() => {
     setRequestLocale(locale);
   }, [locale]);
 
   const setLocale = useCallback((next: Locale): void => {
     setLocaleState(next);
+    // Заголовок — до сброса кэша, иначе первые перезапросы ушли бы ещё на
+    // прежнем языке: эффект выше сработает только после рендера.
+    setRequestLocale(next);
+    // Уведомления переводит сервер по языку запроса: в кэше лежит лента на
+    // прежнем языке, и без сброса она сменилась бы только при следующем
+    // обновлении экрана.
+    void queryClient.invalidateQueries();
     void AsyncStorage.setItem(LOCALE_STORAGE_KEY, next).catch(() => {
       // Выбор проживёт до перезапуска приложения — это лучше, чем падение.
     });
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<LocaleContextValue>(
     () => ({

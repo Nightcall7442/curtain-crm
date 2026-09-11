@@ -1,9 +1,11 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { ORDER_STATUS_LABELS } from '@curtain-crm/shared';
 import { describe, expect, it } from 'vitest';
 
 import { KNOWN_ERROR_MESSAGES, translateErrorMessage } from './errorTranslations';
+import { KNOWN_NOTIFICATION_TEXTS, translateNotificationText } from './notificationTranslations';
 
 /**
  * Таблица переводов ошибок обязана знать каждый текст из исходников.
@@ -19,7 +21,7 @@ const SRC = join(__dirname, '..');
 /** Файлы, чьи строки не уходят клиенту как сообщения об ошибках. */
 const SKIP_FILES = new Set([
   'constants.ts', // ошибки конфигурации окружения — оператору, не клиенту
-  'notifications.service.ts', // тексты уведомлений — данные, хранятся в БД
+  'notifications.service.ts', // уведомления — своя таблица, проверяется ниже
   'telegram.service.ts',
   'audit.service.ts',
   'performance.service.ts', // SQL
@@ -99,28 +101,34 @@ function clientMessages(source: string): string[] {
   return found.filter((text) => /[А-Яа-яЁё]/.test(text));
 }
 
-describe('errorTranslations', () => {
-  const known = new Set<string>([
-    ...KNOWN_ERROR_MESSAGES.exact,
-    ...KNOWN_ERROR_MESSAGES.patterns.map(normalizePattern),
-  ]);
-
-  /*
-    Литерал из исходника может быть лишь началом сообщения: хвост
-    подставляется тернарником (`+ (x ? '…' : '…')`). Такой текст считается
-    покрытым, если хотя бы один шаблон с него начинается.
-  */
-  const covered = (text: string): boolean => {
+/**
+ * Литерал из исходника может быть лишь началом сообщения: хвост
+ * подставляется тернарником (`+ (x ? '…' : '…')`). Такой текст считается
+ * покрытым, если хотя бы один шаблон с него начинается.
+ */
+function coverage(table: { readonly exact: readonly string[]; readonly patterns: readonly string[] }) {
+  const known = new Set<string>([...table.exact, ...table.patterns.map(normalizePattern)]);
+  return (text: string): boolean => {
     if (known.has(text)) return true;
     const normalized = normalizeTemplate(text);
     if (known.has(normalized)) return true;
+    // Хвост-подстановка (`…».${reason}`) — тоже «что угодно дальше».
+    const prefix = normalized.endsWith('{}') ? normalized.slice(0, -2) : normalized;
+    // Литерал-хвост из тернарника (` — срок до ${date}`) начинается не с
+    // буквы: он покрыт, если входит в какой-нибудь шаблон целиком.
+    const isTail = /^[^А-Яа-яЁёA-Za-z{]/.test(text);
     return (
       text.includes('${') &&
-      KNOWN_ERROR_MESSAGES.patterns.some((pattern) =>
-        normalizePattern(pattern).startsWith(normalized),
-      )
+      table.patterns.some((pattern) => {
+        const known = normalizePattern(pattern);
+        return isTail ? known.includes(prefix) : known.startsWith(prefix);
+      })
     );
   };
+}
+
+describe('errorTranslations', () => {
+  const covered = coverage(KNOWN_ERROR_MESSAGES);
 
   it('знает каждый текст ошибки из исходников API', () => {
     const missing: string[] = [];
@@ -150,5 +158,47 @@ describe('errorTranslations', () => {
     );
     // Неизвестный текст остаётся как есть, а не превращается в пустоту.
     expect(translateErrorMessage('Нечто новое', 'uz')).toBe('Нечто новое');
+  });
+});
+
+describe('notificationTranslations', () => {
+  const covered = coverage(KNOWN_NOTIFICATION_TEXTS);
+
+  /** `title:` и `body:` из `notifications.service.ts` — в том числе склеенные. */
+  function notificationTexts(source: string): string[] {
+    // Тот же разбор, что у ошибок: `title:`/`body:` читаются как `message:`.
+    const code = source.replace(/\b(?:title|body):/g, 'message:');
+    const found = clientMessages(code);
+
+    // `title: x ? 'А' : 'Б'` — два текста в одном выражении; разбор выше
+    // литерал после условия не видит, тернарник читается отдельно.
+    const ternary = /message:[\s\S]{0,120}?\?\s*(`(?:[^`\\]|\\.)*`|'(?:[^'\\\n]|\\.)*')\s*:\s*(`(?:[^`\\]|\\.)*`|'(?:[^'\\\n]|\\.)*')/g;
+    for (const match of code.matchAll(ternary)) {
+      found.push((match[1] ?? '').slice(1, -1), (match[2] ?? '').slice(1, -1));
+    }
+    return found.filter((text) => /[А-Яа-яЁё]/.test(text));
+  }
+
+  it('знает каждый заголовок и тело уведомления', () => {
+    const source = readFileSync(join(SRC, 'services', 'notifications.service.ts'), 'utf8');
+    const texts = notificationTexts(source);
+    // 16 уведомлений, у большинства — и заголовок, и тело с русскими словами.
+    expect(texts.length).toBeGreaterThan(28);
+    expect(texts.filter((text) => !covered(text)), 'непереведённые уведомления').toEqual([]);
+  });
+
+  it('переводит статус, роль и месяц внутри текста', () => {
+    expect(translateNotificationText('Заказ DH-000012: В пошиве', 'uz')).toBe(
+      `Buyurtma DH-000012: ${ORDER_STATUS_LABELS.uz.sewing_in_progress}`,
+    );
+    expect(translateNotificationText('Расчёт за Сентябрь 2026 утверждён', 'uz')).toBe(
+      'Sentabr 2026 uchun hisob tasdiqlandi',
+    );
+    expect(translateNotificationText('Rustamov Muzaffar: каждую неделю — пятница', 'uz')).toBe(
+      'Rustamov Muzaffar: har hafta — juma',
+    );
+    expect(translateNotificationText('Aziza: «Перешить ламбрекен»', 'uz')).toBe(
+      'Aziza: «Перешить ламбрекен»',
+    );
   });
 });

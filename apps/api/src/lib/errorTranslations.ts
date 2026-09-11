@@ -1,15 +1,6 @@
-import {
-  CORNICE_STATUS_LABELS,
-  ORDER_STATUS_LABELS,
-  ORDER_TRANSITIONS,
-  PAYROLL_RECORD_STATUS_LABELS,
-  PAYROLL_SCHEME_TYPE_LABELS,
-  PHOTO_STAGE_LABELS,
-  ROLE_LABELS,
-  transitionLabel,
-  type Locale,
-  type Translated,
-} from '@curtain-crm/shared';
+import type { Locale } from '@curtain-crm/shared';
+
+import { compileTranslator, type TranslationTable } from './sourceTranslation';
 
 /**
  * Перевод сообщений об ошибках для клиента на узбекском.
@@ -17,19 +8,12 @@ import {
  * Ошибки в коде пишутся по-русски, как и раньше, — в 230 местах, и менять
  * каждое на ключ словаря значило бы переписать все роутеры ради одной
  * локали. Вместо этого сообщение переводится на выходе, в `errorFormatter`,
- * по таблице «русский текст → узбекский» — так же, как gettext переводит по
- * исходной строке.
+ * по таблице «русский текст → узбекский» — механика в `sourceTranslation.ts`.
  *
  * Цена такого подхода — таблица должна знать каждый текст. Чтобы правка
  * русского сообщения не оставила узбекскую швею с русской ошибкой молча,
  * `errorTranslations.test.ts` сверяет таблицу с исходниками: новая или
  * изменённая строка без перевода роняет тест.
- *
- * Сообщения с подстановками (`Филиал «${name}» уже существует`) описаны
- * шаблонами с `{плейсхолдерами}`: русский шаблон превращается в регулярное
- * выражение, захваченные куски подставляются в узбекский. Если захваченный
- * кусок — русская подпись из справочника (статус, роль, стадия), он тоже
- * переводится.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -313,90 +297,16 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
 ];
 
 /* -------------------------------------------------------------------------- */
-/*  Подписи справочников внутри сообщений                                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Русская подпись справочника → узбекская. Статусы, роли и стадии попадают в
- * текст ошибки уже по-русски (`ROLE_LABELS_RU[role]`), и без обратного
- * словаря узбекская фраза получила бы русское слово посередине.
- */
-const LABEL_RU_TO_UZ: ReadonlyMap<string, string> = (() => {
-  const map = new Map<string, string>();
-  const add = <TKey extends string>(dict: Translated<TKey>): void => {
-    for (const key of Object.keys(dict.ru) as TKey[]) map.set(dict.ru[key], dict.uz[key]);
-  };
-  add(ORDER_STATUS_LABELS);
-  add(ROLE_LABELS);
-  add(PHOTO_STAGE_LABELS);
-  add(CORNICE_STATUS_LABELS);
-  add(PAYROLL_RECORD_STATUS_LABELS);
-  add(PAYROLL_SCHEME_TYPE_LABELS);
-  // Подписи кнопок переходов («Отдать на пошив») — в тексте про права.
-  for (const transition of ORDER_TRANSITIONS) {
-    map.set(transition.label, transitionLabel(transition, 'uz'));
-  }
-  return map;
-})();
-
-/** Захваченный кусок: подпись справочника или список подписей через запятую. */
-function translateFragment(value: string): string {
-  const direct = LABEL_RU_TO_UZ.get(value);
-  if (direct !== undefined) return direct;
-  if (value.includes(', ')) {
-    return value
-      .split(', ')
-      .map((part) => LABEL_RU_TO_UZ.get(part) ?? part)
-      .join(', ');
-  }
-  return value;
-}
-
-/* -------------------------------------------------------------------------- */
 /*  Перевод                                                                   */
 /* -------------------------------------------------------------------------- */
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const TABLE: TranslationTable = { exact: EXACT, patterns: PATTERNS };
 
-const COMPILED: readonly { readonly rx: RegExp; readonly uz: string; readonly names: readonly string[] }[] =
-  PATTERNS.map(([ru, uz]) => {
-    const names: string[] = [];
-    const source = ru
-      .split(/(\{\w+\})/)
-      .map((chunk) => {
-        const match = /^\{(\w+)\}$/.exec(chunk);
-        if (match?.[1] === undefined) return escapeRegExp(chunk);
-        names.push(match[1]);
-        return '([\\s\\S]+?)';
-      })
-      .join('');
-    return { rx: new RegExp(`^${source}$`), uz, names };
-  });
+const translate = compileTranslator(TABLE);
 
-/**
- * Сообщение об ошибке на языке клиента.
- *
- * Русский — исходный язык, возвращается как есть. Для узбекского ищется
- * точное соответствие, затем шаблон; текст без перевода уходит по-русски —
- * это лучше пустой строки, а тест не даст такому тексту появиться незаметно.
- */
+/** Сообщение об ошибке на языке клиента; русский возвращается как есть. */
 export function translateErrorMessage(message: string, locale: Locale): string {
-  if (locale === 'ru') return message;
-
-  const exact = EXACT[message];
-  if (exact !== undefined) return exact;
-
-  for (const { rx, uz, names } of COMPILED) {
-    const match = rx.exec(message);
-    if (match === null) continue;
-    return names.reduce(
-      (text, name, index) =>
-        text.replaceAll(`{${name}}`, translateFragment(match[index + 1] ?? '')),
-      uz,
-    );
-  }
-
-  return message;
+  return translate(message, locale);
 }
 
 /** Для теста покрытия: все известные русские тексты. */

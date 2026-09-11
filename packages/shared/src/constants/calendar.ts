@@ -42,9 +42,19 @@ export const WEEKDAY_NAMES_RU: Readonly<Record<IsoWeekday, string>> = {
   7: 'Воскресенье',
 };
 
+export const WEEKDAY_NAMES_UZ: Readonly<Record<IsoWeekday, string>> = {
+  1: 'Dushanba',
+  2: 'Seshanba',
+  3: 'Chorshanba',
+  4: 'Payshanba',
+  5: 'Juma',
+  6: 'Shanba',
+  7: 'Yakshanba',
+};
+
 /** Подпись дня из БД, где он приходит просто числом: «Пятница». */
-export const weekdayName = (day: number): string =>
-  WEEKDAY_NAMES_RU[day as IsoWeekday] ?? '';
+export const weekdayName = (day: number, locale: Locale = 'ru'): string =>
+  (locale === 'uz' ? WEEKDAY_NAMES_UZ : WEEKDAY_NAMES_RU)[day as IsoWeekday] ?? '';
 
 /** ISO-день недели даты в UTC: `Date.getUTCDay()` считает с воскресенья. */
 export const isoWeekdayOf = (date: Date): IsoWeekday =>
