@@ -97,9 +97,10 @@ export function ProfileScreen(): ReactElement {
       const date = new Date(weekBounds.monday.getTime() + index * 24 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10);
-      return { date, hasShift: withShift.has(date) };
+      // Понедельник — первая клетка, ISO-день недели = index + 1.
+      return { date, hasShift: withShift.has(date), isDayOff: user?.weeklyDayOff === index + 1 };
     });
-  }, [shiftsThisWeek.data, weekBounds.monday]);
+  }, [shiftsThisWeek.data, weekBounds.monday, user?.weeklyDayOff]);
 
   const currentPayroll = useMemo(
     () =>

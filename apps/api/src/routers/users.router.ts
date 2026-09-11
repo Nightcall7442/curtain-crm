@@ -94,6 +94,8 @@ export interface UserDto {
   readonly birthDate: string | null;
   readonly isActive: boolean;
   readonly hiredAt: string | null;
+  /** Фиксированный выходной по графику, ISO-день недели 1–7; `null` — нет. */
+  readonly weeklyDayOff: number | null;
   readonly firedAt: string | null;
   readonly lastLoginAt: Date | null;
   readonly avatarStorageKey: string | null;
@@ -159,6 +161,7 @@ async function loadUsers(executor: DbExecutor, userIds: readonly number[]): Prom
         birthDate: row.birthDate,
         isActive: row.isActive,
         hiredAt: row.hiredAt,
+        weeklyDayOff: row.weeklyDayOff,
         firedAt: row.firedAt,
         lastLoginAt: row.lastLoginAt,
         avatarStorageKey: row.avatarStorageKey,

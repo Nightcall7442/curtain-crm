@@ -1,5 +1,5 @@
 import { dayOffRequests, shifts, users, type DbExecutor } from '@curtain-crm/db';
-import { DayOffStatus, WORKSHOP_TIME_ZONE } from '@curtain-crm/shared';
+import { DayOffStatus, isoWeekdayOf, WORKSHOP_TIME_ZONE } from '@curtain-crm/shared';
 import { and, asc, count, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 
 import { periodBounds, workedSecondsExpression, type Period } from './shifts.service';
@@ -83,7 +83,7 @@ export async function buildTimesheet(
   const onlyUsers = params.userIds;
 
   const staff = await executor
-    .select({ id: users.id, fullName: users.fullName })
+    .select({ id: users.id, fullName: users.fullName, weeklyDayOff: users.weeklyDayOff })
     .from(users)
     .where(
       and(
@@ -150,6 +150,17 @@ export async function buildTimesheet(
   }
 
   const daysInMonth = new Date(Date.UTC(params.period.year, params.period.month, 0)).getUTCDate();
+
+  // Фиксированный выходной «по пятницам» — те же клетки «В», что и разовый.
+  for (const person of staff) {
+    if (person.weeklyDayOff === null) continue;
+    const set = offByUser.get(person.id) ?? new Set<number>();
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(Date.UTC(params.period.year, params.period.month - 1, day));
+      if (isoWeekdayOf(date) === person.weeklyDayOff) set.add(day);
+    }
+    offByUser.set(person.id, set);
+  }
 
   return {
     period: params.period,

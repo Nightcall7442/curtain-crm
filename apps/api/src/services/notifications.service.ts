@@ -4,6 +4,8 @@ import {
   ORDER_STATUS_LABELS_RU,
   OrderStatus,
   ROLE_LABELS_RU,
+  WEEKDAY_NAMES_RU,
+  type IsoWeekday,
   type NotificationType as NotificationTypeName,
   type Role,
 } from '@curtain-crm/shared';
@@ -457,6 +459,23 @@ export async function notifyDayOffAssigned(
     type: NotificationType.DAY_OFF_APPROVED,
     title: 'Вам назначен выходной',
     body: `${params.assignedByName}: ${formatPeriod(params.startDate, params.endDate)}`,
+  });
+}
+
+/** Руководитель поставил или снял фиксированный выходной по графику. */
+export async function notifyWeeklyDayOffChanged(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly weekday: IsoWeekday | null; readonly assignedByName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.DAY_OFF_APPROVED,
+    title: params.weekday === null ? 'Постоянный выходной снят' : 'Вам назначен выходной по графику',
+    body:
+      params.weekday === null
+        ? `${params.assignedByName}: выходные теперь только по запросу`
+        : `${params.assignedByName}: каждую неделю — ${WEEKDAY_NAMES_RU[params.weekday].toLowerCase()}`,
   });
 }
 

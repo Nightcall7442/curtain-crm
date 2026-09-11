@@ -9,6 +9,7 @@ import {
   pgTable,
   primaryKey,
   serial,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -89,6 +90,12 @@ export const users = pgTable(
     /** Дата увольнения. Заполняется вместе с `is_active = false`. */
     firedAt: date('fired_at'),
 
+    /**
+     * Фиксированный выходной по графику, ISO-день недели: 1 — Пн … 7 — Вс.
+     * `null` — без постоянного дня. Разовые выходные живут в `day_off_requests`.
+     */
+    weeklyDayOff: smallint('weekly_day_off'),
+
     isActive: boolean('is_active').notNull().default(true),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
 
@@ -108,6 +115,7 @@ export const users = pgTable(
     // Для виджета «Дни рождения»: выборка идёт по месяцу и дню, без года.
     index('users_birthday_idx').on(sql`extract(month from ${table.birthDate})`, sql`extract(day from ${table.birthDate})`),
     check('users_phone_e164', sql`${table.phone} ~ '^\\+998[0-9]{9}$'`),
+    check('users_weekly_day_off_range', sql`${table.weeklyDayOff} between 1 and 7`),
     check(
       'users_fired_after_hired',
       sql`${table.firedAt} is null or ${table.hiredAt} is null or ${table.firedAt} >= ${table.hiredAt}`,

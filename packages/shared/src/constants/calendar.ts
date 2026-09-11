@@ -22,6 +22,34 @@ import type { Locale } from '../i18n/locale';
  */
 export const WORKSHOP_TIME_ZONE = 'Asia/Tashkent';
 
+/**
+ * День недели по ISO: 1 — понедельник … 7 — воскресенье.
+ *
+ * Так хранится фиксированный выходной сотрудника (`users.weekly_day_off`):
+ * «у Дилноры выходной по пятницам» — одно число, а не список дат.
+ */
+export const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+export type IsoWeekday = (typeof ISO_WEEKDAYS)[number];
+
+/** «Каждый понедельник», «каждую пятницу» — подписи для выбора выходного. */
+export const WEEKDAY_NAMES_RU: Readonly<Record<IsoWeekday, string>> = {
+  1: 'Понедельник',
+  2: 'Вторник',
+  3: 'Среда',
+  4: 'Четверг',
+  5: 'Пятница',
+  6: 'Суббота',
+  7: 'Воскресенье',
+};
+
+/** Подпись дня из БД, где он приходит просто числом: «Пятница». */
+export const weekdayName = (day: number): string =>
+  WEEKDAY_NAMES_RU[day as IsoWeekday] ?? '';
+
+/** ISO-день недели даты в UTC: `Date.getUTCDay()` считает с воскресенья. */
+export const isoWeekdayOf = (date: Date): IsoWeekday =>
+  (((date.getUTCDay() + 6) % 7) + 1) as IsoWeekday;
+
 /** Именительный падеж — для выпадающих списков: «Август». */
 export const MONTH_NAMES_RU = [
   'Январь',

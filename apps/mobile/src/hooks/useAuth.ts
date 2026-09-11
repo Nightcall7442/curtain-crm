@@ -13,6 +13,8 @@ export interface AuthUser {
   readonly fullName: string;
   readonly phone: string;
   readonly roles: readonly Role[];
+  /** Фиксированный выходной, ISO-день недели 1–7; `null` — нет. */
+  readonly weeklyDayOff: number | null;
   readonly branchIds: readonly number[];
   readonly primaryBranchId: number | null;
 }
