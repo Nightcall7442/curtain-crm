@@ -8,19 +8,22 @@ import { Card } from './Card';
 /**
  * Неделя сотрудника: в какие дни была смена.
  *
- * Показывает ФАКТ по сменам, а не график работы: графиков смен в системе нет,
- * и рисовать «плановый выходной» было бы выдумкой. День без смены помечается
+ * Показывает ФАКТ по сменам, а не график работы. День без смены помечается
  * как «нет смены», а не как «выходной» — это разные вещи, и подменять одно
- * другим значит скрывать прогулы.
+ * другим значит скрывать прогулы. Единственный плановый знак — выходной,
+ * который поставил руководитель (`weekly_day_off`): его видно и в будущем,
+ * и в прошлом, и в такой день «нет смены» — не прогул.
  *
- * Будущие дни недели показываются приглушённо и без отметки: сказать про них
- * ещё нечего.
+ * Остальные будущие дни показываются приглушённо и без отметки: сказать про
+ * них ещё нечего.
  */
 
 export interface WeekDay {
   /** `YYYY-MM-DD`. */
   readonly date: string;
   readonly hasShift: boolean;
+  /** Выходной по графику, назначенный руководителем. */
+  readonly isDayOff?: boolean;
 }
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
@@ -38,6 +41,7 @@ export function WeekAttendance({
         {days.map((day, index) => {
           const isFuture = day.date > today;
           const isWeekend = index >= 5;
+          const isDayOff = day.isDayOff === true && !day.hasShift;
 
           return (
             <View key={day.date} style={styles.day}>
@@ -51,20 +55,22 @@ export function WeekAttendance({
               <View
                 style={[
                   styles.mark,
-                  isFuture
-                    ? styles.markFuture
-                    : day.hasShift
-                      ? styles.markPresent
-                      : styles.markAbsent,
+                  isDayOff
+                    ? styles.markDayOff
+                    : isFuture
+                      ? styles.markFuture
+                      : day.hasShift
+                        ? styles.markPresent
+                        : styles.markAbsent,
                 ]}
               >
-                <Text style={styles.markGlyph}>
-                  {isFuture ? '·' : day.hasShift ? '✓' : '✕'}
+                <Text style={[styles.markGlyph, isDayOff ? styles.markGlyphDayOff : null]}>
+                  {isDayOff ? 'В' : isFuture ? '·' : day.hasShift ? '✓' : '✕'}
                 </Text>
               </View>
 
               <Text style={styles.caption} numberOfLines={2}>
-                {isFuture ? '—' : day.hasShift ? 'Смена была' : 'Нет смены'}
+                {isDayOff ? 'Выходной' : isFuture ? '—' : day.hasShift ? 'Смена была' : 'Нет смены'}
               </Text>
             </View>
           );
@@ -122,6 +128,14 @@ const styles = StyleSheet.create({
   },
   markFuture: {
     backgroundColor: colors.surfaceMuted,
+  },
+  markDayOff: {
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  markGlyphDayOff: {
+    color: colors.textMuted,
   },
   markGlyph: {
     color: colors.onAccent,

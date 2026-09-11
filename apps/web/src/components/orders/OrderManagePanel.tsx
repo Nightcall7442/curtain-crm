@@ -7,7 +7,6 @@ import {
   ROLE_LABELS_RU,
   type AssignableRole,
   type OrderType as OrderTypeName,
-  type Role,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
@@ -280,9 +279,8 @@ export function OrderManagePanel({
 /**
  * Выбор исполнителя на роль.
  *
- * Список приходит из `users.listByRole`, то есть содержит только активных
- * сотрудников с этой ролью. Назначить человека без нужной роли невозможно —
- * сервер отклонит, а список такого варианта и не покажет.
+ * Список — все активные сотрудники: назначить можно и человека без этой
+ * роли, роль ему выдаст сервер при назначении.
  */
 function AssigneeSelect({
   role,
@@ -295,22 +293,40 @@ function AssigneeSelect({
   readonly disabled: boolean;
   readonly onChange: (assigneeId: number | null) => void;
 }): ReactElement {
-  const candidates = trpc.users.listByRole.useQuery({ role: role satisfies Role });
+  /*
+    Все активные сотрудники, а не только с этой ролью: подработка вне своей
+    роли — обычное дело. Свои идут первыми, остальные — с подписью основной
+    роли, чтобы в списке было видно, кого берут «со стороны». Роль такому
+    сотруднику выдаст сам API при назначении.
+  */
+  const staff = trpc.users.list.useQuery({ page: 1, pageSize: 100, isActive: true });
+  const candidates = [...(staff.data?.items ?? [])].sort(
+    (a, b) =>
+      Number(b.roles.includes(role)) - Number(a.roles.includes(role)) ||
+      a.fullName.localeCompare(b.fullName, 'ru'),
+  );
 
   return (
     <Field label={ROLE_LABELS_RU[role]}>
       <Select
         value={value === null ? '' : value.toString()}
-        disabled={disabled || candidates.isLoading}
+        disabled={disabled || staff.isLoading}
         placeholder="Не назначен"
         onChange={(event) => {
           const next = event.target.value;
           onChange(next === '' ? null : Number.parseInt(next, 10));
         }}
-        options={(candidates.data ?? []).map((person) => ({
-          value: person.id.toString(),
-          label: person.fullName,
-        }))}
+        options={candidates.map((person) => {
+          const own = person.roles.includes(role);
+          const main = person.roles[0];
+          return {
+            value: person.id.toString(),
+            label:
+              own || main === undefined
+                ? person.fullName
+                : `${person.fullName} · ${ROLE_LABELS_RU[main]}`,
+          };
+        })}
       />
     </Field>
   );

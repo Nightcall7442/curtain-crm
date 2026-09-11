@@ -121,6 +121,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'dayoff.rejected': 'Отгул отклонён',
   'dayoff.cancelled': 'Отгул отменён',
   'dayoff.assigned': 'Выходной назначен',
+  'dayoff.weekly_set': 'Выходной по графику изменён',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 

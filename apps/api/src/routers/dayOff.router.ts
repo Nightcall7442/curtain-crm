@@ -1,6 +1,7 @@
 import {
   DayOffStatus,
   dayOffStatusSchema,
+  ISO_WEEKDAYS,
   isManagement,
   MANAGEMENT_ROLES,
   MAX_DAY_OFF_REASON_LENGTH,
@@ -20,6 +21,7 @@ import {
   notifyDayOffAssigned,
   notifyDayOffRejected,
   notifyDayOffRequested,
+  notifyWeeklyDayOffChanged,
 } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -297,6 +299,69 @@ export const dayOffRouter = router({
         }
 
         return created;
+      }),
+    ),
+
+  /**
+   * Фиксированный выходной по графику: «у этого сотрудника — пятница».
+   *
+   * Разовый выходной — строка в `day_off_requests` на конкретные даты, а
+   * постоянный — одно число в карточке сотрудника: иначе директору пришлось
+   * бы каждую неделю заново назначать одну и ту же пятницу. `null` снимает
+   * день. В табеле и в графике приложения оба вида выглядят одинаково.
+   */
+  setWeekly: managementProcedure
+    .input(
+      z.object({
+        userId: idSchema,
+        weekday: z
+          .number()
+          .int()
+          .min(1)
+          .max(7)
+          .nullable()
+          .transform((value) => (value === null ? null : ISO_WEEKDAYS[value - 1] ?? null)),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const person = await tx.query.users.findFirst({
+          where: eq(users.id, input.userId),
+          columns: { id: true, isActive: true, weeklyDayOff: true },
+        });
+        if (person === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден' });
+        }
+        if (!person.isActive) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Сотрудник не работает — выходной ему не нужен',
+          });
+        }
+        if (person.weeklyDayOff === input.weekday) return { weeklyDayOff: input.weekday };
+
+        await tx
+          .update(users)
+          .set({ weeklyDayOff: input.weekday })
+          .where(eq(users.id, input.userId));
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'dayoff.weekly_set',
+          entityType: 'user',
+          entityId: input.userId,
+          details: { from: person.weeklyDayOff, to: input.weekday },
+          ipAddress: ctx.ipAddress,
+        });
+
+        if (input.userId !== ctx.user.id) {
+          await notifyWeeklyDayOffChanged(tx, input.userId, {
+            weekday: input.weekday,
+            assignedByName: ctx.user.fullName,
+          });
+        }
+
+        return { weeklyDayOff: input.weekday };
       }),
     ),
 

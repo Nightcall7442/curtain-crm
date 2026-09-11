@@ -75,7 +75,7 @@ export async function loadAuthenticatedUser(
 ): Promise<AuthenticatedUser | null> {
   const row = await executor.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: { id: true, fullName: true, phone: true, isActive: true },
+    columns: { id: true, fullName: true, phone: true, isActive: true, weeklyDayOff: true },
     with: {
       roles: { columns: { role: true } },
       branches: { columns: { branchId: true, isPrimary: true } },
@@ -89,6 +89,7 @@ export async function loadAuthenticatedUser(
     fullName: row.fullName,
     phone: row.phone,
     isActive: row.isActive,
+    weeklyDayOff: row.weeklyDayOff,
     roles: row.roles.map((entry) => entry.role satisfies Role),
     branchIds: row.branches.map((entry) => entry.branchId),
     primaryBranchId: row.branches.find((entry) => entry.isPrimary)?.branchId ?? null,

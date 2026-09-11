@@ -202,6 +202,7 @@ export const AUDIT_ACTIONS = [
   'dayoff.cancelled',
   'dayoff.assigned',
   'dayoff.withdrawn',
+  'dayoff.weekly_set',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -8,7 +8,6 @@ import {
   TransitionKind,
   type AssigneeKind,
   type OrderStatus,
-  type Role,
   type TransitionKind as TransitionKindName,
 } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
@@ -252,9 +251,8 @@ export function OrderActionDialog({
 /**
  * Выбор исполнителя на роль, которую требует целевой статус.
  *
- * Список — только активные сотрудники с этой ролью: назначить постороннего
- * невозможно, и сервер такую попытку отклонит независимо от того, что
- * покажет этот список.
+ * Список — все активные сотрудники, свои по роли первыми: назначить можно и
+ * человека без этой роли, роль ему выдаст сервер при назначении.
  */
 function AssigneePicker({
   role,
@@ -268,22 +266,33 @@ function AssigneePicker({
   readonly hint?: string;
 }): ReactElement {
   const { t } = useLocale();
-  const candidates = trpc.users.listByRole.useQuery({ role: role satisfies Role });
+  const staff = trpc.users.list.useQuery({ page: 1, pageSize: 100, isActive: true });
+  const candidates = [...(staff.data?.items ?? [])].sort(
+    (a, b) =>
+      Number(b.roles.includes(role)) - Number(a.roles.includes(role)) ||
+      a.fullName.localeCompare(b.fullName, 'ru'),
+  );
 
   return (
     <Field label={t(ROLE_LABELS, role)} required hint={hint}>
       <Select
         value={value}
         autoFocus
-        disabled={candidates.isLoading}
-        placeholder={candidates.isLoading ? 'Загрузка…' : 'Выберите исполнителя'}
+        disabled={staff.isLoading}
+        placeholder={staff.isLoading ? 'Загрузка…' : 'Выберите исполнителя'}
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        options={(candidates.data ?? []).map((person) => ({
-          value: person.id.toString(),
-          label: person.fullName,
-        }))}
+        options={candidates.map((person) => {
+          const main = person.roles[0];
+          return {
+            value: person.id.toString(),
+            label:
+              person.roles.includes(role) || main === undefined
+                ? person.fullName
+                : `${person.fullName} · ${t(ROLE_LABELS, main)}`,
+          };
+        })}
       />
     </Field>
   );

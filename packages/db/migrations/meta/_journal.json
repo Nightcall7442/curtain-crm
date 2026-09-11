@@ -218,6 +218,13 @@
       "when": 1789044055378,
       "tag": "0030_order_pack_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789145401629,
+      "tag": "0031_users_weekly_day_off",
+      "breakpoints": true
     }
   ]
 }
