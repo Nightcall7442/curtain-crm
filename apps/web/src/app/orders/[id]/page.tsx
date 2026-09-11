@@ -207,9 +207,14 @@ export default function OrderDetailPage(): ReactElement {
           </div>
 
           <dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-1 text-footnote sm:grid-cols-3">
-            <MoneyItem label="Стоимость работ" value={data.workPrice} />
-            <MoneyItem label="Предоплата" value={data.deposit} />
-            <MoneyItem label="Остаток" value={data.remainingPayment} />
+            {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
+            {data.workPrice !== null && (
+              <>
+                <MoneyItem label="Стоимость работ" value={data.workPrice} />
+                <MoneyItem label="Предоплата" value={data.deposit} />
+                <MoneyItem label="Остаток" value={data.remainingPayment} />
+              </>
+            )}
             <div>
               <dt className="text-muted">Срок</dt>
               <dd className="text-primary">{formatDate(data.deadline)}</dd>
@@ -338,8 +343,8 @@ export default function OrderDetailPage(): ReactElement {
             qc: data.qcId,
             installer: data.installerId,
           }}
-          workPrice={data.workPrice}
-          deposit={data.deposit}
+          workPrice={data.workPrice ?? '0'}
+          deposit={data.deposit ?? '0'}
           stageFees={stageFeesFromOrder(data)}
           orderType={data.orderType}
           isClosed={isTerminalStatus(data.status)}

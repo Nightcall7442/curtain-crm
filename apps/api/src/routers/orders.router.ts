@@ -277,9 +277,13 @@ const STAGE_EXECUTOR_COLUMN = {
 
 type StageFeeField = (typeof STAGE_FEE_COLUMN)[OrderStageFee];
 
-/** Заказ, у которого скрытые от сотрудника расценки заменены на `null`. */
-export type OrderWithVisibleFees<T> = Omit<T, StageFeeField> &
-  Readonly<Record<StageFeeField, string | null>>;
+/** Деньги клиента по заказу — видят руководство и продавец, цех — нет. */
+const CLIENT_MONEY_FIELDS = ['workPrice', 'deposit', 'remainingPayment'] as const;
+type ClientMoneyField = (typeof CLIENT_MONEY_FIELDS)[number];
+
+/** Заказ, у которого скрытые от сотрудника суммы заменены на `null`. */
+export type OrderWithVisibleFees<T> = Omit<T, StageFeeField | ClientMoneyField> &
+  Readonly<Record<StageFeeField | ClientMoneyField, string | null>>;
 
 /**
  * Скрывает чужие расценки.
@@ -297,6 +301,11 @@ export type OrderWithVisibleFees<T> = Omit<T, StageFeeField> &
  * обязаны различаться, иначе интерфейс честно напишет исполнителю, что за
  * его этап не платят ничего.
  *
+ * Деньги клиента (стоимость, предоплата, остаток) — то же правило, только
+ * круг шире: их видят руководство и продавец, который эту цену назвал.
+ * Цеху — швее, мастеру, ОТК, установщику, карнизчику — сколько заплатил
+ * клиент, знать не нужно.
+ *
  * Фильтрация здесь, а не в компонентах: скрытая в вёрстке сумма всё равно
  * уехала бы клиенту в ответе tRPC.
  */
@@ -305,6 +314,7 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   user: { readonly id: number; readonly roles: readonly Role[] },
 ): OrderWithVisibleFees<T> {
   const seesEverything = isManagement(user.roles);
+  const seesClientMoney = seesEverything || user.roles.includes(Role.SELLER);
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
@@ -315,7 +325,11 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
     ]),
   ) as Record<StageFeeField, string | null>;
 
-  return { ...order, ...visible };
+  const money = Object.fromEntries(
+    CLIENT_MONEY_FIELDS.map((field) => [field, seesClientMoney ? order[field] : null]),
+  ) as Record<ClientMoneyField, string | null>;
+
+  return { ...order, ...visible, ...money };
 }
 
 /* -------------------------------------------------------------------------- */

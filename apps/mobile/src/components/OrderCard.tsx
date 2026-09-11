@@ -50,7 +50,8 @@ export function OrderCard({
   readonly status: OrderStatusName;
   readonly priority: PriorityName;
   readonly deadline: string | null;
-  readonly workPrice: string;
+  /** `null` — сумму этому сотруднику не показывают. */
+  readonly workPrice: string | null;
   readonly onPress: () => void;
 }): ReactElement {
   const { t } = useLocale();
@@ -90,7 +91,9 @@ export function OrderCard({
         <Text style={[styles.deadline, isOverdue ? styles.overdue : null]} numberOfLines={1}>
           {isOverdue ? `просрочен · ${formatIsoDateShort(deadline)}` : deadlineLabel}
         </Text>
-        <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
+        {workPrice !== null && (
+          <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
+        )}
       </View>
     </View>
   );

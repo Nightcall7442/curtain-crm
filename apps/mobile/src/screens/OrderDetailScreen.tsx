@@ -242,16 +242,21 @@ export function OrderDetailScreen({
                 : new Date(data.deadline).toLocaleDateString('ru-RU')
             }
           />
-          <Row label="Стоимость" value={formatMoney(parseMoney(data.workPrice))} />
-          <Row label="Предоплата" value={formatMoney(parseMoney(data.deposit))} />
-          <Row
-            label="Остаток"
-            value={
-              data.remainingPayment === null
-                ? '—'
-                : formatMoney(parseMoney(data.remainingPayment))
-            }
-          />
+          {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
+          {data.workPrice !== null && data.deposit !== null && (
+            <>
+              <Row label="Стоимость" value={formatMoney(parseMoney(data.workPrice))} />
+              <Row label="Предоплата" value={formatMoney(parseMoney(data.deposit))} />
+              <Row
+                label="Остаток"
+                value={
+                  data.remainingPayment === null
+                    ? '—'
+                    : formatMoney(parseMoney(data.remainingPayment))
+                }
+              />
+            </>
+          )}
           <Row label="Филиал" value={data.branch.name} />
         </View>
 
@@ -600,8 +605,8 @@ export function OrderDetailScreen({
         <OrderManagement
           orderId={orderId}
           orderType={data.orderType}
-          workPrice={data.workPrice}
-          deposit={data.deposit}
+          workPrice={data.workPrice ?? '0'}
+          deposit={data.deposit ?? '0'}
           fees={{
             measurementFee: data.measurementFee,
             cuttingFee: data.cuttingFee,

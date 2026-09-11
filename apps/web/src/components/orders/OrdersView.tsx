@@ -673,17 +673,20 @@ export function OrdersView({
             key: 'price',
             header: 'Сумма, сум',
             align: 'right',
-            sortValue: (row) => parseMoney(row.workPrice),
-            render: (row) => (
-              // Точная сумма — по наведению: в списке сравнивают порядки
-              // величин, а не тийины.
-              <span
-                className="font-mono text-primary"
-                title={formatMoney(parseMoney(row.workPrice), { locale })}
-              >
-                {formatMoneyShort(parseMoney(row.workPrice), { locale, withoutCurrency: true })}
-              </span>
-            ),
+            sortValue: (row) => (row.workPrice === null ? 0 : parseMoney(row.workPrice)),
+            render: (row) =>
+              row.workPrice === null ? (
+                <span className="text-muted">—</span>
+              ) : (
+                // Точная сумма — по наведению: в списке сравнивают порядки
+                // величин, а не тийины.
+                <span
+                  className="font-mono text-primary"
+                  title={formatMoney(parseMoney(row.workPrice), { locale })}
+                >
+                  {formatMoneyShort(parseMoney(row.workPrice), { locale, withoutCurrency: true })}
+                </span>
+              ),
           },
           {
             key: 'remaining',
