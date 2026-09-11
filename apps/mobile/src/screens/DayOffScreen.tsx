@@ -15,7 +15,7 @@ import {
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
 import { MonthSchedule } from '../components/MonthSchedule';
-import { useLocale } from '../hooks/useLocale';
+import { useLocale, type Translate } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
@@ -33,7 +33,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * ради одного поля значило бы разойтись с остальными.
  */
 export function DayOffScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -51,7 +51,7 @@ export function DayOffScreen(): ReactElement {
       setShowErrors(false);
     },
     onError(error) {
-      Alert.alert('Не удалось отправить запрос', error.message);
+      Alert.alert(m('dayoff.sendError'), error.message);
     },
   });
 
@@ -60,11 +60,11 @@ export function DayOffScreen(): ReactElement {
       void myRequests.refetch();
     },
     onError(error) {
-      Alert.alert('Не удалось отозвать запрос', error.message);
+      Alert.alert(m('dayoff.withdrawError'), error.message);
     },
   });
 
-  const errors = validate({ startDate, endDate });
+  const errors = validate({ startDate, endDate }, m);
   const hasErrors = Object.keys(errors).length > 0;
 
   const submit = (): void => {
@@ -79,10 +79,10 @@ export function DayOffScreen(): ReactElement {
   };
 
   const confirmCancel = (id: number, period: string): void => {
-    Alert.alert(`Отозвать запрос на ${period}?`, 'Руководитель больше не увидит его в очереди на решение.', [
-      { text: 'Не отзывать', style: 'cancel' },
+    Alert.alert(m('dayoff.withdrawTitle', { period }), m('dayoff.withdrawBody'), [
+      { text: m('dayoff.keep'), style: 'cancel' },
       {
-        text: 'Отозвать',
+        text: m('dayoff.withdraw'),
         style: 'destructive',
         onPress: () => {
           cancel.mutate({ id });
@@ -104,11 +104,11 @@ export function DayOffScreen(): ReactElement {
         <MonthSchedule />
 
         <Card>
-          <CardTitle title="Новый запрос" icon="calendar" />
+          <CardTitle title={m('dayoff.new')} icon="calendar" />
 
           <View style={styles.dates}>
             <View style={styles.dateItem}>
-              <Field label="С" required error={showErrors ? errors.startDate : undefined}>
+              <Field label={m('dayoff.from')} required error={showErrors ? errors.startDate : undefined}>
                 <Input
                   value={startDate}
                   onChangeText={setStartDate}
@@ -119,7 +119,7 @@ export function DayOffScreen(): ReactElement {
               </Field>
             </View>
             <View style={styles.dateItem}>
-              <Field label="По" required error={showErrors ? errors.endDate : undefined}>
+              <Field label={m('dayoff.to')} required error={showErrors ? errors.endDate : undefined}>
                 <Input
                   value={endDate}
                   onChangeText={setEndDate}
@@ -131,11 +131,11 @@ export function DayOffScreen(): ReactElement {
             </View>
           </View>
 
-          <Field label="Причина" hint="Не обязательно">
+          <Field label={m('dayoff.reason')} hint={m('dayoff.optional')}>
             <Input
               value={reason}
               onChangeText={setReason}
-              placeholder="Например: семейные обстоятельства"
+              placeholder={m('dayoff.reasonPlaceholder')}
               multiline
             />
           </Field>
@@ -153,20 +153,20 @@ export function DayOffScreen(): ReactElement {
             {request.isPending ? (
               <ActivityIndicator color={colors.onAccent} />
             ) : (
-              <Text style={styles.submitText}>Отправить запрос</Text>
+              <Text style={styles.submitText}>{m('dayoff.submit')}</Text>
             )}
           </Pressable>
         </Card>
 
         <Card>
-          <CardTitle title="Мои запросы" icon="calendar" />
+          <CardTitle title={m('dayoff.mine')} icon="calendar" />
 
           {myRequests.isLoading ? (
             <Skeleton />
           ) : myRequests.isError ? (
             <ErrorState />
           ) : (myRequests.data ?? []).length === 0 ? (
-            <Empty message="Запросов пока нет" />
+            <Empty message={m('dayoff.none')} />
           ) : (
             (myRequests.data ?? []).map((item) => {
               const period = formatPeriod(item.startDate, item.endDate);
@@ -180,7 +180,7 @@ export function DayOffScreen(): ReactElement {
 
                   {item.reason !== null && <Text style={styles.requestNote}>{item.reason}</Text>}
                   {item.rejectionReason !== null && (
-                    <Text style={styles.requestRejection}>{`Причина отказа: ${item.rejectionReason}`}</Text>
+                    <Text style={styles.requestRejection}>{m('dayoff.rejection', { reason: item.rejectionReason })}</Text>
                   )}
 
                   {item.status === DayOffStatus.PENDING && (
@@ -192,7 +192,7 @@ export function DayOffScreen(): ReactElement {
                       hitSlop={8}
                       disabled={cancel.isPending}
                     >
-                      <Text style={styles.cancelLink}>Отозвать</Text>
+                      <Text style={styles.cancelLink}>{m('dayoff.withdraw')}</Text>
                     </Pressable>
                   )}
                 </View>
@@ -234,22 +234,22 @@ function statusTone(status: DayOffStatus): 'neutral' | 'positive' | 'warning' | 
 function validate(values: {
   readonly startDate: string;
   readonly endDate: string;
-}): Partial<Record<'startDate' | 'endDate', string>> {
+}, m: Translate): Partial<Record<'startDate' | 'endDate', string>> {
   const errors: Record<string, string> = {};
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
   if (!datePattern.test(values.startDate.trim())) {
-    errors['startDate'] = 'Дата в виде 2026-09-15';
+    errors['startDate'] = m('dayoff.dateFormat');
   }
   if (!datePattern.test(values.endDate.trim())) {
-    errors['endDate'] = 'Дата в виде 2026-09-15';
+    errors['endDate'] = m('dayoff.dateFormat');
   }
   if (
     errors['startDate'] === undefined &&
     errors['endDate'] === undefined &&
     values.endDate.trim() < values.startDate.trim()
   ) {
-    errors['endDate'] = 'Конец раньше начала';
+    errors['endDate'] = m('dayoff.endBeforeStart');
   }
 
   return errors;

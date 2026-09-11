@@ -6,6 +6,7 @@ import { Card } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 /**
  * Куда ведут пункты раздела.
  *
@@ -46,6 +47,7 @@ interface Entry {
 }
 
 export function ManagementScreen(): ReactElement {
+  const { m } = useLocale();
   const navigation = useNavigation();
   const now = new Date();
 
@@ -72,22 +74,22 @@ export function ManagementScreen(): ReactElement {
     {
       route: 'DayOffApprovals',
       icon: 'calendar',
-      title: 'Отгулы',
-      hint: 'Одобрить или отклонить заявку',
+      title: m('mgmt.dayOff'),
+      hint: m('mgmt.dayOffHint'),
       badge: pendingDayOff.data?.total ?? null,
     },
     {
       route: 'PayrollApprovals',
       icon: 'paid',
-      title: 'Зарплата',
-      hint: 'Утвердить расчёт и отметить выплату',
+      title: m('mgmt.payroll'),
+      hint: m('mgmt.payrollHint'),
       badge: payrollWaiting,
     },
     {
       route: 'TaskAssign',
       icon: 'assigned',
-      title: 'Поручения',
-      hint: 'Выдать задачу сотруднику',
+      title: m('mgmt.tasks'),
+      hint: m('mgmt.tasksHint'),
       badge: tasks.data?.total ?? null,
     },
     {
@@ -98,8 +100,8 @@ export function ManagementScreen(): ReactElement {
       */
       route: 'PurchasePrices',
       icon: 'payroll',
-      title: 'Закупочные материалы',
-      hint: 'Почём покупаем и что стоит на витрине',
+      title: m('mgmt.prices'),
+      hint: m('mgmt.pricesHint'),
       /*
         Бейджем помечается то, что ждёт решения (отгулы, зарплата). Число
         позиций витрины ничего не ждёт — оно просто было под рукой.
@@ -121,7 +123,7 @@ export function ManagementScreen(): ReactElement {
             accessibilityLabel={
               entry.badge === null || entry.badge === 0
                 ? entry.title
-                : `${entry.title}, ждёт: ${entry.badge.toString()}`
+                : m('mgmt.waiting', { title: entry.title, n: entry.badge })
             }
             style={({ pressed }) => [
               styles.row,

@@ -18,6 +18,7 @@ import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, typography } from '../theme';
 
 import { Avatar } from './Avatar';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Переключение между сотрудниками — столбик кругов над вкладкой «Профиль».
@@ -45,6 +46,7 @@ export function AccountSwitcher({
   readonly onClose: () => void;
 }): ReactElement | null {
   const { user, switchAccount, addAccount, impersonate } = useAuth();
+  const { m } = useLocale();
   const isCeo = useIsCeo();
   const insets = useSafeAreaInsets();
 
@@ -127,8 +129,8 @@ export function AccountSwitcher({
       .catch((error: unknown) => {
         notifyError();
         Alert.alert(
-          'Не удалось войти',
-          error instanceof Error ? error.message : 'Попробуйте ещё раз',
+          m('switch.loginError'),
+          error instanceof Error ? error.message : m('switch.tryAgain'),
         );
         onFail();
       })
@@ -150,12 +152,12 @@ export function AccountSwitcher({
 
     if (!isCurrentSaved) {
       Alert.alert(
-        'Сначала сохраните этот вход',
-        `Иначе вернуться к ${user?.fullName ?? 'себе'} можно будет только паролем.`,
+        m('switch.saveFirst'),
+        m('switch.saveFirstBody', { name: user?.fullName ?? m('switch.self') }),
         [
-          { text: 'Отмена', style: 'cancel' },
+          { text: m('common.cancel'), style: 'cancel' },
           {
-            text: 'Сохранить',
+            text: m('auth.save'),
             onPress: () => {
               void saveCurrent();
             },
@@ -166,12 +168,12 @@ export function AccountSwitcher({
     }
 
     Alert.alert(
-      'Добавить аккаунт',
-      `Откроется экран входа. Вернуться к ${user?.fullName ?? 'себе'} можно будет одним нажатием, без пароля.`,
+      m('switch.add'),
+      m('switch.addBody', { name: user?.fullName ?? m('switch.self') }),
       [
-        { text: 'Отмена', style: 'cancel' },
+        { text: m('common.cancel'), style: 'cancel' },
         {
-          text: 'Добавить',
+          text: m('switch.addBtn'),
           onPress: () => {
             onClose();
             void addAccount();
@@ -224,7 +226,7 @@ export function AccountSwitcher({
         style={StyleSheet.absoluteFill}
         onPress={onClose}
         accessibilityRole="button"
-        accessibilityLabel="Закрыть"
+        accessibilityLabel={m('common.close')}
       />
 
       <Animated.View
@@ -262,7 +264,7 @@ export function AccountSwitcher({
               onPress={row.onPress}
               disabled={busyId !== null}
               accessibilityRole="button"
-              accessibilityLabel={`Войти как ${row.fullName}`}
+              accessibilityLabel={m('switch.loginAs', { name: row.fullName })}
               style={styles.circleShell}
             >
               {busyId === row.userId ? (
@@ -286,7 +288,7 @@ export function AccountSwitcher({
               onPress={handleAdd}
               disabled={busyId !== null}
               accessibilityRole="button"
-              accessibilityLabel="Добавить аккаунт"
+              accessibilityLabel={m('switch.add')}
               style={styles.circleShell}
             >
               <View style={[styles.circle, styles.circleAdd]}>

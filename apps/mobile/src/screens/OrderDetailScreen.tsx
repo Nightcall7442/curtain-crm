@@ -458,7 +458,7 @@ export function OrderDetailScreen({
               {item.widthCm !== null && item.heightCm !== null && (
                 <Text style={styles.itemDetail}>
                   {m('order.size', { w: trimNumber(item.widthCm), h: trimNumber(item.heightCm) })}
-                  {item.areaM2 === null ? '' : ` · ${trimNumber(item.areaM2, 2)} м²`}
+                  {item.areaM2 === null ? '' : m('order.area', { a: trimNumber(item.areaM2, 2) })}
                 </Text>
               )}
               {item.materials.length > 0 && (

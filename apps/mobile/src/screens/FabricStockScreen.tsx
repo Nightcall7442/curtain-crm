@@ -1,4 +1,4 @@
-import { STOCK_KIND_LABELS_RU, STOCK_KINDS, type StockKind } from '@curtain-crm/shared';
+import { STOCK_KIND_LABELS, STOCK_KINDS, type StockKind } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -19,6 +19,7 @@ import { Icon } from '../components/Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Склад с телефона: какие коды бывают и что за ними стоит.
@@ -40,6 +41,7 @@ export function FabricStockScreen({
   /** Переключатель разделов сверху — его рисует экран закупочных материалов. */
   readonly header?: ReactElement;
 } = {}): ReactElement {
+  const { m, t } = useLocale();
   const utils = trpc.useUtils();
 
   const [filter, setFilter] = useState<Filter>('all');
@@ -70,18 +72,18 @@ export function FabricStockScreen({
   };
 
   const create = trpc.catalog.create.useMutation({
-    onSuccess: (row) => void done('Код заведён', row.name),
+    onSuccess: (row) => void done(m('fabric.codeCreated'), row.name),
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось завести код', error.message);
+      Alert.alert(m('fabric.createError'), error.message);
     },
   });
 
   const update = trpc.catalog.update.useMutation({
-    onSuccess: (row) => void done('Сохранено', row.name),
+    onSuccess: (row) => void done(m('common.saved'), row.name),
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось сохранить', error.message);
+      Alert.alert(m('common.saveError'), error.message);
     },
   });
 
@@ -114,7 +116,7 @@ export function FabricStockScreen({
 
         <Card>
           <CardTitle
-            title="Склад"
+            title={m('fabric.title')}
             icon="window"
             action={
               formOpen ? undefined : (
@@ -128,7 +130,7 @@ export function FabricStockScreen({
                   accessibilityRole="button"
                   style={({ pressed }) => [styles.addButton, pressed ? styles.pressed : null]}
                 >
-                  <Text style={styles.addButtonText}>Позиция</Text>
+                  <Text style={styles.addButtonText}>{m('fabric.item')}</Text>
                 </Pressable>
               )
             }
@@ -138,22 +140,22 @@ export function FabricStockScreen({
             <>
               {/* Вид у заведённого кода не меняется: это другой справочник. */}
               {editingId === null && (
-                <Field label="Что это">
+                <Field label={m('fabric.what')}>
                   <ChipSelect
                     value={kind}
                     onChange={setKind}
                     options={STOCK_KINDS.map((value) => ({
                       value,
-                      label: STOCK_KIND_LABELS_RU[value],
+                      label: t(STOCK_KIND_LABELS, value),
                     }))}
                   />
                 </Field>
               )}
 
-              <Field label="Код с бирки" hint="Наберите или отсканируйте">
+              <Field label={m('fabric.code')} hint={m('fabric.codeHint')}>
                 <View style={styles.codeRow}>
                   <View style={styles.codeInput}>
-                    <Input value={code} onChangeText={setCode} placeholder="Например: П-31" />
+                    <Input value={code} onChangeText={setCode} placeholder={m('fabric.codeExample')} />
                   </View>
                   {/*
                     Рулон с биркой в руках — сканер здесь уместнее всего: код
@@ -165,7 +167,7 @@ export function FabricStockScreen({
                       setScanning(true);
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Считать код камерой"
+                    accessibilityLabel={m('create.scanA11y')}
                     style={({ pressed }) => [styles.scanButton, pressed ? styles.pressed : null]}
                   >
                     <Icon name="camera" size={18} color={colors.accent} />
@@ -173,11 +175,11 @@ export function FabricStockScreen({
                 </View>
               </Field>
 
-              <Field label="Мини-описание" hint="Его увидит продавец сразу после ввода кода">
+              <Field label={m('fabric.description')} hint={m('fabric.descriptionHint')}>
                 <Input
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="Например: тёмная сторона, плотный"
+                  placeholder={m('fabric.descriptionExample')}
                   multiline
                 />
               </Field>
@@ -188,7 +190,7 @@ export function FabricStockScreen({
                   accessibilityRole="button"
                   style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
                 >
-                  <Text style={styles.cancelText}>Отмена</Text>
+                  <Text style={styles.cancelText}>{m('common.cancel')}</Text>
                 </Pressable>
 
                 <Pressable
@@ -218,7 +220,7 @@ export function FabricStockScreen({
                     <ActivityIndicator color={colors.onAccent} size="small" />
                   ) : (
                     <Text style={styles.submitText}>
-                      {editingId === null ? 'Завести' : 'Сохранить'}
+                      {editingId === null ? m('fabric.create') : m('emp.save')}
                     </Text>
                   )}
                 </Pressable>
@@ -226,15 +228,15 @@ export function FabricStockScreen({
             </>
           )}
 
-          <Field label="Что смотрим">
+          <Field label={m('fabric.filter')}>
             <ChipSelect
               value={filter}
               onChange={setFilter}
               options={[
-                { value: 'all', label: 'Все' },
+                { value: 'all', label: m('fabric.all') },
                 ...STOCK_KINDS.map((value) => ({
                   value,
-                  label: STOCK_KIND_LABELS_RU[value],
+                  label: t(STOCK_KIND_LABELS, value),
                 })),
               ]}
             />
@@ -249,7 +251,7 @@ export function FabricStockScreen({
               <Input
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Поиск по коду или описанию"
+                placeholder={m('fabric.search')}
               />
             </View>
           )}
@@ -258,8 +260,8 @@ export function FabricStockScreen({
             <Skeleton />
           ) : items.length === 0 ? (
             <Empty
-              message={all.length === 0 ? 'Кодов пока нет' : 'Ничего не нашлось'}
-              hint={all.length === 0 ? 'Заведите первый — его увидит продавец' : 'Проверьте код'}
+              message={all.length === 0 ? m('fabric.noCodes') : m('fabric.notFound')}
+              hint={all.length === 0 ? m('fabric.noCodesHint') : m('fabric.checkCode')}
             />
           ) : (
             items.map((row) => (
@@ -275,13 +277,13 @@ export function FabricStockScreen({
                   setFormOpen(true);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`«${row.name}», долгое нажатие — правка`}
+                accessibilityLabel={m('fabric.rowA11y', { name: row.name })}
                 style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
               >
                 <View style={styles.itemText}>
                   <Text style={styles.itemName}>{row.name}</Text>
                   <Text style={styles.itemMeta} numberOfLines={2}>
-                    {`${STOCK_KIND_LABELS_RU[row.kind as StockKind]}${
+                    {`${t(STOCK_KIND_LABELS, row.kind as StockKind)}${
                       row.description === null ? '' : ` · ${row.description}`
                     }`}
                   </Text>
@@ -290,16 +292,13 @@ export function FabricStockScreen({
             ))
           )}
 
-          <Text style={styles.note}>
-            Долгое нажатие на код — правка описания. Вывести код из обращения можно в
-            веб-панели.
-          </Text>
+          <Text style={styles.note}>{m('fabric.note')}</Text>
         </Card>
       </ScrollView>
 
       <CodeScanner
         visible={scanning}
-        label="Код с бирки"
+        label={m('fabric.code')}
         onScan={setCode}
         onClose={() => {
           setScanning(false);

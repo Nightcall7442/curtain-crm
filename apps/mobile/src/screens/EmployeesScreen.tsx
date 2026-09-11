@@ -44,7 +44,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * в панели, где директор сидит один.
  */
 export function EmployeesScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
 
   const [search, setSearch] = useState('');
@@ -67,7 +67,7 @@ export function EmployeesScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось поставить фото', error.message);
+      Alert.alert(m('emp.avatarSetError'), error.message);
     },
   });
 
@@ -78,7 +78,7 @@ export function EmployeesScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось убрать фото', error.message);
+      Alert.alert(m('emp.avatarRemoveError'), error.message);
     },
   });
 
@@ -93,10 +93,8 @@ export function EmployeesScreen(): ReactElement {
 
     if (!permission.granted) {
       Alert.alert(
-        'Нет доступа',
-        fromCamera
-          ? 'Разрешите доступ к камере в настройках телефона.'
-          : 'Разрешите доступ к галерее в настройках телефона.',
+        m('photo.noAccess'),
+        fromCamera ? m('photo.allowCamera') : m('photo.allowGallery'),
       );
       return;
     }
@@ -123,7 +121,7 @@ export function EmployeesScreen(): ReactElement {
 
     const asset = result.assets[0];
     if (asset?.base64 == null) {
-      Alert.alert('Не удалось прочитать снимок', 'Попробуйте ещё раз.');
+      Alert.alert(m('photo.readError'), m('common.tryAgain'));
       return;
     }
 
@@ -138,21 +136,21 @@ export function EmployeesScreen(): ReactElement {
   };
 
   const chooseAvatarAction = (person: { readonly id: number; readonly avatarUrl: string | null }): void => {
-    Alert.alert('Фото сотрудника', 'Что сделать?', [
-      { text: 'Снять камерой', onPress: () => void pickAvatar(person.id, true) },
-      { text: 'Выбрать из галереи', onPress: () => void pickAvatar(person.id, false) },
+    Alert.alert(m('emp.avatarTitle'), m('emp.avatarWhat'), [
+      { text: m('emp.avatarCamera'), onPress: () => void pickAvatar(person.id, true) },
+      { text: m('emp.avatarGallery'), onPress: () => void pickAvatar(person.id, false) },
       ...(person.avatarUrl === null
         ? []
         : [
             {
-              text: 'Убрать фото',
+              text: m('emp.avatarRemove'),
               style: 'destructive' as const,
               onPress: () => {
                 removeAvatar.mutate({ userId: person.id });
               },
             },
           ]),
-      { text: 'Отмена', style: 'cancel' as const },
+      { text: m('common.cancel'), style: 'cancel' as const },
     ]);
   };
 
@@ -196,7 +194,7 @@ export function EmployeesScreen(): ReactElement {
       setOpenId(null);
       await refresh();
     },
-    onError: fail('Не удалось сохранить'),
+    onError: fail(m('emp.saveError')),
   });
 
   const setActive = trpc.users.setActive.useMutation({
@@ -204,7 +202,7 @@ export function EmployeesScreen(): ReactElement {
       notifySuccess();
       await refresh();
     },
-    onError: fail('Не удалось изменить'),
+    onError: fail(m('emp.changeError')),
   });
 
   const grantRole = trpc.users.grantRole.useMutation({
@@ -212,7 +210,7 @@ export function EmployeesScreen(): ReactElement {
       notifySuccess();
       await refresh();
     },
-    onError: fail('Не удалось выдать роль'),
+    onError: fail(m('emp.grantError')),
   });
 
   const revokeRole = trpc.users.revokeRole.useMutation({
@@ -220,7 +218,7 @@ export function EmployeesScreen(): ReactElement {
       notifySuccess();
       await refresh();
     },
-    onError: fail('Не удалось снять роль'),
+    onError: fail(m('emp.revokeError')),
   });
 
   const create = trpc.users.create.useMutation({
@@ -232,9 +230,9 @@ export function EmployeesScreen(): ReactElement {
       setNewPassword('');
       setNewRoles([]);
       await refresh();
-      Alert.alert('Сотрудник принят', `${person.fullName} может войти по своему номеру`);
+      Alert.alert(m('emp.hired'), m('emp.hiredBody', { name: person.fullName }));
     },
-    onError: fail('Не удалось принять сотрудника'),
+    onError: fail(m('emp.hireError')),
   });
 
   const openEditor = (person: {
@@ -291,7 +289,7 @@ export function EmployeesScreen(): ReactElement {
         {/* --- Приём нового ------------------------------------------------- */}
         <Card>
           <CardTitle
-            title="Новый сотрудник"
+            title={m('emp.new')}
             icon="person"
             action={
               <Pressable
@@ -301,18 +299,18 @@ export function EmployeesScreen(): ReactElement {
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.toggle, pressed ? styles.pressed : null]}
               >
-                <Text style={styles.toggleText}>{isCreating ? 'Скрыть' : 'Принять'}</Text>
+                <Text style={styles.toggleText}>{isCreating ? m('emp.hide') : m('emp.hire')}</Text>
               </Pressable>
             }
           />
 
           {isCreating && (
             <>
-              <Field label="Имя и фамилия">
+              <Field label={m('emp.fullName')}>
                 <Input value={newName} onChangeText={setNewName} autoCapitalize="words" />
               </Field>
 
-              <Field label="Рабочий телефон" hint="По нему сотрудник входит в приложение">
+              <Field label={m('emp.phone')} hint={m('emp.phoneHint')}>
                 <Input
                   value={newPhone}
                   onChangeText={setNewPhone}
@@ -321,11 +319,11 @@ export function EmployeesScreen(): ReactElement {
                 />
               </Field>
 
-              <Field label="Пароль" hint="Не короче восьми знаков — сотрудник сменит его сам">
+              <Field label={m('emp.password')} hint={m('emp.passwordHint')}>
                 <Input value={newPassword} onChangeText={setNewPassword} />
               </Field>
 
-              <Field label="Роли" hint="Определяют, что человек видит и делает">
+              <Field label={m('emp.roles')} hint={m('emp.rolesHint')}>
                 <View style={styles.roles}>
                   {ROLES.map((role) => {
                     const picked = newRoles.includes(role);
@@ -372,7 +370,7 @@ export function EmployeesScreen(): ReactElement {
                 {create.isPending ? (
                   <ActivityIndicator color={colors.onAccent} />
                 ) : (
-                  <Text style={styles.submitText}>Принять на работу</Text>
+                  <Text style={styles.submitText}>{m('emp.hireSubmit')}</Text>
                 )}
               </Pressable>
             </>
@@ -381,16 +379,16 @@ export function EmployeesScreen(): ReactElement {
 
         {/* --- Список ------------------------------------------------------- */}
         <Card>
-          <CardTitle title="Сотрудники" icon="people" />
+          <CardTitle title={m('emp.title')} icon="people" />
 
-          <Field label="Поиск">
-            <Input value={search} onChangeText={setSearch} placeholder="Имя или телефон" />
+          <Field label={m('emp.search')}>
+            <Input value={search} onChangeText={setSearch} placeholder={m('emp.searchPlaceholder')} />
           </Field>
 
           {employees.data === undefined ? (
             <Skeleton />
           ) : rows.length === 0 ? (
-            <Empty message="Никого не найдено" />
+            <Empty message={m('emp.notFound')} />
           ) : (
             rows.map((person) => (
               <View key={person.id}>
@@ -399,7 +397,7 @@ export function EmployeesScreen(): ReactElement {
                     openEditor(person);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Открыть карточку: ${person.fullName}`}
+                  accessibilityLabel={m('emp.openCard', { name: person.fullName })}
                   style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
                 >
                   <View style={styles.rowText}>
@@ -416,13 +414,13 @@ export function EmployeesScreen(): ReactElement {
                     </Text>
                   </View>
 
-                  {!person.isActive && <Pill text="Отключён" tone="neutral" />}
+                  {!person.isActive && <Pill text={m('emp.disabled')} tone="neutral" />}
                   <Icon name="chevron" size={16} color={colors.textMuted} />
                 </Pressable>
 
                 {openId === person.id && (
                   <View style={styles.editor}>
-                    <Field label="Фото" hint="Ставит и убирает только директор">
+                    <Field label={m('emp.photo')} hint={m('emp.photoHint')}>
                       <Pressable
                         onPress={() => {
                           chooseAvatarAction(person);
@@ -435,24 +433,24 @@ export function EmployeesScreen(): ReactElement {
                         ]}
                       >
                         <Text style={styles.actionText}>
-                          {person.avatarUrl === null ? 'Поставить фото' : 'Заменить или убрать'}
+                          {person.avatarUrl === null ? m('emp.setPhoto') : m('emp.replacePhoto')}
                         </Text>
                       </Pressable>
                     </Field>
 
-                    <Field label="Имя и фамилия">
+                    <Field label={m('emp.fullName')}>
                       <Input value={fullName} onChangeText={setFullName} autoCapitalize="words" />
                     </Field>
 
-                    <Field label="Телефон">
+                    <Field label={m('emp.phoneLabel')}>
                       <Input value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
                     </Field>
 
-                    <Field label="Должность">
+                    <Field label={m('emp.jobTitle')}>
                       <Input value={jobTitle} onChangeText={setJobTitle} />
                     </Field>
 
-                    <Field label="Подразделение">
+                    <Field label={m('emp.department')}>
                       <View style={styles.roles}>
                         {DEPARTMENTS.map((value) => (
                           <Pressable
@@ -483,7 +481,7 @@ export function EmployeesScreen(): ReactElement {
                       записью в журнале. Собрать их в общее «Сохранить»
                       значило бы потерять, кто и когда выдал доступ.
                     */}
-                    <Field label="Роли" hint="Нажатие сразу выдаёт или снимает">
+                    <Field label={m('emp.roles')} hint={m('emp.rolesTapHint')}>
                       <View style={styles.roles}>
                         {ROLES.map((role) => {
                           const has = person.roles.includes(role);
@@ -524,7 +522,7 @@ export function EmployeesScreen(): ReactElement {
                         <Text
                           style={person.isActive ? styles.actionDangerText : styles.actionText}
                         >
-                          {person.isActive ? 'Отключить' : 'Вернуть'}
+                          {person.isActive ? m('emp.disable') : m('emp.restore')}
                         </Text>
                       </Pressable>
 
@@ -549,15 +547,12 @@ export function EmployeesScreen(): ReactElement {
                         {update.isPending ? (
                           <ActivityIndicator color={colors.onAccent} size="small" />
                         ) : (
-                          <Text style={styles.actionPrimaryText}>Сохранить</Text>
+                          <Text style={styles.actionPrimaryText}>{m('emp.save')}</Text>
                         )}
                       </Pressable>
                     </View>
 
-                    <Text style={styles.note}>
-                      Сброс пароля остался в панели: новый пароль надо кому-то
-                      передать, и показывать его посреди цеха не стоит.
-                    </Text>
+                    <Text style={styles.note}>{m('emp.resetNote')}</Text>
                   </View>
                 )}
               </View>
