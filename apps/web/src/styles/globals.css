@@ -338,52 +338,52 @@
         дешевле светлой. Здесь фон уходит глубже и зеленее, карточка встаёт
         заметно выше него, а рамка — тёплая, в сторону латуни.
       */
-      --surface-base: 13 21 18;
-      --surface-panel: 25 37 31;
-      --surface-raised: 36 51 43;
-      --surface-nav: 9 15 12;
-      --surface-nav-raised: 21 32 26;
-      --text-on-nav: 230 237 233;
-      --border-subtle: 47 60 51;
-      --border-strong: 66 82 70;
-      --text-primary: 230 237 233;
-      --text-secondary: 175 188 181;
-      --text-muted: 147 161 154;
-      --accent: 99 185 148;
-      --accent-strong: 127 204 171;
-      --accent-bright: 79 168 126;
-      --accent-muted: 65 96 79;
-      --accent-soft: 27 42 35;
-      --text-on-accent: 11 20 16;
-      --series-current: 99 185 148;
-      --series-previous: 122 134 128;
+      --surface-base: 7 15 11;
+      --surface-panel: 14 29 22;
+      --surface-raised: 22 43 33;
+      --surface-nav: 9 20 15;
+      --surface-nav-raised: 18 38 29;
+      --text-on-nav: 234 245 238;
+      --border-subtle: 30 56 44;
+      --border-strong: 44 82 63;
+      --text-primary: 237 246 240;
+      --text-secondary: 170 194 181;
+      --text-muted: 124 150 137;
+      --accent: 61 255 160;
+      --accent-strong: 124 255 192;
+      --accent-bright: 46 224 139;
+      --accent-muted: 38 96 70;
+      --accent-soft: 17 49 36;
+      --text-on-accent: 5 21 14;
+      --series-current: 61 255 160;
+      --series-previous: 110 132 122;
 
-      --positive: 95 190 132;
-      --warning: 214 169 60;
-      --danger: 232 117 127;
-      --info: 111 169 232;
+      --positive: 61 255 160;
+      --warning: 255 178 74;
+      --danger: 255 107 122;
+      --info: 110 178 255;
 
-      --stage-new: 111 169 232;
-      --stage-measurement: 84 174 190;
-      --stage-cutting: 211 169 63;
-      --stage-sewing: 210 143 196;
-      --stage-qc: 170 196 78;
-      --stage-ready: 233 146 87;
-      --stage-installation: 158 147 228;
-      --stage-done: 99 185 148;
+      --stage-new: 110 178 255;
+      --stage-measurement: 84 210 220;
+      --stage-cutting: 255 200 80;
+      --stage-sewing: 224 150 230;
+      --stage-qc: 180 230 90;
+      --stage-ready: 255 156 92;
+      --stage-installation: 166 160 255;
+      --stage-done: 61 255 160;
 
       /* Стекло в темноте — затемняющее, а не осветляющее. */
-      --glass-light: 18 25 21;
-      --glass-light-alpha: 0.72;
-      --glass-nav-alpha: 0.86;
+      --glass-light: 9 20 15;
+      --glass-light-alpha: 0.66;
+      --glass-nav-alpha: 0.72;
 
-      --swatch-forest: #63b994;
+      --swatch-forest: #3dffa0;
       --swatch-indigo: #8d9bd4;
       --swatch-clay: #db8b69;
 
       /* Латунь в темноте светлее — иначе линия пропадает в фоне. */
-      --brass: 201 162 76;
-      --brass-ink: 214 180 104;
+      --brass: 61 255 160;
+      --brass-ink: 124 255 192;
     }
 
     :root[data-skin='indigo']:not([data-theme='light']) {
@@ -443,50 +443,50 @@
     color-scheme: dark;
 
     /* Те же значения, что в медиазапросе выше: хвоя ночью, карточка выше фона. */
-    --surface-base: 13 21 18;
-    --surface-panel: 25 37 31;
-    --surface-raised: 36 51 43;
-    --surface-nav: 9 15 12;
-    --surface-nav-raised: 21 32 26;
-    --text-on-nav: 230 237 233;
-    --border-subtle: 47 60 51;
-    --border-strong: 66 82 70;
-    --text-primary: 230 237 233;
-    --text-secondary: 175 188 181;
-    --text-muted: 147 161 154;
-    --accent: 99 185 148;
-    --accent-strong: 127 204 171;
-    --accent-bright: 79 168 126;
-    --accent-muted: 65 96 79;
-    --accent-soft: 27 42 35;
-    --text-on-accent: 11 20 16;
-    --series-current: 99 185 148;
-    --series-previous: 122 134 128;
+    --surface-base: 7 15 11;
+    --surface-panel: 14 29 22;
+    --surface-raised: 22 43 33;
+    --surface-nav: 9 20 15;
+    --surface-nav-raised: 18 38 29;
+    --text-on-nav: 234 245 238;
+    --border-subtle: 30 56 44;
+    --border-strong: 44 82 63;
+    --text-primary: 237 246 240;
+    --text-secondary: 170 194 181;
+    --text-muted: 124 150 137;
+    --accent: 61 255 160;
+    --accent-strong: 124 255 192;
+    --accent-bright: 46 224 139;
+    --accent-muted: 38 96 70;
+    --accent-soft: 17 49 36;
+    --text-on-accent: 5 21 14;
+    --series-current: 61 255 160;
+    --series-previous: 110 132 122;
 
-    --positive: 95 190 132;
-    --warning: 214 169 60;
-    --danger: 232 117 127;
-    --info: 111 169 232;
+    --positive: 61 255 160;
+    --warning: 255 178 74;
+    --danger: 255 107 122;
+    --info: 110 178 255;
 
-    --stage-new: 111 169 232;
-    --stage-measurement: 84 174 190;
-    --stage-cutting: 211 169 63;
-    --stage-sewing: 210 143 196;
-    --stage-qc: 170 196 78;
-    --stage-ready: 233 146 87;
-    --stage-installation: 158 147 228;
-    --stage-done: 99 185 148;
+    --stage-new: 110 178 255;
+    --stage-measurement: 84 210 220;
+    --stage-cutting: 255 200 80;
+    --stage-sewing: 224 150 230;
+    --stage-qc: 180 230 90;
+    --stage-ready: 255 156 92;
+    --stage-installation: 166 160 255;
+    --stage-done: 61 255 160;
 
-    --glass-light: 18 25 21;
-    --glass-light-alpha: 0.72;
-    --glass-nav-alpha: 0.86;
+    --glass-light: 9 20 15;
+    --glass-light-alpha: 0.66;
+    --glass-nav-alpha: 0.72;
 
-    --swatch-forest: #63b994;
+    --swatch-forest: #3dffa0;
     --swatch-indigo: #8d9bd4;
     --swatch-clay: #db8b69;
 
-    --brass: 201 162 76;
-    --brass-ink: 214 180 104;
+    --brass: 61 255 160;
+    --brass-ink: 124 255 192;
   }
 
   :root[data-theme='dark'][data-skin='indigo'] {
@@ -607,12 +607,13 @@
     }
   }
 
+  /*
+    Заголовок карточки — как на макете «Неон»: белый, обычным регистром,
+    без латунной черты и капители. Латунь и капитель были знаком «Ателье»;
+    в стеклянной панели они читались как этикетка, а не как заголовок.
+  */
   .section-title {
-    @apply flex items-center gap-2 text-overline font-semibold uppercase text-brass-ink;
-  }
-
-  .section-title::before {
-    @apply h-px w-3 shrink-0 bg-brass content-[''];
+    @apply flex items-center gap-2 text-subhead font-semibold tracking-[-0.01em] text-primary;
   }
 
   /**
@@ -810,6 +811,62 @@
     }
     to {
       transform: scale(1.06);
+    }
+  }
+
+  /*
+    Холст панели — тёмная хвоя с двумя пятнами неонового свечения, как на
+    макете: слева сверху ярче, справа — глуше. Свечение лежит на самом
+    холсте, а не на карточках: стекло карточек должно размывать именно его.
+  */
+  .app-canvas {
+    background-color: rgb(var(--surface-base));
+    background-image:
+      radial-gradient(900px 520px at 12% -8%, rgb(var(--accent) / 0.16), transparent 62%),
+      radial-gradient(700px 480px at 100% 4%, rgb(var(--accent-bright) / 0.10), transparent 60%),
+      radial-gradient(800px 600px at 60% 110%, rgb(var(--accent-muted) / 0.35), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  /*
+    Стеклянная карточка.
+
+    Полупрозрачная заливка с лёгким градиентом, размытие того, что под ней,
+    тонкая светлая рамка и блик по верхней кромке. Без блика стекло
+    сливается с холстом; без рамки — теряет форму на светлом пятне свечения.
+  */
+  .surface-card {
+    border-radius: 22px;
+    border: 1px solid rgb(var(--accent) / 0.10);
+    background-image: linear-gradient(
+      160deg,
+      rgb(var(--surface-raised) / 0.62) 0%,
+      rgb(var(--surface-panel) / 0.55) 60%,
+      rgb(var(--surface-panel) / 0.70) 100%
+    );
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.07),
+      0 24px 48px -32px rgb(0 0 0 / 0.85);
+  }
+
+  /* Акцентная карточка — сплошной неоновый градиент, как «Growth points». */
+  .surface-hero {
+    border-radius: 22px;
+    color: rgb(var(--text-on-accent));
+    background-image:
+      radial-gradient(420px 260px at 85% 0%, rgb(255 255 255 / 0.28), transparent 60%),
+      linear-gradient(150deg, rgb(var(--accent-strong)) 0%, rgb(var(--accent)) 45%, rgb(var(--accent-bright)) 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.35),
+      0 30px 60px -30px rgb(var(--accent) / 0.55);
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .surface-card {
+      background-image: none;
+      background-color: rgb(var(--surface-panel));
     }
   }
 

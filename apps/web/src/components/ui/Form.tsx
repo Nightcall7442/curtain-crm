@@ -424,8 +424,8 @@ export function Button({
     */
     primary:
       'bg-accent text-on-accent hover:bg-accent-strong ' +
-      'shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-4px_rgb(31_93_69_/_0.55)]',
-    secondary: 'border border-subtle bg-panel text-secondary hover:bg-raised hover:text-primary',
+      'shadow-[inset_0_1px_0_rgb(255_255_255_/_0.35),0_8px_20px_-10px_rgb(var(--accent)_/_0.7)]',
+    secondary: 'border border-white/10 bg-white/[0.06] text-secondary hover:bg-white/10 hover:text-primary',
     // Опасное действие контурное, а не залитое: сплошная красная кнопка
     // притягивает нажатие ровно там, где оно должно быть обдуманным.
     danger: 'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20',
@@ -447,7 +447,7 @@ export function Button({
       disabled={rest.disabled === true || loading}
       aria-busy={loading || undefined}
       className={cn(
-        'pressable inline-flex shrink-0 items-center justify-center rounded-tile font-medium',
+        'pressable inline-flex shrink-0 items-center justify-center rounded-full font-semibold',
         'disabled:cursor-not-allowed disabled:opacity-50',
         variants[variant],
         sizes[size],

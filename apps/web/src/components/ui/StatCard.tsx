@@ -74,7 +74,7 @@ export function StatCard({
     VALUE_SIZES_PX[VALUE_SIZES_PX.length - 1];
 
   return (
-    <section className="rounded-panel border border-subtle bg-panel p-4 shadow-panel">
+    <section className="surface-card p-5">
       {/*
         Заголовку отведены две строки независимо от того, сколько он занимает.
         Без этого «Заказы за неделю» переносилось, а «Новые заказы» — нет,
@@ -91,8 +91,8 @@ export function StatCard({
         число. Заголовку по-прежнему отведены две строки, иначе числа в ряду
         встают на разной высоте и ряд рассыпается.
       */}
-      <header className="flex min-h-[2.6em] items-start text-overline">
-        <h3 className="section-title min-w-0 flex-1 leading-[1.3]">{label}</h3>
+      <header className="flex min-h-[2.6em] items-start">
+        <h3 className="min-w-0 flex-1 text-caption font-medium leading-[1.3] text-secondary">{label}</h3>
       </header>
 
       {/*
@@ -113,7 +113,7 @@ export function StatCard({
           разряды на месте и здесь.
         */}
         <span
-          className="font-display font-medium leading-none tracking-tight text-primary [font-variant-numeric:tabular-nums]"
+          className="font-hero font-bold leading-none tracking-[-0.03em] text-primary [font-variant-numeric:tabular-nums]"
           style={{ fontSize: `${valuePx}px` }}
         >
           {amount}
@@ -146,7 +146,7 @@ export function StatCard({
         )}
 
         {caption !== undefined && (
-          <span className="text-overline leading-snug text-muted">{caption}</span>
+          <span className="text-footnote leading-snug text-muted">{caption}</span>
         )}
       </footer>
 

@@ -1,15 +1,20 @@
 'use client';
 
 import { formatMoney, formatMoneyShort, OrderStatus } from '@curtain-crm/shared';
-import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
 import { RankedBars } from '@/components/charts/Bars';
 import { LineSeries } from '@/components/charts/LineSeries';
+import {
+  AttentionCard,
+  BigNumberCard,
+  HeroCard,
+  PulseCard,
+  RingCard,
+} from '@/components/dashboard/NeonWidgets';
 import { ProductionPipeline } from '@/components/dashboard/ProductionPipeline';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
-import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { formatNumber } from '@/lib/utils';
@@ -75,72 +80,98 @@ export function ManagementDashboard(): ReactElement {
     href: `/orders?status=${status}`,
   });
 
+  /*
+    Заказы по дням: `dynamics` отдаёт накопленный итог, столбикам нужен
+    дневной прирост. Дни без заказов в выборке отсутствуют — итог за них
+    равен предыдущему, и прирост выходит нулевой сам собой.
+  */
+  const today = now.getDate();
+  const daily: number[] = [];
+  let previousTotal = 0;
+  for (let day = 1; day <= today; day += 1) {
+    const point = dynamics.data?.current.filter((entry) => entry.day <= day).at(-1);
+    const total = point?.orders ?? previousTotal;
+    daily.push(Math.max(0, total - previousTotal));
+    previousTotal = total;
+  }
+
+  const completed = data?.completedThisMonth ?? 0;
+  const active = data?.activeOrders ?? 0;
+  const completionPercent = completed + active === 0 ? 0 : Math.round((completed / (completed + active)) * 100);
+
+  const attentionEntries = (attention.data ?? [])
+    .filter((entry) => entry.count > 0)
+    .map((entry) => ({ ...entry, href: ATTENTION_HREFS[entry.key] }));
+
   return (
     <div className="space-y-6">
       {/*
-        --- Требует внимания -------------------------------------------------
-        ПЕРВОЙ строкой, до парадных цифр: утренний вопрос директора — «что
-        горит», а не «сколько нас». Каждая цифра, у которой есть честный
-        фильтр, ведёт в отфильтрованный список; у просрочки такого фильтра
-        пока нет, и врать ссылкой она не станет.
+        --- Верхний ряд ------------------------------------------------------
+        Слева — пульс заказов по дням с числами периода, справа — сплошная
+        неоновая карточка выручки: главное число месяца и три пилюли с
+        объёмом. Так на макете; так и по смыслу — утром директор смотрит,
+        сколько пришло и сколько заработано.
       */}
-      <AttentionStrip
-        isLoading={attention.isLoading}
-        entries={attention.data ?? []}
-      />
-
-      {/* --- Показатели -------------------------------------------------- */}
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        {dashboard.isLoading
-          ? Array.from({ length: 6 }, (_unused, index) => (
-              <Skeleton key={index} className="h-[104px]" />
-            ))
-          : data !== undefined && (
-              <>
-                <StatCard
-                  label="Новые заказы"
-                  value={data.ordersToday.toString()}
-                  caption={`Вчера: ${data.ordersYesterday.toString()}`}
-                  deltaPercent={data.ordersTodayDelta}
-                />
-                <StatCard
-                  label="Заказы за неделю"
-                  value={data.ordersThisWeek.toString()}
-                  caption={`Прошлая неделя: ${data.ordersPrevWeek.toString()}`}
-                  deltaPercent={data.ordersWeekDelta}
-                />
-                <StatCard
-                  label="Заказы за месяц"
-                  value={data.ordersThisMonth.toString()}
-                  caption={`Прошлый месяц: ${data.ordersPrevMonth.toString()}`}
-                  deltaPercent={data.ordersMonthDelta}
-                />
-                <StatCard
-                  label="Выполнено за месяц"
-                  value={data.completedThisMonth.toString()}
-                  caption="Закрытых заказов"
-                />
-                <StatCard
-                  // Компактно: «115,1 млн сум» читается с плитки мгновенно,
-                  // а «115 100 000 сум» — нет. Точная сумма — в подписи.
-                  label="Выручка за месяц"
-                  value={formatMoneyShort(data.revenueThisMonthMinor)}
-                  caption={`Точно: ${data.revenueThisMonthFormatted} · прошлый месяц: ${formatMoneyShort(data.revenuePrevMonthMinor)}`}
-                  deltaPercent={data.revenueMonthDelta}
-                />
-                <StatCard
-                  label="Заказы в работе"
-                  value={data.activeOrders.toString()}
-                  caption={`На смене сейчас: ${data.employeesOnShift.toString()}`}
-                />
-              </>
-            )}
+      <section className="grid gap-4 xl:grid-cols-12">
+        <div className="xl:col-span-8">
+          {dashboard.isLoading || dynamics.isLoading ? (
+            <Skeleton className="h-[260px]" />
+          ) : data === undefined ? null : (
+            <PulseCard
+              title="Заказы"
+              days={daily}
+              today={today}
+              stats={[
+                {
+                  label: 'Сегодня',
+                  value: data.ordersToday.toString(),
+                  delta: data.ordersTodayDelta,
+                  caption: `Вчера: ${data.ordersYesterday.toString()}`,
+                },
+                {
+                  label: 'За неделю',
+                  value: data.ordersThisWeek.toString(),
+                  delta: data.ordersWeekDelta,
+                  caption: `Прошлая неделя: ${data.ordersPrevWeek.toString()}`,
+                },
+                {
+                  label: 'За месяц',
+                  value: data.ordersThisMonth.toString(),
+                  delta: data.ordersMonthDelta,
+                  caption: `Прошлый месяц: ${data.ordersPrevMonth.toString()}`,
+                },
+              ]}
+            />
+          )}
+        </div>
+        <div className="xl:col-span-4">
+          {dashboard.isLoading ? (
+            <Skeleton className="h-[260px]" />
+          ) : data === undefined ? null : (
+            <HeroCard
+              title="Выручка за месяц"
+              value={formatMoneyShort(data.revenueThisMonthMinor, { withoutCurrency: true })}
+              unit="сум"
+              delta={data.revenueMonthDelta}
+              caption={`Точно: ${data.revenueThisMonthFormatted} · прошлый месяц: ${formatMoneyShort(data.revenuePrevMonthMinor)}`}
+              chips={[
+                { label: 'Заказов за месяц', value: data.ordersThisMonth.toString(), href: '/orders' },
+                {
+                  label: 'Выполнено',
+                  value: data.completedThisMonth.toString(),
+                  href: `/orders?status=${OrderStatus.COMPLETED}`,
+                },
+                { label: 'На смене сейчас', value: data.employeesOnShift.toString(), href: '/employees/timesheet' },
+              ]}
+            />
+          )}
+        </div>
       </section>
 
-      {/* --- Конвейер ------------------------------------------------------ */}
+      {/* --- Конвейер — во всю ширину: это последовательность, ей нельзя тесно --- */}
       <Card>
-        <CardHeader title="Этапы производства заказов" />
-        <CardBody className="p-3">
+        <CardHeader title="Этапы производства" />
+        <CardBody className="px-4 pb-4">
           {dashboard.isLoading ? (
             <Skeleton className="h-[104px]" />
           ) : data === undefined ? null : (
@@ -148,6 +179,56 @@ export function ManagementDashboard(): ReactElement {
           )}
         </CardBody>
       </Card>
+
+      {/* --- Число в работе, кольцо, что горит ------------------------------- */}
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+        <div className="xl:col-span-3">
+          {dashboard.isLoading ? (
+            <Skeleton className="h-full min-h-[160px]" />
+          ) : data === undefined ? null : (
+            <BigNumberCard
+              title="В работе"
+              value={data.activeOrders.toString()}
+              caption="Заказов сейчас в производстве и на установке"
+              litDots={Math.min(27, Math.round((completionPercent / 100) * 27))}
+              href="/orders"
+            />
+          )}
+        </div>
+        <div className="xl:col-span-3">
+          {dashboard.isLoading ? (
+            <Skeleton className="h-full min-h-[220px]" />
+          ) : (
+            <RingCard
+              title="Выполнено за месяц"
+              segments={[
+                { key: 'done', label: 'Выполнено', value: completed, color: 'rgb(var(--accent))' },
+                { key: 'active', label: 'В работе', value: active, color: 'rgb(255 255 255 / 0.10)' },
+              ]}
+              centerValue={completed.toString()}
+              centerLabel={`${completionPercent.toString()}% от всех`}
+              action={{ label: 'Закрытые заказы', href: `/orders?status=${OrderStatus.COMPLETED}` }}
+            />
+          )}
+        </div>
+
+        <div className="md:col-span-2 xl:col-span-6">
+          <AttentionCard
+            title="Требует внимания"
+            subtitle="Заказы, где нужно решение руководителя"
+            headline={
+              attention.data === undefined
+                ? undefined
+                : {
+                    value: attention.data.reduce((sum, entry) => sum + entry.count, 0).toString(),
+                    caption: 'заказов ждут действия',
+                  }
+            }
+            entries={attentionEntries}
+            isLoading={attention.isLoading}
+          />
+        </div>
+      </section>
 
       {/* --- Цеха и очередь ------------------------------------------------ */}
       <section className="grid gap-4 lg:grid-cols-3">
@@ -495,90 +576,6 @@ const ATTENTION_HREFS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Полоса «Требует внимания» — первая строка дашборда.
- *
- * Горизонтальные чипы вместо вертикального списка: тревог немного, и им
- * хватает одной строки, а сэкономленная высота отдаёт первый экран делу.
- * Нулевые счётчики не показываются — ноль это «всё в порядке», а не тревога.
- */
-function AttentionStrip({
-  isLoading,
-  entries,
-}: {
-  readonly isLoading: boolean;
-  readonly entries: readonly {
-    readonly key: string;
-    readonly label: string;
-    readonly count: number;
-    readonly severity: 'high' | 'medium' | 'low';
-  }[];
-}): ReactElement {
-  const alerts = entries.filter((entry) => entry.count > 0);
-
-  return (
-    <Card>
-      <CardBody className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-        <span className="flex items-center gap-2 text-caption font-semibold text-primary">
-          <AlertTriangle className="h-4 w-4 text-warning" aria-hidden />
-          Требует внимания
-        </span>
-
-        {isLoading ? (
-          <Skeleton className="h-5 w-64" />
-        ) : alerts.length === 0 ? (
-          <span className="text-caption text-positive">
-            Всё в порядке — заказов, требующих вмешательства, нет
-          </span>
-        ) : (
-          alerts.map((entry) => {
-            const href = ATTENTION_HREFS[entry.key];
-            /*
-              Цвет несёт САМО ЧИСЛО, а не точка перед ним.
-
-              Три цветные точки подряд читались легендой к графику, которого
-              нет: глаз сперва разбирал кружки, и только потом добирался до
-              цифр. Окрашенное число говорит то же самое — и остаётся числом.
-              Срочность при этом продублирована порядком: тревоги идут от
-              высокой к низкой.
-            */
-            const body = (
-              <>
-                <span
-                  className={
-                    entry.severity === 'high'
-                      ? 'font-semibold text-danger'
-                      : entry.severity === 'medium'
-                        ? 'font-semibold text-warning'
-                        : 'font-semibold text-info'
-                  }
-                >
-                  {entry.count}
-                </span>
-                <span className="text-secondary">{entry.label}</span>
-              </>
-            );
-
-            return href === undefined ? (
-              <span key={entry.key} className="flex items-center gap-1.5 text-caption">
-                {body}
-              </span>
-            ) : (
-              <Link
-                key={entry.key}
-                href={href}
-                className="flex items-center gap-1.5 rounded px-1 py-0.5 text-caption transition-colors hover:bg-raised/60"
-              >
-                {body}
-              </Link>
-            );
-          })
-        )}
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
  * Подвал карточки цеха: показатели, которых нет среди статусов.
  *
  * Отделён линией от строк-ссылок выше намеренно: те ведут в список заказов,
@@ -623,8 +620,8 @@ function PerformerCard({
   readonly metrics: readonly { readonly label: string; readonly value: string }[];
 }): ReactElement {
   return (
-    <section className="rounded border border-subtle bg-base/40 p-3">
-      <h4 className="section-title">{role}</h4>
+    <section className="rounded-2xl bg-white/[0.04] p-4">
+      <h4 className="text-footnote font-medium text-muted">{role}</h4>
 
       {name === null ? (
         <p className="mt-2 text-footnote text-muted">За месяц закрытых заказов нет</p>

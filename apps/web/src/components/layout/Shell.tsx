@@ -7,6 +7,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 
 import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
+import { SectionTabs } from './SectionTabs';
 import { Sidebar } from './Sidebar';
 
 /**
@@ -78,30 +79,30 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
   */
   if (isLoading || user === null) {
     return (
-      <div className="flex h-dvh overflow-hidden bg-base" role="status" aria-busy="true">
+      <div className="app-canvas flex h-dvh overflow-hidden" role="status" aria-busy="true">
         <span className="sr-only">Загрузка панели</span>
 
-        <div className="hidden w-[228px] shrink-0 flex-col gap-2 bg-nav p-4 lg:flex">
-          <span className="h-10 w-[150px] rounded bg-white/10" />
-          <span className="mt-4 h-8 w-full rounded-tile bg-white/[0.07]" />
-          <span className="h-8 w-full rounded-tile bg-white/[0.07]" />
-          <span className="h-8 w-full rounded-tile bg-white/[0.07]" />
-          <span className="h-8 w-full rounded-tile bg-white/[0.07]" />
+        <div className="hidden w-[96px] shrink-0 flex-col items-center gap-3 bg-nav py-3 lg:flex">
+          <span className="h-10 w-10 rounded-[14px] bg-white/10" />
+          <span className="mt-3 h-10 w-10 rounded-[14px] bg-white/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-white/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-white/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-white/[0.07]" />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-16 shrink-0 items-center gap-4 border-b border-subtle px-4">
+          <div className="flex h-16 shrink-0 items-center gap-4 px-4">
             <span className="h-5 w-40 rounded bg-raised" />
-            <span className="ml-auto h-9 w-32 rounded-tile bg-raised" />
+            <span className="ml-auto h-9 w-32 rounded-full bg-raised" />
           </div>
 
           <div className="flex-1 space-y-4 p-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <span className="h-[104px] rounded-panel border border-subtle bg-panel" />
-              <span className="h-[104px] rounded-panel border border-subtle bg-panel" />
-              <span className="h-[104px] rounded-panel border border-subtle bg-panel" />
+              <span className="surface-card h-[104px]" />
+              <span className="surface-card h-[104px]" />
+              <span className="surface-card h-[104px]" />
             </div>
-            <span className="block h-64 rounded-panel border border-subtle bg-panel" />
+            <span className="surface-card block h-64" />
           </div>
         </div>
       </div>
@@ -114,7 +115,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
       адресной строке, и нижняя кромка панели уезжает под неё. dvh следует за
       фактической высотой окна. Tailwind 3.4 генерирует утилиту из коробки.
     */
-    <div className="flex h-dvh overflow-hidden bg-base">
+    <div className="app-canvas flex h-dvh overflow-hidden">
       <CommandPalette
         open={paletteOpen}
         onClose={() => {
@@ -171,6 +172,9 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
               setMobileOpen(true);
             }
           }}
+          onOpenSearch={() => {
+            setPaletteOpen(true);
+          }}
         />
         {/*
           Ключ по адресу перезапускает анимацию на каждом переходе: без него
@@ -192,8 +196,9 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
         */}
         <main
           key={pathname}
-          className="page-enter flex-1 space-y-6 p-4 lg:p-6 xl:p-8"
+          className="page-enter flex-1 space-y-6 p-4 lg:p-6 xl:px-8"
         >
+          <SectionTabs />
           {children}
         </main>
       </div>
