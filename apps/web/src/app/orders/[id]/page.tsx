@@ -14,6 +14,7 @@ import {
   ORDER_STAGE_FEE_LABELS_RU,
   ORDER_STATUS_LABELS_RU,
   parseMoney,
+  Role,
   ROLE_LABELS_RU,
   stageFeesOfOrderType,
   TransitionKind,
@@ -52,8 +53,9 @@ export default function OrderDetailPage(): ReactElement {
   const params = useParams<{ id: string }>();
   const orderId = Number.parseInt(params.id, 10);
 
-  const { isManagement } = useAuth();
+  const { isManagement, hasRole, user } = useAuth();
   const utils = trpc.useUtils();
+  const isCorniceInstaller = hasRole(Role.CORNICE_INSTALLER);
   const [comment, setComment] = useState('');
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [reason, setReason] = useState('');
@@ -96,6 +98,15 @@ export default function OrderDetailPage(): ReactElement {
       toast.error('Не удалось сменить статус', error.message);
     },
   });
+
+  const corniceMutation = {
+    onSuccess: refetchAll,
+    onError(error: { message: string }) {
+      toast.error('Не получилось', error.message);
+    },
+  };
+  const takeCornice = trpc.orders.takeCornice.useMutation(corniceMutation);
+  const finishCornice = trpc.orders.finishCornice.useMutation(corniceMutation);
 
   const addComment = trpc.orderComments.add.useMutation({
     async onSuccess() {
@@ -231,7 +242,11 @@ export default function OrderDetailPage(): ReactElement {
           ) : transitions.data === undefined || transitions.data.length === 0 ? (
             <EmptyState
               message="Доступных действий нет"
-              hint="Либо заказ закрыт, либо этот этап ведёт другой сотрудник"
+              hint={
+                isCorniceInstaller && data.corniceStatus !== CorniceStatus.NOT_REQUIRED
+                  ? 'Карниз — в карточке ниже: взять в работу и отметить готовым'
+                  : 'Либо заказ закрыт, либо этот этап ведёт другой сотрудник'
+              }
             />
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -376,9 +391,43 @@ export default function OrderDetailPage(): ReactElement {
                 />
               )}
             </dl>
-            <p className="mt-3 text-overline text-muted">
-              Карнизчик берёт работу сам и закрывает её фотографией стадии «Карниз».
-            </p>
+            {isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
+              <button
+                type="button"
+                disabled={takeCornice.isPending}
+                onClick={() => {
+                  takeCornice.mutate({ id: orderId });
+                }}
+                className="mt-3 rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-caption text-positive transition-colors hover:bg-positive/20 disabled:opacity-50"
+              >
+                Взять карниз
+              </button>
+            )}
+
+            {data.corniceStatus === CorniceStatus.IN_PROGRESS &&
+              (isManagement || data.corniceInstaller?.id === user?.id) && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    disabled={finishCornice.isPending}
+                    onClick={() => {
+                      finishCornice.mutate({ id: orderId });
+                    }}
+                    className="rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-caption text-positive transition-colors hover:bg-positive/20 disabled:opacity-50"
+                  >
+                    Карниз готов
+                  </button>
+                  <p className="mt-2 text-overline text-muted">
+                    Сначала загрузите фото стадии «Карниз» — без снимка работа не принимается.
+                  </p>
+                </div>
+              )}
+
+            {!isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
+              <p className="mt-3 text-overline text-muted">
+                Карнизчик берёт работу сам и закрывает её фотографией стадии «Карниз».
+              </p>
+            )}
           </CardBody>
         </Card>
       )}

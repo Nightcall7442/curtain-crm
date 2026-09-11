@@ -57,6 +57,7 @@ export const RATED_ROLES = [
   Role.SEWER,
   Role.QC,
   Role.INSTALLER,
+  Role.CORNICE_INSTALLER,
 ] as const;
 
 export type RatedRole = (typeof RATED_ROLES)[number];
@@ -171,6 +172,9 @@ export const RATING_ROLE_METRICS: Readonly<Record<RatedRole, RoleMetric>> = {
   sewer: { label: 'Сшито', unit: 'м²', hasQuality: true, hasPunctuality: true },
   qc: { label: 'Проверок', unit: 'зак.', hasQuality: true, hasPunctuality: true },
   installer: { label: 'Установок', unit: 'зак.', hasQuality: true, hasPunctuality: true },
+  // Карниз — вне цепочки статусов: ни возвратов, ни срока у него нет,
+  // считается только число повешенных.
+  cornice_installer: { label: 'Карнизов', unit: 'зак.', hasQuality: false, hasPunctuality: false },
 };
 
 /* -------------------------------------------------------------------------- */
