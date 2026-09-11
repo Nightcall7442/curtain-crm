@@ -17,6 +17,8 @@ import { useToast } from '@/components/providers/ToastProvider';
 import { Button, Field, FormError, Modal, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
+import { useAssigneeCandidates } from './useAssigneeCandidates';
+
 /**
  * Подтверждение действия по заказам — одно на все случаи.
  *
@@ -248,12 +250,7 @@ export function OrderActionDialog({
   );
 }
 
-/**
- * Выбор исполнителя на роль, которую требует целевой статус.
- *
- * Список — все активные сотрудники, свои по роли первыми: назначить можно и
- * человека без этой роли, роль ему выдаст сервер при назначении.
- */
+/** Исполнитель на роль, которую требует целевой статус: свои, по «Ещё» — все. */
 function AssigneePicker({
   role,
   value,
@@ -266,11 +263,9 @@ function AssigneePicker({
   readonly hint?: string;
 }): ReactElement {
   const { t } = useLocale();
-  const staff = trpc.users.list.useQuery({ page: 1, pageSize: 100, isActive: true });
-  const candidates = [...(staff.data?.items ?? [])].sort(
-    (a, b) =>
-      Number(b.roles.includes(role)) - Number(a.roles.includes(role)) ||
-      a.fullName.localeCompare(b.fullName, 'ru'),
+  const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(
+    role,
+    value === '' ? null : Number.parseInt(value, 10),
   );
 
   return (
@@ -278,22 +273,28 @@ function AssigneePicker({
       <Select
         value={value}
         autoFocus
-        disabled={staff.isLoading}
-        placeholder={staff.isLoading ? 'Загрузка…' : 'Выберите исполнителя'}
+        disabled={loading}
+        placeholder={loading ? 'Загрузка…' : 'Выберите исполнителя'}
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        options={candidates.map((person) => {
-          const main = person.roles[0];
-          return {
-            value: person.id.toString(),
-            label:
-              person.roles.includes(role) || main === undefined
-                ? person.fullName
-                : `${person.fullName} · ${t(ROLE_LABELS, main)}`,
-          };
-        })}
+        options={candidates.map((person) => ({
+          value: person.id.toString(),
+          label:
+            person.mainRole === null
+              ? person.fullName
+              : `${person.fullName} · ${t(ROLE_LABELS, person.mainRole)}`,
+        }))}
       />
+      {canShowMore && (
+        <button
+          type="button"
+          className="mt-1 text-footnote text-accent hover:underline"
+          onClick={showMore}
+        >
+          Ещё сотрудники
+        </button>
+      )}
     </Field>
   );
 }

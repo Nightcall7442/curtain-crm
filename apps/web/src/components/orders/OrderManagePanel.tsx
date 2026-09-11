@@ -14,6 +14,8 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Button, Field, FormError, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
+import { useAssigneeCandidates } from './useAssigneeCandidates';
+
 import { StageFeesFields, toStageFeesInput, type StageFeesDraft } from './StageFeesFields';
 
 /**
@@ -276,12 +278,7 @@ export function OrderManagePanel({
   );
 }
 
-/**
- * Выбор исполнителя на роль.
- *
- * Список — все активные сотрудники: назначить можно и человека без этой
- * роли, роль ему выдаст сервер при назначении.
- */
+/** Выбор исполнителя на роль: свои по роли, по «Ещё» — все сотрудники. */
 function AssigneeSelect({
   role,
   value,
@@ -293,41 +290,35 @@ function AssigneeSelect({
   readonly disabled: boolean;
   readonly onChange: (assigneeId: number | null) => void;
 }): ReactElement {
-  /*
-    Все активные сотрудники, а не только с этой ролью: подработка вне своей
-    роли — обычное дело. Свои идут первыми, остальные — с подписью основной
-    роли, чтобы в списке было видно, кого берут «со стороны». Роль такому
-    сотруднику выдаст сам API при назначении.
-  */
-  const staff = trpc.users.list.useQuery({ page: 1, pageSize: 100, isActive: true });
-  const candidates = [...(staff.data?.items ?? [])].sort(
-    (a, b) =>
-      Number(b.roles.includes(role)) - Number(a.roles.includes(role)) ||
-      a.fullName.localeCompare(b.fullName, 'ru'),
-  );
+  const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(role, value);
 
   return (
     <Field label={ROLE_LABELS_RU[role]}>
       <Select
         value={value === null ? '' : value.toString()}
-        disabled={disabled || staff.isLoading}
+        disabled={disabled || loading}
         placeholder="Не назначен"
         onChange={(event) => {
           const next = event.target.value;
           onChange(next === '' ? null : Number.parseInt(next, 10));
         }}
-        options={candidates.map((person) => {
-          const own = person.roles.includes(role);
-          const main = person.roles[0];
-          return {
-            value: person.id.toString(),
-            label:
-              own || main === undefined
-                ? person.fullName
-                : `${person.fullName} · ${ROLE_LABELS_RU[main]}`,
-          };
-        })}
+        options={candidates.map((person) => ({
+          value: person.id.toString(),
+          label:
+            person.mainRole === null
+              ? person.fullName
+              : `${person.fullName} · ${ROLE_LABELS_RU[person.mainRole]}`,
+        }))}
       />
+      {canShowMore && (
+        <button
+          type="button"
+          className="mt-1 text-footnote text-accent hover:underline"
+          onClick={showMore}
+        >
+          Ещё сотрудники
+        </button>
+      )}
     </Field>
   );
 }
