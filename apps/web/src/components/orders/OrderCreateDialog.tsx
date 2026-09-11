@@ -20,7 +20,7 @@ import {
 import { Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
 
-import { Button, ChipSelect, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
+import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 import { formatQuantity } from '@/lib/utils';
 
@@ -913,26 +913,6 @@ export function OrderCreateDialog({
                         </div>
                       )}
                     </div>
-
-                    <Field label="Материалы" className="sm:col-span-2 lg:col-span-3">
-                      <ChipSelect
-                        options={byKind.get(CatalogKind.MATERIAL) ?? []}
-                        value={item.materials}
-                        onChange={(next) => {
-                          patchItem(item.id, { materials: next });
-                        }}
-                      />
-                    </Field>
-
-                    <Field label="Опции материала" className="sm:col-span-2 lg:col-span-3">
-                      <ChipSelect
-                        options={byKind.get(CatalogKind.MATERIAL_OPTION) ?? []}
-                        value={item.materialOptions}
-                        onChange={(next) => {
-                          patchItem(item.id, { materialOptions: next });
-                        }}
-                      />
-                    </Field>
 
                     <Field
                       label="Характеристики"

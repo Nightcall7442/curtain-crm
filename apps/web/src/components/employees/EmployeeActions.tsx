@@ -9,17 +9,17 @@ import { ClipboardList, KeyRound, Pencil, ShieldCheck, UserMinus, UserPlus } fro
 import { useState, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useToast } from '@/components/providers/ToastProvider';
 import { Badge } from '@/components/ui/Badge';
 import {
   Button,
-  controlClass,
   Field,
   FormError,
   Input,
   Modal,
 } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
+
+import { TaskCreateDialog } from './TaskCreateDialog';
 import { cn } from '@/lib/utils';
 
 /**
@@ -45,16 +45,12 @@ export function EmployeeActions({
   readonly onEdit: () => void;
 }): ReactElement {
   const { hasRole, user } = useAuth();
-  const toast = useToast();
   const isCeo = hasRole(Role.CEO);
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [taskOpen, setTaskOpen] = useState(false);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDetails, setTaskDetails] = useState('');
-  const [taskDue, setTaskDue] = useState('');
 
   const utils = trpc.useUtils();
   const refresh = async (): Promise<void> => {
@@ -68,20 +64,6 @@ export function EmployeeActions({
     onSuccess() {
       setPasswordOpen(false);
       setNewPassword('');
-    },
-  });
-
-  const createTask = trpc.tasks.create.useMutation({
-    onSuccess() {
-      setTaskOpen(false);
-      setTaskTitle('');
-      setTaskDetails('');
-      setTaskDue('');
-      toast.success('Доп. работа отправлена', `${employee.fullName} получит уведомление`);
-      void utils.tasks.list.invalidate();
-    },
-    onError(error) {
-      toast.error('Доп. работа не создана', error.message);
     },
   });
 
@@ -104,75 +86,13 @@ export function EmployeeActions({
         </IconButton>
       )}
 
-      <Modal
+      <TaskCreateDialog
         open={taskOpen}
-        title={`Доп. работа: ${employee.fullName}`}
+        employee={employee}
         onClose={() => {
           setTaskOpen(false);
         }}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setTaskOpen(false);
-              }}
-            >
-              Отмена
-            </Button>
-            <Button
-              loading={createTask.isPending}
-              disabled={taskTitle.trim().length === 0}
-              onClick={() => {
-                createTask.mutate({
-                  assigneeId: employee.id,
-                  title: taskTitle.trim(),
-                  ...(taskDetails.trim().length > 0 ? { details: taskDetails.trim() } : {}),
-                  ...(taskDue.length > 0 ? { dueDate: taskDue } : {}),
-                });
-              }}
-            >
-              Отправить
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <FormError message={createTask.error?.message ?? null} />
-
-          <Field label="Что нужно сделать" required>
-            <Input
-              value={taskTitle}
-              onChange={(event) => {
-                setTaskTitle(event.target.value);
-              }}
-              placeholder="Например: получить ткань у поставщика"
-            />
-          </Field>
-
-          <Field label="Подробности">
-            <textarea
-              value={taskDetails}
-              onChange={(event) => {
-                setTaskDetails(event.target.value);
-              }}
-              rows={3}
-              placeholder="Адрес, контакты, детали — всё, что понадобится на месте"
-              className={controlClass('md')}
-            />
-          </Field>
-
-          <Field label="Срок" hint="Не обязателен — поручение без срока просто висит открытым">
-            <Input
-              type="date"
-              value={taskDue}
-              onChange={(event) => {
-                setTaskDue(event.target.value);
-              }}
-            />
-          </Field>
-        </div>
-      </Modal>
+      />
 
       {isCeo && (
         <>

@@ -5,32 +5,10 @@ import { Role } from '../enums/role.enum';
 import { assignPlaces, normalizeVolume, ratingScore, unratedReason } from './rating';
 
 describe('ratingScore', () => {
-  it('складывает три компонента по весам 50/30/20', () => {
-    // 100·50 + 50·30 + 0·20 = 6500; 6500 / 100 = 65
-    expect(ratingScore({ volume: 100, quality: 50, punctuality: 0 })).toBe(65);
-  });
-
-  it('даёт 100 только при максимуме по всем компонентам', () => {
-    expect(ratingScore({ volume: 100, quality: 100, punctuality: 100 })).toBe(100);
-  });
-
-  it('исключает недоступный компонент, а не считает его нулём', () => {
-    // У продавца качества нет: остаётся один объём, и балл равен ему.
-    expect(ratingScore({ volume: 80, quality: null, punctuality: null })).toBe(80);
-
-    // Подстановка нуля дала бы 40 — вдвое меньше, и продавцы оказались бы
-    // внизу таблицы не за работу, а за отсутствие метрики.
-    expect(ratingScore({ volume: 80, quality: 0, punctuality: 0 })).toBe(40);
-  });
-
-  it('перенормирует веса, когда недоступен один компонент из трёх', () => {
-    // Заказы ещё не дошли до контроля: остаются объём (50) и срок (20).
-    // 60·50 + 100·20 = 5000; 5000 / 70 ≈ 71,4 → 71
-    expect(ratingScore({ volume: 60, quality: null, punctuality: 100 })).toBe(71);
-  });
-
-  it('возвращает 0, когда не набран ни один компонент', () => {
-    expect(ratingScore({ volume: 0, quality: null, punctuality: null })).toBe(0);
+  it('даёт по баллу за каждый закрытый заказ и не упирается в 100', () => {
+    expect(ratingScore(0)).toBe(0);
+    expect(ratingScore(14)).toBe(14);
+    expect(ratingScore(250)).toBe(250);
   });
 });
 

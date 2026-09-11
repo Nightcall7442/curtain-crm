@@ -1,5 +1,6 @@
 import {
   assignPlaces,
+  CorniceStatus,
   normalizeVolume,
   OrderStatus,
   RATED_ROLES,
@@ -126,6 +127,16 @@ const completedInPeriod = (bounds: PeriodBounds, branchId: number | undefined): 
   return branchId === undefined ? period : sql`${period} and o.branch_id = ${branchId}`;
 };
 
+/** Карнизы, отмеченные готовыми в периоде; при необходимости — одного филиала. */
+const corniceDoneInPeriod = (bounds: PeriodBounds, branchId: number | undefined): SQL => {
+  const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
+  const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
+  const period = sql`o.cornice_status = ${CorniceStatus.DONE}
+    and o.cornice_installer_id is not null
+    and o.cornice_done_at >= ${from} and o.cornice_done_at < ${to}`;
+  return branchId === undefined ? period : sql`${period} and o.branch_id = ${branchId}`;
+};
+
 /**
  * Попадание в срок — общие для всех ролей колонки.
  *
@@ -164,9 +175,9 @@ const toRoleRow = (
 /**
  * Показатели всех участников по каждой роли.
  *
- * Пять независимых запросов вместо одного с `union`: у каждой роли свой набор
+ * Шесть независимых запросов вместо одного с `union`: у каждой роли свой набор
  * боковых подзапросов по истории статусов, и объединение читалось бы хуже, а
- * планировщику всё равно пришлось бы выполнять те же пять сканов.
+ * планировщику всё равно пришлось бы выполнять те же сканы.
  */
 async function collectRoleRows(
   db: Database,
@@ -175,7 +186,8 @@ async function collectRoleRows(
 ): Promise<Record<RatedRole, RoleRow[]>> {
   const scope = completedInPeriod(bounds, branchId);
 
-  const [sellerRows, masterRows, sewerRows, qcRows, installerRows] = await Promise.all([
+  const [sellerRows, masterRows, sewerRows, qcRows, installerRows, corniceRows] =
+    await Promise.all([
     db.execute(sql`
       select o.created_by as user_id,
              count(*) as orders_count,
@@ -252,6 +264,14 @@ async function collectRoleRows(
       ) redone on true
       where ${scope} and o.installer_id is not null
       group by o.installer_id`),
+    // Карниз закрывается своей отметкой, а не статусом заказа: считаем по
+    // дате «карниз готов», и заказ при этом может быть ещё не закрыт.
+    db.execute(sql`
+      select o.cornice_installer_id as user_id,
+             count(*) as orders_count
+      from orders o
+      where ${corniceDoneInPeriod(bounds, branchId)}
+      group by o.cornice_installer_id`),
   ]);
 
   const cleanQuality = (row: Record<string, unknown>): number | null =>
@@ -271,6 +291,13 @@ async function collectRoleRows(
     installer: installerRows.map((row) =>
       toRoleRow(row, (r) => asInt(r['orders_count']), cleanQuality),
     ),
+    cornice_installer: corniceRows.map((row) => ({
+      userId: asInt(row['user_id']),
+      ordersCount: asInt(row['orders_count']),
+      volumeValue: asInt(row['orders_count']),
+      qualityPercent: null,
+      punctualityPercent: null,
+    })),
   };
 }
 
@@ -323,11 +350,7 @@ export async function employeeRating(
         volumeScore,
         qualityPercent: row.qualityPercent,
         punctualityPercent: row.punctualityPercent,
-        score: ratingScore({
-          volume: volumeScore,
-          quality: row.qualityPercent,
-          punctuality: row.punctualityPercent,
-        }),
+        score: ratingScore(row.ordersCount),
       };
 
       const existing = rowsByUser.get(row.userId);
@@ -360,21 +383,11 @@ export async function employeeRating(
 }
 
 /**
- * Общий балл сотрудника, совмещающего роли.
- *
- * Средневзвешенное по числу закрытых заказов: у швеи, которая двадцать раз
- * шила и дважды выезжала на замер, балл определяется пошивом. Простое
- * среднее дало бы двум замерам тот же вес, что и двадцати пошивам.
- *
- * Ноль заказов за период — ноль баллов: сотрудник в таблице есть, но внизу.
+ * Общий балл сотрудника, совмещающего роли, — сумма по ролям: замер и
+ * установка одного заказа — две работы, два балла.
  */
 function combineRoleScores(entries: readonly RatingRoleEntry[]): number {
-  const totalOrders = entries.reduce((sum, entry) => sum + entry.ordersCount, 0);
-  if (totalOrders === 0) return 0;
-
-  const weighted = entries.reduce((sum, entry) => sum + entry.score * entry.ordersCount, 0);
-
-  return Math.round(weighted / totalOrders);
+  return entries.reduce((sum, entry) => sum + entry.score, 0);
 }
 
 /**
@@ -399,10 +412,7 @@ function rankEntries(entries: readonly RatingEntry[]): RatingEntry[] {
     .filter((entry) => entry.unratedReason !== null)
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'));
 
-  // Место делят только полностью неразличимые строки. Одного балла для
-  // дележа мало: объём нормируется внутри роли, поэтому лидер каждой роли
-  // получает ровно 100, и без второго критерия первое место делили бы
-  // пятеро — по одному от каждой роли, что для соревнования бессмысленно.
+  // Место делят только полностью неразличимые строки.
   return [
     ...assignPlaces(ranked, (a, b) => a.score === b.score && a.ordersCount === b.ordersCount),
     ...unrated,

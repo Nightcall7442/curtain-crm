@@ -57,6 +57,7 @@ export const RATED_ROLES = [
   Role.SEWER,
   Role.QC,
   Role.INSTALLER,
+  Role.CORNICE_INSTALLER,
 ] as const;
 
 export type RatedRole = (typeof RATED_ROLES)[number];
@@ -120,23 +121,6 @@ export const RATING_COMPONENTS = ['volume', 'quality', 'punctuality'] as const;
 
 export type RatingComponent = (typeof RATING_COMPONENTS)[number];
 
-/**
- * Веса компонентов балла.
- *
- * Объём весит больше половины намеренно: это единственная часть, на которую
- * сотрудник влияет напрямую и каждый день. Качество и срок — ограничители:
- * они не дают выиграть конкурс, закрыв много заказов кое-как и с опозданием.
- *
- * Веса подобраны, а не выведены из данных, — других в системе взять неоткуда.
- * Поэтому интерфейс показывает три компонента ОТДЕЛЬНО рядом с баллом:
- * несогласный с формулой видит исходные числа и может спорить с ней предметно.
- */
-export const RATING_WEIGHTS: Readonly<Record<RatingComponent, number>> = {
-  volume: 50,
-  quality: 30,
-  punctuality: 20,
-};
-
 export const RATING_COMPONENT_LABELS: Translated<RatingComponent> = {
   ru: { volume: 'Объём', quality: 'Качество', punctuality: 'Сроки' },
   uz: { volume: 'Hajm', quality: 'Sifat', punctuality: 'Muddatlar' },
@@ -188,6 +172,9 @@ export const RATING_ROLE_METRICS: Readonly<Record<RatedRole, RoleMetric>> = {
   sewer: { label: 'Сшито', unit: 'м²', hasQuality: true, hasPunctuality: true },
   qc: { label: 'Проверок', unit: 'зак.', hasQuality: true, hasPunctuality: true },
   installer: { label: 'Установок', unit: 'зак.', hasQuality: true, hasPunctuality: true },
+  // Карниз — вне цепочки статусов: ни возвратов, ни срока у него нет,
+  // считается только число повешенных.
+  cornice_installer: { label: 'Карнизов', unit: 'зак.', hasQuality: false, hasPunctuality: false },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -205,31 +192,19 @@ export interface RatingComponents {
 }
 
 /**
- * Балл 0–100 из компонентов.
+ * Балл: по одному за каждый закрытый заказ, без потолка.
  *
- * Недоступные компоненты не обнуляются, а ИСКЛЮЧАЮТСЯ из формулы с
- * перенормировкой весов. Разница принципиальная: у продавца качества нет
- * вовсе, и подстановка нуля опустила бы всех продавцов ниже любой швеи —
- * не потому, что они работают хуже, а потому, что система за ними меньше
- * наблюдает. То же и у новичка, чьи заказы ещё не дошли до контроля.
+ * Прежняя формула (проценты с весами) упиралась в 100: лидер роли получал
+ * сотню в первый же день, и дальше расти было некуда — таблица замирала.
+ * Штука за заказ растёт всё время, пока люди работают, и читается без
+ * пояснений: 14 баллов — четырнадцать закрытых заказов.
+ *
+ * Объём, качество и сроки при этом остаются рядом с баллом справочно.
  */
-export function ratingScore(components: RatingComponents): number {
-  let weighted = 0;
-  let totalWeight = 0;
+export const POINTS_PER_ORDER = 1;
 
-  const add = (value: number | null, weight: number): void => {
-    if (value === null) return;
-    weighted += value * weight;
-    totalWeight += weight;
-  };
-
-  add(components.volume, RATING_WEIGHTS.volume);
-  add(components.quality, RATING_WEIGHTS.quality);
-  add(components.punctuality, RATING_WEIGHTS.punctuality);
-
-  if (totalWeight === 0) return 0;
-
-  return Math.round(weighted / totalWeight);
+export function ratingScore(ordersCount: number): number {
+  return ordersCount * POINTS_PER_ORDER;
 }
 
 /**
@@ -251,13 +226,7 @@ export function normalizeVolume(value: number, best: number): number {
  * Место в таблице с учётом дележа.
  *
  * Спортивная нумерация: неразличимые строки делят место, следующее место
- * перескакивает («1, 2, 2, 4»).
- *
- * Что считать неразличимым, решает вызывающий, а не эта функция. Дележ
- * ТОЛЬКО по баллу оказался бы почти бесполезен: объём нормируется внутри
- * роли, поэтому лидер каждой роли получает ровно 100, и на реальных данных
- * первое место делили пятеро — по одному от каждой роли. Балл вместе с
- * числом закрытых заказов различает их осмысленно, а не жребием.
+ * перескакивает («1, 2, 2, 4»). Что считать неразличимым, решает вызывающий.
  */
 export function assignPlaces<T>(
   rows: readonly T[],
