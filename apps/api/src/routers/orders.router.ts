@@ -809,7 +809,8 @@ export const ordersRouter = router({
                 : soldFromStock.get(item.readyMadeItemId);
             const model = stock?.model ?? item.model;
 
-            return toOrderItemValues(
+            return {
+              ...toOrderItemValues(
               {
                 kind: OrderItemKind.OTHER,
                 materials: [],
@@ -831,7 +832,9 @@ export const ordersRouter = router({
               },
               created.id,
               index,
-            );
+              ),
+              readyMadeCode: stock?.code ?? null,
+            };
           }),
         );
 

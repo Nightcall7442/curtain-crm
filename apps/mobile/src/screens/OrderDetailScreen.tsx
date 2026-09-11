@@ -453,6 +453,7 @@ export function OrderDetailScreen({
             <View key={item.id} style={styles.item}>
               <Text style={styles.itemTitle}>
                 {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
+                {item.readyMadeCode === null ? '' : ` · ${item.readyMadeCode}`}
               </Text>
               {item.widthCm !== null && item.heightCm !== null && (
                 <Text style={styles.itemDetail}>

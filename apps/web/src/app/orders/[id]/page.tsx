@@ -473,6 +473,11 @@ export default function OrderDetailPage(): ReactElement {
                     <div className="flex items-baseline justify-between">
                       <span className="text-caption font-medium text-primary">
                         {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
+                        {item.readyMadeCode !== null && (
+                          <span className="ml-2 font-mono text-footnote text-secondary">
+                            {item.readyMadeCode}
+                          </span>
+                        )}
                       </span>
                       <span className="text-footnote text-muted">
                         {ORDER_ITEM_KIND_LABELS_RU[item.kind]}

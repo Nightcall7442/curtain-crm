@@ -254,6 +254,12 @@ export const orderItems = pgTable(
     position: integer('position').notNull().default(0),
 
     model: text('model'),
+    /**
+     * Код с бирки готовой шторы, проданной со склада, — снимок на момент
+     * продажи: складскую карточку потом могут поправить, а в заказе должно
+     * остаться то, что клиент назвал по телефону.
+     */
+    readyMadeCode: text('ready_made_code'),
     /** Материалы — множественный выбор, поэтому массив, а не одно поле. */
     materials: text('materials').array().notNull().default(sql`'{}'::text[]`),
     materialOptions: text('material_options').array().notNull().default(sql`'{}'::text[]`),

@@ -1,0 +1,1 @@
+ALTER TABLE "order_items" ADD COLUMN "ready_made_code" text;
