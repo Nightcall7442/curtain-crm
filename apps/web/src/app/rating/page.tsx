@@ -31,10 +31,9 @@ import { cn, formatNumber, initials } from '@/lib/utils';
  * потому что нормирован внутри каждой. Доски по ролям — «кто впереди среди
  * швей»: там метрики в своих единицах, и сравнение прямое.
  *
- * Балл сопровождается разбивкой на объём, качество и сроки. Веса подобраны,
- * а не выведены из данных (см. `RATING_WEIGHTS` в `@curtain-crm/shared`),
- * и прятать составляющие за итоговой цифрой нельзя: рейтинг влияет на то,
- * как людей воспринимают, и должен быть оспоримым по существу.
+ * Балл — по одному за закрытый заказ, без потолка. Рядом справочно объём,
+ * качество и сроки: рейтинг влияет на то, как людей воспринимают, и должен
+ * быть оспоримым по существу.
  */
 export default function RatingPage(): ReactElement {
   const now = new Date();
@@ -275,7 +274,7 @@ export default function RatingPage(): ReactElement {
                 row.score === null ? (
                   <span className="text-footnote text-muted">вне конкурса</span>
                 ) : (
-                  <ScoreMeter score={row.score} />
+                  <ScoreMeter score={row.score} best={Math.max(0, ...(data?.rows ?? []).map((entry) => entry.score ?? 0))} />
                 ),
             },
           ]}

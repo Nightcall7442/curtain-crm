@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactElement } from 'react';
@@ -26,9 +27,14 @@ export default function LoginPage(): ReactElement {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
 
+  const queryClient = useQueryClient();
+
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess(data) {
       tokenStorage.save({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+      // Кэш запросов — от предыдущего пользователя: без сброса новый
+      // вошедший видел бы чужой дашборд и чужие заказы до обновления страницы.
+      queryClient.clear();
       // `replace`, а не `push`: возврат «назад» на экран входа после успешного
       // входа только путает. Ведёт в `/dashboard`, а не в корень: там теперь
       // публичный лендинг, а не панель.

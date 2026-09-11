@@ -323,11 +323,7 @@ export async function employeeRating(
         volumeScore,
         qualityPercent: row.qualityPercent,
         punctualityPercent: row.punctualityPercent,
-        score: ratingScore({
-          volume: volumeScore,
-          quality: row.qualityPercent,
-          punctuality: row.punctualityPercent,
-        }),
+        score: ratingScore(row.ordersCount),
       };
 
       const existing = rowsByUser.get(row.userId);
@@ -360,21 +356,11 @@ export async function employeeRating(
 }
 
 /**
- * Общий балл сотрудника, совмещающего роли.
- *
- * Средневзвешенное по числу закрытых заказов: у швеи, которая двадцать раз
- * шила и дважды выезжала на замер, балл определяется пошивом. Простое
- * среднее дало бы двум замерам тот же вес, что и двадцати пошивам.
- *
- * Ноль заказов за период — ноль баллов: сотрудник в таблице есть, но внизу.
+ * Общий балл сотрудника, совмещающего роли, — сумма по ролям: замер и
+ * установка одного заказа — две работы, два балла.
  */
 function combineRoleScores(entries: readonly RatingRoleEntry[]): number {
-  const totalOrders = entries.reduce((sum, entry) => sum + entry.ordersCount, 0);
-  if (totalOrders === 0) return 0;
-
-  const weighted = entries.reduce((sum, entry) => sum + entry.score * entry.ordersCount, 0);
-
-  return Math.round(weighted / totalOrders);
+  return entries.reduce((sum, entry) => sum + entry.score, 0);
 }
 
 /**
@@ -399,10 +385,7 @@ function rankEntries(entries: readonly RatingEntry[]): RatingEntry[] {
     .filter((entry) => entry.unratedReason !== null)
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'));
 
-  // Место делят только полностью неразличимые строки. Одного балла для
-  // дележа мало: объём нормируется внутри роли, поэтому лидер каждой роли
-  // получает ровно 100, и без второго критерия первое место делили бы
-  // пятеро — по одному от каждой роли, что для соревнования бессмысленно.
+  // Место делят только полностью неразличимые строки.
   return [
     ...assignPlaces(ranked, (a, b) => a.score === b.score && a.ordersCount === b.ordersCount),
     ...unrated,

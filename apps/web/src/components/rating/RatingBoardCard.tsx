@@ -108,7 +108,11 @@ export function RatingBoardCard({
                 </span>
               </span>
 
-              <ScoreMeter score={row.score ?? 0} className="w-[124px] shrink-0" />
+              <ScoreMeter
+                score={row.score ?? 0}
+                best={Math.max(0, ...rows.map((entry) => entry.score ?? 0))}
+                className="w-[124px] shrink-0"
+              />
             </li>
           ))}
         </ul>
