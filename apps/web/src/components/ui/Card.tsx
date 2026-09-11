@@ -136,7 +136,7 @@ export function ErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="rounded border border-subtle px-3 py-1.5 text-caption text-secondary transition-colors hover:bg-raised hover:text-primary"
+          className="rounded-xl border border-white/10 px-3 py-1.5 text-caption text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary"
         >
           Повторить
         </button>

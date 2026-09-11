@@ -117,7 +117,7 @@ export function CommandPalette({
       role="dialog"
       aria-modal="true"
       aria-label="Поиск по системе"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh] backdrop-blur-md"
       onClick={onClose}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onClose();
@@ -136,7 +136,7 @@ export function CommandPalette({
       }}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-tile border border-subtle bg-panel shadow-xl"
+        className="surface-card w-full max-w-xl overflow-hidden bg-panel/70 shadow-2xl"
         onClick={(event) => {
           event.stopPropagation();
         }}
@@ -162,7 +162,7 @@ export function CommandPalette({
             aria-label="Строка поиска"
             className="min-w-0 flex-1 bg-transparent text-caption text-primary outline-none placeholder:text-muted"
           />
-          <kbd className="rounded border border-subtle bg-base px-1.5 py-0.5 font-mono text-[10px] text-muted">
+          <kbd className="rounded-xl border border-white/10 bg-base px-1.5 py-0.5 font-mono text-[10px] text-muted">
             Esc
           </kbd>
         </div>
@@ -197,7 +197,7 @@ export function CommandPalette({
                       }}
                       className={cn(
                         'flex w-full items-baseline justify-between gap-3 px-4 py-2 text-left',
-                        index === activeIndex ? 'bg-accent-soft/70' : 'hover:bg-raised/60',
+                        index === activeIndex ? 'bg-accent-soft/70' : 'hover:bg-white/[0.08]',
                       )}
                     >
                       <span className="min-w-0 truncate text-caption text-primary">

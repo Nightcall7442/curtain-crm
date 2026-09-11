@@ -70,7 +70,7 @@ export default function RatingPage(): ReactElement {
               <div
                 role="group"
                 aria-label="Период"
-                className="flex overflow-hidden rounded border border-subtle"
+                className="flex overflow-hidden rounded-xl border border-white/10"
               >
                 {RATING_SCOPES.map((value) => (
                   <button
@@ -84,7 +84,7 @@ export default function RatingPage(): ReactElement {
                       'px-3 py-1.5 text-footnote transition-colors',
                       scope === value
                         ? 'bg-accent/12 text-accent'
-                        : 'text-secondary hover:bg-raised hover:text-primary',
+                        : 'text-secondary hover:bg-white/[0.08] hover:text-primary',
                     )}
                   >
                     {RATING_SCOPE_LABELS_RU[value]}

@@ -660,7 +660,7 @@ function StageRow({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between rounded px-2 py-1.5 text-caption transition-colors hover:bg-raised/50"
+      className="flex items-center justify-between rounded px-2 py-1.5 text-caption transition-colors hover:bg-white/[0.06]"
     >
       <span className="text-secondary">{label}</span>
       <span className={`font-semibold ${valueClass}`}>{value}</span>

@@ -34,12 +34,12 @@ type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'accent';
  * форма метки остаётся, крика нет.
  */
 const TONE_CLASSES: Readonly<Record<Tone, string>> = {
-  neutral: 'border-strong bg-raised/60 text-secondary',
-  positive: 'border-positive/35 bg-positive/[0.05] text-positive',
-  warning: 'border-warning/35 bg-warning/[0.05] text-warning',
-  danger: 'border-danger/35 bg-danger/[0.04] text-danger',
-  info: 'border-info/35 bg-info/[0.04] text-info',
-  accent: 'border-accent/35 bg-accent/[0.04] text-accent',
+  neutral: 'border-white/10 bg-white/[0.06] text-secondary',
+  positive: 'border-positive/30 bg-positive/[0.12] text-positive',
+  warning: 'border-warning/30 bg-warning/[0.12] text-warning',
+  danger: 'border-danger/30 bg-danger/[0.12] text-danger',
+  info: 'border-info/30 bg-info/[0.12] text-info',
+  accent: 'border-accent/30 bg-accent/[0.12] text-accent',
 };
 
 export function Badge({
@@ -59,7 +59,7 @@ export function Badge({
           мессенджера; здесь же метка стоит в таблице рядом с прямыми углами
           строк, и мягкий прямоугольник встаёт в ряд, а не выпадает из него.
         */
-        'inline-flex items-center whitespace-nowrap rounded-[6px] border px-2 py-[3px] text-overline font-medium leading-4',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-semibold leading-4 backdrop-blur-sm',
         TONE_CLASSES[tone],
         className,
       )}

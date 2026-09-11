@@ -96,7 +96,7 @@ export default function PlansPage(): ReactElement {
               <Link
                 key={entry.href}
                 href={entry.href}
-                className="card-link group flex items-start gap-3 rounded-tile border border-subtle bg-base/40 p-4 transition-colors hover:bg-raised/50"
+                className="card-link group flex items-start gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.04] p-4 transition-colors hover:bg-white/[0.06]"
               >
                 <Icon className="mt-0.5 h-5 w-5 shrink-0 text-accent-muted" aria-hidden />
                 <span>

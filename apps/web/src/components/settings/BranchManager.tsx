@@ -110,7 +110,7 @@ export function BranchManager(): ReactElement {
                 key={branch.id}
                 className={cn(
                   'flex h-full flex-col rounded-tile border p-4',
-                  branch.isActive ? 'border-subtle bg-base/40' : 'border-subtle/60 bg-base/20',
+                  branch.isActive ? 'border-subtle bg-white/[0.04]' : 'border-subtle/60 bg-base/20',
                 )}
               >
                 <div className="flex items-start gap-2.5">

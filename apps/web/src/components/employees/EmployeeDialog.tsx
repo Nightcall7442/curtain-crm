@@ -305,10 +305,10 @@ export function EmployeeDialog({
                       setRoles((current) => toggle(current, role));
                     }}
                     className={cn(
-                      'rounded border px-2.5 py-1 text-footnote transition-colors',
+                      'rounded-full border px-2.5 py-1 text-footnote transition-colors',
                       selected
                         ? 'border-accent/50 bg-accent/15 text-accent'
-                        : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
+                        : 'border-subtle text-secondary hover:bg-white/[0.08] hover:text-primary',
                     )}
                   >
                     {ROLE_LABELS_RU[role]}
@@ -337,10 +337,10 @@ export function EmployeeDialog({
                     setBranchIds((current) => toggle(current, branch.id));
                   }}
                   className={cn(
-                    'rounded border px-2.5 py-1 text-footnote transition-colors',
+                    'rounded-full border px-2.5 py-1 text-footnote transition-colors',
                     selected
                       ? 'border-accent/50 bg-accent/15 text-accent'
-                      : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
+                      : 'border-subtle text-secondary hover:bg-white/[0.08] hover:text-primary',
                   )}
                 >
                   {branch.name}

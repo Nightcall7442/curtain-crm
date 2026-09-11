@@ -196,7 +196,7 @@ export function DataTable<TRow>({
             как между строками: без этого первая строка данных читалась как
             вторая строка заголовка.
           */}
-          <tr className="border-b border-strong bg-raised/95 backdrop-blur">
+          <tr className="border-b border-white/[0.08] bg-white/[0.03] backdrop-blur-md">
             {selection !== undefined && (
               <th scope="col" className="w-10 px-3.5 py-2.5">
                 <Checkbox
@@ -327,8 +327,8 @@ export function DataTable<TRow>({
                         },
                       })}
                   className={cn(
-                    'border-b border-subtle/55 transition-colors last:border-0',
-                    isSelected ? 'bg-accent-soft/60' : 'hover:bg-raised/50',
+                    'border-b border-white/[0.06] transition-colors last:border-0',
+                    isSelected ? 'bg-accent/10' : 'hover:bg-white/[0.04]',
                     /*
                       Активная строка обведена вставленной рамкой, а не залита:
                       заливка уже занята выделением галочкой, и два разных
@@ -449,7 +449,7 @@ export function Pagination({
   ).filter((value) => value >= 1 && value <= totalPages);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-subtle px-3 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] px-3 py-2.5">
       <span className="text-footnote text-muted">
         {`Показано ${from.toString()} – ${to.toString()} из ${total.toString()}`}
       </span>
@@ -477,7 +477,7 @@ export function Pagination({
               'h-7 min-w-7 rounded px-2 text-footnote transition-colors',
               value === page
                 ? 'bg-accent/15 text-accent'
-                : 'text-secondary hover:bg-raised hover:text-primary',
+                : 'text-secondary hover:bg-white/[0.08] hover:text-primary',
             )}
           >
             {value}
@@ -515,7 +515,7 @@ function PageButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="grid h-7 w-7 place-items-center rounded text-secondary transition-colors hover:bg-raised hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      className="grid h-7 w-7 place-items-center rounded text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {children}
     </button>

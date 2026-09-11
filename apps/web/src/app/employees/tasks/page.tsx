@@ -259,7 +259,7 @@ export default function EmployeeTasksPage(): ReactElement {
                     onClick={() => {
                       complete.mutate({ id: row.id });
                     }}
-                    className="inline-flex items-center gap-1 rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
                   >
                     <Check className="h-3 w-3" aria-hidden />
                     Выполнено
@@ -270,7 +270,7 @@ export default function EmployeeTasksPage(): ReactElement {
                       setReason('');
                       setCancelling({ id: row.id, title: row.title });
                     }}
-                    className="rounded border border-danger/40 px-2 py-1 text-footnote text-danger hover:bg-danger/10"
+                    className="pressable rounded-full border border-danger/40 px-2 py-1 text-footnote font-medium text-danger hover:bg-danger/10"
                   >
                     Отменить
                   </button>

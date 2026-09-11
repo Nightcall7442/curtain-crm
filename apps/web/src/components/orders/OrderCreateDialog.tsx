@@ -579,7 +579,7 @@ export function OrderCreateDialog({
                   : null;
 
               return (
-                <div key={item.id} className="rounded border border-subtle bg-base/40 p-3">
+                <div key={item.id} className="rounded-2xl border border-white/[0.06] bg-white/[0.04] p-3">
                   <div className="mb-2 flex items-center gap-2">
                     <span className="text-footnote font-medium text-primary">
                       {`Позиция ${(index + 1).toString()}`}

@@ -183,7 +183,7 @@ export function OrderRowActions({
                       ? 'text-danger hover:bg-danger/10'
                       : action.kind === TransitionKind.ROLLBACK
                         ? 'text-warning hover:bg-warning/10'
-                        : 'text-secondary hover:bg-raised hover:text-primary',
+                        : 'text-secondary hover:bg-white/[0.08] hover:text-primary',
                   )}
                 >
                   {action.label}

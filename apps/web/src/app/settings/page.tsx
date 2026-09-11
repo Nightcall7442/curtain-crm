@@ -53,7 +53,7 @@ export default function SettingsPage(): ReactElement {
               className={
                 isActive
                   ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
-                  : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-raised hover:text-primary'
+                  : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary'
               }
             >
               {entry.label}

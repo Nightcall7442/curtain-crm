@@ -262,7 +262,7 @@ export default function DayOffRequestsPage(): ReactElement {
                   onClick={() => {
                     withdraw.mutate({ id: row.id });
                   }}
-                  className="rounded border border-subtle px-2 py-1 text-footnote text-secondary hover:bg-raised disabled:opacity-50"
+                  className="rounded-xl border border-white/10 px-2 py-1 text-footnote text-secondary hover:bg-white/[0.08] disabled:opacity-50"
                 >
                   Снять
                 </button>
@@ -274,7 +274,7 @@ export default function DayOffRequestsPage(): ReactElement {
                     onClick={() => {
                       approve.mutate({ id: row.id });
                     }}
-                    className="inline-flex items-center gap-1 rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
                   >
                     <Check className="h-3 w-3" aria-hidden />
                     Одобрить
@@ -291,7 +291,7 @@ export default function DayOffRequestsPage(): ReactElement {
                             : `${formatDate(row.startDate)} – ${formatDate(row.endDate)}`,
                       });
                     }}
-                    className="rounded border border-danger/40 px-2 py-1 text-footnote text-danger hover:bg-danger/10"
+                    className="pressable rounded-full border border-danger/40 px-2 py-1 text-footnote font-medium text-danger hover:bg-danger/10"
                   >
                     Отклонить
                   </button>

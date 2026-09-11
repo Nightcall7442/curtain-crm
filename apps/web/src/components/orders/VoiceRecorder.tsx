@@ -199,7 +199,7 @@ export function VoiceRecorder({ orderId }: { readonly orderId: number }): ReactE
             <button
               type="button"
               onClick={stop}
-              className="ml-auto flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-footnote text-primary transition-colors hover:bg-raised"
+              className="ml-auto flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-footnote text-primary transition-colors hover:bg-white/[0.08]"
             >
               <Square className="h-3.5 w-3.5" aria-hidden />
               Отправить запись
@@ -221,7 +221,7 @@ export function VoiceRecorder({ orderId }: { readonly orderId: number }): ReactE
             onClick={() => {
               void start();
             }}
-            className="flex items-center gap-1.5 rounded border border-subtle px-2.5 py-1.5 text-footnote text-secondary transition-colors hover:bg-raised hover:text-primary disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-footnote text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary disabled:opacity-50"
           >
             <Mic className="h-3.5 w-3.5" aria-hidden />
             {addVoice.isPending ? 'Отправка…' : 'Записать голосом'}

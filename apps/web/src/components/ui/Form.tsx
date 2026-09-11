@@ -59,7 +59,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -71,17 +71,17 @@ export function Modal({
     >
       <div
         className={cn(
-          'my-8 w-full rounded-panel border border-strong bg-panel shadow-2xl',
+          'surface-card my-8 w-full bg-panel/70 shadow-2xl',
           widthClass,
         )}
       >
-        <header className="flex items-center gap-3 border-b border-subtle px-5 py-3.5">
+        <header className="flex items-center gap-3 border-b border-white/[0.08] px-5 py-3.5">
           <h2 className="text-body font-semibold text-primary">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Закрыть"
-            className="ml-auto grid h-8 w-8 place-items-center rounded text-secondary transition-colors hover:bg-raised hover:text-primary"
+            className="ml-auto grid h-8 w-8 place-items-center rounded text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary"
           >
             <X className="h-4 w-4" />
           </button>
@@ -90,7 +90,7 @@ export function Modal({
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
 
         {footer !== undefined && (
-          <footer className="flex items-center justify-end gap-2 border-t border-subtle px-5 py-3">
+          <footer className="flex items-center justify-end gap-2 border-t border-white/[0.08] px-5 py-3">
             {footer}
           </footer>
         )}
@@ -160,10 +160,8 @@ export function Field({
   спорить с данными, которые в нём набраны.
 */
 const CONTROL_BASE =
-  'w-full rounded-tile border border-subtle bg-base text-primary transition-colors ' +
-  'shadow-[inset_0_1px_2px_rgb(58_45_20_/_0.05)] ' +
-  'placeholder:text-muted/70 focus:border-accent-muted focus:outline-none ' +
-  'focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60';
+  'glass-control w-full rounded-xl border-0 text-primary transition-[background-color,box-shadow] ' +
+  'placeholder:text-muted/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60';
 
 /**
  * Два размера.
@@ -372,10 +370,10 @@ export function ChipSelect({
               );
             }}
             className={cn(
-              'rounded border px-2 py-1 text-footnote transition-colors',
+              'rounded-full border px-2.5 py-1 text-footnote transition-colors',
               selected
                 ? 'border-accent/50 bg-accent/15 text-accent'
-                : 'border-subtle text-secondary hover:bg-raised hover:text-primary',
+                : 'border-white/10 bg-white/[0.04] text-secondary hover:bg-white/[0.09] hover:text-primary',
             )}
           >
             {option}
@@ -429,7 +427,7 @@ export function Button({
     // Опасное действие контурное, а не залитое: сплошная красная кнопка
     // притягивает нажатие ровно там, где оно должно быть обдуманным.
     danger: 'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20',
-    ghost: 'text-secondary hover:bg-raised hover:text-primary',
+    ghost: 'text-secondary hover:bg-white/[0.08] hover:text-primary',
   };
 
   // Обе высоты выше порога попадания мышью; `sm` — для строк таблиц,
@@ -515,7 +513,7 @@ export function FormError({ message }: { readonly message: string | null }): Rea
   return (
     <p
       role="alert"
-      className="rounded border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger"
+      className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger"
     >
       {message}
     </p>

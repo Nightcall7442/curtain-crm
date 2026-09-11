@@ -78,7 +78,7 @@ export function ThemePicker(): ReactElement {
                   'pressable flex items-center gap-3 rounded-panel border p-3 text-left',
                   active
                     ? 'border-accent bg-accent-soft'
-                    : 'border-subtle bg-panel hover:border-strong hover:bg-raised/60',
+                    : 'border-subtle bg-panel hover:border-strong hover:bg-white/[0.08]',
                 )}
               >
                 <span

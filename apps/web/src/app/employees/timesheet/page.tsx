@@ -358,7 +358,7 @@ export default function TimesheetPage(): ReactElement {
                       endedAt: row.endedAt,
                     });
                   }}
-                  className="grid h-7 w-7 place-items-center rounded text-muted transition-colors hover:bg-raised hover:text-primary"
+                  className="grid h-7 w-7 place-items-center rounded text-muted transition-colors hover:bg-white/[0.08] hover:text-primary"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>

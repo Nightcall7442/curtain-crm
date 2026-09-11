@@ -155,8 +155,8 @@ const config: Config = {
 
       borderRadius: {
         /** Скругление карточек из макета — заметно круглее прежнего. */
-        panel: '16px',
-        tile: '12px',
+        panel: '22px',
+        tile: '14px',
       },
     },
   },
