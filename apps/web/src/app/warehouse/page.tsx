@@ -306,7 +306,7 @@ export default function WarehousePage(): ReactElement {
                     'pressable h-8 rounded-tile border px-3 text-footnote font-medium',
                     active
                       ? 'border-nav bg-nav text-nav-text'
-                      : 'border-subtle bg-panel text-secondary hover:bg-white/[0.08] hover:text-primary',
+                      : 'border-subtle bg-panel text-secondary hover:bg-ink/[0.08] hover:text-primary',
                   )}
                 >
                   {value === 'all' ? 'Все' : STOCK_KIND_LABELS_RU[value]}

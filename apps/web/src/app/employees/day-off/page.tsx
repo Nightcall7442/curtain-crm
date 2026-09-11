@@ -262,7 +262,7 @@ export default function DayOffRequestsPage(): ReactElement {
                   onClick={() => {
                     withdraw.mutate({ id: row.id });
                   }}
-                  className="rounded-xl border border-white/10 px-2 py-1 text-footnote text-secondary hover:bg-white/[0.08] disabled:opacity-50"
+                  className="rounded-xl border border-ink/10 px-2 py-1 text-footnote text-secondary hover:bg-ink/[0.08] disabled:opacity-50"
                 >
                   Снять
                 </button>

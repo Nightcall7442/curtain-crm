@@ -666,7 +666,7 @@ function EmployeesInner({
               {birthdays.data.map((entry) => (
                 <li
                   key={entry.userId}
-                  className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.04] px-3 py-2"
+                  className="flex items-center gap-3 rounded-2xl border border-ink/[0.06] bg-ink/[0.04] px-3 py-2"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-caption text-primary">

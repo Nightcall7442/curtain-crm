@@ -75,13 +75,13 @@ export function Modal({
           widthClass,
         )}
       >
-        <header className="flex items-center gap-3 border-b border-white/[0.08] px-5 py-3.5">
+        <header className="flex items-center gap-3 border-b border-ink/[0.08] px-5 py-3.5">
           <h2 className="text-body font-semibold text-primary">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Закрыть"
-            className="ml-auto grid h-8 w-8 place-items-center rounded text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary"
+            className="ml-auto grid h-8 w-8 place-items-center rounded text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary"
           >
             <X className="h-4 w-4" />
           </button>
@@ -90,7 +90,7 @@ export function Modal({
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
 
         {footer !== undefined && (
-          <footer className="flex items-center justify-end gap-2 border-t border-white/[0.08] px-5 py-3">
+          <footer className="flex items-center justify-end gap-2 border-t border-ink/[0.08] px-5 py-3">
             {footer}
           </footer>
         )}
@@ -373,7 +373,7 @@ export function ChipSelect({
               'rounded-full border px-2.5 py-1 text-footnote transition-colors',
               selected
                 ? 'border-accent/50 bg-accent/15 text-accent'
-                : 'border-white/10 bg-white/[0.04] text-secondary hover:bg-white/[0.09] hover:text-primary',
+                : 'border-ink/10 bg-ink/[0.04] text-secondary hover:bg-ink/[0.09] hover:text-primary',
             )}
           >
             {option}
@@ -423,11 +423,11 @@ export function Button({
     primary:
       'bg-accent text-on-accent hover:bg-accent-strong ' +
       'shadow-[inset_0_1px_0_rgb(255_255_255_/_0.35),0_8px_20px_-10px_rgb(var(--accent)_/_0.7)]',
-    secondary: 'border border-white/10 bg-white/[0.06] text-secondary hover:bg-white/10 hover:text-primary',
+    secondary: 'border border-ink/10 bg-ink/[0.06] text-secondary hover:bg-ink/10 hover:text-primary',
     // Опасное действие контурное, а не залитое: сплошная красная кнопка
     // притягивает нажатие ровно там, где оно должно быть обдуманным.
     danger: 'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/20',
-    ghost: 'text-secondary hover:bg-white/[0.08] hover:text-primary',
+    ghost: 'text-secondary hover:bg-ink/[0.08] hover:text-primary',
   };
 
   // Обе высоты выше порога попадания мышью; `sm` — для строк таблиц,

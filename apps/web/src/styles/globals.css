@@ -75,9 +75,9 @@
       тёплой подложке, как раскрой на столе. Разница по яркости — восемь
       процентов, по температуре — заметная, и ряд карточек читается сразу.
     */
-    --surface-base: 241 237 228; /* #F1EDE4 — тёплый лён */
+    --surface-base: 234 242 238; /* #F1EDE4 — тёплый лён */
     --surface-panel: 255 255 255; /* #FFFFFF — карточки */
-    --surface-raised: 246 242 234; /* #F6F2EA — элементы внутри карточек, ховер */
+    --surface-raised: 243 248 245; /* #F6F2EA — элементы внутри карточек, ховер */
 
     /**
      * Навигация — глубокая хвоя.
@@ -85,21 +85,21 @@
      * Тёмная, а не светлая: в макете шапка тёмно-зелёная, и это же решение
      * разводит навигацию и содержимое без единой лишней линии.
      */
-    --surface-nav: 20 46 36; /* #142E24 */
-    --surface-nav-raised: 30 66 52; /* #1E4234 */
-    --text-on-nav: 232 240 236; /* #E8F0EC — 12,52:1 к шапке */
+    --surface-nav: 16 32 25; /* #142E24 */
+    --surface-nav-raised: 26 48 38; /* #1E4234 */
+    --text-on-nav: 234 245 238; /* #E8F0EC — 12,52:1 к шапке */
 
     /*
       Границы тёплые — они обводят белое по льну, а не серое по серому.
       Холодная рамка на тёплом фоне читалась как грязь по краю карточки.
     */
-    --border-subtle: 229 222 209; /* #E5DED1 */
-    --border-strong: 210 199 180; /* #D2C7B4 */
+    --border-subtle: 212 226 219; /* #E5DED1 */
+    --border-strong: 184 206 196; /* #D2C7B4 */
 
     /* Текст: чернильная гамма с зелёным уклоном, не чистый чёрный */
-    --text-primary: 20 35 29; /* #14231D — 15,01:1 к фону */
-    --text-secondary: 78 91 85; /* #4E5B55 — 6,55:1 */
-    --text-muted: 95 107 101; /* #5F6B65 — 4,82:1 даже на самой тёмной поверхности */
+    --text-primary: 14 30 23; /* #14231D — 15,01:1 к фону */
+    --text-secondary: 72 96 86; /* #4E5B55 — 6,55:1 */
+    --text-muted: 106 130 120; /* #5F6B65 — 4,82:1 даже на самой тёмной поверхности */
 
     /**
      * Зелёный — акцент бренда. Приглушённая тёмная хвоя, а не «зелёный
@@ -116,11 +116,11 @@
      *  `muted` (#9BBDAF) — рамки и выключенные состояния, текстом нельзя;
      *  `soft` (#EAF2EE) — мягкая подложка под метки и выбранные чипы.
      */
-    --accent: 31 93 69; /* #1F5D45 */
-    --accent-strong: 22 70 52; /* #164634 */
-    --accent-bright: 42 125 92; /* #2A7D5C */
-    --accent-muted: 155 189 175; /* #9BBDAF */
-    --accent-soft: 234 242 238; /* #EAF2EE */
+    --accent: 18 150 92; /* #1F5D45 */
+    --accent-strong: 14 122 76; /* #164634 */
+    --accent-bright: 38 196 126; /* #2A7D5C */
+    --accent-muted: 170 222 196; /* #9BBDAF */
+    --accent-soft: 224 246 235; /* #EAF2EE */
 
     /**
      * Цвет подписи НА залитой акцентом кнопке.
@@ -144,8 +144,8 @@
      * его набирать нельзя — 3,3:1 на белом. `brass-ink` (#7A5F1E) — 6,3:1,
      * это уже текст: подписи разделов, прописные метки.
      */
-    --brass: 176 141 61;
-    --brass-ink: 122 95 30;
+    --brass: 18 150 92;
+    --brass-ink: 14 122 76;
 
     /**
      * Семантика.
@@ -154,10 +154,10 @@
      * означает «сюда нажимать», успех — «это уже хорошо». Совпади они,
      * зелёная метка статуса читалась бы как кнопка.
      */
-    --positive: 21 116 57;
-    --warning: 146 105 12;
-    --danger: 176 32 42;
-    --info: 39 106 172;
+    --positive: 18 150 92;
+    --warning: 176 112 8;
+    --danger: 200 40 56;
+    --info: 30 100 200;
 
     /**
      * Цвета этапов производственного конвейера.
@@ -191,8 +191,8 @@
      * это опорная линия сравнения, а не равноправная категория. Идентичность
      * серий несут легенда и подписи значений на концах линий.
      */
-    --series-current: 31 93 69;
-    --series-previous: 158 168 163;
+    --series-current: 18 150 92;
+    --series-previous: 150 170 162;
 
     /**
      * Стекло.
@@ -203,9 +203,12 @@
      * ляжет прямо на прокручивающееся содержимое.
      */
     --glass-blur: 16px;
+    --glass-ink: 16 40 30;
+    --glass-fill: 255 255 255;
+    --glass-control-alpha: 0.85;
     --glass-light: 255 255 255;
-    --glass-light-alpha: 0.72;
-    --glass-nav-alpha: 0.84;
+    --glass-light-alpha: 0.7;
+    --glass-nav-alpha: 0.9;
 
     /**
      * Образцы цвета для переключателя оформления.
@@ -373,7 +376,11 @@
       --stage-done: 61 255 160;
 
       /* Стекло в темноте — затемняющее, а не осветляющее. */
-      --glass-light: 16 32 25;
+      --glass-ink: 255 255 255;
+      --glass-ink: 255 255 255;
+    --glass-fill: 255 255 255;
+    --glass-control-alpha: 0.07;
+    --glass-light: 16 32 25;
       --glass-light-alpha: 0.5;
       --glass-nav-alpha: 0.35;
 
@@ -901,8 +908,8 @@
     /* Заливка почти прозрачная: холст с бликами должен читаться сквозь неё. */
     background-image: linear-gradient(
       150deg,
-      rgb(255 255 255 / 0.13) 0%,
-      rgb(255 255 255 / 0.06) 45%,
+      rgb(var(--glass-fill) / 0.13) 0%,
+      rgb(var(--glass-fill) / 0.06) 45%,
       rgb(var(--surface-raised) / 0.40) 100%
     );
     backdrop-filter: blur(28px) saturate(170%) brightness(1.12);
@@ -913,12 +920,33 @@
       объёмным, а не нарисованным прямоугольником.
     */
     box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.14),
-      inset 0 1px 0 rgb(255 255 255 / 0.34),
-      inset 1px 0 0 rgb(255 255 255 / 0.10),
+      inset 0 0 0 1px rgb(var(--glass-ink) / 0.14),
+      inset 0 1px 0 rgb(var(--glass-fill) / 0.34),
+      inset 1px 0 0 rgb(var(--glass-fill) / 0.10),
       inset 0 -1px 0 rgb(0 0 0 / 0.20),
       0 1px 2px rgb(0 0 0 / 0.25),
       0 30px 60px -30px rgb(0 0 0 / 0.7);
+  }
+
+  /* На светлом — белое стекло: заливка плотнее, иначе карточка не отделяется от холста. */
+  :root:not([data-theme='dark']) .surface-card {
+    background-image: linear-gradient(
+      150deg,
+      rgb(255 255 255 / 0.82) 0%,
+      rgb(255 255 255 / 0.66) 60%,
+      rgb(255 255 255 / 0.74) 100%
+    );
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .surface-card {
+      background-image: linear-gradient(
+        150deg,
+        rgb(var(--glass-fill) / 0.13) 0%,
+        rgb(var(--glass-fill) / 0.06) 45%,
+        rgb(var(--surface-raised) / 0.40) 100%
+      );
+    }
   }
 
   /* Блик — размытое пятно света в верхнем левом углу, как на настоящем стекле. */
@@ -929,7 +957,7 @@
     border-radius: inherit;
     pointer-events: none;
     background:
-      radial-gradient(360px 180px at 14% 0%, rgb(255 255 255 / 0.18), transparent 70%),
+      radial-gradient(360px 180px at 14% 0%, rgb(var(--glass-fill) / 0.18), transparent 70%),
       radial-gradient(260px 140px at 100% 100%, rgb(var(--accent) / 0.12), transparent 70%);
   }
 
@@ -954,18 +982,17 @@
 
   /* Стекло для полей, плашек и строк таблицы — тот же язык, тоньше слой. */
   .glass-control {
-    background-color: rgb(255 255 255 / 0.07);
+    background-color: rgb(var(--glass-fill) / var(--glass-control-alpha));
     box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.10),
-      inset 0 1px 0 rgb(255 255 255 / 0.10);
+      inset 0 0 0 1px rgb(var(--glass-ink) / 0.12),
+      inset 0 1px 0 rgb(var(--glass-fill) / 0.10);
   }
 
   .glass-control:focus,
   .glass-control:focus-within {
-    background-color: rgb(255 255 255 / 0.07);
     box-shadow:
-      inset 0 0 0 1px rgb(var(--accent) / 0.55),
-      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      inset 0 0 0 1px rgb(var(--accent) / 0.6),
+      inset 0 1px 0 rgb(var(--glass-fill) / 0.12),
       0 0 0 3px rgb(var(--accent) / 0.15);
   }
 

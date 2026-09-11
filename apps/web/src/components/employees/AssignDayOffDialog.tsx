@@ -168,7 +168,7 @@ export function AssignDayOffDialog({
                 'rounded-full border px-2.5 py-1 text-footnote transition-colors',
                 mode === option.value
                   ? 'border-accent/50 bg-accent/15 text-accent'
-                  : 'border-subtle text-secondary hover:bg-white/[0.08] hover:text-primary',
+                  : 'border-subtle text-secondary hover:bg-ink/[0.08] hover:text-primary',
               )}
             >
               {option.label}

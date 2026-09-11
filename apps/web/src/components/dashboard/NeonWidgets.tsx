@@ -38,7 +38,7 @@ export function DeltaPill({
         onHero
           ? 'bg-black/15 text-on-accent'
           : flat
-            ? 'bg-white/[0.06] text-muted'
+            ? 'bg-ink/[0.06] text-muted'
             : up
               ? 'bg-accent/15 text-accent'
               : 'bg-danger/15 text-danger',
@@ -59,7 +59,7 @@ function Dots({ lit, className }: { readonly lit: number; readonly className?: s
           key={index}
           className={cn(
             'h-1.5 w-1.5 rounded-full',
-            index < lit ? 'bg-accent' : 'bg-white/[0.12]',
+            index < lit ? 'bg-accent' : 'bg-ink/[0.12]',
           )}
         />
       ))}
@@ -193,7 +193,7 @@ export function PulseCard({
                   isToday
                     ? 'bg-accent shadow-[0_0_16px_rgb(var(--accent)_/_0.55)]'
                     : count === 0
-                      ? 'bg-white/[0.06]'
+                      ? 'bg-ink/[0.06]'
                       : 'bg-accent/40 hover:bg-accent/70',
                 )}
                 style={{ height: `${height.toString()}%` }}
@@ -324,7 +324,7 @@ export function AttentionCard({
 
       <ul className="mt-4 flex flex-col gap-2">
         {isLoading ? (
-          <li className="h-9 animate-pulse rounded-full bg-white/[0.06]" />
+          <li className="h-9 animate-pulse rounded-full bg-ink/[0.06]" />
         ) : entries.length === 0 ? (
           <li className="rounded-full bg-accent/10 px-3 py-2 text-caption text-accent">
             Всё в порядке — заказов, требующих вмешательства, нет
@@ -333,7 +333,7 @@ export function AttentionCard({
           entries.map((entry) => {
             const row = (
               <>
-                <span className="grid h-7 min-w-[28px] place-items-center rounded-full bg-white/[0.08] px-2 font-hero text-caption font-bold text-primary [font-variant-numeric:tabular-nums]">
+                <span className="grid h-7 min-w-[28px] place-items-center rounded-full bg-ink/[0.08] px-2 font-hero text-caption font-bold text-primary [font-variant-numeric:tabular-nums]">
                   {entry.count}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-caption text-secondary">{entry.label}</span>
@@ -342,13 +342,13 @@ export function AttentionCard({
                 </span>
               </>
             );
-            const className = 'flex items-center gap-3 rounded-2xl bg-white/[0.04] px-3 py-2';
+            const className = 'flex items-center gap-3 rounded-2xl bg-ink/[0.04] px-3 py-2';
             return (
               <li key={entry.key}>
                 {entry.href === undefined ? (
                   <div className={className}>{row}</div>
                 ) : (
-                  <Link href={entry.href} className={cn(className, 'transition-colors hover:bg-white/[0.09]')}>
+                  <Link href={entry.href} className={cn(className, 'transition-colors hover:bg-ink/[0.09]')}>
                     {row}
                   </Link>
                 )}

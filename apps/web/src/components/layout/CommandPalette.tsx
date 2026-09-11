@@ -162,7 +162,7 @@ export function CommandPalette({
             aria-label="Строка поиска"
             className="min-w-0 flex-1 bg-transparent text-caption text-primary outline-none placeholder:text-muted"
           />
-          <kbd className="rounded-xl border border-white/10 bg-base px-1.5 py-0.5 font-mono text-[10px] text-muted">
+          <kbd className="rounded-xl border border-ink/10 bg-base px-1.5 py-0.5 font-mono text-[10px] text-muted">
             Esc
           </kbd>
         </div>
@@ -197,7 +197,7 @@ export function CommandPalette({
                       }}
                       className={cn(
                         'flex w-full items-baseline justify-between gap-3 px-4 py-2 text-left',
-                        index === activeIndex ? 'bg-accent-soft/70' : 'hover:bg-white/[0.08]',
+                        index === activeIndex ? 'bg-accent-soft/70' : 'hover:bg-ink/[0.08]',
                       )}
                     >
                       <span className="min-w-0 truncate text-caption text-primary">

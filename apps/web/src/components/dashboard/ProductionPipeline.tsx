@@ -77,7 +77,7 @@ export function ProductionPipeline({
                 ~1000 px все восемь этапов встают в одну строку без прокрутки —
                 конвейер, который надо листать вбок, не читается как конвейер.
               */
-              className="card-link group flex min-w-[84px] flex-1 flex-col items-center gap-1.5 rounded-2xl bg-white/[0.04] px-2 py-3 hover:bg-white/[0.09]"
+              className="card-link group flex min-w-[84px] flex-1 flex-col items-center gap-1.5 rounded-2xl bg-ink/[0.04] px-2 py-3 hover:bg-ink/[0.09]"
               style={{ boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 28%, transparent)` }}
             >
               <span

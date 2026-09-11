@@ -404,7 +404,7 @@ export default function PayrollPage(): ReactElement {
                     onClick={() => {
                       setBreakdownId(row.id);
                     }}
-                    className="rounded-xl border border-white/10 px-2 py-1 text-footnote text-secondary hover:border-accent/50 hover:text-primary"
+                    className="rounded-xl border border-ink/10 px-2 py-1 text-footnote text-secondary hover:border-accent/50 hover:text-primary"
                   >
                     Разбивка
                   </button>
@@ -450,7 +450,7 @@ export default function PayrollPage(): ReactElement {
           ) : (
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {(schemes.data ?? []).map((scheme) => (
-                <li key={scheme.id} className="rounded-2xl border border-white/[0.06] bg-white/[0.04] p-3">
+                <li key={scheme.id} className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-3">
                   <p className="truncate text-caption font-medium text-primary" title={scheme.userFullName}>
                     {scheme.userFullName}
                   </p>

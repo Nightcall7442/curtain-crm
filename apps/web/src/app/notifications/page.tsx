@@ -70,7 +70,7 @@ export default function NotificationsPage(): ReactElement {
               onClick={() => {
                 markAllAsRead.mutate();
               }}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-footnote text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-xl border border-ink/10 px-2.5 py-1.5 text-footnote text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary disabled:opacity-50"
             >
               <CheckCheck className="h-3.5 w-3.5" aria-hidden />
               Прочитать все

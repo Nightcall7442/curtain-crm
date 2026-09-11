@@ -83,11 +83,11 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
         <span className="sr-only">Загрузка панели</span>
 
         <div className="hidden w-[96px] shrink-0 flex-col items-center gap-3 bg-nav py-3 lg:flex">
-          <span className="h-10 w-10 rounded-[14px] bg-white/10" />
-          <span className="mt-3 h-10 w-10 rounded-[14px] bg-white/[0.07]" />
-          <span className="h-10 w-10 rounded-[14px] bg-white/[0.07]" />
-          <span className="h-10 w-10 rounded-[14px] bg-white/[0.07]" />
-          <span className="h-10 w-10 rounded-[14px] bg-white/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-ink/10" />
+          <span className="mt-3 h-10 w-10 rounded-[14px] bg-ink/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-ink/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-ink/[0.07]" />
+          <span className="h-10 w-10 rounded-[14px] bg-ink/[0.07]" />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">

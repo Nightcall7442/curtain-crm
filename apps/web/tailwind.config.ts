@@ -23,6 +23,13 @@ const config: Config = {
           text: withAlpha('--text-on-nav'),
         },
 
+        /*
+          «Чернила» стекла: белые в тёмной схеме, тёмные в светлой. Ими
+          рисуются кромки, подложки и наведения стеклянных элементов —
+          `bg-ink/[0.05]`, `border-ink/10`. Голый `white/…` на светлом
+          фоне пропадал бы: белая кромка на белой карточке не видна.
+        */
+        ink: withAlpha('--glass-ink'),
         subtle: withAlpha('--border-subtle'),
         strong: withAlpha('--border-strong'),
 

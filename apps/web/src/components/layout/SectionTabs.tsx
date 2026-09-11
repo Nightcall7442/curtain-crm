@@ -37,7 +37,7 @@ export function SectionTabs(): ReactElement | null {
               'pressable rounded-full border px-3.5 py-1.5 text-caption font-medium transition-colors',
               active
                 ? 'border-accent/40 bg-accent/15 text-accent'
-                : 'border-white/10 bg-white/[0.04] text-secondary hover:bg-white/[0.09] hover:text-primary',
+                : 'border-ink/10 bg-ink/[0.04] text-secondary hover:bg-ink/[0.09] hover:text-primary',
             )}
           >
             {child.label}

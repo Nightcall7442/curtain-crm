@@ -203,7 +203,7 @@ export function OrderPhotos({
         ) : (
           <ul className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {photos.data.map((photo) => (
-              <li key={photo.id} className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.04]">
+              <li key={photo.id} className="overflow-hidden rounded-2xl border border-ink/[0.06] bg-ink/[0.04]">
                 {/* Обычный img, а не next/image: файлы отдаёт наш API по
                     подписанным ссылкам с ограниченным сроком жизни, и
                     оптимизатор Next не смог бы их закешировать. */}

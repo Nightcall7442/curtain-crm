@@ -492,7 +492,7 @@ export function OrdersView({
                 className={
                   isActive
                     ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
-                    : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-white/[0.08] hover:text-primary'
+                    : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary'
                 }
               >
                 {entry.label}
@@ -749,7 +749,7 @@ export function OrdersView({
 /** Клавиша в подсказке — набирается как клавиша, а не как обычный текст. */
 function Key({ children }: { readonly children: ReactNode }): ReactElement {
   return (
-    <kbd className="rounded-xl border border-white/10 bg-base px-1 py-px font-mono text-[10px] text-secondary">
+    <kbd className="rounded-xl border border-ink/10 bg-base px-1 py-px font-mono text-[10px] text-secondary">
       {children}
     </kbd>
   );

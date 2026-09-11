@@ -620,7 +620,7 @@ function PerformerCard({
   readonly metrics: readonly { readonly label: string; readonly value: string }[];
 }): ReactElement {
   return (
-    <section className="rounded-2xl bg-white/[0.04] p-4">
+    <section className="rounded-2xl bg-ink/[0.04] p-4">
       <h4 className="text-footnote font-medium text-muted">{role}</h4>
 
       {name === null ? (
@@ -660,7 +660,7 @@ function StageRow({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between rounded px-2 py-1.5 text-caption transition-colors hover:bg-white/[0.06]"
+      className="flex items-center justify-between rounded px-2 py-1.5 text-caption transition-colors hover:bg-ink/[0.06]"
     >
       <span className="text-secondary">{label}</span>
       <span className={`font-semibold ${valueClass}`}>{value}</span>

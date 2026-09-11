@@ -20,7 +20,7 @@ export function StubPage({
 }): ReactElement {
   return (
     <div className="grid min-h-[60vh] place-items-center">
-      <section className="max-w-lg rounded-2xl border border-white/[0.08] bg-panel p-8 text-center shadow-panel">
+      <section className="max-w-lg rounded-2xl border border-ink/[0.08] bg-panel p-8 text-center shadow-panel">
         <span
           aria-hidden
           className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-accent-muted/50 text-accent-muted"

@@ -34,7 +34,7 @@ type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'accent';
  * форма метки остаётся, крика нет.
  */
 const TONE_CLASSES: Readonly<Record<Tone, string>> = {
-  neutral: 'border-white/10 bg-white/[0.06] text-secondary',
+  neutral: 'border-ink/10 bg-ink/[0.06] text-secondary',
   positive: 'border-positive/30 bg-positive/[0.12] text-positive',
   warning: 'border-warning/30 bg-warning/[0.12] text-warning',
   danger: 'border-danger/30 bg-danger/[0.12] text-danger',
