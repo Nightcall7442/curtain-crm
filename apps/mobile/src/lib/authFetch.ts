@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, type Locale } from '@curtain-crm/shared';
 import { TRPCClientError } from '@trpc/client';
 
 import { resolveApiUrl } from './trpc';
@@ -19,6 +20,18 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 /** Вызывается, когда сессию восстановить не удалось: приложение уходит на вход. */
 let onSessionExpired: (() => void) | null = null;
+
+/**
+ * Язык, на котором сервер отдаёт сообщения об ошибках (заголовок `x-locale`).
+ *
+ * Модульная переменная, а не контекст: `authFetch` вызывается из tRPC-линка
+ * вне дерева React. Выставляет `LocaleProvider` при каждой смене языка.
+ */
+let requestLocale: Locale = DEFAULT_LOCALE;
+
+export function setRequestLocale(locale: Locale): void {
+  requestLocale = locale;
+}
 
 export function setSessionExpiredHandler(handler: (() => void) | null): void {
   onSessionExpired = handler;
@@ -87,6 +100,7 @@ export const authFetch: typeof fetch = async (input, init) => {
   const headers = new Headers(init?.headers);
   const token = tokenStorage.getAccessTokenSync();
   if (token !== null) headers.set('authorization', `Bearer ${token}`);
+  headers.set('x-locale', requestLocale);
 
   return fetch(input, { ...init, headers });
 };

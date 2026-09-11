@@ -6,6 +6,7 @@ import { useState, type ReactNode, type ReactElement } from 'react';
 import superjson from 'superjson';
 
 import { authFetch } from '@/lib/authFetch';
+import { readStoredLocale } from '@/lib/locale';
 import { apiUrl, tokenStorage, trpc } from '@/lib/trpc';
 
 import { AuthProvider } from './AuthProvider';
@@ -53,7 +54,9 @@ export function Providers({ children }: { readonly children: ReactNode }): React
           fetch: authFetch,
           headers() {
             const token = tokenStorage.getAccessToken();
-            return token === null ? {} : { authorization: `Bearer ${token}` };
+            // Язык — серверу: на нём приходят сообщения об ошибках.
+            const locale = { 'x-locale': readStoredLocale() };
+            return token === null ? locale : { ...locale, authorization: `Bearer ${token}` };
           },
         }),
       ],

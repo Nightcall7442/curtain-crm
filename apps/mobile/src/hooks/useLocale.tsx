@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_LOCALE, isLocale, type Locale, type Translated } from '@curtain-crm/shared';
 
 import { MESSAGES, type MessageKey } from '../i18n/messages';
+import { setRequestLocale } from '../lib/authFetch';
 import {
   createContext,
   useCallback,
@@ -76,6 +77,11 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
       cancelled = true;
     };
   }, []);
+
+  // Сервер тоже должен знать язык: на нём приходят сообщения об ошибках.
+  useEffect(() => {
+    setRequestLocale(locale);
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale): void => {
     setLocaleState(next);

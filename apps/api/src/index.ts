@@ -81,7 +81,7 @@ app.use(
   '/trpc/*',
   cors({
     origin: env.CORS_ORIGINS,
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Locale'],
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     credentials: true,
     maxAge: 600,
