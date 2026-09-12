@@ -636,7 +636,10 @@ export function OrdersView({
             key: 'status',
             header: 'Статус',
             render: (row) => (
-              <span className="inline-flex items-center gap-1.5">
+              // Длинный статус («Отклонён, решение за директором») переносится
+              // на две строки: иначе колонка раздувалась и на ноутбуке
+              // кнопки действий уезжали за правый край.
+              <span className="inline-flex max-w-[15rem] flex-wrap items-center gap-1.5 [&_span]:whitespace-normal">
                 <OrderStatusBadge status={row.status} />
                 <OrderTypeBadge orderType={row.orderType} />
               </span>

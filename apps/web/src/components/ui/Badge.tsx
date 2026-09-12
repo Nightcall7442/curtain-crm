@@ -54,11 +54,8 @@ export function Badge({
   return (
     <span
       className={cn(
-        /*
-          Скругление 6 пикселей, а не таблетка. Круглые пилюли — язык
-          мессенджера; здесь же метка стоит в таблице рядом с прямыми углами
-          строк, и мягкий прямоугольник встаёт в ряд, а не выпадает из него.
-        */
+        // Пилюля — как чипы и кнопки языка «Неон»; в таблице она стоит в ряд
+        // с такими же круглыми кнопками действий.
         'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-semibold leading-4 backdrop-blur-sm',
         TONE_CLASSES[tone],
         className,

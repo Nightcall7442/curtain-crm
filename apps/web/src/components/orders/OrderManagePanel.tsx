@@ -144,7 +144,8 @@ export function OrderManagePanel({
           статус заказа при этом не меняется.
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Один столбец: панель живёт в узкой правой колонке карточки, и четыре селекта в ряд там не помещались. */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           {ASSIGNABLE.map(({ role }) => (
             <AssigneeSelect
               key={role}
