@@ -833,6 +833,7 @@ async function run(db: Database): Promise<void> {
       createdBy: seller.id,
       status: OrderStatus.SEWING_DONE,
       sewerId: sewer.id,
+      sewingFee: '150000.00',
     })
     .returning();
   if (sewnOpen === undefined) throw new Error('заказ со сданным пошивом не создан');
@@ -853,6 +854,14 @@ async function run(db: Database): Promise<void> {
     'rating: сданный пошив идёт в балл до закрытия заказа',
     sewerTasks >= 2 && sewerRating?.score === sewerTasks,
     `задач ${sewerTasks.toString()}, балл ${String(sewerRating?.score ?? null)}`,
+  );
+
+  // И в зарплату: сдельная за сданный пошив — в месяц сдачи, не закрытия.
+  const sewerInputsAfter = await gatherPayrollInputs(db, sewer.id, Role.SEWER, period);
+  check(
+    'payroll: сдельная за сданный пошив начисляется до закрытия заказа',
+    sewerInputsAfter.stageFeesAmount === parseMoney('550000'),
+    moneyToDecimalString(sewerInputsAfter.stageFeesAmount),
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */
