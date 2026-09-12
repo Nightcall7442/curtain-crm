@@ -49,7 +49,7 @@ interface CartLine {
 }
 
 export function CashDeskScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
 
@@ -70,11 +70,11 @@ export function CashDeskScreen(): ReactElement {
       setCart([]);
       setClientName('');
       setComment('');
-      Alert.alert('Продано', `Чек на ${formatMoney(parseMoney(sale.total))}`);
+      Alert.alert(m('cash.sold'), m('cash.receiptFor', { sum: formatMoney(parseMoney(sale.total)) }));
       navigation.goBack();
     },
     onError(error) {
-      Alert.alert('Не удалось пробить чек', error.message);
+      Alert.alert(m('cash.error'), error.message);
     },
   });
 
@@ -144,8 +144,8 @@ export function CashDeskScreen(): ReactElement {
         ) : catalog.length === 0 ? (
           <Card>
             <Empty
-              message="Прайс пуст"
-              hint="Руководство заводит товары и цены в панели, раздел «Касса»"
+              message={m('cash.priceEmpty')}
+              hint={m('cash.priceEmptyHint')}
             />
           </Card>
         ) : (
@@ -166,7 +166,7 @@ export function CashDeskScreen(): ReactElement {
                   <Text
                     style={[styles.chipText, category === null ? styles.chipTextActive : null]}
                   >
-                    Всё
+                    {m('cash.all')}
                   </Text>
                 </Pressable>
 
@@ -192,7 +192,7 @@ export function CashDeskScreen(): ReactElement {
             )}
 
             <Card>
-              <CardTitle title="Товары" icon="orders" />
+              <CardTitle title={m('cash.goods')} icon="orders" />
 
               {visible.map((item) => {
                 const stock = Number.parseFloat(item.stockQuantity);
@@ -209,8 +209,8 @@ export function CashDeskScreen(): ReactElement {
                       </Text>
                       <Text style={[styles.itemStock, isOut ? styles.itemStockOut : null]}>
                         {isOut
-                          ? 'нет на витрине'
-                          : `остаток ${stock.toString()} ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
+                          ? m('cash.outOfStock')
+                          : m('cash.stock', { n: stock, unit: t(PURCHASE_UNIT_LABELS, item.unit) })}
                       </Text>
                     </View>
 
@@ -231,25 +231,23 @@ export function CashDeskScreen(): ReactElement {
             </Card>
 
             <Card>
-              <CardTitle title="Клиент" icon="person" />
-              <Text style={styles.hint}>
-                Необязательно — за метром тюля заходят без имени.
-              </Text>
+              <CardTitle title={m('sale.client')} icon="person" />
+              <Text style={styles.hint}>{m('cash.clientOptional')}</Text>
 
-              <Field label="Имя">
+              <Field label={m('create.name')}>
                 <Input
                   value={clientName}
                   onChangeText={setClientName}
-                  placeholder="Как обращаться к клиенту"
+                  placeholder={m('create.namePlaceholder')}
                   autoCapitalize="words"
                 />
               </Field>
 
-              <Field label="Комментарий">
+              <Field label={m('sale.comment')}>
                 <Input
                   value={comment}
                   onChangeText={setComment}
-                  placeholder="Что важно помнить по этой продаже"
+                  placeholder={m('cash.commentPlaceholder')}
                   multiline
                 />
               </Field>
@@ -269,8 +267,8 @@ export function CashDeskScreen(): ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>
             {parsed.length === 0
-              ? 'Ничего не выбрано'
-              : `Позиций: ${parsed.length.toString()}`}
+              ? m('cash.nothingSelected')
+              : m('cash.items', { n: parsed.length })}
           </Text>
           <Text style={styles.totalValue}>{formatMoney(total)}</Text>
         </View>
@@ -296,7 +294,7 @@ export function CashDeskScreen(): ReactElement {
           ) : (
             <>
               <Icon name="paid" size={18} color={colors.onAccent} />
-              <Text style={styles.submitText}>Пробить чек</Text>
+              <Text style={styles.submitText}>{m('cash.submit')}</Text>
             </>
           )}
         </Pressable>
@@ -317,6 +315,7 @@ export function CashDeskScreen(): ReactElement {
  * полный список, тот смотрит его в панели.
  */
 function MySales(): ReactElement | null {
+  const { m } = useLocale();
   const navigation = useNavigation();
   const sales = trpc.retail.sales.mine.useQuery({ page: 1, pageSize: 5 });
 
@@ -327,7 +326,7 @@ function MySales(): ReactElement | null {
 
   return (
     <Card>
-      <CardTitle title="Мои чеки" icon="paid" />
+      <CardTitle title={m('cash.myReceipts')} icon="paid" />
 
       {rows.map((sale) => (
         <Pressable
@@ -336,13 +335,13 @@ function MySales(): ReactElement | null {
             navigation.navigate('SaleDetail', { saleId: sale.id });
           }}
           accessibilityRole="button"
-          accessibilityLabel={`Открыть чек №${sale.id.toString()}`}
+          accessibilityLabel={m('cash.openReceipt', { n: sale.id })}
           style={({ pressed }) => [styles.saleRow, pressed ? styles.salePressed : null]}
         >
           <View style={styles.itemText}>
-            <Text style={styles.itemName}>{`Чек №${sale.id.toString()}`}</Text>
+            <Text style={styles.itemName}>{m('cash.receiptN', { n: sale.id })}</Text>
             <Text style={styles.itemMeta}>
-              {`${sale.clientName ?? 'Без имени'} · позиций: ${sale.lines}`}
+              {m('cash.receiptMeta', { name: sale.clientName ?? m('cash.noName'), n: sale.lines })}
             </Text>
           </View>
           <Text style={styles.saleTotal}>{formatMoney(parseMoney(sale.total))}</Text>

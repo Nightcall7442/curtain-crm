@@ -75,7 +75,7 @@ export function RatingBoardCard({
             <li
               key={row.userId}
               className={cn(
-                'flex items-center gap-3 rounded-tile px-2 py-2 transition-colors hover:bg-raised/60',
+                'flex items-center gap-3 rounded-tile px-2 py-2 transition-colors hover:bg-ink/[0.08]',
                 // Разделитель внутри строки, а не на всю ширину карточки:
                 // линия начинается там же, где текст.
                 index === rows.length - 1 ? null : 'border-b border-subtle/60',

@@ -33,7 +33,7 @@ import { CatalogPicker } from '../components/CatalogPicker';
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
-import { useLocale } from '../hooks/useLocale';
+import { useLocale, type Translate } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
@@ -163,6 +163,7 @@ function CodeInput({
   readonly onChangeText: (value: string) => void;
   readonly onScan: () => void;
 }): ReactElement {
+  const { m } = useLocale();
   return (
     <View style={styles.codeRow}>
       <View style={styles.codeInput}>
@@ -171,7 +172,7 @@ function CodeInput({
       <Pressable
         onPress={onScan}
         accessibilityRole="button"
-        accessibilityLabel="Считать код камерой"
+        accessibilityLabel={m('create.scanA11y')}
         style={({ pressed }) => [styles.scanButton, pressed ? styles.pressed : null]}
       >
         <Icon name="camera" size={18} color={colors.accent} />
@@ -188,11 +189,12 @@ function CodeDescription({
   readonly code: string;
   readonly description: string | null;
 }): ReactElement | null {
+  const { m } = useLocale();
   if (code.trim() === '') return null;
 
   return (
     <Text style={description === null ? styles.codeMissing : styles.codeDescription}>
-      {description ?? 'Такого кода нет в справочнике'}
+      {description ?? m('create.codeMissing')}
     </Text>
   );
 }
@@ -237,7 +239,7 @@ const emptyItem = (id: number): DraftItem => ({
 });
 
 export function OrderCreateScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
 
@@ -329,7 +331,7 @@ export function OrderCreateScreen(): ReactElement {
       navigation.navigate('OrderDetail', { orderId: order.id });
     },
     onError(error) {
-      Alert.alert('Заказ не создан', error.message);
+      Alert.alert(m('create.error'), error.message);
     },
   });
 
@@ -377,7 +379,7 @@ export function OrderCreateScreen(): ReactElement {
     );
   };
 
-  const errors = validate({ clientName, clientPhone, deadline, items });
+  const errors = validate({ clientName, clientPhone, deadline, items }, m);
   const hasErrors = Object.keys(errors).length > 0;
 
   const submit = (): void => {
@@ -460,22 +462,22 @@ export function OrderCreateScreen(): ReactElement {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
-          <CardTitle title="Клиент" icon="person" />
+          <CardTitle title={m('create.client')} icon="person" />
 
-          <Field label="Имя" required error={showErrors ? errors.clientName : undefined}>
+          <Field label={m('create.name')} required error={showErrors ? errors.clientName : undefined}>
             <Input
               value={clientName}
               onChangeText={setClientName}
-              placeholder="Как обращаться к клиенту"
+              placeholder={m('create.namePlaceholder')}
               autoCapitalize="words"
               invalid={showErrors && errors.clientName !== undefined}
             />
           </Field>
 
           <Field
-            label="Телефон"
+            label={m('create.phone')}
             required
-            hint="Любой формат: +998 90 123 45 67 или 901234567"
+            hint={m('create.phoneHint')}
             error={showErrors ? errors.clientPhone : undefined}
           >
             <Input
@@ -488,20 +490,20 @@ export function OrderCreateScreen(): ReactElement {
             />
           </Field>
 
-          <Field label="Адрес установки">
+          <Field label={m('create.address')}>
             <Input
               value={installAddress}
               onChangeText={setInstallAddress}
-              placeholder="Улица, дом, квартира"
+              placeholder={m('create.addressPlaceholder')}
               multiline
             />
           </Field>
         </Card>
 
         <Card>
-          <CardTitle title="Условия" icon="deadline" />
+          <CardTitle title={m('create.terms')} icon="deadline" />
 
-          <Field label="Приоритет">
+          <Field label={m('create.priority')}>
             <ChipSelect
               value={priority}
               onChange={setPriority}
@@ -510,8 +512,8 @@ export function OrderCreateScreen(): ReactElement {
           </Field>
 
           <Field
-            label="Срок"
-            hint="Год-месяц-день, например 2026-09-15"
+            label={m('create.deadline')}
+            hint={m('create.deadlineHint')}
             error={showErrors ? errors.deadline : undefined}
           >
             <Input
@@ -525,7 +527,7 @@ export function OrderCreateScreen(): ReactElement {
 
           <View style={styles.money}>
             <View style={styles.moneyItem}>
-              <Field label="Стоимость работ">
+              <Field label={m('create.workPrice')}>
                 <MoneyInput
                   value={workPrice}
                   onChangeText={setWorkPrice}
@@ -534,7 +536,7 @@ export function OrderCreateScreen(): ReactElement {
               </Field>
             </View>
             <View style={styles.moneyItem}>
-              <Field label="Предоплата">
+              <Field label={m('create.deposit')}>
                 <MoneyInput
                   value={deposit}
                   onChangeText={setDeposit}
@@ -557,7 +559,7 @@ export function OrderCreateScreen(): ReactElement {
           return (
             <Card key={item.id}>
               <CardTitle
-                title={`Позиция ${(index + 1).toString()}`}
+                title={m('create.item', { n: index + 1 })}
                 icon="window"
                 action={
                   items.length > 1 ? (
@@ -566,18 +568,18 @@ export function OrderCreateScreen(): ReactElement {
                         setItems((current) => current.filter((entry) => entry.id !== item.id));
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Удалить позицию ${(index + 1).toString()}`}
+                      accessibilityLabel={m('create.removeItem', { n: index + 1 })}
                       hitSlop={8}
                     >
                       {({ pressed }) => (
-                        <Text style={[styles.remove, pressed ? styles.pressed : null]}>Удалить</Text>
+                        <Text style={[styles.remove, pressed ? styles.pressed : null]}>{m('create.remove')}</Text>
                       )}
                     </Pressable>
                   ) : undefined
                 }
               />
 
-              <Field label="Что шьём">
+              <Field label={m('create.kind')}>
                 <ChipSelect
                   value={item.kind}
                   onChange={(kind) => {
@@ -590,12 +592,12 @@ export function OrderCreateScreen(): ReactElement {
                 />
               </Field>
 
-              <Field label="Модель">
+              <Field label={m('create.model')}>
                 <CatalogPicker
                   value={item.model}
-                  placeholder="Не выбрана"
+                  placeholder={m('create.notChosen')}
                   options={modelOptions}
-                  sheetTitle="Модель"
+                  sheetTitle={m('create.model')}
                   onChange={(model) => {
                     updateItem(item.id, { model });
                   }}
@@ -604,7 +606,7 @@ export function OrderCreateScreen(): ReactElement {
 
               <View style={styles.money}>
                 <View style={styles.moneyItem}>
-                  <Field label="Высота, см">
+                  <Field label={m('create.height')}>
                     <Input
                       value={item.heightCm}
                       onChangeText={(heightCm) => {
@@ -617,8 +619,8 @@ export function OrderCreateScreen(): ReactElement {
                 </View>
                 <View style={styles.moneyItem}>
                   <Field
-                    label="Ширина, см"
-                    hint={area === null ? undefined : `Площадь: ${area.toFixed(2)} м²`}
+                    label={m('create.width')}
+                    hint={area === null ? undefined : m('create.area', { a: area.toFixed(2) })}
                   >
                     <Input
                       value={item.widthCm}
@@ -632,7 +634,7 @@ export function OrderCreateScreen(): ReactElement {
                 </View>
               </View>
 
-              <Field label="Количество">
+              <Field label={m('create.quantity')}>
                 <Input
                   value={item.quantity}
                   onChangeText={(quantity) => {
@@ -651,7 +653,7 @@ export function OrderCreateScreen(): ReactElement {
               */}
               <View style={styles.accessories}>
                 <View style={styles.accessoriesHeader}>
-                  <Text style={styles.accessoriesTitle}>Портьера</Text>
+                  <Text style={styles.accessoriesTitle}>{m('create.portiere')}</Text>
                   <Pressable
                     onPress={() => {
                       const nextId =
@@ -663,7 +665,7 @@ export function OrderCreateScreen(): ReactElement {
                   >
                     {({ pressed }) => (
                       <Text style={[styles.addAccessory, pressed ? styles.pressed : null]}>
-                        + Портьера
+                        {m('create.addPortiere')}
                       </Text>
                     )}
                   </Pressable>
@@ -674,9 +676,7 @@ export function OrderCreateScreen(): ReactElement {
                   одна на всю позицию, и повторять её под каждым из шести
                   полей значило бы шесть раз сказать одно и то же.
                 */}
-                <Text style={styles.accessoriesHint}>
-                  Код с этикетки — можно считать камерой
-                </Text>
+                <Text style={styles.accessoriesHint}>{m('create.codeHint')}</Text>
 
                 {item.portieres.length === 0 ? null : (
                   item.portieres.map((portiere) => (
@@ -684,12 +684,12 @@ export function OrderCreateScreen(): ReactElement {
                       <View style={styles.accessoryName}>
                         <CodeInput
                           value={portiere.code}
-                          placeholder="Например: П-31"
+                          placeholder={m('create.examplePortiere')}
                           onChangeText={(code) => {
                             updatePortiere(item.id, portiere.id, { code });
                           }}
                           onScan={() => {
-                            askScan('Портьера', (code) => {
+                            askScan(m('create.portiere'), (code) => {
                               updatePortiere(item.id, portiere.id, { code });
                             });
                           }}
@@ -707,7 +707,7 @@ export function OrderCreateScreen(): ReactElement {
                             });
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel="Удалить портьеру"
+                          accessibilityLabel={m('create.removePortiere')}
                           hitSlop={8}
                           style={styles.accessoryRemove}
                         >
@@ -725,15 +725,15 @@ export function OrderCreateScreen(): ReactElement {
               </View>
 
               <MaterialFields
-                label="Тюль"
-                placeholder="Например: Т-22"
+                label={m('create.tulle')}
+                placeholder={m('create.exampleTulle')}
                 value={item.tulle}
                 description={describeCode(MATERIAL_CODE_KINDS.tulle, item.tulle.code)}
                 onChange={(patch) => {
                   updateItem(item.id, { tulle: { ...item.tulle, ...patch } });
                 }}
                 onScan={() => {
-                  askScan('Тюль', (code) => {
+                  askScan(m('create.tulle'), (code) => {
                     updateItem(item.id, { tulle: { ...item.tulle, code } });
                   });
                 }}
@@ -746,15 +746,15 @@ export function OrderCreateScreen(): ReactElement {
                 материала, как тюль: заполнен код — защита есть.
               */}
               <MaterialFields
-                label="Защита"
-                placeholder="Например: З-07"
+                label={m('create.protection')}
+                placeholder={m('create.exampleProtection')}
                 value={item.protection}
                 description={describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code)}
                 onChange={(patch) => {
                   updateItem(item.id, { protection: { ...item.protection, ...patch } });
                 }}
                 onScan={() => {
-                  askScan('Защита', (code) => {
+                  askScan(m('create.protection'), (code) => {
                     updateItem(item.id, { protection: { ...item.protection, code } });
                   });
                 }}
@@ -768,15 +768,15 @@ export function OrderCreateScreen(): ReactElement {
               */}
               {mountOf(item.model) === CurtainMountKind.PIPE ? (
                 <MaterialFields
-                  label="Труба"
-                  placeholder="Например: ТР-08"
+                  label={m('create.pipe')}
+                  placeholder={m('create.examplePipe')}
                   value={item.pipe}
                   description={describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code)}
                   onChange={(patch) => {
                     updateItem(item.id, { pipe: { ...item.pipe, ...patch } });
                   }}
                   onScan={() => {
-                    askScan('Труба', (code) => {
+                    askScan(m('create.pipe'), (code) => {
                       updateItem(item.id, { pipe: { ...item.pipe, code } });
                     });
                   }}
@@ -784,30 +784,30 @@ export function OrderCreateScreen(): ReactElement {
               ) : (
                 <>
                   <MaterialFields
-                    label="Карниз"
-                    placeholder="Например: К-104"
+                    label={m('create.cornice')}
+                    placeholder={m('create.exampleCornice')}
                     value={item.cornice}
                     description={describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code)}
                     onChange={(patch) => {
                       updateItem(item.id, { cornice: { ...item.cornice, ...patch } });
                     }}
                     onScan={() => {
-                      askScan('Карниз', (code) => {
+                      askScan(m('create.cornice'), (code) => {
                         updateItem(item.id, { cornice: { ...item.cornice, code } });
                       });
                     }}
                   />
 
                   <MaterialFields
-                    label="Пластик"
-                    placeholder="Например: ПЛ-12"
+                    label={m('create.plastic')}
+                    placeholder={m('create.examplePlastic')}
                     value={item.plastic}
                     description={describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code)}
                     onChange={(patch) => {
                       updateItem(item.id, { plastic: { ...item.plastic, ...patch } });
                     }}
                     onScan={() => {
-                      askScan('Пластик', (code) => {
+                      askScan(m('create.plastic'), (code) => {
                         updateItem(item.id, { plastic: { ...item.plastic, code } });
                       });
                     }}
@@ -815,7 +815,7 @@ export function OrderCreateScreen(): ReactElement {
                 </>
               )}
 
-              <Field label="Поворот карниза">
+              <Field label={m('create.rotation')}>
                 <ChipSelect
                   value={item.corniceRotation ?? ''}
                   onChange={(corniceRotation) => {
@@ -826,7 +826,7 @@ export function OrderCreateScreen(): ReactElement {
                   options={[
                     /* «Нет» вместо «Не задан»: четыре чипа влезают в строку,
                        а рядом с подписью «Поворот карниза» смысл тот же. */
-                    { value: '', label: 'Нет' },
+                    { value: '', label: m('create.none') },
                     ...CORNICE_ROTATIONS.map((value) => ({
                       value,
                       label: t(CORNICE_ROTATION_LABELS, value),
@@ -837,7 +837,7 @@ export function OrderCreateScreen(): ReactElement {
 
               <View style={styles.accessories}>
                 <View style={styles.accessoriesHeader}>
-                  <Text style={styles.accessoriesTitle}>Аксессуары</Text>
+                  <Text style={styles.accessoriesTitle}>{m('create.accessories')}</Text>
                   <Pressable
                     onPress={() => {
                       const nextId =
@@ -849,25 +849,23 @@ export function OrderCreateScreen(): ReactElement {
                   >
                     {({ pressed }) => (
                       <Text style={[styles.addAccessory, pressed ? styles.pressed : null]}>
-                        + Добавить
+                        {m('create.add')}
                       </Text>
                     )}
                   </Pressable>
                 </View>
 
                 {item.accessories.length === 0 ? (
-                  <Text style={styles.accessoriesHint}>
-                    Держатели, султанчики, бубоны, обхваты, сачак — по одному, с количеством и кодом
-                  </Text>
+                  <Text style={styles.accessoriesHint}>{m('create.accessoriesHint')}</Text>
                 ) : (
                   item.accessories.map((accessory) => (
                     <View key={accessory.id} style={styles.accessoryRow}>
                       <View style={styles.accessoryName}>
                         <CatalogPicker
                           value={accessory.name}
-                          placeholder="Аксессуар"
+                          placeholder={m('create.accessory')}
                           options={accessoryOptions}
-                          sheetTitle="Аксессуар"
+                          sheetTitle={m('create.accessory')}
                           onChange={(name) => {
                             updateAccessory(item.id, accessory.id, { name });
                           }}
@@ -889,7 +887,7 @@ export function OrderCreateScreen(): ReactElement {
                           onChangeText={(code) => {
                             updateAccessory(item.id, accessory.id, { code });
                           }}
-                          placeholder="Код"
+                          placeholder={m('create.code')}
                         />
                       </View>
                       <Pressable
@@ -899,7 +897,7 @@ export function OrderCreateScreen(): ReactElement {
                           });
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Удалить аксессуар"
+                        accessibilityLabel={m('create.removeAccessory')}
                         hitSlop={8}
                         style={styles.accessoryRemove}
                       >
@@ -910,13 +908,13 @@ export function OrderCreateScreen(): ReactElement {
                 )}
               </View>
 
-              <Field label="Комментарий">
+              <Field label={m('create.comment')}>
                 <Input
                   value={item.comment}
                   onChangeText={(comment) => {
                     updateItem(item.id, { comment });
                   }}
-                  placeholder="Что важно помнить по этой позиции"
+                  placeholder={m('create.commentPlaceholder')}
                   multiline
                 />
               </Field>
@@ -937,7 +935,7 @@ export function OrderCreateScreen(): ReactElement {
           style={({ pressed }) => [styles.addItem, pressed ? styles.pressed : null]}
         >
           <Icon name="assigned" size={18} color={colors.accent} />
-          <Text style={styles.addItemText}>Добавить позицию</Text>
+          <Text style={styles.addItemText}>{m('create.addItem')}</Text>
         </Pressable>
 
         <Pressable
@@ -953,14 +951,11 @@ export function OrderCreateScreen(): ReactElement {
           {create.isPending ? (
             <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.submitText}>Создать заказ</Text>
+            <Text style={styles.submitText}>{m('create.submit')}</Text>
           )}
         </Pressable>
 
-        <Text style={styles.footnote}>
-          Заказ уйдёт администратору на проверку. Фотографии замера и остальные детали
-          можно добавить в карточке заказа.
-        </Text>
+        <Text style={styles.footnote}>{m('create.footnote')}</Text>
       </ScrollView>
       <CodeScanner
         visible={scanning !== null}
@@ -991,22 +986,22 @@ function validate(values: {
   readonly clientPhone: string;
   readonly deadline: string;
   readonly items: readonly DraftItem[];
-}): Partial<Record<'clientName' | 'clientPhone' | 'deadline', string>> {
+}, m: Translate): Partial<Record<'clientName' | 'clientPhone' | 'deadline', string>> {
   const errors: Record<string, string> = {};
 
   if (values.clientName.trim() === '') {
-    errors['clientName'] = 'Укажите имя клиента';
+    errors['clientName'] = m('create.nameRequired');
   }
 
   // Только длина: приведение номера к единому виду делает сервер, и
   // повторять здесь его правила означало бы разойтись с ними при первой правке.
   const digits = values.clientPhone.replace(/\D/g, '');
   if (digits.length < 9) {
-    errors['clientPhone'] = 'Похоже, номер неполный';
+    errors['clientPhone'] = m('create.phoneIncomplete');
   }
 
   if (values.deadline.trim() !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(values.deadline.trim())) {
-    errors['deadline'] = 'Дата в виде 2026-09-15';
+    errors['deadline'] = m('dayoff.dateFormat');
   }
 
   return errors;

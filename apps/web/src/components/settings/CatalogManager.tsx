@@ -145,7 +145,7 @@ export function CatalogManager({
                   'pressable h-8 rounded-tile border px-3 text-footnote font-medium',
                   active
                     ? 'border-nav bg-nav text-nav-text'
-                    : 'border-subtle bg-panel text-secondary hover:bg-raised hover:text-primary',
+                    : 'border-subtle bg-panel text-secondary hover:bg-ink/[0.08] hover:text-primary',
                 )}
               >
                 {CATALOG_KIND_LABELS_RU[value]}
@@ -221,7 +221,7 @@ export function CatalogManager({
                     'flex h-full items-center gap-1.5 px-3 text-footnote font-medium transition-colors',
                     item.isActive
                       ? 'text-accent-strong hover:bg-accent/10'
-                      : 'text-muted hover:bg-raised hover:text-secondary',
+                      : 'text-muted hover:bg-ink/[0.08] hover:text-secondary',
                   )}
                 >
                   <span className={item.isActive ? undefined : 'line-through'}>{item.name}</span>
@@ -251,7 +251,7 @@ export function CatalogManager({
                     'grid h-full w-8 shrink-0 place-items-center transition-colors disabled:opacity-40',
                     item.isActive
                       ? 'text-accent/70 hover:bg-accent/10 hover:text-accent-strong'
-                      : 'text-muted hover:bg-raised hover:text-primary',
+                      : 'text-muted hover:bg-ink/[0.08] hover:text-primary',
                   )}
                 >
                   {item.isActive ? (

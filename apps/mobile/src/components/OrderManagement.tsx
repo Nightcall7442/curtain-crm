@@ -64,7 +64,7 @@ export function OrderManagement({
   readonly fees: Readonly<Record<string, string | null>>;
   readonly assignees: Readonly<Partial<Record<Role, { readonly id: number; readonly fullName: string } | null>>>;
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
 
   const [price, setPrice] = useState('');
@@ -113,7 +113,7 @@ export function OrderManagement({
       setPrepaid('');
       await refresh();
     },
-    onError: fail('Не удалось изменить цену'),
+    onError: fail(m('manage.priceError')),
   });
 
   const setFees = trpc.orders.setStageFees.useMutation({
@@ -122,7 +122,7 @@ export function OrderManagement({
       setFeeDrafts({});
       await refresh();
     },
-    onError: fail('Не удалось назначить расценки'),
+    onError: fail(m('manage.feesError')),
   });
 
   const assign = trpc.orders.assign.useMutation({
@@ -131,7 +131,7 @@ export function OrderManagement({
       setAssigning(null);
       await refresh();
     },
-    onError: fail('Не удалось назначить исполнителя'),
+    onError: fail(m('manage.assignError')),
   });
 
   /*
@@ -145,15 +145,15 @@ export function OrderManagement({
     <>
       {/* --- Деньги по заказу ------------------------------------------------ */}
       <Card>
-        <CardTitle title="Экономика заказа" icon="payroll" />
+        <CardTitle title={m('manage.economics')} icon="payroll" />
 
         {economics.data === undefined ? (
           <Skeleton rows={2} />
         ) : (
           <>
-            <Row label="Работа" value={economics.data.revenueFormatted ?? '—'} />
+            <Row label={m('manage.work')} value={economics.data.revenueFormatted ?? '—'} />
             <Row
-              label={`Закупки (${economics.data.purchaseLines.toString()})`}
+              label={m('manage.purchases', { n: economics.data.purchaseLines })}
               value={economics.data.costFormatted}
             />
             {/*
@@ -163,7 +163,7 @@ export function OrderManagement({
               и «сто тысяч из миллиона» — разные новости.
             */}
             <Row
-              label="Маржа"
+              label={m('manage.margin')}
               value={
                 economics.data.marginFormatted === null
                   ? '—'
@@ -181,7 +181,7 @@ export function OrderManagement({
 
       {/* --- Исполнители ---------------------------------------------------- */}
       <Card>
-        <CardTitle title="Назначение" icon="people" />
+        <CardTitle title={m('manage.assignment')} icon="people" />
 
         {assignedRoles.map((role) => {
           const current = assignees[role] ?? null;
@@ -193,12 +193,12 @@ export function OrderManagement({
                   setAssigning(assigning === role ? null : role);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Назначить: ${t(ROLE_LABELS, role)}`}
+                accessibilityLabel={m('manage.assignRole', { role: t(ROLE_LABELS, role) })}
                 style={({ pressed }) => [styles.assignRow, pressed ? styles.pressed : null]}
               >
                 <Text style={styles.assignRole}>{t(ROLE_LABELS, role)}</Text>
                 <Text style={current === null ? styles.assignEmpty : styles.assignName}>
-                  {current?.fullName ?? 'не назначен'}
+                  {current?.fullName ?? m('order.notAssignedM')}
                 </Text>
               </Pressable>
 
@@ -224,7 +224,7 @@ export function OrderManagement({
                         accessibilityRole="button"
                         style={[styles.chip, styles.chipClear]}
                       >
-                        <Text style={styles.chipClearText}>Снять</Text>
+                        <Text style={styles.chipClearText}>{m('manage.clear')}</Text>
                       </Pressable>
 
                       {(people.data?.items ?? [])
@@ -264,14 +264,15 @@ export function OrderManagement({
 
       {/* --- Цена для клиента ------------------------------------------------ */}
       <Card>
-        <CardTitle title="Цена и предоплата" icon="paid" />
+        <CardTitle title={m('manage.priceTitle')} icon="paid" />
         <Text style={styles.hint}>
-          {`Сейчас: ${formatMoney(parseMoney(workPrice))}, предоплата ${formatMoney(
-            parseMoney(deposit),
-          )}. Пустое поле оставляет прежнее значение.`}
+          {m('manage.priceHint', {
+            price: formatMoney(parseMoney(workPrice)),
+            deposit: formatMoney(parseMoney(deposit)),
+          })}
         </Text>
 
-        <Field label="Стоимость работы, сум">
+        <Field label={m('manage.workPrice')}>
           <MoneyInput
             value={price}
             onChangeText={setPrice}
@@ -279,7 +280,7 @@ export function OrderManagement({
           />
         </Field>
 
-        <Field label="Предоплата, сум">
+        <Field label={m('manage.deposit')}>
           <MoneyInput
             value={prepaid}
             onChangeText={setPrepaid}
@@ -311,18 +312,15 @@ export function OrderManagement({
           {setPriceMutation.isPending ? (
             <ActivityIndicator color={colors.onAccent} size="small" />
           ) : (
-            <Text style={styles.submitText}>Сохранить цену</Text>
+            <Text style={styles.submitText}>{m('manage.savePrice')}</Text>
           )}
         </Pressable>
       </Card>
 
       {/* --- Расценки по этапам ---------------------------------------------- */}
       <Card>
-        <CardTitle title="Расценки по этапам" icon="payroll" />
-        <Text style={styles.hint}>
-          Сколько получит исполнитель за свой этап. Пустое поле оставляет
-          прежнее значение.
-        </Text>
+        <CardTitle title={m('manage.feesTitle')} icon="payroll" />
+        <Text style={styles.hint}>{m('manage.feesHint')}</Text>
 
         {stages.map((stage) => {
           const stored = fees[FEE_FIELD[stage]] ?? null;
@@ -331,7 +329,7 @@ export function OrderManagement({
             <Field
               key={stage}
               label={t(ORDER_STAGE_FEE_LABELS, stage)}
-              hint={stored === null ? undefined : `Сейчас: ${formatMoney(parseMoney(stored))}`}
+              hint={stored === null ? undefined : m('manage.now', { v: formatMoney(parseMoney(stored)) })}
             >
               <Input
                 value={feeDrafts[stage] ?? ''}
@@ -365,7 +363,7 @@ export function OrderManagement({
           {setFees.isPending ? (
             <ActivityIndicator color={colors.onAccent} size="small" />
           ) : (
-            <Text style={styles.submitText}>Сохранить расценки</Text>
+            <Text style={styles.submitText}>{m('manage.saveFees')}</Text>
           )}
         </Pressable>
       </Card>

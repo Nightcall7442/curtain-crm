@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { colors, radius, spacing, typography } from '../theme';
 
 import { Card } from './Card';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Неделя сотрудника: в какие дни была смена.
@@ -26,7 +27,7 @@ export interface WeekDay {
   readonly isDayOff?: boolean;
 }
 
-const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+const WEEKDAY_LABELS = ['week.mon', 'week.tue', 'week.wed', 'week.thu', 'week.fri', 'week.sat', 'week.sun'] as const;
 
 export function WeekAttendance({
   days,
@@ -35,6 +36,8 @@ export function WeekAttendance({
   readonly days: readonly WeekDay[];
   readonly today: string;
 }): ReactElement {
+  const { m } = useLocale();
+
   return (
     <Card>
       <View style={styles.row}>
@@ -46,7 +49,7 @@ export function WeekAttendance({
           return (
             <View key={day.date} style={styles.day}>
               <Text style={[styles.weekday, isWeekend ? styles.weekend : null]}>
-                {WEEKDAY_LABELS[index]}
+                {m(WEEKDAY_LABELS[index] ?? 'week.mon')}
               </Text>
               <Text style={[styles.date, isWeekend ? styles.weekend : null]}>
                 {day.date.slice(8, 10)}
@@ -65,12 +68,12 @@ export function WeekAttendance({
                 ]}
               >
                 <Text style={[styles.markGlyph, isDayOff ? styles.markGlyphDayOff : null]}>
-                  {isDayOff ? 'В' : isFuture ? '·' : day.hasShift ? '✓' : '✕'}
+                  {isDayOff ? m('week.dayOffGlyph') : isFuture ? '·' : day.hasShift ? '✓' : '✕'}
                 </Text>
               </View>
 
               <Text style={styles.caption} numberOfLines={2}>
-                {isDayOff ? 'Выходной' : isFuture ? '—' : day.hasShift ? 'Смена была' : 'Нет смены'}
+                {isDayOff ? m('week.dayOff') : isFuture ? '—' : day.hasShift ? m('week.shiftWas') : m('week.noShift')}
               </Text>
             </View>
           );

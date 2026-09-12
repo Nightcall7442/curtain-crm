@@ -57,7 +57,7 @@ export function OrderDetailScreen({
   route,
 }: RootStackScreenProps<'OrderDetail'>): ReactElement {
   const { orderId } = route.params;
-  const { t } = useLocale();
+  const { t, m } = useLocale();
 
   const utils = trpc.useUtils();
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
@@ -155,8 +155,8 @@ export function OrderDetailScreen({
     return (
       <View style={styles.loading}>
         <Empty
-          message={order.error?.message ?? 'Заказ не найден'}
-          hint="Возможно, вы больше не участвуете в этом заказе"
+          message={order.error?.message ?? m('order.notFound')}
+          hint={m('order.notFoundHint')}
         />
       </View>
     );
@@ -227,7 +227,7 @@ export function OrderDetailScreen({
           }}
           style={({ pressed }) => [styles.callButton, pressed ? styles.pressed : null]}
           accessibilityRole="button"
-          accessibilityLabel={`Позвонить клиенту ${data.clientName}`}
+          accessibilityLabel={m('order.callClient', { name: data.clientName })}
         >
           <Icon name="call" size={14} color={colors.accentStrong} />
           <Text style={styles.callText}>{formatPhone(data.clientPhone)}</Text>
@@ -235,24 +235,29 @@ export function OrderDetailScreen({
 
         <View style={styles.details}>
           <Row
-            label="Срок"
+            label={m('order.deadline')}
             value={
               data.deadline === null
                 ? '—'
                 : new Date(data.deadline).toLocaleDateString('ru-RU')
             }
           />
-          <Row label="Стоимость" value={formatMoney(parseMoney(data.workPrice))} />
-          <Row label="Предоплата" value={formatMoney(parseMoney(data.deposit))} />
-          <Row
-            label="Остаток"
-            value={
-              data.remainingPayment === null
-                ? '—'
-                : formatMoney(parseMoney(data.remainingPayment))
-            }
-          />
-          <Row label="Филиал" value={data.branch.name} />
+          {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
+          {data.workPrice !== null && data.deposit !== null && (
+            <>
+              <Row label={m('order.price')} value={formatMoney(parseMoney(data.workPrice))} />
+              <Row label={m('order.deposit')} value={formatMoney(parseMoney(data.deposit))} />
+              <Row
+                label={m('order.remaining')}
+                value={
+                  data.remainingPayment === null
+                    ? '—'
+                    : formatMoney(parseMoney(data.remainingPayment))
+                }
+              />
+            </>
+          )}
+          <Row label={m('order.branch')} value={data.branch.name} />
         </View>
 
         {/*
@@ -271,11 +276,11 @@ export function OrderDetailScreen({
                 setFeesShown((shown) => !shown);
               }}
               accessibilityRole="button"
-              accessibilityLabel={feesShown ? 'Скрыть расценки' : 'Показать расценки'}
+              accessibilityLabel={feesShown ? m('order.hideFees') : m('order.showFees')}
               hitSlop={8}
               style={styles.feesHeader}
             >
-              <Text style={styles.feesTitle}>Расценки по этапам</Text>
+              <Text style={styles.feesTitle}>{m('order.stageFees')}</Text>
               <Icon
                 name={feesShown ? 'eyeOff' : 'eye'}
                 size={18}
@@ -291,7 +296,7 @@ export function OrderDetailScreen({
                   value={
                     Number.parseFloat(value) > 0
                       ? formatMoney(parseMoney(value))
-                      : 'не назначена'
+                      : m('order.feeNotSet')
                   }
                 />
               ))}
@@ -327,14 +332,14 @@ export function OrderDetailScreen({
 
       {/* --- Действия ---------------------------------------------------- */}
       <Card>
-        <CardTitle title="Действия" icon="priority" />
+        <CardTitle title={m('order.actions')} icon="priority" />
 
         {transitions.isLoading ? (
           <ActivityIndicator color={colors.accent} />
         ) : transitions.data === undefined || transitions.data.length === 0 ? (
           <Empty
-            message="Действий сейчас нет"
-            hint="Либо заказ закрыт, либо этот этап ведёт другой сотрудник"
+            message={m('order.noActions')}
+            hint={m('order.noActionsHint')}
           />
         ) : (
           /*
@@ -376,7 +381,7 @@ export function OrderDetailScreen({
                       accessibilityRole="button"
                     >
                       <Text style={styles.moreActionText}>
-                        {`Все действия (${list.length.toString()})`}
+                        {m('order.allActions', { n: list.length })}
                       </Text>
                     </Pressable>
                   )}
@@ -389,12 +394,12 @@ export function OrderDetailScreen({
         {pendingStatus !== null && (
           <View style={styles.reasonBlock}>
             <Text style={styles.reasonTitle}>
-              {`Переход в «${t(ORDER_STATUS_LABELS, pendingStatus)}» требует причины`}
+              {m('order.reasonRequired', { status: t(ORDER_STATUS_LABELS, pendingStatus) })}
             </Text>
             <TextInput
               value={reason}
               onChangeText={setReason}
-              placeholder="Опишите причину"
+              placeholder={m('order.reasonPlaceholder')}
               placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={3}
@@ -416,7 +421,7 @@ export function OrderDetailScreen({
                   pressed ? styles.pressed : null,
                 ]}
               >
-                <Text style={styles.confirmText}>Подтвердить</Text>
+                <Text style={styles.confirmText}>{m('common.confirm')}</Text>
               </Pressable>
 
               <Pressable
@@ -425,7 +430,7 @@ export function OrderDetailScreen({
                 }}
                 style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
               >
-                <Text style={styles.cancelText}>Отмена</Text>
+                <Text style={styles.cancelText}>{m('common.cancel')}</Text>
               </Pressable>
             </View>
           </View>
@@ -440,26 +445,27 @@ export function OrderDetailScreen({
 
       {/* --- Позиции ------------------------------------------------------ */}
       <Card>
-        <CardTitle title="Позиции заказа" icon="window" />
+        <CardTitle title={m('order.items')} icon="window" />
         {data.items.length === 0 ? (
-          <Empty message="Позиций нет" />
+          <Empty message={m('order.noItems')} />
         ) : (
           data.items.map((item, index) => (
             <View key={item.id} style={styles.item}>
               <Text style={styles.itemTitle}>
-                {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
+                {`${(index + 1).toString()}. ${item.model ?? m('order.noModel')}`}
+                {item.readyMadeCode === null ? '' : ` · ${item.readyMadeCode}`}
               </Text>
               {item.widthCm !== null && item.heightCm !== null && (
                 <Text style={styles.itemDetail}>
-                  {`Размер: ${trimNumber(item.widthCm)} × ${trimNumber(item.heightCm)} см`}
-                  {item.areaM2 === null ? '' : ` · ${trimNumber(item.areaM2, 2)} м²`}
+                  {m('order.size', { w: trimNumber(item.widthCm), h: trimNumber(item.heightCm) })}
+                  {item.areaM2 === null ? '' : m('order.area', { a: trimNumber(item.areaM2, 2) })}
                 </Text>
               )}
               {item.materials.length > 0 && (
-                <Text style={styles.itemDetail}>{`Материалы: ${item.materials.join(', ')}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.materials', { list: item.materials.join(', ') })}</Text>
               )}
               {item.color !== null && (
-                <Text style={styles.itemDetail}>{`Цвет: ${item.color}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.color', { color: item.color })}</Text>
               )}
               {/*
                 Коды тканей и фурнитуры — то, по чему в цехе и работают:
@@ -469,28 +475,28 @@ export function OrderDetailScreen({
               */}
               {item.portieres.map((portiere, index) => (
                 <Text key={`${portiere.code}-${index.toString()}`} style={styles.itemDetail}>
-                  {`Портьера: ${formatMaterial(portiere)}`}
+                  {m('order.portiere', { v: formatMaterial(portiere) })}
                 </Text>
               ))}
               {item.tulle !== null && (
-                <Text style={styles.itemDetail}>{`Тюль: ${formatMaterial(item.tulle)}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.tulle', { v: formatMaterial(item.tulle) })}</Text>
               )}
               {item.protection !== null && (
-                <Text style={styles.itemDetail}>{`Защита: ${formatMaterial(item.protection)}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.protection', { v: formatMaterial(item.protection) })}</Text>
               )}
               {item.cornice !== null && (
-                <Text style={styles.itemDetail}>{`Карниз: ${formatMaterial(item.cornice)}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.cornice', { v: formatMaterial(item.cornice) })}</Text>
               )}
               {item.corniceRotation !== null && (
                 <Text style={styles.itemDetail}>
-                  {`Поворот: ${t(CORNICE_ROTATION_LABELS, item.corniceRotation)}`}
+                  {m('order.rotation', { v: t(CORNICE_ROTATION_LABELS, item.corniceRotation) })}
                 </Text>
               )}
               {item.plastic !== null && (
-                <Text style={styles.itemDetail}>{`Пластик: ${formatMaterial(item.plastic)}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.plastic', { v: formatMaterial(item.plastic) })}</Text>
               )}
               {item.pipe !== null && (
-                <Text style={styles.itemDetail}>{`Труба: ${formatMaterial(item.pipe)}`}</Text>
+                <Text style={styles.itemDetail}>{m('order.pipe', { v: formatMaterial(item.pipe) })}</Text>
               )}
               {item.comment !== null && <Text style={styles.itemComment}>{item.comment}</Text>}
 
@@ -514,14 +520,14 @@ export function OrderDetailScreen({
       {/* --- Карниз ---------------------------------------------------------- */}
       {data.corniceStatus !== CorniceStatus.NOT_REQUIRED && (
         <Card>
-          <CardTitle title="Карниз" icon="window" />
+          <CardTitle title={m('order.corniceTitle')} icon="window" />
 
-          <Row label="Состояние" value={t(CORNICE_STATUS_LABELS, data.corniceStatus)} />
+          <Row label={m('order.corniceState')} value={t(CORNICE_STATUS_LABELS, data.corniceStatus)} />
           {data.corniceInstaller !== null && (
-            <Row label="Ставит" value={data.corniceInstaller.fullName} />
+            <Row label={m('order.corniceBy')} value={data.corniceInstaller.fullName} />
           )}
           {data.corniceDoneAt !== null && (
-            <Row label="Готов" value={new Date(data.corniceDoneAt).toLocaleString('ru-RU')} />
+            <Row label={m('order.corniceDone')} value={new Date(data.corniceDoneAt).toLocaleString('ru-RU')} />
           )}
 
           {/*
@@ -543,7 +549,7 @@ export function OrderDetailScreen({
               ]}
               accessibilityRole="button"
             >
-              <Text style={styles.primaryActionText}>Взять карниз</Text>
+              <Text style={styles.primaryActionText}>{m('order.takeCornice')}</Text>
             </Pressable>
           )}
 
@@ -564,11 +570,9 @@ export function OrderDetailScreen({
                   ]}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.primaryActionText}>Карниз готов</Text>
+                  <Text style={styles.primaryActionText}>{m('order.finishCornice')}</Text>
                 </Pressable>
-                <Text style={styles.corniceHint}>
-                  Сначала загрузите фото карниза ниже — без снимка работа не принимается.
-                </Text>
+                <Text style={styles.corniceHint}>{m('order.corniceHint')}</Text>
               </>
             )}
         </Card>
@@ -579,13 +583,13 @@ export function OrderDetailScreen({
 
       {/* --- Исполнители --------------------------------------------------- */}
       <Card>
-        <CardTitle title="Исполнители" icon="people" />
-        <Row label={t(ROLE_LABELS, Role.MASTER)} value={data.master?.fullName ?? 'не назначен'} />
-        <Row label={t(ROLE_LABELS, Role.SEWER)} value={data.sewer?.fullName ?? 'не назначена'} />
-        <Row label={t(ROLE_LABELS, Role.QC)} value={data.qc?.fullName ?? 'не назначен'} />
+        <CardTitle title={m('order.executors')} icon="people" />
+        <Row label={t(ROLE_LABELS, Role.MASTER)} value={data.master?.fullName ?? m('order.notAssignedM')} />
+        <Row label={t(ROLE_LABELS, Role.SEWER)} value={data.sewer?.fullName ?? m('order.notAssignedF')} />
+        <Row label={t(ROLE_LABELS, Role.QC)} value={data.qc?.fullName ?? m('order.notAssignedM')} />
         <Row
           label={t(ROLE_LABELS, Role.INSTALLER)}
-          value={data.installer?.fullName ?? 'не назначен'}
+          value={data.installer?.fullName ?? m('order.notAssignedM')}
         />
       </Card>
 
@@ -600,8 +604,8 @@ export function OrderDetailScreen({
         <OrderManagement
           orderId={orderId}
           orderType={data.orderType}
-          workPrice={data.workPrice}
-          deposit={data.deposit}
+          workPrice={data.workPrice ?? '0'}
+          deposit={data.deposit ?? '0'}
           fees={{
             measurementFee: data.measurementFee,
             cuttingFee: data.cuttingFee,
@@ -621,13 +625,13 @@ export function OrderDetailScreen({
 
       {/* --- Комментарии ---------------------------------------------------- */}
       <Card>
-        <CardTitle title="Комментарии" icon="comment" />
+        <CardTitle title={m('order.comments')} icon="comment" />
 
         <View style={styles.commentForm}>
           <TextInput
             value={comment}
             onChangeText={setComment}
-            placeholder="Написать участникам заказа"
+            placeholder={m('order.commentPlaceholder')}
             placeholderTextColor={colors.textMuted}
             style={styles.commentInput}
             multiline
@@ -643,7 +647,7 @@ export function OrderDetailScreen({
               pressed ? styles.pressed : null,
             ]}
             accessibilityRole="button"
-            accessibilityLabel="Отправить комментарий"
+            accessibilityLabel={m('order.sendComment')}
           >
             <Text style={styles.sendText}>➤</Text>
           </Pressable>
@@ -652,7 +656,7 @@ export function OrderDetailScreen({
         <VoiceRecorderButton orderId={orderId} />
 
         {comments.data === undefined || comments.data.length === 0 ? (
-          <Empty message="Комментариев пока нет" />
+          <Empty message={m('order.noComments')} />
         ) : (
           comments.data.map((entry) => (
             <View key={entry.id} style={styles.comment}>
@@ -688,7 +692,7 @@ export function OrderDetailScreen({
       {/* --- Шторка со всеми действиями ----------------------------------- */}
       <BottomSheet
         visible={sheetOpen}
-        title="Действия по заказу"
+        title={m('order.orderActions')}
         onClose={() => {
           setSheetOpen(false);
         }}
@@ -717,7 +721,7 @@ export function OrderDetailScreen({
               <View style={styles.sheetTextWrap}>
                 <Text style={[styles.sheetLabel, { color: look.fg }]}>{transition.label}</Text>
                 {transition.requiresComment && (
-                  <Text style={styles.sheetHint}>Попросим указать причину</Text>
+                  <Text style={styles.sheetHint}>{m('order.willAskReason')}</Text>
                 )}
               </View>
             </Pressable>

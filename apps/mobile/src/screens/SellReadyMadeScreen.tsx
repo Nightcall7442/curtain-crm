@@ -20,6 +20,7 @@ import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
  * Продажа готовых штор — товар с витрины, минуя цех.
@@ -44,6 +45,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * в обход этой формы.
  */
 export function SellReadyMadeScreen(): ReactElement {
+  const { m } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
 
@@ -102,19 +104,17 @@ export function SellReadyMadeScreen(): ReactElement {
     async onSuccess(order) {
       await utils.orders.list.invalidate();
       Alert.alert(
-        needsInstallation === 'yes' ? 'Продано' : 'Продано и закрыто',
-        needsInstallation === 'yes'
-          ? 'Заказ передан администратору — он назначит установщика.'
-          : 'Установка не требуется, заказ закрыт сразу.',
+        needsInstallation === 'yes' ? m('sell.sold') : m('sell.soldClosed'),
+        needsInstallation === 'yes' ? m('sell.soldBodyInstall') : m('sell.soldBodyClosed'),
       );
       navigation.navigate('OrderDetail', { orderId: order.id });
     },
     onError(error) {
-      Alert.alert('Не удалось оформить продажу', error.message);
+      Alert.alert(m('sell.error'), error.message);
     },
   });
 
-  const errors = validate({ clientName, clientPhone, needsInstallation, installAddress });
+  const errors = validate({ clientName, clientPhone, needsInstallation, installAddress }, m);
   const hasErrors = Object.keys(errors).length > 0;
 
   const submit = (): void => {
@@ -149,22 +149,22 @@ export function SellReadyMadeScreen(): ReactElement {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
-          <CardTitle title="Клиент" icon="person" />
+          <CardTitle title={m('create.client')} icon="person" />
 
-          <Field label="Имя" required error={showErrors ? errors.clientName : undefined}>
+          <Field label={m('create.name')} required error={showErrors ? errors.clientName : undefined}>
             <Input
               value={clientName}
               onChangeText={setClientName}
-              placeholder="Как обращаться к клиенту"
+              placeholder={m('create.namePlaceholder')}
               autoCapitalize="words"
               invalid={showErrors && errors.clientName !== undefined}
             />
           </Field>
 
           <Field
-            label="Телефон"
+            label={m('create.phone')}
             required
-            hint="Любой формат: +998 90 123 45 67 или 901234567"
+            hint={m('create.phoneHint')}
             error={showErrors ? errors.clientPhone : undefined}
           >
             <Input
@@ -184,11 +184,11 @@ export function SellReadyMadeScreen(): ReactElement {
           раскладывать их по строкам продавцу на кассе не нужно.
         */}
         <Card>
-          <CardTitle title="Оплата" icon="paid" />
+          <CardTitle title={m('sell.payment')} icon="paid" />
 
           <View style={styles.money}>
             <View style={styles.moneyItem}>
-              <Field label="Цена">
+              <Field label={m('sell.price')}>
                 <MoneyInput
                   value={workPrice}
                   onChangeText={setWorkPrice}
@@ -197,7 +197,7 @@ export function SellReadyMadeScreen(): ReactElement {
               </Field>
             </View>
             <View style={styles.moneyItem}>
-              <Field label="Предоплата">
+              <Field label={m('create.deposit')}>
                 <MoneyInput
                   value={deposit}
                   onChangeText={setDeposit}
@@ -211,7 +211,7 @@ export function SellReadyMadeScreen(): ReactElement {
         {items.map((item, index) => (
           <Card key={item.id}>
             <CardTitle
-              title={`Позиция ${(index + 1).toString()}`}
+              title={m('create.item', { n: index + 1 })}
               icon="window"
               action={
                 items.length > 1 ? (
@@ -220,11 +220,11 @@ export function SellReadyMadeScreen(): ReactElement {
                       setItems((current) => current.filter((entry) => entry.id !== item.id));
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Удалить позицию ${(index + 1).toString()}`}
+                    accessibilityLabel={m('create.removeItem', { n: index + 1 })}
                     hitSlop={8}
                   >
                     {({ pressed }) => (
-                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>Удалить</Text>
+                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>{m('create.remove')}</Text>
                     )}
                   </Pressable>
                 ) : undefined
@@ -233,12 +233,12 @@ export function SellReadyMadeScreen(): ReactElement {
 
             <View style={styles.row}>
               <View style={styles.modelItem}>
-                <Field label="Модель">
+                <Field label={m('create.model')}>
                   <CatalogPicker
                     value={item.model}
-                    placeholder="Не выбрана"
+                    placeholder={m('create.notChosen')}
                     options={modelOptions}
-                    sheetTitle="Модельный ряд"
+                    sheetTitle={m('sell.modelRange')}
                     onChange={(model) => {
                       updateItem(item.id, { model });
                     }}
@@ -246,7 +246,7 @@ export function SellReadyMadeScreen(): ReactElement {
                 </Field>
               </View>
               <View style={styles.quantityItem}>
-                <Field label="Кол-во">
+                <Field label={m('sell.qty')}>
                   <Input
                     value={item.quantity}
                     onChangeText={(quantity) => {
@@ -264,12 +264,12 @@ export function SellReadyMadeScreen(): ReactElement {
               а не переписывает её описание: размер, цвет и код приезжают со
               склада, а остаток списывается при продаже.
             */}
-            <Field label="Карниз" hint="Можно продать и один карниз — модель тогда не нужна">
+            <Field label={m('create.cornice')} hint={m('sell.corniceHint')}>
               <CatalogPicker
                 value={item.cornice}
-                placeholder="Без карниза"
+                placeholder={m('sell.noCornice')}
                 options={corniceOptions}
-                sheetTitle="Карнизы"
+                sheetTitle={m('sell.cornices')}
                 onChange={(cornice) => {
                   updateItem(item.id, { cornice });
                 }}
@@ -278,7 +278,7 @@ export function SellReadyMadeScreen(): ReactElement {
 
             {item.model.trim() !== '' && (
               <View style={styles.stock}>
-                <Text style={styles.stockTitle}>В наличии</Text>
+                <Text style={styles.stockTitle}>{m('sell.inStock')}</Text>
 
                 {stock.isLoading ? (
                   <ActivityIndicator color={colors.accent} />
@@ -294,9 +294,7 @@ export function SellReadyMadeScreen(): ReactElement {
 
                     if (matching.length === 0) {
                       return (
-                        <Text style={styles.stockHint}>
-                          По этой модели готовых штор на складе нет — продажа пройдёт без списания
-                        </Text>
+                        <Text style={styles.stockHint}>{m('sell.noStock')}</Text>
                       );
                     }
 
@@ -333,9 +331,10 @@ export function SellReadyMadeScreen(): ReactElement {
                         >
                           <View style={styles.stockBody}>
                             <Text style={styles.stockName}>
-                              {`${Number.parseFloat(entry.widthCm).toString()}×${Number.parseFloat(
-                                entry.heightCm,
-                              ).toString()} см`}
+                              {m('sell.cm', {
+                                w: Number.parseFloat(entry.widthCm),
+                                h: Number.parseFloat(entry.heightCm),
+                              })}
                               {entry.code === null ? '' : ` · ${entry.code}`}
                             </Text>
                             {entry.comment !== null && (
@@ -344,7 +343,7 @@ export function SellReadyMadeScreen(): ReactElement {
                               </Text>
                             )}
                             <Text style={styles.stockMeta}>
-                              {`${entry.branchName} · ${entry.quantity.toString()} шт`}
+                              {m('sell.pcs', { branch: entry.branchName, n: entry.quantity })}
                             </Text>
                           </View>
                           <Text style={styles.stockPrice}>
@@ -358,13 +357,13 @@ export function SellReadyMadeScreen(): ReactElement {
               </View>
             )}
 
-            <Field label="Комментарий">
+            <Field label={m('create.comment')}>
               <Input
                 value={item.comment}
                 onChangeText={(comment) => {
                   updateItem(item.id, { comment });
                 }}
-                placeholder="Что важно помнить по этой позиции"
+                placeholder={m('create.commentPlaceholder')}
                 multiline
               />
             </Field>
@@ -384,19 +383,19 @@ export function SellReadyMadeScreen(): ReactElement {
           style={({ pressed }) => [styles.addItem, pressed ? styles.pressed : null]}
         >
           <Icon name="assigned" size={18} color={colors.accent} />
-          <Text style={styles.addItemText}>Добавить позицию</Text>
+          <Text style={styles.addItemText}>{m('create.addItem')}</Text>
         </Pressable>
 
         <Card>
-          <CardTitle title="Установка" icon="deadline" />
+          <CardTitle title={m('sell.installation')} icon="deadline" />
 
-          <Field label="Установка требуется?">
+          <Field label={m('sell.needInstall')}>
             <ChipSelect
               value={needsInstallation}
               onChange={setNeedsInstallation}
               options={[
-                { value: 'no', label: 'Нет — продажа без цеха' },
-                { value: 'yes', label: 'Да, нужен установщик' },
+                { value: 'no', label: m('sell.installNo') },
+                { value: 'yes', label: m('sell.installYes') },
               ]}
             />
           </Field>
@@ -404,23 +403,21 @@ export function SellReadyMadeScreen(): ReactElement {
           {needsInstallation === 'yes' ? (
             <>
               <Field
-                label="Адрес установки"
+                label={m('create.address')}
                 required
                 error={showErrors ? errors.installAddress : undefined}
               >
                 <Input
                   value={installAddress}
                   onChangeText={setInstallAddress}
-                  placeholder="Улица, дом, квартира"
+                  placeholder={m('create.addressPlaceholder')}
                   multiline
                   invalid={showErrors && errors.installAddress !== undefined}
                 />
               </Field>
             </>
           ) : (
-            <Text style={styles.hint}>
-              Заказ закроется сразу — цех и установщик в нём не участвуют.
-            </Text>
+            <Text style={styles.hint}>{m('sell.closesNow')}</Text>
           )}
         </Card>
 
@@ -438,7 +435,7 @@ export function SellReadyMadeScreen(): ReactElement {
             <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.submitText}>
-              {needsInstallation === 'yes' ? 'Продать, передать на установку' : 'Продать и закрыть'}
+              {needsInstallation === 'yes' ? m('sell.submitInstall') : m('sell.submitClose')}
             </Text>
           )}
         </Pressable>
@@ -478,20 +475,20 @@ function validate(values: {
   readonly clientPhone: string;
   readonly needsInstallation: 'no' | 'yes';
   readonly installAddress: string;
-}): Partial<Record<'clientName' | 'clientPhone' | 'installAddress', string>> {
+}, m: Translate): Partial<Record<'clientName' | 'clientPhone' | 'installAddress', string>> {
   const errors: Record<string, string> = {};
 
   if (values.clientName.trim() === '') {
-    errors['clientName'] = 'Укажите имя клиента';
+    errors['clientName'] = m('create.nameRequired');
   }
 
   const digits = values.clientPhone.replace(/\D/g, '');
   if (digits.length < 9) {
-    errors['clientPhone'] = 'Похоже, номер неполный';
+    errors['clientPhone'] = m('create.phoneIncomplete');
   }
 
   if (values.needsInstallation === 'yes' && values.installAddress.trim() === '') {
-    errors['installAddress'] = 'Укажите адрес — иначе установщику некуда ехать';
+    errors['installAddress'] = m('sell.addressRequired');
   }
 
   return errors;

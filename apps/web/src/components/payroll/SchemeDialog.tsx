@@ -196,7 +196,7 @@ export function SchemeDialog({
           в заказе, у админа.
         */}
         {required.length === 0 && (
-          <p className="rounded-tile border border-subtle bg-raised px-3 py-2 text-footnote text-secondary">
+          <p className="rounded-xl border border-ink/10 bg-raised px-3 py-2 text-footnote text-secondary">
             Заполнять нечего: сотрудник получает расценки за этапы, которые админ
             назначает в самом заказе. В ведомости они станут строкой «Сдельно за этапы
             заказов».

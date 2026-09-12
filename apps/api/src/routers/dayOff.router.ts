@@ -350,7 +350,7 @@ export const dayOffRouter = router({
           action: 'dayoff.weekly_set',
           entityType: 'user',
           entityId: input.userId,
-          details: { from: person.weeklyDayOff, to: input.weekday },
+          details: { from: { weekday: person.weeklyDayOff }, to: { weekday: input.weekday } },
           ipAddress: ctx.ipAddress,
         });
 

@@ -7,6 +7,7 @@ import { colors, hairline, opacity, radius, spacing, typography } from '../theme
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { Icon } from './Icon';
 import type { RouterOutputs } from '../lib/trpc';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Табло рейтинга сотрудников.
@@ -36,6 +37,7 @@ export function RatingBoard({
   readonly isError: boolean;
   readonly onPressAll: () => void;
 }): ReactElement {
+  const { m } = useLocale();
   const me = data?.me ?? null;
 
   /**
@@ -50,12 +52,12 @@ export function RatingBoard({
   return (
     <Card>
       <CardTitle
-        title="Рейтинг сотрудников"
+        title={m('rating.title')}
         icon="rating"
         action={
           <Pressable onPress={onPressAll} accessibilityRole="button" hitSlop={8}>
             {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>Подробнее</Text>
+              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>{m('rating.more')}</Text>
             )}
           </Pressable>
         }
@@ -67,8 +69,8 @@ export function RatingBoard({
         <Skeleton rows={4} />
       ) : data.podium.length === 0 ? (
         <Empty
-          message="Соревнование ещё не началось"
-          hint="Строки появятся, когда первый заказ месяца дойдёт до статуса «Выполнен»"
+          message={m('rating.notStarted')}
+          hint={m('rating.notStartedHint')}
         />
       ) : (
         <View>
@@ -94,7 +96,7 @@ export function RatingBoard({
 
               <BoardRow
                 place={me.place}
-                name="Вы"
+                name={m('rating.You')}
                 score={me.score}
                 isMe
                 isLast
@@ -130,6 +132,7 @@ function BoardRow({
   readonly isMe: boolean;
   readonly isLast: boolean;
 }): ReactElement {
+  const { locale } = useLocale();
   return (
     <View style={[styles.row, isMe ? styles.rowMine : null]}>
       <Text style={[styles.place, place !== null && place <= 3 ? styles.placeTop : null]}>
@@ -145,7 +148,7 @@ function BoardRow({
         {place === 1 && <Icon name="rating" size={15} color={colors.accentStrong} />}
 
         <Text style={styles.score}>
-          {score === null ? '—' : pluralize(score, PLURAL_POINTS)}
+          {score === null ? '—' : locale === 'uz' ? `${score.toString()} ball` : pluralize(score, PLURAL_POINTS)}
         </Text>
       </View>
     </View>

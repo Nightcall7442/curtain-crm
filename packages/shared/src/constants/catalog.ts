@@ -269,15 +269,28 @@ export const STOCK_KINDS = [...MATERIAL_CODE_KIND_LIST, CatalogKind.ACCESSORY_CO
 export type StockKind = (typeof STOCK_KINDS)[number];
 
 /** Короткое название вида на складе. */
-export const STOCK_KIND_LABELS_RU: Readonly<Record<StockKind, string>> = {
-  portiere_code: 'Портьера',
-  tulle_code: 'Тюль',
-  protection_code: 'Защита',
-  cornice_code: 'Карниз',
-  plastic_code: 'Пластик',
-  pipe_code: 'Труба',
-  accessory_code: 'Аксессуар',
+export const STOCK_KIND_LABELS: Translated<StockKind> = {
+  ru: {
+    portiere_code: 'Портьера',
+    tulle_code: 'Тюль',
+    protection_code: 'Защита',
+    cornice_code: 'Карниз',
+    plastic_code: 'Пластик',
+    pipe_code: 'Труба',
+    accessory_code: 'Аксессуар',
+  },
+  uz: {
+    portiere_code: 'Portyera',
+    tulle_code: 'Tyul',
+    protection_code: 'Himoya',
+    cornice_code: 'Karniz',
+    plastic_code: 'Plastik',
+    pipe_code: 'Truba',
+    accessory_code: 'Aksessuar',
+  },
 };
+
+export const STOCK_KIND_LABELS_RU = STOCK_KIND_LABELS.ru;
 
 /**
  * Строка материала по виду справочника — обратная сторона `MATERIAL_CODE_KINDS`.

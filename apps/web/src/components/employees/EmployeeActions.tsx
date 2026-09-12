@@ -171,7 +171,7 @@ export function EmployeeActions({
               return (
                 <li
                   key={role}
-                  className="flex items-center gap-3 rounded border border-subtle bg-base/40 px-3 py-2"
+                  className="flex items-center gap-3 rounded-2xl border border-ink/[0.06] bg-ink/[0.04] px-3 py-2"
                 >
                   <span className="flex-1 text-caption text-primary">
                     {ROLE_LABELS_RU[role]}
@@ -275,7 +275,7 @@ function IconButton({
           ? 'text-muted hover:bg-danger/10 hover:text-danger'
           : tone === 'positive'
             ? 'text-muted hover:bg-positive/10 hover:text-positive'
-            : 'text-muted hover:bg-raised hover:text-primary',
+            : 'text-muted hover:bg-ink/[0.08] hover:text-primary',
       )}
     >
       {children}

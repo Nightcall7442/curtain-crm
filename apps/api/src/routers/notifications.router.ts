@@ -12,6 +12,7 @@ import {
 } from '../services/telegram.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
+import { translateNotificationText } from '../lib/notificationTranslations';
 
 /**
  * Уведомления сотрудника.
@@ -70,7 +71,15 @@ export const notificationsRouter = router({
         ctx.db.select({ value: count() }).from(notifications).where(where),
       ]);
 
-      return toPage(items, totalRow?.value ?? 0, input);
+      // Уведомление хранится по-русски; на узбекский переводится показ —
+      // см. `lib/notificationTranslations.ts`.
+      const localized = items.map((item) => ({
+        ...item,
+        title: translateNotificationText(item.title, ctx.locale),
+        body: translateNotificationText(item.body, ctx.locale),
+      }));
+
+      return toPage(localized, totalRow?.value ?? 0, input);
     }),
 
   /** Счётчик непрочитанных — для бейджа на табе. */

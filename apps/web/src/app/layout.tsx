@@ -13,7 +13,7 @@ import { Shell } from '@/components/layout/Shell';
 import { Providers } from '@/components/providers/Providers';
 import { LOCALE_BOOTSTRAP_SCRIPT } from '@/lib/locale';
 import { SKIN_BOOTSTRAP_SCRIPT } from '@/lib/skin';
-import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/theme';
+import { DEFAULT_THEME, THEME_BOOTSTRAP_SCRIPT } from '@/lib/theme';
 
 import '@/styles/globals.css';
 
@@ -132,6 +132,13 @@ export default function RootLayout({
   return (
     <html
       lang="ru"
+      // Тёмная — по умолчанию, и сервер отдаёт её сразу: без атрибута в
+      // разметке первый кадр был бы светлым, а скрипт ниже переставлял бы
+      // его уже после — со вспышкой и жалобой React на расхождение.
+      // `suppressHydrationWarning` — для явного выбора светлой, который
+      // скрипт ставит до React и о котором сервер знать не может.
+      data-theme={DEFAULT_THEME}
+      suppressHydrationWarning
       className={`${plexSans.variable} ${plexMono.variable} ${instrumentSerif.variable} ${playfairDisplay.variable} ${manrope.variable} ${greatVibes.variable}`}
     >
       <head>

@@ -50,6 +50,7 @@ import { RetailStockScreen } from './RetailStockScreen';
  * руководитель, приехав с рынка, правит их за один заход.
  */
 export function PurchaseMaterialsScreen(): ReactElement {
+  const { m } = useLocale();
   const [section, setSection] = useState<'purchase' | 'retail' | 'fabric'>('purchase');
 
   const header = (
@@ -58,9 +59,9 @@ export function PurchaseMaterialsScreen(): ReactElement {
         value={section}
         onChange={setSection}
         options={[
-          { value: 'purchase', label: 'Закупка' },
-          { value: 'retail', label: 'Витрина' },
-          { value: 'fabric', label: 'Склад' },
+          { value: 'purchase', label: m('prices.purchase') },
+          { value: 'retail', label: m('prices.retail') },
+          { value: 'fabric', label: m('prices.fabric') },
         ]}
       />
     </View>
@@ -77,7 +78,7 @@ export function PurchasePricesScreen({
   /** Переключатель разделов сверху; отдельно экран не открывается. */
   readonly header?: ReactElement;
 } = {}): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
 
   /** Позиция, которой правят цену. `null` — никакая. */
@@ -92,11 +93,11 @@ export function PurchasePricesScreen({
       setEditing(null);
       setPrice('');
       await utils.purchases.items.list.invalidate();
-      Alert.alert('Цена обновлена', `${item.name}: ${formatMoney(parseMoney(item.price))}`);
+      Alert.alert(m('prices.updated'), `${item.name}: ${formatMoney(parseMoney(item.price))}`);
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось сохранить', error.message);
+      Alert.alert(m('common.saveError'), error.message);
     },
   });
 
@@ -107,7 +108,7 @@ export function PurchasePricesScreen({
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось изменить', error.message);
+      Alert.alert(m('prices.changeError'), error.message);
     },
   });
 
@@ -128,18 +129,15 @@ export function PurchasePricesScreen({
         {header}
 
         <Card>
-          <CardTitle title="Закупочные цены" icon="paid" />
-          <Text style={styles.hint}>
-            Почём мы покупаем. На заказ списывается снимок цены, поэтому
-            правка не меняет себестоимость уже закрытых заказов.
-          </Text>
+          <CardTitle title={m('prices.title')} icon="paid" />
+          <Text style={styles.hint}>{m('prices.hint')}</Text>
 
           {items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty
-              message="Справочник пуст"
-              hint="Новые товары заводятся в панели, раздел «Закупки»"
+              message={m('prices.empty')}
+              hint={m('prices.emptyHint')}
             />
           ) : (
             items.data.map((item) => (
@@ -165,10 +163,10 @@ export function PurchasePricesScreen({
                       setPrice(Number.parseFloat(item.price).toString());
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Изменить цену: ${item.name}`}
+                    accessibilityLabel={m('prices.editA11y', { name: item.name })}
                     style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
                   >
-                    <Text style={styles.actionText}>Цена</Text>
+                    <Text style={styles.actionText}>{m('prices.price')}</Text>
                   </Pressable>
 
                   <Pressable
@@ -178,17 +176,17 @@ export function PurchasePricesScreen({
                     disabled={setActive.isPending}
                     accessibilityRole="button"
                     accessibilityLabel={
-                      item.isActive ? `Снять с закупки: ${item.name}` : `Вернуть: ${item.name}`
+                      item.isActive ? m('prices.removeA11y', { name: item.name }) : m('prices.restoreA11y', { name: item.name })
                     }
                     style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
                   >
-                    <Text style={styles.actionText}>{item.isActive ? 'Снять' : 'Вернуть'}</Text>
+                    <Text style={styles.actionText}>{item.isActive ? m('prices.remove') : m('prices.restore')}</Text>
                   </Pressable>
                 </View>
 
                 {editing === item.id && (
                   <View style={styles.editor}>
-                    <Field label="Новая цена, сум">
+                    <Field label={m('prices.newPrice')}>
                       <MoneyInput
                         value={price}
                         onChangeText={setPrice}
@@ -209,7 +207,7 @@ export function PurchasePricesScreen({
                       {update.isPending ? (
                         <ActivityIndicator color={colors.onAccent} size="small" />
                       ) : (
-                        <Text style={styles.submitText}>Сохранить</Text>
+                        <Text style={styles.submitText}>{m('emp.save')}</Text>
                       )}
                     </Pressable>
                   </View>

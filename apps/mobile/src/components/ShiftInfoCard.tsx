@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { colors, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Pill, Row } from './Card';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Текущая смена сотрудника.
@@ -23,6 +24,7 @@ export function ShiftInfoCard({
   readonly distanceMeters: number | null;
   readonly ordersInProgress: number;
 }): ReactElement {
+  const { m } = useLocale();
   const isOpen = startedAt !== null;
 
   const duration = ((): string => {
@@ -32,8 +34,8 @@ export function ShiftInfoCard({
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
 
-    if (hours === 0) return `${rest.toString()} мин`;
-    return `${hours.toString()} ч ${rest.toString()} мин`;
+    if (hours === 0) return m('shift.minutes', { n: rest });
+    return m('shift.hoursMinutes', { h: hours, m: rest });
   })();
 
   const timeLabel =
@@ -53,11 +55,11 @@ export function ShiftInfoCard({
   return (
     <Card style={styles.card}>
       <CardTitle
-        title="Текущая смена"
+        title={m('shift.current')}
         icon="shift"
         action={
           <Pill
-            text={isOpen ? 'Смена открыта' : 'Смена закрыта'}
+            text={isOpen ? m('shift.isOpen') : m('shift.isClosed')}
             tone={isOpen ? 'positive' : 'neutral'}
           />
         }
@@ -65,22 +67,20 @@ export function ShiftInfoCard({
 
       {isOpen ? (
         <View>
-          <Row label="Дата" value={dateLabel} />
-          <Row label="Начало" value={timeLabel} />
-          <Row label="Идёт" value={duration} valueColor={colors.positive} />
-          <Row label="Филиал" value={branchName ?? '—'} />
+          <Row label={m('shift.date')} value={dateLabel} />
+          <Row label={m('shift.start')} value={timeLabel} />
+          <Row label={m('shift.running')} value={duration} valueColor={colors.positive} />
+          <Row label={m('shift.branch')} value={branchName ?? '—'} />
           {distanceMeters !== null && (
-            <Row label="Отметка в" value={`${distanceMeters.toString()} м от цеха`} />
+            <Row label={m('shift.markedAt')} value={m('shift.metersFrom', { m: distanceMeters })} />
           )}
         </View>
       ) : (
-        <Text style={styles.closed}>
-          Смена не открыта. Откройте её на вкладке «Явка», находясь рядом с цехом.
-        </Text>
+        <Text style={styles.closed}>{m('shift.closedInfo')}</Text>
       )}
 
       <View style={styles.footer}>
-        <Text style={styles.footerLabel}>Заказов у меня в работе</Text>
+        <Text style={styles.footerLabel}>{m('shift.ordersInWork')}</Text>
         <Text style={styles.footerValue}>{ordersInProgress}</Text>
       </View>
     </Card>

@@ -21,6 +21,7 @@ import {
   notifications,
   orderComments,
   orderItems,
+  orderPackChecks,
   orderPhotos,
   orders,
   orderStatusHistory,
@@ -52,6 +53,7 @@ import {
   gatherPayrollInputs,
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
+import { loadPackList } from '../services/packList.service';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
   attendanceByDay,
@@ -407,6 +409,34 @@ async function run(db: Database): Promise<void> {
       actor: adminActor,
     });
   });
+
+  /*
+   * Сбор на выезд: пока установщик не отметил по листу всё, что везёт,
+   * «Установка идёт» отбивается — забытый держатель это второй выезд.
+   */
+  await expectRejectedWith(
+    'workflow: без сборки на выезд установка не начинается',
+    () =>
+      db.transaction(async (tx) => {
+        await changeOrderStatus(tx, {
+          orderId: order.id,
+          toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+          actor: adminActor,
+        });
+        await changeOrderStatus(tx, {
+          orderId: order.id,
+          toStatus: OrderStatus.INSTALLATION_IN_PROGRESS,
+          actor: adminActor,
+        });
+      }),
+    (message) => message.includes('соберитесь на выезд'),
+  );
+
+  for (const row of await loadPackList(db, order.id)) {
+    await db
+      .insert(orderPackChecks)
+      .values({ orderId: order.id, key: row.key, checkedBy: installer.id });
+  }
 
   /*
    * Два перехода ОДНОЙ транзакцией — это не украшение сценария, а условие

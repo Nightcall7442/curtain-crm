@@ -1,5 +1,5 @@
 import {
-  CORNICE_STATUS_LABELS_RU,
+  CORNICE_STATUS_LABELS,
   CorniceStatus,
   isActiveStatus,
   isOverdueDate,
@@ -20,6 +20,8 @@ import { TaskCard } from '../components/TaskCard';
 import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
+import type { MessageKey } from '../i18n/messages';
 
 /**
  * Работа сотрудника: его заказы И доп работы от руководства.
@@ -36,12 +38,12 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
 
 type Filter = 'active' | 'all' | 'overdue' | 'tasks' | 'personal' | 'cornice';
 
-const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
-  { key: 'active', label: 'В работе' },
-  { key: 'overdue', label: 'Просрочены' },
-  { key: 'all', label: 'Все' },
-  { key: 'tasks', label: 'Доп работы' },
-  { key: 'personal', label: 'Личные' },
+const FILTERS: readonly { readonly key: Filter; readonly label: MessageKey }[] = [
+  { key: 'active', label: 'work.filterActive' },
+  { key: 'overdue', label: 'work.filterOverdue' },
+  { key: 'all', label: 'work.filterAll' },
+  { key: 'tasks', label: 'work.filterTasks' },
+  { key: 'personal', label: 'work.filterPersonal' },
 ];
 
 /*
@@ -51,14 +53,15 @@ const FILTERS: readonly { readonly key: Filter; readonly label: string }[] = [
   найти: заказ на карнизе может быть в любом производственном статусе. Это
   свободная работа бригады, и её берут отсюда.
 */
-const CORNICE_FILTER: { readonly key: Filter; readonly label: string } = {
+const CORNICE_FILTER: { readonly key: Filter; readonly label: MessageKey } = {
   key: 'cornice',
-  label: 'Карнизы',
+  label: 'work.filterCornice',
 };
 
 export function WorkScreen(): ReactElement {
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { m, t } = useLocale();
   const [filter, setFilter] = useState<Filter>('active');
 
   /**
@@ -147,8 +150,8 @@ export function WorkScreen(): ReactElement {
           const isActive = entry.key === filter;
           const label =
             entry.key === 'tasks' && openTasks.length > 0
-              ? `${entry.label} (${openTasks.length.toString()})`
-              : entry.label;
+              ? `${m(entry.label)} (${openTasks.length.toString()})`
+              : m(entry.label);
           return (
             <Pressable
               key={entry.key}
@@ -184,8 +187,8 @@ export function WorkScreen(): ReactElement {
               <ErrorState />
             ) : (
               <Empty
-                message="Карнизов нет"
-                hint="Здесь появляются заказы с карнизом, пластиком или трубой — сразу после проверки админом"
+                message={m('work.noCornice')}
+                hint={m('work.noCorniceHint')}
               />
             )
           }
@@ -205,9 +208,9 @@ export function WorkScreen(): ReactElement {
               />
               <Text style={styles.corniceNote}>
                 {item.corniceStatus === CorniceStatus.PENDING
-                  ? CORNICE_STATUS_LABELS_RU.pending
-                  : `${CORNICE_STATUS_LABELS_RU[item.corniceStatus]} · ${
-                      item.corniceInstallerName ?? 'исполнитель не записан'
+                  ? t(CORNICE_STATUS_LABELS, CorniceStatus.PENDING)
+                  : `${t(CORNICE_STATUS_LABELS, item.corniceStatus)} · ${
+                      item.corniceInstallerName ?? m('work.corniceNoWorker')
                     }`}
               </Text>
             </View>
@@ -229,8 +232,8 @@ export function WorkScreen(): ReactElement {
               <ErrorState />
             ) : (
               <Empty
-                message="Доп. работ нет"
-                hint="Здесь появляются задания от директора или администратора"
+                message={m('work.noTasks')}
+                hint={m('work.noTasksHint')}
               />
             )
           }
@@ -263,7 +266,7 @@ export function WorkScreen(): ReactElement {
               ]}
             >
               <Icon name="assigned" size={18} color={colors.onAccent} />
-              <Text style={styles.createText}>Записать личную работу</Text>
+              <Text style={styles.createText}>{m('work.addPersonal')}</Text>
             </Pressable>
           }
           ListEmptyComponent={
@@ -273,8 +276,8 @@ export function WorkScreen(): ReactElement {
               <ErrorState />
             ) : (
               <Empty
-                message="Личных работ нет"
-                hint="Шьёте что-то себе на оборудовании цеха — запишите, чтобы было видно занятость"
+                message={m('work.noPersonal')}
+                hint={m('work.noPersonalHint')}
               />
             )
           }
@@ -296,7 +299,7 @@ export function WorkScreen(): ReactElement {
             ]}
           >
             <Icon name="assigned" size={18} color={colors.onAccent} />
-            <Text style={styles.createText}>Новый заказ</Text>
+            <Text style={styles.createText}>{m('work.newOrder')}</Text>
           </Pressable>
 
           <Pressable
@@ -311,7 +314,7 @@ export function WorkScreen(): ReactElement {
             ]}
           >
             <Icon name="orders" size={18} color={colors.accentStrong} />
-            <Text style={styles.createSecondaryText}>Готовые шторы</Text>
+            <Text style={styles.createSecondaryText}>{m('work.readyMade')}</Text>
           </Pressable>
         </View>
       )}
@@ -343,7 +346,7 @@ export function WorkScreen(): ReactElement {
               ]}
             >
               <Icon name="paid" size={18} color={colors.accentStrong} />
-              <Text style={styles.createSecondaryText}>Касса</Text>
+              <Text style={styles.createSecondaryText}>{m('work.cashDesk')}</Text>
             </Pressable>
           )}
 
@@ -360,7 +363,7 @@ export function WorkScreen(): ReactElement {
               ]}
             >
               <Icon name="roles" size={18} color={colors.accentStrong} />
-              <Text style={styles.createSecondaryText}>Руководство</Text>
+              <Text style={styles.createSecondaryText}>{m('work.management')}</Text>
             </Pressable>
           )}
         </View>
@@ -381,8 +384,8 @@ export function WorkScreen(): ReactElement {
             <ErrorState />
           ) : (
             <Empty
-              message={filter === 'overdue' ? 'Просроченных заказов нет' : 'Заказов пока нет'}
-              hint="Здесь появляются заказы, в которых вы участвуете"
+              message={filter === 'overdue' ? m('work.noOverdue') : m('work.noOrders')}
+              hint={m('work.noOrdersHint')}
             />
           )
         }

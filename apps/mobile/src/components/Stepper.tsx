@@ -27,7 +27,7 @@ import { Icon } from './Icon';
  * на конвейере, и любая точка была бы враньём.
  */
 export function Stepper({ status }: { readonly status: OrderStatusName }): ReactElement | null {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
 
   if (status === OrderStatus.CANCELLED) return null;
 
@@ -35,7 +35,7 @@ export function Stepper({ status }: { readonly status: OrderStatusName }): React
   const currentIndex = ORDER_PHASES.indexOf(currentPhase);
 
   return (
-    <View style={styles.row} accessibilityLabel={`Этап: ${t(ORDER_PHASE_LABELS, currentPhase)}`}>
+    <View style={styles.row} accessibilityLabel={m('stepper.phase', { phase: t(ORDER_PHASE_LABELS, currentPhase) })}>
       {STEPS.map((phase, index) => {
         const phaseIndex = ORDER_PHASES.indexOf(phase);
         const isDone = currentIndex > phaseIndex;

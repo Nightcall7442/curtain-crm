@@ -39,7 +39,7 @@ import { OrderStatusBadge, OrderTypeBadge, PriorityBadge } from '@/components/ui
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
-import { formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
+import { cn, formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
 
 /**
  * Карточка заказа.
@@ -177,13 +177,14 @@ export default function OrderDetailPage(): ReactElement {
         <CardBody className="flex flex-wrap items-start gap-4">
           <Link
             href="/orders"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-subtle text-secondary transition-colors hover:bg-raised hover:text-primary"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-subtle text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary"
             aria-label="К списку заказов"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
 
-          <div className="min-w-0 flex-1">
+          {/* `basis-[16rem]`: на телефоне блок сумм уходит под заголовок, а не давит его в столбик. */}
+          <div className="min-w-0 flex-1 basis-[16rem]">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-heading font-semibold text-primary">
                 {data.orderNumber ?? `#${data.id.toString()}`}
@@ -206,10 +207,15 @@ export default function OrderDetailPage(): ReactElement {
             )}
           </div>
 
-          <dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-1 text-footnote sm:grid-cols-3">
-            <MoneyItem label="Стоимость работ" value={data.workPrice} />
-            <MoneyItem label="Предоплата" value={data.deposit} />
-            <MoneyItem label="Остаток" value={data.remainingPayment} />
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-footnote sm:grid-cols-3 lg:shrink-0">
+            {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
+            {data.workPrice !== null && (
+              <>
+                <MoneyItem label="Стоимость работ" value={data.workPrice} />
+                <MoneyItem label="Предоплата" value={data.deposit} />
+                <MoneyItem label="Остаток" value={data.remainingPayment} />
+              </>
+            )}
             <div>
               <dt className="text-muted">Срок</dt>
               <dd className="text-primary">{formatDate(data.deadline)}</dd>
@@ -232,7 +238,7 @@ export default function OrderDetailPage(): ReactElement {
         пока левая колонка прокручивается; в один столбец (до `lg`) порядок
         в разметке ставит её ПЕРВОЙ — действия важнее длинных списков.
       */}
-      <div className="space-y-4 lg:sticky lg:top-20 lg:order-2">
+      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
       {/* --- Действия ------------------------------------------------------- */}
       <Card>
         <CardHeader title="Действия по заказу" />
@@ -265,10 +271,10 @@ export default function OrderDetailPage(): ReactElement {
                   }}
                   className={
                     transition.kind === TransitionKind.FORWARD
-                      ? 'rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-caption text-positive transition-colors hover:bg-positive/20 disabled:opacity-50'
+                      ? 'pressable rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50'
                       : transition.kind === TransitionKind.CANCEL
-                        ? 'rounded border border-danger/40 bg-danger/10 px-3 py-1.5 text-caption text-danger transition-colors hover:bg-danger/20 disabled:opacity-50'
-                        : 'rounded border border-warning/40 bg-warning/10 px-3 py-1.5 text-caption text-warning transition-colors hover:bg-warning/20 disabled:opacity-50'
+                        ? 'pressable rounded-full border border-danger/40 bg-danger/15 px-3.5 py-1.5 text-caption font-medium text-danger transition-colors hover:bg-danger/25 disabled:opacity-50'
+                        : 'pressable rounded-full border border-warning/40 bg-warning/15 px-3.5 py-1.5 text-caption font-medium text-warning transition-colors hover:bg-warning/25 disabled:opacity-50'
                   }
                 >
                   {transition.label}
@@ -279,7 +285,7 @@ export default function OrderDetailPage(): ReactElement {
 
           {/* Форма причины — появляется только для действий, где она обязательна */}
           {pendingStatus !== null && (
-            <div className="mt-4 rounded border border-warning/30 bg-warning/5 p-3">
+            <div className="mt-4 rounded-xl border border-warning/30 bg-warning/5 p-3">
               <p className="text-caption text-primary">
                 {`Переход в «${ORDER_STATUS_LABELS_RU[pendingStatus]}» требует причины`}
               </p>
@@ -312,7 +318,7 @@ export default function OrderDetailPage(): ReactElement {
                   onClick={() => {
                     setPendingStatus(null);
                   }}
-                  className="pressable rounded-tile border border-subtle px-3.5 py-2 text-caption text-secondary hover:bg-raised hover:text-primary"
+                  className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
                 >
                   Отмена
                 </button>
@@ -321,7 +327,7 @@ export default function OrderDetailPage(): ReactElement {
           )}
 
           {changeStatus.error !== null && (
-            <p role="alert" className="mt-3 rounded border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger">
+            <p role="alert" className="mt-3 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger">
               {changeStatus.error.message}
             </p>
           )}
@@ -338,8 +344,8 @@ export default function OrderDetailPage(): ReactElement {
             qc: data.qcId,
             installer: data.installerId,
           }}
-          workPrice={data.workPrice}
-          deposit={data.deposit}
+          workPrice={data.workPrice ?? '0'}
+          deposit={data.deposit ?? '0'}
           stageFees={stageFeesFromOrder(data)}
           orderType={data.orderType}
           isClosed={isTerminalStatus(data.status)}
@@ -398,7 +404,7 @@ export default function OrderDetailPage(): ReactElement {
                 onClick={() => {
                   takeCornice.mutate({ id: orderId });
                 }}
-                className="mt-3 rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-caption text-positive transition-colors hover:bg-positive/20 disabled:opacity-50"
+                className="pressable mt-3 rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50"
               >
                 Взять карниз
               </button>
@@ -413,7 +419,7 @@ export default function OrderDetailPage(): ReactElement {
                     onClick={() => {
                       finishCornice.mutate({ id: orderId });
                     }}
-                    className="rounded border border-positive/40 bg-positive/10 px-3 py-1.5 text-caption text-positive transition-colors hover:bg-positive/20 disabled:opacity-50"
+                    className="pressable rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50"
                   >
                     Карниз готов
                   </button>
@@ -453,7 +459,7 @@ export default function OrderDetailPage(): ReactElement {
       </div>
 
       {/* --- Левая колонка: жизнь заказа ------------------------------------ */}
-      <div className="space-y-4 lg:col-span-2 lg:order-1">
+      <div className="min-w-0 space-y-4 lg:col-span-2 lg:order-1">
       <section className="grid gap-3">
         {/* --- Позиции ------------------------------------------------------ */}
         <Card>
@@ -464,10 +470,15 @@ export default function OrderDetailPage(): ReactElement {
             ) : (
               <ul className="space-y-4">
                 {data.items.map((item, index) => (
-                  <li key={item.id} className="rounded border border-subtle bg-base/40 p-3">
+                  <li key={item.id} className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-3">
                     <div className="flex items-baseline justify-between">
                       <span className="text-caption font-medium text-primary">
                         {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
+                        {item.readyMadeCode !== null && (
+                          <span className="ml-2 font-mono text-footnote text-secondary">
+                            {item.readyMadeCode}
+                          </span>
+                        )}
                       </span>
                       <span className="text-footnote text-muted">
                         {ORDER_ITEM_KIND_LABELS_RU[item.kind]}
@@ -612,9 +623,20 @@ export default function OrderDetailPage(): ReactElement {
             ) : history.data === undefined || history.data.length === 0 ? (
               <EmptyState message="История пуста" />
             ) : (
-              <ol className="space-y-4">
-                {history.data.map((entry) => (
-                  <li key={entry.id} className="border-l-2 border-subtle pl-3">
+              // Лента: линия слева и точка на каждом переходе, последний —
+              // неоновой. Список без линии читался как заметки, а не как путь.
+              <ol className="relative ml-1.5 space-y-4 border-l border-ink/15 pl-5">
+                {history.data.map((entry, index) => (
+                  <li key={entry.id} className="relative">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-panel',
+                        index === history.data.length - 1
+                          ? 'bg-accent shadow-[0_0_10px] shadow-accent/70'
+                          : 'bg-ink/30',
+                      )}
+                    />
                     <div className="flex flex-wrap items-center gap-2 text-footnote">
                       {entry.fromStatus !== null && (
                         <>
@@ -626,7 +648,7 @@ export default function OrderDetailPage(): ReactElement {
                           </span>
                         </>
                       )}
-                      <span className="text-primary">
+                      <span className="font-medium text-primary">
                         {ORDER_STATUS_LABELS_RU[entry.toStatus]}
                       </span>
                     </div>
@@ -681,7 +703,7 @@ export default function OrderDetailPage(): ReactElement {
             ) : (
               <ul className="space-y-2.5">
                 {comments.data.map((entry) => (
-                  <li key={entry.id} className="rounded border border-subtle bg-base/40 p-2.5">
+                  <li key={entry.id} className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-2.5">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-footnote text-primary">{entry.authorName}</span>
                       <span className="text-overline text-muted">

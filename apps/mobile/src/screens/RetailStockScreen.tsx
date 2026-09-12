@@ -38,7 +38,7 @@ export function RetailStockScreen({
   /** Переключатель разделов сверху — его рисует экран закупочных материалов. */
   readonly header?: ReactElement;
 } = {}): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
 
@@ -55,11 +55,11 @@ export function RetailStockScreen({
       setStocking(null);
       setDelta('');
       await utils.retail.items.list.invalidate();
-      Alert.alert('Остаток обновлён', `${item.name}: ${item.stockQuantity}`);
+      Alert.alert(m('retail.stockUpdated'), `${item.name}: ${item.stockQuantity}`);
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось оприходовать', error.message);
+      Alert.alert(m('retail.receiveError'), error.message);
     },
   });
 
@@ -80,14 +80,14 @@ export function RetailStockScreen({
         {header}
 
         <Card>
-          <CardTitle title="Прайс и остатки" icon="orders" />
+          <CardTitle title={m('retail.title')} icon="orders" />
 
           {items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty
-              message="Прайс пуст"
-              hint="Новые товары заводятся в панели — здесь ведутся остатки"
+              message={m('cash.priceEmpty')}
+              hint={m('retail.emptyHint')}
             />
           ) : (
             items.data.map((item) => {
@@ -104,10 +104,11 @@ export function RetailStockScreen({
                         {item.name}
                       </Text>
                       <Text style={styles.itemMeta}>
-                        {`${formatMoney(parseMoney(item.price))} / ${t(
-                          PURCHASE_UNIT_LABELS,
-                          item.unit,
-                        )} · остаток ${stock.toString()}`}
+                        {m('retail.stockMeta', {
+                          price: formatMoney(parseMoney(item.price)),
+                          unit: t(PURCHASE_UNIT_LABELS, item.unit),
+                          n: stock,
+                        })}
                       </Text>
                     </View>
 
@@ -117,16 +118,16 @@ export function RetailStockScreen({
                         setDelta('');
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Приход для «${item.name}»`}
+                      accessibilityLabel={m('retail.receiveA11y', { name: item.name })}
                       style={({ pressed }) => [styles.stockButton, pressed ? styles.pressed : null]}
                     >
-                      <Text style={styles.stockButtonText}>Приход</Text>
+                      <Text style={styles.stockButtonText}>{m('retail.receive')}</Text>
                     </Pressable>
                   </View>
 
                   {stocking === item.id && (
                     <View style={styles.stockBox}>
-                      <Field label="Сколько поступило" hint="Со знаком минус — списание недостачи">
+                      <Field label={m('retail.howMuch')} hint={m('retail.howMuchHint')}>
                         <Input
                           value={delta}
                           onChangeText={setDelta}
@@ -149,7 +150,7 @@ export function RetailStockScreen({
                         {addStock.isPending ? (
                           <ActivityIndicator color={colors.onAccent} size="small" />
                         ) : (
-                          <Text style={styles.submitText}>Оприходовать</Text>
+                          <Text style={styles.submitText}>{m('retail.submit')}</Text>
                         )}
                       </Pressable>
                     </View>
@@ -161,12 +162,12 @@ export function RetailStockScreen({
         </Card>
 
         <Card>
-          <CardTitle title="Последние чеки" icon="paid" />
+          <CardTitle title={m('retail.lastReceipts')} icon="paid" />
 
           {sales.data === undefined ? (
             <Skeleton />
           ) : sales.data.items.length === 0 ? (
-            <Empty message="Чеков пока нет" />
+            <Empty message={m('retail.noReceipts')} />
           ) : (
             sales.data.items.map((sale) => (
               <Pressable
@@ -175,13 +176,13 @@ export function RetailStockScreen({
                   navigation.navigate('SaleDetail', { saleId: sale.id });
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Открыть чек №${sale.id.toString()}`}
+                accessibilityLabel={m('cash.openReceipt', { n: sale.id })}
                 style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
               >
                 <View style={styles.itemText}>
-                  <Text style={styles.itemName}>{`Чек №${sale.id.toString()}`}</Text>
+                  <Text style={styles.itemName}>{m('cash.receiptN', { n: sale.id })}</Text>
                   <Text style={styles.itemMeta}>
-                    {`${sale.sellerName} · ${sale.clientName ?? 'без имени'}`}
+                    {`${sale.sellerName} · ${sale.clientName ?? m('cash.noNameLower')}`}
                   </Text>
                 </View>
                 <Text style={styles.total}>{formatMoney(parseMoney(sale.total))}</Text>

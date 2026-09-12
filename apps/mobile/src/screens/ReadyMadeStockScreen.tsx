@@ -20,6 +20,7 @@ import { Icon } from '../components/Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Склад готовых штор: что сшито заранее и лежит на полке.
@@ -58,6 +59,7 @@ const emptyForm = (): FormState => ({
 const toNumber = (raw: string): number => Number.parseFloat(raw.replace(',', '.')) || 0;
 
 export function ReadyMadeStockScreen(): ReactElement {
+  const { m } = useLocale();
   const utils = trpc.useUtils();
 
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -86,11 +88,11 @@ export function ReadyMadeStockScreen(): ReactElement {
       setForm(emptyForm());
       setAdding(false);
       await utils.readyMade.list.invalidate();
-      Alert.alert('Добавлено', `${item.model}: ${item.quantity.toString()} шт`);
+      Alert.alert(m('stock.added'), m('stock.addedBody', { model: item.model, n: item.quantity }));
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось добавить', error.message);
+      Alert.alert(m('stock.addError'), error.message);
     },
   });
 
@@ -103,7 +105,7 @@ export function ReadyMadeStockScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось изменить остаток', error.message);
+      Alert.alert(m('stock.countError'), error.message);
     },
   });
 
@@ -114,10 +116,8 @@ export function ReadyMadeStockScreen(): ReactElement {
 
     if (!permission.granted) {
       Alert.alert(
-        'Нет доступа',
-        fromCamera
-          ? 'Разрешите доступ к камере в настройках телефона.'
-          : 'Разрешите доступ к галерее в настройках телефона.',
+        m('photo.noAccess'),
+        fromCamera ? m('photo.allowCamera') : m('photo.allowGallery'),
       );
       return;
     }
@@ -137,7 +137,7 @@ export function ReadyMadeStockScreen(): ReactElement {
 
     const asset = result.assets[0];
     if (asset?.base64 == null) {
-      Alert.alert('Не удалось прочитать снимок', 'Попробуйте ещё раз.');
+      Alert.alert(m('photo.readError'), m('common.tryAgain'));
       return;
     }
 
@@ -152,11 +152,11 @@ export function ReadyMadeStockScreen(): ReactElement {
 
   const submit = (): void => {
     if (form.model.trim() === '') {
-      Alert.alert('Укажите модель', 'Без модели штору не найти в списке.');
+      Alert.alert(m('stock.modelRequired'), m('stock.modelRequiredBody'));
       return;
     }
     if (toNumber(form.widthCm) <= 0 || toNumber(form.heightCm) <= 0) {
-      Alert.alert('Укажите размер', 'Готовая штора без размера не подойдёт ни к одному окну.');
+      Alert.alert(m('stock.sizeRequired'), m('stock.sizeRequiredBody'));
       return;
     }
 
@@ -203,20 +203,20 @@ export function ReadyMadeStockScreen(): ReactElement {
         >
           <Icon name="assigned" size={18} color={colors.onAccent} />
           <Text style={styles.addText}>
-            {adding ? 'Свернуть' : 'Добавить готовые шторы'}
+            {adding ? m('stock.collapse') : m('stock.add')}
           </Text>
         </Pressable>
 
         {adding && (
           <Card>
-            <CardTitle title="Новая штора на складе" icon="window" />
+            <CardTitle title={m('stock.new')} icon="window" />
 
-            <Field label="Модель" required>
+            <Field label={m('create.model')} required>
               <CatalogPicker
                 value={form.model}
-                placeholder="Не выбрана"
+                placeholder={m('create.notChosen')}
                 options={modelOptions}
-                sheetTitle="Модельный ряд"
+                sheetTitle={m('sell.modelRange')}
                 onChange={(model) => {
                   patch({ model });
                 }}
@@ -229,31 +229,31 @@ export function ReadyMadeStockScreen(): ReactElement {
               рядом заполняется руками — справочнику здесь взяться неоткуда,
               штора одна такая.
             */}
-            <Field label="Код" hint="Бирка на шторе — по нему её найдут в продаже">
+            <Field label={m('stock.code')} hint={m('stock.codeHint')}>
               <Input
                 value={form.code}
                 onChangeText={(code) => {
                   patch({ code });
                 }}
-                placeholder="Например: ГШ-014"
+                placeholder={m('stock.codeExample')}
                 autoCapitalize="characters"
               />
             </Field>
 
-            <Field label="Описание">
+            <Field label={m('stock.description')}>
               <Input
                 value={form.comment}
                 onChangeText={(comment) => {
                   patch({ comment });
                 }}
-                placeholder="Чем эта штора отличается: ткань, оттенок, особенности"
+                placeholder={m('stock.descriptionPlaceholder')}
                 multiline
               />
             </Field>
 
             <View style={styles.row}>
               <View style={styles.half}>
-                <Field label="Ширина, см" required>
+                <Field label={m('create.width')} required>
                   <Input
                     value={form.widthCm}
                     onChangeText={(widthCm) => {
@@ -265,7 +265,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                 </Field>
               </View>
               <View style={styles.half}>
-                <Field label="Высота, см" required>
+                <Field label={m('create.height')} required>
                   <Input
                     value={form.heightCm}
                     onChangeText={(heightCm) => {
@@ -280,7 +280,7 @@ export function ReadyMadeStockScreen(): ReactElement {
 
             <View style={styles.row}>
               <View style={styles.half}>
-                <Field label="Цена, сум" required>
+                <Field label={m('stock.priceSum')} required>
                   <MoneyInput
                     value={form.price}
                     onChangeText={(price) => {
@@ -291,7 +291,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                 </Field>
               </View>
               <View style={styles.half}>
-                <Field label="Количество">
+                <Field label={m('stock.quantity')}>
                   <Input
                     value={form.quantity}
                     onChangeText={(quantity) => {
@@ -306,7 +306,7 @@ export function ReadyMadeStockScreen(): ReactElement {
 
             <View style={styles.photoRow}>
               {form.photo === null ? (
-                <Text style={styles.photoHint}>Снимок — продавец показывает штору клиенту</Text>
+                <Text style={styles.photoHint}>{m('stock.photoHint')}</Text>
               ) : (
                 <Image source={{ uri: form.photo.uri }} style={styles.photoPreview} />
               )}
@@ -341,20 +341,20 @@ export function ReadyMadeStockScreen(): ReactElement {
                 create.isPending ? styles.disabled : null,
               ]}
             >
-              <Text style={styles.submitText}>Поставить на склад</Text>
+              <Text style={styles.submitText}>{m('stock.submit')}</Text>
             </Pressable>
           </Card>
         )}
 
         <Card>
-          <CardTitle title="На складе" icon="orders" />
+          <CardTitle title={m('stock.title')} icon="orders" />
 
           {items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty
-              message="Готовых штор нет"
-              hint="Добавьте первую — она сразу появится в продаже готовых штор"
+              message={m('stock.none')}
+              hint={m('stock.noneHint')}
             />
           ) : (
             items.data.map((item) => (
@@ -373,9 +373,10 @@ export function ReadyMadeStockScreen(): ReactElement {
                       {item.code === null ? item.model : `${item.model} · ${item.code}`}
                     </Text>
                     <Text style={styles.itemMeta}>
-                      {`${Number.parseFloat(item.widthCm).toString()}×${Number.parseFloat(
-                        item.heightCm,
-                      ).toString()} см`}
+                      {m('sell.cm', {
+                        w: Number.parseFloat(item.widthCm),
+                        h: Number.parseFloat(item.heightCm),
+                      })}
                     </Text>
                     {item.comment !== null && (
                       <Text style={styles.itemMeta} numberOfLines={2}>
@@ -387,7 +388,7 @@ export function ReadyMadeStockScreen(): ReactElement {
 
                   <View style={styles.itemNumbers}>
                     <Text style={styles.itemPrice}>{formatMoney(parseMoney(item.price))}</Text>
-                    <Text style={styles.itemQuantity}>{`${item.quantity.toString()} шт`}</Text>
+                    <Text style={styles.itemQuantity}>{m('stock.pcsOnly', { n: item.quantity })}</Text>
                   </View>
                 </View>
 
@@ -412,7 +413,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                       accessibilityRole="button"
                       style={({ pressed }) => [styles.countSave, pressed ? styles.pressed : null]}
                     >
-                      <Text style={styles.countSaveText}>Сохранить</Text>
+                      <Text style={styles.countSaveText}>{m('emp.save')}</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -426,7 +427,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                   >
                     {({ pressed }) => (
                       <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                        Пересчитать остаток
+                        {m('stock.recount')}
                       </Text>
                     )}
                   </Pressable>

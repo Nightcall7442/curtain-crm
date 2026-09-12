@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_LOCALE, isLocale, type Locale, type Translated } from '@curtain-crm/shared';
+
+import { useQueryClient } from '@tanstack/react-query';
+
+import { MESSAGES, type MessageKey } from '../i18n/messages';
+import { setRequestLocale } from '../lib/authFetch';
 import {
   createContext,
   useCallback,
@@ -33,7 +38,20 @@ interface LocaleContextValue {
   readonly setLocale: (next: Locale) => void;
   /** Значение из переведённого словаря на текущем языке. */
   readonly t: <TKey extends string>(dictionary: Translated<TKey>, key: TKey) => string;
+  /** Строка интерфейса из `i18n/messages.ts`; `{name}` заменяется на `params.name`. */
+  readonly m: (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string;
 }
+
+function format(template: string, params?: Readonly<Record<string, string | number>>): string {
+  if (params === undefined) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = params[name];
+    return value === undefined ? match : String(value);
+  });
+}
+
+/** Тип `m` — для вспомогательных функций вне компонентов, которым передают переводчик. */
+export type Translate = LocaleContextValue['m'];
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
@@ -62,18 +80,33 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
     };
   }, []);
 
+  const queryClient = useQueryClient();
+
+  // Сервер тоже должен знать язык: на нём приходят ошибки и уведомления.
+  useEffect(() => {
+    setRequestLocale(locale);
+  }, [locale]);
+
   const setLocale = useCallback((next: Locale): void => {
     setLocaleState(next);
+    // Заголовок — до сброса кэша, иначе первые перезапросы ушли бы ещё на
+    // прежнем языке: эффект выше сработает только после рендера.
+    setRequestLocale(next);
+    // Уведомления переводит сервер по языку запроса: в кэше лежит лента на
+    // прежнем языке, и без сброса она сменилась бы только при следующем
+    // обновлении экрана.
+    void queryClient.invalidateQueries();
     void AsyncStorage.setItem(LOCALE_STORAGE_KEY, next).catch(() => {
       // Выбор проживёт до перезапуска приложения — это лучше, чем падение.
     });
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<LocaleContextValue>(
     () => ({
       locale,
       setLocale,
       t: (dictionary, key) => dictionary[locale][key],
+      m: (key, params) => format(MESSAGES[locale][key], params),
     }),
     [locale, setLocale],
   );

@@ -165,7 +165,7 @@ export default function PayrollPage(): ReactElement {
           onClick={() => {
             approve.mutate({ id: row.id });
           }}
-          className="rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
+          className="pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
         >
           Утвердить
         </button>
@@ -180,7 +180,7 @@ export default function PayrollPage(): ReactElement {
           onClick={() => {
             markPaid.mutate({ id: row.id });
           }}
-          className="rounded border border-accent/40 px-2 py-1 text-footnote text-accent hover:bg-accent/10 disabled:opacity-50"
+          className="pressable rounded-full border border-accent/40 px-2 py-1 text-footnote font-medium text-accent hover:bg-accent/10 disabled:opacity-50"
         >
           Выплачено
         </button>
@@ -404,7 +404,7 @@ export default function PayrollPage(): ReactElement {
                     onClick={() => {
                       setBreakdownId(row.id);
                     }}
-                    className="rounded border border-subtle px-2 py-1 text-footnote text-secondary hover:border-accent/50 hover:text-primary"
+                    className="rounded-xl border border-ink/10 px-2 py-1 text-footnote text-secondary hover:border-accent/50 hover:text-primary"
                   >
                     Разбивка
                   </button>
@@ -450,7 +450,7 @@ export default function PayrollPage(): ReactElement {
           ) : (
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {(schemes.data ?? []).map((scheme) => (
-                <li key={scheme.id} className="rounded border border-subtle bg-base/40 p-3">
+                <li key={scheme.id} className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-3">
                   <p className="truncate text-caption font-medium text-primary" title={scheme.userFullName}>
                     {scheme.userFullName}
                   </p>

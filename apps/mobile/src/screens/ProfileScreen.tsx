@@ -40,7 +40,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * показывается число заказов в работе со ссылкой на вкладку «Работа».
  */
 export function ProfileScreen(): ReactElement {
-  const { locale, setLocale, t } = useLocale();
+  const { locale, setLocale, t, m } = useLocale();
   const navigation = useNavigation();
   const { user, signOut } = useAuth();
   const isCeo = useIsCeo();
@@ -127,7 +127,7 @@ export function ProfileScreen(): ReactElement {
   if (profile.data === undefined) {
     return (
       <View style={styles.loading}>
-        <Empty message="Не удалось загрузить профиль" hint="Проверьте связь и потяните вниз" />
+        <Empty message={m('profile.loadError')} hint={m('common.retryHint')} />
       </View>
     );
   }
@@ -188,9 +188,9 @@ export function ProfileScreen(): ReactElement {
       </View>
 
       <Card>
-        <CardTitle title="Мои заказы в работе" icon="orders" />
+        <CardTitle title={m('profile.myOrders')} icon="orders" />
         {activeOrders.length === 0 ? (
-          <Empty message="Активных заказов нет" />
+          <Empty message={m('profile.noActiveOrders')} />
         ) : (
           <View>
             {activeOrders.slice(0, 3).map((order) => (
@@ -213,7 +213,7 @@ export function ProfileScreen(): ReactElement {
 
             {activeOrders.length > 3 && (
               <Text style={styles.more}>
-                {`и ещё ${(activeOrders.length - 3).toString()} — на вкладке «Работа»`}
+                {m('profile.moreOrders', { n: activeOrders.length - 3 })}
               </Text>
             )}
           </View>
@@ -244,15 +244,13 @@ export function ProfileScreen(): ReactElement {
       */}
       {telegram.data?.enabled === true && (
         <>
-          <SectionHeader title="Уведомления" />
+          <SectionHeader title={m('profile.notifications')} />
           <Card>
             <CardTitle title="Telegram" icon="notifications" />
 
             {telegram.data.linked ? (
               <>
-                <Text style={styles.telegramHint}>
-                  Уведомления приходят и в приложение, и в Telegram.
-                </Text>
+                <Text style={styles.telegramHint}>{m('profile.telegramLinked')}</Text>
                 <Pressable
                   disabled={unlinkTelegram.isPending}
                   onPress={() => {
@@ -265,14 +263,12 @@ export function ProfileScreen(): ReactElement {
                     pressed ? styles.pressed : null,
                   ]}
                 >
-                  <Text style={styles.telegramActionOffText}>Отключить</Text>
+                  <Text style={styles.telegramActionOffText}>{m('profile.telegramUnlink')}</Text>
                 </Pressable>
               </>
             ) : (
               <>
-                <Text style={styles.telegramHint}>
-                  Подключите — и всё, что приходит сюда, будет дублироваться в Telegram.
-                </Text>
+                <Text style={styles.telegramHint}>{m('profile.telegramHint')}</Text>
                 <Pressable
                   disabled={telegram.data.linkUrl === null}
                   onPress={() => {
@@ -285,7 +281,7 @@ export function ProfileScreen(): ReactElement {
                     pressed ? styles.pressed : null,
                   ]}
                 >
-                  <Text style={styles.telegramActionText}>Подключить Telegram</Text>
+                  <Text style={styles.telegramActionText}>{m('profile.telegramLink')}</Text>
                 </Pressable>
               </>
             )}
@@ -301,7 +297,7 @@ export function ProfileScreen(): ReactElement {
 
         Названия языков написаны на самих языках по той же причине.
       */}
-      <SectionHeader title="Til / Язык" />
+      <SectionHeader title={m('profile.language')} />
       <Card>
         <View style={styles.localeRow}>
           {LOCALES.map((value) => {
@@ -330,25 +326,25 @@ export function ProfileScreen(): ReactElement {
         </View>
       </Card>
 
-      <SectionHeader title="Ещё" />
+      <SectionHeader title={m('profile.more')} />
       <ListCard>
         <ListRow
           icon="rating"
-          label="Мой рейтинг и KPI"
+          label={m('profile.ratingKpi')}
           onPress={() => {
             navigation.navigate('Rating');
           }}
         />
         <ListRow
           icon="orders"
-          label="Мои задачи"
+          label={m('profile.myTasks')}
           onPress={() => {
             navigation.navigate('TaskList');
           }}
         />
         <ListRow
           icon="calendar"
-          label="Запрос на выходные"
+          label={m('profile.dayOff')}
           onPress={() => {
             navigation.navigate('DayOff');
           }}
@@ -367,7 +363,7 @@ export function ProfileScreen(): ReactElement {
         {isCeo && (
           <ListRow
             icon="people"
-            label="Сотрудники"
+            label={m('profile.employees')}
             onPress={() => {
               navigation.navigate('Employees');
             }}
@@ -376,7 +372,7 @@ export function ProfileScreen(): ReactElement {
 
         <ListRow
           icon="logout"
-          label="Выйти из аккаунта"
+          label={m('profile.signOut')}
           tone="danger"
           isLast
           onPress={() => {
@@ -385,7 +381,7 @@ export function ProfileScreen(): ReactElement {
         />
       </ListCard>
 
-      <Text style={styles.version}>{`Версия приложения ${appVersion()}`}</Text>
+      <Text style={styles.version}>{m('profile.version', { v: appVersion() })}</Text>
     </ScrollView>
   );
 }

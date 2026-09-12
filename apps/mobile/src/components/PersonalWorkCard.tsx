@@ -46,7 +46,7 @@ export function PersonalWorkCard({
     readonly createdAt: Date;
   };
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
   const [expanded, setExpanded] = useState(false);
   /*
@@ -68,7 +68,7 @@ export function PersonalWorkCard({
       await refresh();
     },
     onError(error) {
-      Alert.alert('Не удалось отметить готовой', error.message);
+      Alert.alert(m('personal.completeError'), error.message);
     },
   });
 
@@ -77,7 +77,7 @@ export function PersonalWorkCard({
       await refresh();
     },
     onError(error) {
-      Alert.alert('Не удалось отменить', error.message);
+      Alert.alert(m('personal.cancelError'), error.message);
     },
   });
 
@@ -104,7 +104,7 @@ export function PersonalWorkCard({
               }}
               disabled={cancel.isPending}
               accessibilityRole="button"
-              accessibilityLabel={`Отменить: ${work.title}`}
+              accessibilityLabel={m('personal.cancelA11y', { title: work.title })}
               style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
             >
               <Icon name="cancelled" size={18} color={colors.danger} />
@@ -116,7 +116,7 @@ export function PersonalWorkCard({
               }}
               disabled={complete.isPending}
               accessibilityRole="button"
-              accessibilityLabel={`Отметить готовой: ${work.title}`}
+              accessibilityLabel={m('personal.completeA11y', { title: work.title })}
               style={({ pressed }) => [styles.doneButton, pressed ? styles.pressed : null]}
             >
               {complete.isPending ? (
@@ -139,7 +139,7 @@ export function PersonalWorkCard({
           <TextInput
             value={cancelReason}
             onChangeText={setCancelReason}
-            placeholder="Почему бросили работу?"
+            placeholder={m('personal.reasonPlaceholder')}
             placeholderTextColor={colors.textMuted}
             style={styles.cancelInput}
             multiline
@@ -161,7 +161,7 @@ export function PersonalWorkCard({
             {cancel.isPending ? (
               <ActivityIndicator color={colors.onAccent} size="small" />
             ) : (
-              <Text style={styles.cancelConfirmText}>Отменить работу</Text>
+              <Text style={styles.cancelConfirmText}>{m('personal.cancelWork')}</Text>
             )}
           </Pressable>
         </View>
@@ -175,11 +175,11 @@ export function PersonalWorkCard({
 
       {work.cancellationReason !== null && (
         <Text style={styles.reason} numberOfLines={expanded ? undefined : 1}>
-          {`Причина отмены: ${work.cancellationReason}`}
+          {m('personal.cancelReason', { reason: work.cancellationReason })}
         </Text>
       )}
 
-      <Text style={styles.started}>{`начата ${formatIsoDateShort(work.createdAt.toISOString())}`}</Text>
+      <Text style={styles.started}>{m('personal.started', { date: formatIsoDateShort(work.createdAt.toISOString()) })}</Text>
     </Pressable>
   );
 }

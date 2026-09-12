@@ -260,7 +260,7 @@ export function SellReadyMadeDialog({
                               }
                             }
                           }}
-                          className={`flex items-center gap-3 rounded border p-2 text-left transition-colors ${
+                          className={`flex items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
                             chosen
                               ? 'border-accent bg-accent/10'
                               : 'border-subtle hover:border-accent/50'

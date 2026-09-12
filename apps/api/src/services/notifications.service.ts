@@ -325,7 +325,9 @@ export async function notifyRoleChanged(
     userId,
     type: NotificationType.ROLE_CHANGED,
     title: params.granted ? 'Вам выдана новая роль' : 'Роль отозвана',
-    body: `${params.actorName} ${params.granted ? 'назначил вам роль' : 'отозвал роль'} «${ROLE_LABELS_RU[params.role]}»`,
+    body: params.granted
+      ? `${params.actorName} назначил вам роль «${ROLE_LABELS_RU[params.role]}»`
+      : `${params.actorName} отозвал роль «${ROLE_LABELS_RU[params.role]}»`,
   });
 }
 

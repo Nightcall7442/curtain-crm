@@ -34,12 +34,12 @@ type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'accent';
  * форма метки остаётся, крика нет.
  */
 const TONE_CLASSES: Readonly<Record<Tone, string>> = {
-  neutral: 'border-strong bg-raised/60 text-secondary',
-  positive: 'border-positive/35 bg-positive/[0.05] text-positive',
-  warning: 'border-warning/35 bg-warning/[0.05] text-warning',
-  danger: 'border-danger/35 bg-danger/[0.04] text-danger',
-  info: 'border-info/35 bg-info/[0.04] text-info',
-  accent: 'border-accent/35 bg-accent/[0.04] text-accent',
+  neutral: 'border-ink/10 bg-ink/[0.06] text-secondary',
+  positive: 'border-positive/30 bg-positive/[0.12] text-positive',
+  warning: 'border-warning/30 bg-warning/[0.12] text-warning',
+  danger: 'border-danger/30 bg-danger/[0.12] text-danger',
+  info: 'border-info/30 bg-info/[0.12] text-info',
+  accent: 'border-accent/30 bg-accent/[0.12] text-accent',
 };
 
 export function Badge({
@@ -54,12 +54,9 @@ export function Badge({
   return (
     <span
       className={cn(
-        /*
-          Скругление 6 пикселей, а не таблетка. Круглые пилюли — язык
-          мессенджера; здесь же метка стоит в таблице рядом с прямыми углами
-          строк, и мягкий прямоугольник встаёт в ряд, а не выпадает из него.
-        */
-        'inline-flex items-center whitespace-nowrap rounded-[6px] border px-2 py-[3px] text-overline font-medium leading-4',
+        // Пилюля — как чипы и кнопки языка «Неон»; в таблице она стоит в ряд
+        // с такими же круглыми кнопками действий.
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-semibold leading-4 backdrop-blur-sm',
         TONE_CLASSES[tone],
         className,
       )}
@@ -97,6 +94,35 @@ export function OrderStatusBadge({
 }): ReactElement {
   const { t } = useLocale();
   return <Badge tone={ORDER_STATUS_TONE[status]}>{t(ORDER_STATUS_LABELS, status)}</Badge>;
+}
+
+const TONE_DOT: Readonly<Record<Tone, string>> = {
+  neutral: 'bg-ink/40',
+  positive: 'bg-positive shadow-[0_0_8px] shadow-positive/60',
+  warning: 'bg-warning shadow-[0_0_8px] shadow-warning/60',
+  danger: 'bg-danger shadow-[0_0_8px] shadow-danger/60',
+  info: 'bg-info shadow-[0_0_8px] shadow-info/60',
+  accent: 'bg-accent shadow-[0_0_8px] shadow-accent/60',
+};
+
+/**
+ * Статус для длинного списка: точка цвета тона и обычный текст в одну строку.
+ *
+ * Двадцать разноцветных таблеток подряд, да ещё переносящихся на три
+ * строки, превращали таблицу заказов в мозаику. Точка несёт тон, текст —
+ * смысл, строка остаётся одной высоты.
+ */
+export function OrderStatusDot({ status }: { readonly status: OrderStatus }): ReactElement {
+  const { t } = useLocale();
+  return (
+    <span
+      className="inline-flex min-w-0 max-w-full items-center gap-2 whitespace-nowrap text-primary"
+      title={t(ORDER_STATUS_LABELS, status)}
+    >
+      <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', TONE_DOT[ORDER_STATUS_TONE[status]])} />
+      <span className="truncate">{t(ORDER_STATUS_LABELS, status)}</span>
+    </span>
+  );
 }
 
 const PRIORITY_TONE: Readonly<Record<Priority, Tone>> = {

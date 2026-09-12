@@ -5,6 +5,7 @@ import { colors, hairline, radius, spacing, typography } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Выбор одного значения из справочника.
@@ -29,6 +30,7 @@ export function CatalogPicker({
   readonly onChange: (value: string) => void;
   readonly sheetTitle: string;
 }): ReactElement {
+  const { m } = useLocale();
   const [open, setOpen] = useState(false);
 
   return (
@@ -56,7 +58,7 @@ export function CatalogPicker({
       >
         <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
           {options.length === 0 ? (
-            <Text style={styles.empty}>Справочник пуст</Text>
+            <Text style={styles.empty}>{m('catalog.empty')}</Text>
           ) : (
             options.map((option) => (
               <Pressable

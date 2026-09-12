@@ -15,13 +15,14 @@ import {
 
 import { RoleBoard } from '@/components/rating/RoleBoard';
 import { ScoreComponent, ScoreMeter } from '@/components/rating/ScoreMeter';
+import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { cn, formatNumber, initials } from '@/lib/utils';
+import { cn, formatNumber } from '@/lib/utils';
 
 /**
  * Рейтинг сотрудников.
@@ -70,7 +71,7 @@ export default function RatingPage(): ReactElement {
               <div
                 role="group"
                 aria-label="Период"
-                className="flex overflow-hidden rounded border border-subtle"
+                className="flex overflow-hidden rounded-xl border border-ink/10"
               >
                 {RATING_SCOPES.map((value) => (
                   <button
@@ -84,7 +85,7 @@ export default function RatingPage(): ReactElement {
                       'px-3 py-1.5 text-footnote transition-colors',
                       scope === value
                         ? 'bg-accent/12 text-accent'
-                        : 'text-secondary hover:bg-raised hover:text-primary',
+                        : 'text-secondary hover:bg-ink/[0.08] hover:text-primary',
                     )}
                   >
                     {RATING_SCOPE_LABELS_RU[value]}
@@ -326,37 +327,6 @@ function PlaceDelta({ value }: { readonly value: number | null }): ReactElement 
     >
       <Icon className="h-3.5 w-3.5" aria-hidden />
       {isUp ? `+${value.toString()}` : value.toString()}
-    </span>
-  );
-}
-
-/** Фото сотрудника; при его отсутствии — инициалы. */
-function Avatar({
-  url,
-  fullName,
-}: {
-  readonly url: string | null;
-  readonly fullName: string;
-}): ReactElement {
-  if (url !== null) {
-    // Обычный <img>, а не next/image: адрес приходит из хранилища и меняется
-    // вместе с драйвером, а оптимизатору Next нужен заранее известный список
-    // источников. Так же сделано в списке сотрудников.
-    return (
-      <img
-        src={url}
-        alt=""
-        className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover"
-      />
-    );
-  }
-
-  return (
-    <span
-      aria-hidden
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-overline font-medium text-secondary"
-    >
-      {initials(fullName)}
     </span>
   );
 }

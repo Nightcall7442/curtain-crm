@@ -225,6 +225,13 @@
       "when": 1789145401629,
       "tag": "0031_users_weekly_day_off",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789163627912,
+      "tag": "0032_order_items_ready_made_code",
+      "breakpoints": true
     }
   ]
 }

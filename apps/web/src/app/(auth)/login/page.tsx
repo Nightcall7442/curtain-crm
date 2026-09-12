@@ -1,26 +1,26 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactElement } from 'react';
 
 import { tokenStorage, trpc } from '@/lib/trpc';
 
 /**
- * Вход в систему.
+ * Вход в систему — по референсу «Неон»: тёмный холст со свечением, слева
+ * крупный заголовок капителью и три живых плитки-показателя, справа —
+ * стеклянная форма с неоновой кнопкой.
  *
  * Логин — номер телефона в любом виде: сервер нормализует его к E.164,
- * поэтому `+998 90 123 45 67` и `901234567` — одна и та же учётная запись.
+ * поэтому «+998 90 123 45 67» и «901234567» — один и тот же сотрудник.
  *
- * Сообщение об ошибке берётся с сервера как есть: оно на русском и намеренно
- * одинаково для несуществующего номера и неверного пароля, чтобы по ответу
- * нельзя было перебрать список сотрудников.
+ * Сообщение об ошибке одинаково для неверного пароля и несуществующего
+ * номера: по разнице ответов иначе можно было бы перебрать список
+ * сотрудников.
  *
- * Экран двухчастный: слева — единственное тёмное место во всей панели, справа
- * форма на светлом. Это не украшение, а разделение ролей: до входа человек
- * смотрит на бренд, после входа — только на данные, и панель больше нигде
- * не позволяет себе крупных пятен.
+ * Страница всегда тёмная, независимо от выбранной темы: это витрина, а не
+ * рабочее место, и она одна на всех.
  */
 export default function LoginPage(): ReactElement {
   const router = useRouter();
@@ -50,40 +50,17 @@ export default function LoginPage(): ReactElement {
   const fieldErrors = loginMutation.error?.data?.zodError ?? null;
 
   return (
-    <main className="grid min-h-screen bg-base lg:grid-cols-[1.15fr_1fr]">
-      {/* --- Фирменная половина ------------------------------------------- */}
-      <section className="relative hidden flex-col justify-between overflow-hidden bg-primary p-14 text-base lg:flex">
-        {/* Драпировка: вертикальные складки ткани. Чисто декоративный слой. */}
-        <div aria-hidden className="absolute inset-0 flex opacity-50">
-          {DRAPE_TINTS.map((tint, index) => (
-            <div
-              key={index}
-              className="flex-1"
-              style={{
-                background: `linear-gradient(90deg, rgb(255 255 255 / 0) 0%, ${tint} 48%, rgb(0 0 0 / 0.22) 100%)`,
-              }}
-            />
-          ))}
-        </div>
-
-        {/*
-          Настоящий знак вместо монограммы «PB», которая стояла заглушкой.
-
-          Знак не картинка, а маска, залитая цветом текста. Причина в теме:
-          файл белый, а тёмная тема переворачивает эту половину в светлую —
-          белый знак там исчезал бы. Плашка под ним эту беду лечила, но
-          выглядела наклейкой поверх драпировки. Маска решает то же самое
-          честно: знак живёт тем же цветом, что и заголовок рядом, и
-          переворачивается вместе с ним.
-
-          «Parda Bozor» осталось строкой ниже: в самом файле только
-          «Design House», полное имя складывается из двух частей.
-        */}
-        <div className="relative flex flex-col items-start gap-4">
+    <main
+      data-theme="dark"
+      className="login-canvas relative grid min-h-screen overflow-hidden text-[rgb(234_245_238)] lg:grid-cols-[1.1fr_1fr]"
+    >
+      {/* --- Витрина --------------------------------------------------------- */}
+      <section className="relative flex flex-col justify-between p-8 sm:p-12 lg:p-14">
+        <div className="flex items-center gap-3">
           <span
             role="img"
-            aria-label="Design House Parda Bozor"
-            className="block h-[115px] w-[180px] bg-current"
+            aria-label="Design House"
+            className="block h-12 w-[76px] bg-current"
             style={{
               WebkitMaskImage: 'url(/logo.png)',
               maskImage: 'url(/logo.png)',
@@ -91,186 +68,125 @@ export default function LoginPage(): ReactElement {
               maskSize: 'contain',
               WebkitMaskRepeat: 'no-repeat',
               maskRepeat: 'no-repeat',
+              WebkitMaskPosition: 'left center',
+              maskPosition: 'left center',
             }}
           />
-          {/*
-            Название набрано как в мобильном приложении: прописные,
-            гротеск, широкая разрядка. Антиква тут стояла классическая и
-            дорогая сама по себе, но спорила со знаком над ней — он
-            плашечный и тяжёлый, и тонкие засечки под ним читались как
-            надпись от другой фирмы.
-          */}
-          <span className="flex flex-col gap-1">
-            <span className="text-subhead font-semibold uppercase tracking-[0.26em]">
-              Parda Bozor
-            </span>
-            <span className="text-overline tracking-[0.05em] text-base/55">
+          <span className="flex flex-col leading-tight">
+            <span className="text-caption font-semibold uppercase tracking-[0.24em]">Parda Bozor</span>
+            <span className="text-overline tracking-[0.05em] text-[rgb(234_245_238_/_0.55)]">
               шторы премиум класса
             </span>
           </span>
         </div>
 
-        <div className="relative flex max-w-[520px] flex-col gap-5">
-          <p className="font-display text-[52px] leading-[1.06] tracking-[-0.01em] xl:text-[58px]">
-            Заказ проходит восемь рук.{' '}
-            <span className="italic text-accent-muted">Система помнит каждую.</span>
-          </p>
-          <p className="max-w-[430px] text-body leading-relaxed text-base/70">
-            Замер, раскрой, пошив, контроль, установка — каждый переход записан: кто, когда
-            и почему. Историю не переписать даже директору.
+        <div className="my-10 flex max-w-[560px] flex-col gap-6 lg:my-0">
+          <h1 className="font-hero text-[40px] font-extrabold uppercase leading-[0.98] tracking-[-0.02em] sm:text-[56px] xl:text-[64px]">
+            Заказ проходит
+            <br />
+            восемь рук.
+            <br />
+            <span className="login-neon">Система помнит каждую.</span>
+          </h1>
+          <p className="max-w-[440px] text-body leading-relaxed text-[rgb(234_245_238_/_0.68)]">
+            Замер, раскрой, пошив, контроль, установка — каждый переход записан: кто, когда и
+            почему. Историю не переписать даже директору.
           </p>
         </div>
 
-        <dl className="relative flex gap-10">
+        <dl className="hidden gap-3 sm:grid sm:grid-cols-3 lg:max-w-[520px]">
           {FACTS.map((fact) => (
-            <div key={fact.label} className="flex flex-col gap-1">
-              <dt className="sr-only">{fact.label}</dt>
-              {/* Антиква с табличными цифрами — как показатели во всей панели. */}
-              <dd className="font-display text-title font-medium tabular-nums text-accent-muted">
+            <div key={fact.label} className="login-tile flex flex-col gap-1 rounded-2xl p-4">
+              <dt className="text-footnote text-[rgb(234_245_238_/_0.6)]">{fact.label}</dt>
+              <dd className="login-neon font-hero text-[28px] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
                 {fact.value}
               </dd>
-              <p aria-hidden className="text-overline tracking-[0.04em] text-base/50">
-                {fact.label}
-              </p>
             </div>
           ))}
         </dl>
       </section>
 
-      {/* --- Форма --------------------------------------------------------- */}
-      <section className="flex items-center justify-center px-6 py-14 sm:px-16">
-        <div className="flex w-full max-w-[380px] flex-col gap-7">
-          {/*
-            На узком экране фирменной половины нет — логотип возвращается
-            сюда. Той же маской: здесь фон светлый, и знак становится
-            тёмным сам, без отдельного файла под светлую тему.
-
-            Знак и название стоят столбиком, а не в строку. В строке они
-            читались как одна длинная надпись, где «Design House» —
-            приставка к «Parda Bozor»; столбиком видно, что это знак и
-            подпись под ним.
-          */}
-          <div className="flex flex-col items-center gap-2 lg:hidden">
-            <span
-              role="img"
-              aria-label="Design House"
-              className="block h-28 w-[176px] shrink-0 bg-current text-primary"
-              style={{
-                WebkitMaskImage: 'url(/logo.png)',
-                maskImage: 'url(/logo.png)',
-                WebkitMaskSize: 'contain',
-                maskSize: 'contain',
-                WebkitMaskRepeat: 'no-repeat',
-                maskRepeat: 'no-repeat',
-              }}
-            />
-            <span className="text-subhead font-semibold uppercase tracking-[0.26em] text-primary">
-              Parda Bozor
-            </span>
-            <span className="text-overline tracking-[0.05em] text-muted">
-              шторы премиум класса
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <h1 className="font-display text-display leading-[1.15] text-primary">Вход в систему</h1>
-            <p className="text-caption leading-relaxed text-secondary">
-              Введите рабочий номер телефона и пароль
+      {/* --- Форма ----------------------------------------------------------- */}
+      <section className="relative flex items-center justify-center px-6 pb-14 sm:px-12 lg:px-14">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="login-glass flex w-full max-w-[400px] flex-col gap-5 rounded-[26px] p-7 sm:p-8"
+        >
+          <div className="flex flex-col gap-1.5">
+            <h2 className="font-hero text-title font-bold tracking-[-0.02em]">Вход для сотрудников</h2>
+            <p className="text-caption text-[rgb(234_245_238_/_0.6)]">
+              Рабочий номер телефона и пароль
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-overline uppercase tracking-[0.08em] text-brass-ink">
-                Номер телефона
-              </span>
-              <input
-                type="tel"
-                inputMode="tel"
-                autoComplete="username"
-                required
-                value={phone}
-                onChange={(event) => {
-                  setPhone(event.target.value);
-                }}
-                placeholder="+998 90 123 45 67"
-                className="w-full rounded-lg border border-strong bg-panel px-3.5 py-2.5 font-mono text-body text-primary placeholder:text-muted/70 focus:border-accent focus:outline-none"
-              />
-              {fieldErrors?.['phone']?.[0] !== undefined && (
-                <span className="text-footnote text-danger">{fieldErrors['phone'][0]}</span>
-              )}
-            </label>
-
-            <label className="flex flex-col gap-1.5">
-              <span className="text-overline uppercase tracking-[0.08em] text-brass-ink">Пароль</span>
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                }}
-                placeholder="••••••••"
-                className="w-full rounded-lg border border-strong bg-panel px-3.5 py-2.5 font-mono text-body tracking-[0.14em] text-primary placeholder:text-muted/70 focus:border-accent focus:outline-none"
-              />
-            </label>
-
-            {loginMutation.error !== null && fieldErrors === null && (
-              <p
-                role="alert"
-                className="rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-caption text-danger"
-              >
-                {loginMutation.error.message}
-              </p>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-footnote font-medium text-[rgb(234_245_238_/_0.75)]">
+              Номер телефона
+            </span>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="username"
+              required
+              value={phone}
+              onChange={(event) => {
+                setPhone(event.target.value);
+              }}
+              placeholder="+998 90 123 45 67"
+              className="login-field w-full rounded-xl px-4 py-3 font-mono text-body outline-none"
+            />
+            {fieldErrors?.['phone']?.[0] !== undefined && (
+              <span className="text-footnote text-danger">{fieldErrors['phone'][0]}</span>
             )}
+          </label>
 
-            <button
-              type="submit"
-              disabled={loginMutation.isPending}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-3 text-body font-medium text-on-accent transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+          <label className="flex flex-col gap-1.5">
+            <span className="text-footnote font-medium text-[rgb(234_245_238_/_0.75)]">Пароль</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+              }}
+              placeholder="••••••••"
+              className="login-field w-full rounded-xl px-4 py-3 font-mono text-body tracking-[0.14em] outline-none"
+            />
+          </label>
+
+          {loginMutation.error !== null && fieldErrors === null && (
+            <p
+              role="alert"
+              className="rounded-xl border border-danger/30 bg-danger/15 px-3.5 py-2.5 text-caption text-danger"
             >
-              {loginMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-              Войти
-            </button>
-          </form>
+              {loginMutation.error.message}
+            </p>
+          )}
 
-          <div className="h-px bg-subtle" />
+          <button
+            type="submit"
+            disabled={loginMutation.isPending}
+            className="login-submit pressable mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-full text-body font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loginMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            )}
+            Войти
+          </button>
 
-          <p className="text-caption leading-relaxed text-muted">
+          <p className="text-footnote leading-relaxed text-[rgb(234_245_238_/_0.5)]">
             Забыли пароль? Обратитесь к директору — сброс делает только он.
           </p>
-        </div>
+        </form>
       </section>
     </main>
   );
 }
 
-/** Оттенки складок. Повторяются по кругу — четырёх хватает, чтобы не читался шаг. */
-const DRAPE_TINTS = [
-  'rgb(255 255 255 / 0.05)',
-  'rgb(255 255 255 / 0.09)',
-  'rgb(255 255 255 / 0.03)',
-  'rgb(255 255 255 / 0.07)',
-  'rgb(255 255 255 / 0.05)',
-  'rgb(255 255 255 / 0.09)',
-  'rgb(255 255 255 / 0.03)',
-  'rgb(255 255 255 / 0.07)',
-  'rgb(255 255 255 / 0.05)',
-  'rgb(255 255 255 / 0.09)',
-  'rgb(255 255 255 / 0.03)',
-  'rgb(255 255 255 / 0.07)',
-  'rgb(255 255 255 / 0.05)',
-  'rgb(255 255 255 / 0.09)',
-];
-
-/**
- * Три числа о системе.
- *
- * Все три — факты из кода, а не рекламные цифры: `ORDER_STATUSES` содержит
- * 17 значений, `PRODUCTION_STAGES` — 8, а статус пишется единственной функцией
- * `changeOrderStatus()`, которая всегда добавляет запись в историю.
- */
 const FACTS = [
   { value: '17', label: 'статусов заказа' },
   { value: '8', label: 'этапов производства' },

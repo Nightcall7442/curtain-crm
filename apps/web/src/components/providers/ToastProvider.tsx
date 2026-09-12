@@ -146,7 +146,7 @@ function ToastCard({
       role="status"
       aria-live={style.live}
       className={cn(
-        'toast-enter pointer-events-auto flex items-start gap-2.5 rounded-panel border border-subtle',
+        'toast-enter pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-ink/[0.08]',
         // Цветная полоса слева, а не заливка всей карточки: заливка кричит,
         // а сообщение должно сообщать.
         'border-l-[3px] bg-panel p-3 shadow-raised',
@@ -166,7 +166,7 @@ function ToastCard({
         type="button"
         onClick={onDismiss}
         aria-label="Закрыть сообщение"
-        className="pressable -m-1 grid h-6 w-6 shrink-0 place-items-center rounded text-muted hover:bg-raised hover:text-primary"
+        className="pressable -m-1 grid h-6 w-6 shrink-0 place-items-center rounded text-muted hover:bg-ink/[0.08] hover:text-primary"
       >
         <X className="h-3.5 w-3.5" />
       </button>
