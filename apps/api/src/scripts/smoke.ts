@@ -56,6 +56,7 @@ import {
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
+import { employeeRating } from '../services/rating.service';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
   attendanceByDay,
@@ -815,6 +816,52 @@ async function run(db: Database): Promise<void> {
     'payroll: продавцу сдельные за этапы не начисляются',
     sellerInputs.stageFeesAmount === 0,
     moneyToDecimalString(sellerInputs.stageFeesAmount),
+  );
+
+  /* ------------------ 6a. Рейтинг: балл за задачу, а не за заказ ---------- */
+
+  /*
+    Швея сдала пошив, а заказ ещё не закрыт — установки не было. Раньше балл
+    шёл только за `completed`, и до установки у неё стоял ноль.
+  */
+  const [sewnOpen] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Пошив сдан, не закрыт`,
+      clientPhone: '+998901112277',
+      createdBy: seller.id,
+      status: OrderStatus.SEWING_DONE,
+      sewerId: sewer.id,
+      sewingFee: '150000.00',
+    })
+    .returning();
+  if (sewnOpen === undefined) throw new Error('заказ со сданным пошивом не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: sewnOpen.id,
+    fromStatus: OrderStatus.SEWING_IN_PROGRESS,
+    toStatus: OrderStatus.SEWING_DONE,
+    changedBy: sewer.id,
+  });
+
+  const [sewerRating] = await employeeRating(
+    db,
+    [{ id: sewer.id, fullName: sewer.fullName, avatarStorageKey: null, roles: [Role.SEWER] }],
+    bounds,
+  );
+  const sewerTasks = sewerRating?.byRole.find((entry) => entry.role === Role.SEWER)?.ordersCount ?? 0;
+  check(
+    'rating: сданный пошив идёт в балл до закрытия заказа',
+    sewerTasks >= 2 && sewerRating?.score === sewerTasks,
+    `задач ${sewerTasks.toString()}, балл ${String(sewerRating?.score ?? null)}`,
+  );
+
+  // И в зарплату: сдельная за сданный пошив — в месяц сдачи, не закрытия.
+  const sewerInputsAfter = await gatherPayrollInputs(db, sewer.id, Role.SEWER, period);
+  check(
+    'payroll: сдельная за сданный пошив начисляется до закрытия заказа',
+    sewerInputsAfter.stageFeesAmount === parseMoney('550000'),
+    moneyToDecimalString(sewerInputsAfter.stageFeesAmount),
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

@@ -63,6 +63,7 @@ import {
   changeOrderStatus,
   loadOrderForUpdate,
 } from '../services/orderWorkflow.service';
+import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
@@ -1663,6 +1664,9 @@ export const ordersRouter = router({
           details: { corniceInstallerId: order.corniceInstallerId },
           ipAddress: ctx.ipAddress,
         });
+
+        // Сдельная карнизчику — в месяц готовности карниза, сразу.
+        await accrueForStage(tx, updated);
 
         return updated;
       }),

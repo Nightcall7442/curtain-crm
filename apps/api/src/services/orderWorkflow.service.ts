@@ -29,7 +29,7 @@ import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
 import { assertOrderPacked } from './packList.service';
-import { accrueForClosedOrder } from './payroll.service';
+import { accrueForClosedOrder, accrueForStage, STAGE_ACCRUAL_STATUSES } from './payroll.service';
 import {
   notifyOrderAssigned,
   notifyOrderStatusChanged,
@@ -473,6 +473,10 @@ export async function changeOrderStatus(
   */
   if (toStatus === OrderStatus.COMPLETED) {
     await accrueForClosedOrder(executor, updated);
+  } else if (STAGE_ACCRUAL_STATUSES.has(toStatus) && !wasRollback) {
+    // Сданный этап — тоже: сдельная за него идёт в месяц сдачи, а не в
+    // месяц закрытия заказа.
+    await accrueForStage(executor, updated);
   }
 
   /* 7. История — только добавление, никогда перезапись. */

@@ -132,12 +132,12 @@ export const RATING_COMPONENT_HINTS: Translated<RatingComponent> = {
   ru: {
     volume: 'Сколько сделано за период относительно лучшего результата в этой же роли',
     quality: 'Доля заказов, которые не вернули на переделку',
-    punctuality: 'Доля заказов, закрытых не позже срока',
+    punctuality: 'Доля задач, выполненных не позже срока заказа',
   },
   uz: {
     volume: "Shu roldagi eng yaxshi natijaga nisbatan davr ichida qancha bajarilgani",
     quality: 'Qayta ishlashga qaytarilmagan buyurtmalar ulushi',
-    punctuality: "Muddatidan kechikmay yopilgan buyurtmalar ulushi",
+    punctuality: "Buyurtma muddatidan kechikmay bajarilgan vazifalar ulushi",
   },
 };
 
@@ -192,12 +192,14 @@ export interface RatingComponents {
 }
 
 /**
- * Балл: по одному за каждый закрытый заказ, без потолка.
+ * Балл: по одному за каждую выполненную задачу — закрытый этап заказа
+ * (замер сдан, пошив завершён, контроль пройден, установка сделана, карниз
+ * готов; продавцу — оформленный заказ), без потолка.
  *
  * Прежняя формула (проценты с весами) упиралась в 100: лидер роли получал
  * сотню в первый же день, и дальше расти было некуда — таблица замирала.
  * Штука за заказ растёт всё время, пока люди работают, и читается без
- * пояснений: 14 баллов — четырнадцать закрытых заказов.
+ * пояснений: 14 баллов — четырнадцать сделанных задач.
  *
  * Объём, качество и сроки при этом остаются рядом с баллом справочно.
  */

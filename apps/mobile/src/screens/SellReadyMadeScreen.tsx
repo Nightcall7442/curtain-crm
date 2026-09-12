@@ -88,19 +88,6 @@ export function SellReadyMadeScreen(): ReactElement {
     [catalog.data],
   );
 
-  /*
-    Карнизы — из своего справочника: к шторе с полки карниз берут тут же, а
-    иногда покупают и один карниз, без штор. Поэтому позиция может быть и
-    «штора с карнизом», и только карниз — модель тогда остаётся пустой.
-  */
-  const corniceOptions = useMemo(
-    () =>
-      (catalog.data ?? [])
-        .filter((entry) => entry.kind === CatalogKind.CORNICE)
-        .map((entry) => entry.name),
-    [catalog.data],
-  );
-
   /**
    * Крепление модели — из справочника: у трубных («Труба», «Киприк»)
    * спрашивается труба, у остальных — карниз с пластиком. Как в пошиве.
@@ -161,16 +148,18 @@ export function SellReadyMadeScreen(): ReactElement {
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.readyMadeItemId === null ? {} : { readyMadeItemId: item.readyMadeItemId }),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
-        ...(mountOf(item.model) === CurtainMountKind.PIPE && item.pipe.trim() !== ''
-          ? { pipe: item.pipe.trim() }
-          : {}),
-        ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
-        ...(item.cornice.trim() === '' || item.corniceCode.trim() === ''
+        // Крепление модели решает, какие коды уходят: труба — или карниз с
+        // пластиком. Без модели кодов нет — и карнизчику ехать не за чем.
+        ...(item.model.trim() === ''
           ? {}
-          : { corniceCode: item.corniceCode.trim() }),
-        ...(item.cornice.trim() === '' || item.plastic.trim() === ''
-          ? {}
-          : { plastic: item.plastic.trim() }),
+          : mountOf(item.model) === CurtainMountKind.PIPE
+            ? item.pipe.trim() === ''
+              ? {}
+              : { pipe: item.pipe.trim() }
+            : {
+                ...(item.corniceCode.trim() === '' ? {} : { corniceCode: item.corniceCode.trim() }),
+                ...(item.plastic.trim() === '' ? {} : { plastic: item.plastic.trim() }),
+              }),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
       })),
       ...(needsInstallation === 'yes'
@@ -299,11 +288,12 @@ export function SellReadyMadeScreen(): ReactElement {
             </View>
 
             {/*
-              Что есть на складе по выбранной модели. Продавец выбирает вещь,
-              а не переписывает её описание: размер, цвет и код приезжают со
-              склада, а остаток списывается при продаже.
+              Коды со склада — как в заказе на пошив, по креплению модели из
+              справочника: трубным («Труба», «Киприк») — код трубы, остальным —
+              карниз с пластиком. Появляются после выбора модели: без неё
+              неизвестно, что спрашивать. С кодами продажа уходит карнизчику.
             */}
-            {mountOf(item.model) === CurtainMountKind.PIPE && (
+            {item.model.trim() !== '' && mountOf(item.model) === CurtainMountKind.PIPE && (
               <Field label={m('create.pipe')} hint={m('sell.pipeHint')}>
                 <Input
                   value={item.pipe}
@@ -317,25 +307,7 @@ export function SellReadyMadeScreen(): ReactElement {
               </Field>
             )}
 
-            <Field label={m('create.cornice')} hint={m('sell.corniceHint')}>
-              <CatalogPicker
-                value={item.cornice}
-                placeholder={m('sell.noCornice')}
-                options={corniceOptions}
-                sheetTitle={m('sell.cornices')}
-                onChange={(cornice) => {
-                  updateItem(item.id, { cornice });
-                }}
-              />
-            </Field>
-
-            {/*
-              Коды со склада показываются только при выбранном карнизе: без
-              него продажа к карнизчику не идёт, и два лишних поля на каждую
-              позицию только мешали бы. С ними заказ уходит карнизчикам —
-              как заказ на пошив после проверки админом.
-            */}
-            {item.cornice.trim() !== '' && (
+            {item.model.trim() !== '' && mountOf(item.model) !== CurtainMountKind.PIPE && (
               <>
                 <Field label={m('sell.corniceCode')} hint={m('sell.corniceCodeHint')}>
                   <Input
@@ -540,9 +512,7 @@ export function SellReadyMadeScreen(): ReactElement {
 interface DraftItem {
   readonly id: number;
   readonly model: string;
-  /** Карниз из справочника. Пусто — продают одни шторы. */
-  readonly cornice: string;
-  /** Коды со склада — карниза и пластика к нему. Только при выбранном карнизе. */
+  /** Коды со склада — карниза и пластика к нему; какие спрашивать, решает модель. */
   readonly corniceCode: string;
   readonly plastic: string;
   /** Труба — у трубных моделей вместо карниза. */
@@ -559,7 +529,6 @@ interface DraftItem {
 const emptyItem = (id: number): DraftItem => ({
   id,
   model: '',
-  cornice: '',
   corniceCode: '',
   plastic: '',
   pipe: '',

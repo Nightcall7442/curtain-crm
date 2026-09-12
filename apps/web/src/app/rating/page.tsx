@@ -32,7 +32,7 @@ import { cn, formatNumber } from '@/lib/utils';
  * потому что нормирован внутри каждой. Доски по ролям — «кто впереди среди
  * швей»: там метрики в своих единицах, и сравнение прямое.
  *
- * Балл — по одному за закрытый заказ, без потолка. Рядом справочно объём,
+ * Балл — по одному за выполненную задачу (закрытый этап), без потолка. Рядом справочно объём,
  * качество и сроки: рейтинг влияет на то, как людей воспринимают, и должен
  * быть оспоримым по существу.
  */
@@ -139,7 +139,7 @@ export default function RatingPage(): ReactElement {
               {scope === RatingScope.WEEK
                 ? `Текущая неделя, ${formatDayRange(new Date(data.period.start), new Date(data.period.end))}`
                 : `${MONTH_NAMES_RU[month - 1] ?? ''} ${year.toString()}`}
-              {' · в зачёт идут только заказы, закрытые внутри периода'}
+              {' · в зачёт идут задачи, выполненные внутри периода'}
             </p>
           </CardBody>
         )}
@@ -169,9 +169,9 @@ export default function RatingPage(): ReactElement {
               caption="Балл типичного сотрудника"
             />
             <StatCard
-              label="Заказов в зачёте"
+              label="Задач в зачёте"
               value={data.summary.ordersCounted.toString()}
-              caption="Закрыто за период"
+              caption="Выполнено за период"
             />
             <StatCard
               label="Без заказов"
@@ -199,7 +199,7 @@ export default function RatingPage(): ReactElement {
           isLoading={board.isLoading}
           rows={data?.rows ?? []}
           rowKey={(row) => row.userId}
-          emptyMessage="За период нет ни одного закрытого заказа"
+          emptyMessage="За период нет ни одной выполненной задачи"
           columns={[
             {
               key: 'place',
@@ -239,7 +239,7 @@ export default function RatingPage(): ReactElement {
             },
             {
               key: 'orders',
-              header: 'Заказов',
+              header: 'Задач',
               align: 'right',
               className: 'font-mono tabular-nums',
               render: (row) => row.ordersCount,
@@ -252,7 +252,7 @@ export default function RatingPage(): ReactElement {
                   <span className="text-footnote text-muted">{row.unratedReason}</span>
                 ) : row.byRole.length === 0 ? (
                   <span className="text-footnote text-muted">
-                    За период нет закрытых заказов
+                    За период нет выполненных задач
                   </span>
                 ) : (
                   <div className="flex flex-col gap-1">
