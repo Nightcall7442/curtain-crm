@@ -66,7 +66,7 @@ export function RatingBoardCard({
         </CardBody>
       ) : rows.length === 0 ? (
         <EmptyState
-          message="За период нет закрытых заказов"
+          message="За период нет выполненных задач"
           hint="Строки появятся, когда первый заказ месяца дойдёт до статуса «Выполнен»"
         />
       ) : (

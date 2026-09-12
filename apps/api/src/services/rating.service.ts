@@ -29,10 +29,12 @@ import { periodBounds, sqlTimestamp, type Period, type PeriodBounds } from './sh
  * Арифметика балла живёт в `@curtain-crm/shared`: её обязаны применять
  * одинаково и веб-панель, и мобильное приложение.
  *
- * ЧТО СЧИТАЕТСЯ СЛЕДОМ РАБОТЫ. Только закрытые заказы (`completed`) с
- * `completed_at` внутри периода. Незакрытый заказ в рейтинг не идёт: пока он
- * в работе, ни качества, ни срока по нему ещё не известно, и учитывать его
- * значило бы начислять балл авансом.
+ * ЧТО СЧИТАЕТСЯ СЛЕДОМ РАБОТЫ. Выполненная задача роли — закрытый ЭТАП, а не
+ * закрытый заказ: замер сдан, пошив завершён, контроль пройден, установка
+ * сделана, карниз готов. Раньше балл шёл только за заказ со статусом
+ * `completed`, и швея, отшившая за месяц десять заказов, до их установки
+ * стояла с нулём — «баллы не считаются». Дата задачи — запись истории
+ * статусов, продавцу задача — оформленный заказ.
  *
  * КАЧЕСТВО — через возвраты на переделку, единственный объективный след,
  * который есть в системе (см. `performance.service.ts`, там же разобрано,
@@ -114,18 +116,29 @@ const percent = (part: unknown, total: unknown): number | null => {
 /*  Запросы                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Заказы, закрытые в периоде; при необходимости — одного филиала. */
-const completedInPeriod = (bounds: PeriodBounds, branchId: number | undefined): SQL => {
+/** Момент внутри периода; при необходимости — заказ одного филиала. */
+const inPeriod = (at: SQL, bounds: PeriodBounds, branchId: number | undefined): SQL => {
   // Границы передаём строкой с явным приведением: драйвер не превращает
   // `Date` в параметр сырого запроса, а падает на нём (см. `sqlTimestamp`).
   const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
   const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
 
-  const period = sql`o.status = ${OrderStatus.COMPLETED}
-    and o.completed_at >= ${from} and o.completed_at < ${to}`;
+  const period = sql`${at} >= ${from} and ${at} < ${to} and o.status <> ${OrderStatus.CANCELLED}`;
 
   return branchId === undefined ? period : sql`${period} and o.branch_id = ${branchId}`;
 };
+
+/**
+ * Этап роли закрыт: последняя запись истории с одним из этих статусов.
+ *
+ * Последняя, а не первая: после возврата на переделку этап закрывают ещё
+ * раз, и задача одна — заказ, а не число попыток. Попытки учитывает качество.
+ */
+const stageDone = (statuses: readonly string[]): SQL => sql`
+  join lateral (
+    select max(h.created_at) as at from order_status_history h
+    where h.order_id = o.id and h.to_status in (${sql.join(statuses.map((status) => sql`${status}`), sql`, `)})
+  ) done on true`;
 
 /** Карнизы, отмеченные готовыми в периоде; при необходимости — одного филиала. */
 const corniceDoneInPeriod = (bounds: PeriodBounds, branchId: number | undefined): SQL => {
@@ -138,17 +151,17 @@ const corniceDoneInPeriod = (bounds: PeriodBounds, branchId: number | undefined)
 };
 
 /**
- * Попадание в срок — общие для всех ролей колонки.
+ * Попадание в срок — общие для всех ролей колонки; `at` — момент задачи.
  *
- * Дата закрытия приводится к дате в UTC, а не в часовом поясе сервера:
- * иначе один и тот же заказ считался бы просроченным или нет в зависимости
- * от настроек машины, на которой запущен API.
+ * Дата приводится к дате в UTC, а не в часовом поясе сервера: иначе один и
+ * тот же заказ считался бы просроченным или нет в зависимости от настроек
+ * машины, на которой запущен API.
  */
-const punctualityColumns = sql`
-  count(*) filter (where o.deadline is not null) as with_deadline,
+const punctualityColumns = (at: SQL): SQL => sql`
+  count(*) filter (where o.deadline is not null and ${at} is not null) as with_deadline,
   count(*) filter (
     where o.deadline is not null
-      and (o.completed_at at time zone 'UTC')::date <= o.deadline
+      and (${at} at time zone 'UTC')::date <= o.deadline
   ) as on_time`;
 
 /** Сырые строки одного роутинга «роль → показатели участников». */
@@ -184,25 +197,28 @@ async function collectRoleRows(
   bounds: PeriodBounds,
   branchId: number | undefined,
 ): Promise<Record<RatedRole, RoleRow[]>> {
-  const scope = completedInPeriod(bounds, branchId);
+  const doneAt = sql`done.at`;
+  const scope = inPeriod(doneAt, bounds, branchId);
 
   const [sellerRows, masterRows, sewerRows, qcRows, installerRows, corniceRows] =
     await Promise.all([
+    // Продавцу задача — оформленный заказ; срок у него — закрытие заказа.
     db.execute(sql`
       select o.created_by as user_id,
              count(*) as orders_count,
              coalesce(sum(o.work_price), 0) as revenue,
-             ${punctualityColumns}
+             ${punctualityColumns(sql`o.completed_at`)}
       from orders o
-      where ${scope}
+      where ${inPeriod(sql`o.created_at`, bounds, branchId)}
       group by o.created_by`),
 
     db.execute(sql`
       select o.master_id as user_id,
              count(*) as orders_count,
              count(*) filter (where redone.n = 0) as clean_orders,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      ${stageDone([OrderStatus.MEASUREMENT_DONE])}
       -- Повторный замер: вход в measurement_assigned не из приёмки,
       -- то есть откат с более позднего этапа.
       left join lateral (
@@ -219,8 +235,9 @@ async function collectRoleRows(
              count(*) as orders_count,
              count(*) filter (where failed.n = 0) as clean_orders,
              coalesce(sum(area.total), 0) as area_m2,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      ${stageDone([OrderStatus.SEWING_DONE])}
       left join lateral (
         select count(*) as n from order_status_history h
         where h.order_id = o.id and h.to_status = ${OrderStatus.QC_FAILED}
@@ -236,8 +253,10 @@ async function collectRoleRows(
       select o.qc_id as user_id,
              count(*) as orders_count,
              count(*) filter (where missed.n = 0) as clean_orders,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      -- Проверка сделана и когда брак найден: это и есть работа контролёра.
+      ${stageDone([OrderStatus.QC_PASSED, OrderStatus.QC_FAILED])}
       -- Пропущенный брак: контролёр принял заказ, а установку затем
       -- вернули на доработку. Возврат ПЕРЕД установкой (qc_failed) в минус
       -- контролёру не идёт — это ровно та работа, за которую он отвечает.
@@ -254,8 +273,9 @@ async function collectRoleRows(
       select o.installer_id as user_id,
              count(*) as orders_count,
              count(*) filter (where redone.n = 0) as clean_orders,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      ${stageDone([OrderStatus.INSTALLATION_DONE])}
       left join lateral (
         select count(*) as n from order_status_history h
         where h.order_id = o.id

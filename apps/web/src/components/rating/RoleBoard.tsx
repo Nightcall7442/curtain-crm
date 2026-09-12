@@ -75,7 +75,7 @@ export function RoleBoard({ board }: { readonly board: Board }): ReactElement {
               },
               {
                 key: 'orders',
-                header: 'Заказов',
+                header: 'Задач',
                 align: 'right',
                 className: 'font-mono tabular-nums',
                 render: (row) => row.ordersCount,
