@@ -183,7 +183,8 @@ export default function OrderDetailPage(): ReactElement {
             <ArrowLeft className="h-4 w-4" />
           </Link>
 
-          <div className="min-w-0 flex-1">
+          {/* `basis-[16rem]`: на телефоне блок сумм уходит под заголовок, а не давит его в столбик. */}
+          <div className="min-w-0 flex-1 basis-[16rem]">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-heading font-semibold text-primary">
                 {data.orderNumber ?? `#${data.id.toString()}`}
@@ -206,7 +207,7 @@ export default function OrderDetailPage(): ReactElement {
             )}
           </div>
 
-          <dl className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-1 text-footnote sm:grid-cols-3">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-footnote sm:grid-cols-3 lg:shrink-0">
             {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
             {data.workPrice !== null && (
               <>
@@ -237,7 +238,7 @@ export default function OrderDetailPage(): ReactElement {
         пока левая колонка прокручивается; в один столбец (до `lg`) порядок
         в разметке ставит её ПЕРВОЙ — действия важнее длинных списков.
       */}
-      <div className="space-y-4 lg:sticky lg:top-20 lg:order-2">
+      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
       {/* --- Действия ------------------------------------------------------- */}
       <Card>
         <CardHeader title="Действия по заказу" />
@@ -458,7 +459,7 @@ export default function OrderDetailPage(): ReactElement {
       </div>
 
       {/* --- Левая колонка: жизнь заказа ------------------------------------ */}
-      <div className="space-y-4 lg:col-span-2 lg:order-1">
+      <div className="min-w-0 space-y-4 lg:col-span-2 lg:order-1">
       <section className="grid gap-3">
         {/* --- Позиции ------------------------------------------------------ */}
         <Card>

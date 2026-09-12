@@ -113,7 +113,7 @@ export function ManagementDashboard(): ReactElement {
         сколько пришло и сколько заработано.
       */}
       <section className="grid gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-8">
+        <div className="min-w-0 xl:col-span-8">
           {dashboard.isLoading || dynamics.isLoading ? (
             <Skeleton className="h-[260px]" />
           ) : data === undefined ? null : (

@@ -161,7 +161,7 @@ export function PulseCard({
       </div>
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[auto_1fr]">
-        <dl className="flex gap-6 lg:flex-col lg:gap-4">
+        <dl className="flex flex-wrap gap-6 lg:flex-col lg:gap-4">
           {stats.map((stat) => (
             <div key={stat.label} className="min-w-[120px]">
               <dt className="text-footnote text-muted">{stat.label}</dt>
