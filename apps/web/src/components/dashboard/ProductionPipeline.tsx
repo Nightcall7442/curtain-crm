@@ -1,30 +1,35 @@
 'use client';
 
 import type { ProductionStageKey } from '@curtain-crm/shared';
-import { ChevronRight } from 'lucide-react';
+import {
+  CircleCheck,
+  Hammer,
+  Inbox,
+  PackageCheck,
+  Ruler,
+  Scissors,
+  ShieldCheck,
+  Shirt,
+  type LucideIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { Fragment, type ReactElement } from 'react';
 
-/**
- * Виджет «Этапы производства заказов»: восемь плиток конвейера.
- *
- * Цвет плитки — подкрепление, а не носитель смысла: у каждой есть подпись
- * и число. Набор цветов подобран так, чтобы соседние плитки различались
- * и при нарушениях цветовосприятия (см. комментарий к токенам `--stage-*`).
- *
- * Каждая плитка — ссылка на список заказов, отфильтрованный по этому этапу:
- * дашборд должен вести к работе, а не только показывать цифру.
- */
+import { cn } from '@/lib/utils';
 
 /**
- * Цвет этапа — и всё.
+ * Конвейер заказов — восемь этапов слева направо.
  *
- * Иконок здесь больше нет. Ножницы, линейка, волшебная палочка и дрель
- * стояли над числами восемью разными картинками: этап у каждой плитки уже
- * назван словом и посчитан числом, а рисунок добавлял только пестроту —
- * ровно ту, из-за которой панель выглядела набором из шаблона. Осталось
- * то, что несёт смысл: подпись, число и цвет этапа на них.
+ * Три слоя, а не одна строка чисел. Сверху — полоса долей: сколько заказов
+ * на каком этапе, цветом этапа; по ней видно, где скопилось, ещё до чтения
+ * цифр. Ниже — плитки: значок этапа в цветном кружке, число, подпись и доля
+ * от всего конвейера. Между плитками — бегущая линия: заказы движутся, и
+ * конвейер должен выглядеть движущимся.
+ *
+ * Самый загруженный этап (кроме «Завершено») помечен как узкое место —
+ * это то, зачем директор смотрит на конвейер утром.
  */
+
 const STAGE_COLOR: Readonly<Record<ProductionStageKey, string>> = {
   new: 'rgb(var(--stage-new))',
   measurement: 'rgb(var(--stage-measurement))',
@@ -34,6 +39,17 @@ const STAGE_COLOR: Readonly<Record<ProductionStageKey, string>> = {
   ready_for_install: 'rgb(var(--stage-ready))',
   installation: 'rgb(var(--stage-installation))',
   done: 'rgb(var(--stage-done))',
+};
+
+const STAGE_ICON: Readonly<Record<ProductionStageKey, LucideIcon>> = {
+  new: Inbox,
+  measurement: Ruler,
+  cutting: Scissors,
+  sewing: Shirt,
+  qc: ShieldCheck,
+  ready_for_install: PackageCheck,
+  installation: Hammer,
+  done: CircleCheck,
 };
 
 export interface PipelineStage {
@@ -47,66 +63,130 @@ export function ProductionPipeline({
 }: {
   readonly stages: readonly PipelineStage[];
 }): ReactElement {
+  const total = stages.reduce((sum, stage) => sum + stage.count, 0);
+  const inFlight = stages.filter((stage) => stage.key !== 'done');
+  const inFlightTotal = inFlight.reduce((sum, stage) => sum + stage.count, 0);
+  const bottleneck =
+    inFlightTotal === 0
+      ? null
+      : inFlight.reduce((best, stage) => (stage.count > best.count ? stage : best));
+
   return (
-    /*
-      Плитки РАСТЯГИВАЮТСЯ на всю ширину карточки.
+    <div className="space-y-4">
+      {/* --- Сводка и полоса долей ------------------------------------------ */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-footnote text-muted">
+        <span>
+          В конвейере{' '}
+          <span className="font-hero text-caption font-bold text-primary">{inFlightTotal}</span>
+        </span>
+        <span>
+          Завершено{' '}
+          <span className="font-hero text-caption font-bold text-primary">
+            {stages.find((stage) => stage.key === 'done')?.count ?? 0}
+          </span>
+        </span>
+        {bottleneck !== null && bottleneck.count > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: STAGE_COLOR[bottleneck.key], boxShadow: `0 0 8px ${STAGE_COLOR[bottleneck.key]}` }}
+            />
+            Узкое место: <span className="text-secondary">{bottleneck.label}</span>
+          </span>
+        )}
+      </div>
 
-      Раньше у них была только минимальная ширина и нечем было расти: на
-      широком мониторе восемь плиток оставались по 112 px и жались влево,
-      а треть карточки пустовала. Теперь каждая — равная доля строки
-      (`flex-1`), и ряд заполняет её целиком.
+      <div
+        className="flex h-2.5 w-full overflow-hidden rounded-full bg-ink/[0.06]"
+        role="img"
+        aria-label="Доли этапов"
+      >
+        {stages.map((stage) =>
+          stage.count === 0 || total === 0 ? null : (
+            <span
+              key={stage.key}
+              title={`${stage.label}: ${stage.count.toString()}`}
+              className="h-full min-w-[3px] transition-[width] duration-500"
+              style={{
+                width: `${((stage.count / total) * 100).toString()}%`,
+                backgroundColor: STAGE_COLOR[stage.key],
+              }}
+            />
+          ),
+        )}
+      </div>
 
-      Минимальная ширина сохранена: на узком экране плитки упираются в неё,
-      строка перестаёт помещаться и включается горизонтальная прокрутка.
-      Переносить этапы по строкам нельзя — это последовательность, и разрыв
-      посередине ломает её чтение.
+      {/* --- Плитки этапов --------------------------------------------------- */}
+      <div className="flex items-stretch gap-1 overflow-x-auto pb-1">
+        {stages.map((stage, index) => {
+          const color = STAGE_COLOR[stage.key];
+          const Icon = STAGE_ICON[stage.key];
+          const share = total === 0 ? 0 : Math.round((stage.count / total) * 100);
+          const isBottleneck = bottleneck?.key === stage.key && stage.count > 0;
 
-      Стрелки — прямые дети строки, а не часть плитки: иначе последняя плитка
-      (у которой стрелки нет) оказывалась бы шире остальных на её ширину.
-    */
-    <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
-      {stages.map((stage, index) => {
-        const color = STAGE_COLOR[stage.key];
-
-        return (
-          <Fragment key={stage.key}>
-            <Link
-              href={`/orders?stage=${stage.key}`}
-              /*
-                min-w 92, а не 112, и паддинги теснее: на мониторе шириной от
-                ~1000 px все восемь этапов встают в одну строку без прокрутки —
-                конвейер, который надо листать вбок, не читается как конвейер.
-              */
-              className="card-link group flex min-w-[84px] flex-1 flex-col items-center gap-1.5 rounded-2xl bg-ink/[0.04] px-2 py-3 hover:bg-ink/[0.09]"
-              style={{ boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 28%, transparent)` }}
-            >
-              <span
-                className="text-center text-footnote font-medium leading-tight text-secondary"
-                style={{ minHeight: '2.2em' }}
+          return (
+            <Fragment key={stage.key}>
+              <Link
+                href={`/orders?stage=${stage.key}`}
+                className={cn(
+                  'pressable group relative flex min-w-[112px] flex-1 flex-col gap-3 rounded-2xl bg-ink/[0.04] p-3 transition-[background-color,box-shadow,transform] duration-200',
+                  'hover:-translate-y-0.5 hover:bg-ink/[0.07]',
+                )}
+                style={{
+                  boxShadow: isBottleneck
+                    ? `inset 0 0 0 1px color-mix(in srgb, ${color} 55%, transparent), 0 12px 28px -18px ${color}`
+                    : `inset 0 0 0 1px color-mix(in srgb, ${color} 22%, transparent)`,
+                }}
               >
-                {stage.label}
-              </span>
-              {/*
-                Число — центр плитки: антиквой и крупнее прежнего, раз место
-                иконки освободилось. Цвет этапа теперь несёт оно и рамка.
-              */}
-              <span
-                className="font-hero text-[26px] font-extrabold leading-none tracking-[-0.03em] tabular-nums"
-                style={{ color }}
-              >
-                {stage.count}
-              </span>
-            </Link>
+                <span className="flex items-center justify-between">
+                  <span
+                    className="grid h-8 w-8 place-items-center rounded-xl"
+                    style={{
+                      color,
+                      backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`,
+                      boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
+                    }}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden />
+                  </span>
+                  <span className="text-footnote text-muted tabular-nums">{share}%</span>
+                </span>
 
-            {index < stages.length - 1 && (
-              <ChevronRight
-                aria-hidden
-                className="h-4 w-4 shrink-0 self-center text-muted/70"
-              />
-            )}
-          </Fragment>
-        );
-      })}
+                <span
+                  className="font-hero text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums"
+                  style={{ color, textShadow: `0 0 18px color-mix(in srgb, ${color} 45%, transparent)` }}
+                >
+                  {stage.count}
+                </span>
+
+                <span className="text-footnote font-medium leading-tight text-secondary">
+                  {stage.label}
+                </span>
+
+                {/* Мини-полоса доли внутри плитки — та же, что сверху, но своя. */}
+                <span className="h-1 w-full overflow-hidden rounded-full bg-ink/[0.08]">
+                  <span
+                    className="block h-full rounded-full"
+                    style={{ width: `${share.toString()}%`, backgroundColor: color }}
+                  />
+                </span>
+              </Link>
+
+              {index < stages.length - 1 && (
+                <span aria-hidden className="flex w-4 shrink-0 items-center self-center">
+                  <span
+                    className="pipeline-flow h-0.5 w-full rounded-full"
+                    style={{
+                      backgroundImage: `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 9px)`,
+                    }}
+                  />
+                </span>
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }

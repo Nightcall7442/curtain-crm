@@ -982,6 +982,24 @@
     контраст держит светлая подложка, а фирменный цвет остаётся тем же.
   */
 
+  /* Бегущая линия конвейера: штрихи ползут слева направо — заказы движутся. */
+  .pipeline-flow {
+    background-size: 18px 100%;
+    animation: pipeline-flow 1.1s linear infinite;
+    opacity: 0.75;
+  }
+
+  @keyframes pipeline-flow {
+    from { background-position: 0 0; }
+    to { background-position: 18px 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pipeline-flow {
+      animation: none;
+    }
+  }
+
   /* Стекло для полей, плашек и строк таблицы — тот же язык, тоньше слой. */
   .glass-control {
     background-color: rgb(var(--glass-fill) / var(--glass-control-alpha));
