@@ -112,7 +112,7 @@ export function HeroCard({
             </>
           );
           const className =
-            'hero-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption backdrop-blur-sm';
+            'hero-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption';
           return (
             <li key={chip.label}>
               {chip.href === undefined ? (

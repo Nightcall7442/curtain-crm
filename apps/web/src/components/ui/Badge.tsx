@@ -56,7 +56,7 @@ export function Badge({
       className={cn(
         // Пилюля — как чипы и кнопки языка «Неон»; в таблице она стоит в ряд
         // с такими же круглыми кнопками действий.
-        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-semibold leading-4 backdrop-blur-sm',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-[3px] text-overline font-semibold leading-4',
         TONE_CLASSES[tone],
         className,
       )}
