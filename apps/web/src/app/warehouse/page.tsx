@@ -30,10 +30,69 @@ const KIND_SET = new Set<string>(STOCK_KINDS);
 
 const HEADERS = ['Код', 'Вид', 'Описание'] as const;
 
-/** «Портьера» из файла обратно в вид справочника. Регистр не важен. */
-const KIND_BY_LABEL = new Map<string, StockKind>(
-  STOCK_KINDS.map((kind) => [STOCK_KIND_LABELS_RU[kind].toLowerCase(), kind]),
-);
+/**
+ * «Портьера» из файла обратно в вид справочника.
+ *
+ * Не только точная подпись из выгрузки: файлы приходят от поставщиков и с
+ * телефона, где вид пишут по-узбекски, по-английски, сокращённо или во
+ * множественном числе. Регистр, пробелы и хвост слова («портьеры»,
+ * «портьерная») не важны — сравнивается начало.
+ */
+const KIND_ALIASES: Readonly<Record<StockKind, readonly string[]>> = {
+  portiere_code: ['портьер', 'порт', 'portiere', 'parda', 'штора', 'шторы'],
+  tulle_code: ['тюль', 'tyul', 'tulle', 'органза'],
+  protection_code: ['защит', 'himoya', 'protection', 'блэкаут', 'blackout'],
+  cornice_code: ['карниз', 'karniz', 'cornice'],
+  plastic_code: ['пластик', 'plastik', 'plastic'],
+  pipe_code: ['труб', 'truba', 'pipe'],
+  accessory_code: ['аксессуар', 'aksessuar', 'accessor', 'фурнитур', 'держател', 'кист'],
+};
+
+function kindOfLabel(label: string): StockKind | undefined {
+  const value = label.trim().toLowerCase();
+  if (value === '') return undefined;
+  for (const kind of STOCK_KINDS) {
+    if (STOCK_KIND_LABELS_RU[kind].toLowerCase() === value) return kind;
+  }
+  return STOCK_KINDS.find((kind) => KIND_ALIASES[kind].some((alias) => value.startsWith(alias)));
+}
+
+/** Названия колонок, по которым узнаётся шапка: код, вид, описание. */
+const HEADER_ALIASES = {
+  code: ['код', 'code', 'артикул', 'kod', 'sku', 'номер'],
+  kind: ['вид', 'тип', 'категор', 'kind', 'type', 'turi', 'tur'],
+  description: ['описан', 'назван', 'наимен', 'description', 'name', 'tavsif', 'nomi', 'коммент'],
+} as const;
+
+/**
+ * Где какая колонка. Шапка ищется в первых пяти строках по названиям; если
+ * её нет — считается, что порядок как в выгрузке: код, вид, описание.
+ */
+function detectColumns(table: readonly (readonly string[])[]): {
+  readonly headerRow: number;
+  readonly code: number;
+  readonly kind: number | null;
+  readonly description: number | null;
+} {
+  const find = (row: readonly string[], aliases: readonly string[]): number =>
+    row.findIndex((cell) => aliases.some((alias) => cell.trim().toLowerCase().startsWith(alias)));
+
+  for (let index = 0; index < Math.min(5, table.length); index += 1) {
+    const row = table[index] ?? [];
+    const code = find(row, HEADER_ALIASES.code);
+    if (code === -1) continue;
+    const kind = find(row, HEADER_ALIASES.kind);
+    const description = find(row, HEADER_ALIASES.description);
+    return {
+      headerRow: index,
+      code,
+      kind: kind === -1 ? null : kind,
+      description: description === -1 ? null : description,
+    };
+  }
+
+  return { headerRow: -1, code: 0, kind: 1, description: 2 };
+}
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -182,38 +241,63 @@ export default function WarehousePage(): ReactElement {
     window.print();
   };
 
+  /*
+    Импорт терпим к файлу: шапка ищется по названиям колонок, вид узнаётся
+    по синонимам, а если колонки «Вид» в файле нет вовсе — берётся вид,
+    выбранный вкладкой над списком. Раньше строка без точного «Портьера»
+    во второй колонке молча пропускалась, и файл поставщика «не работал».
+  */
   const runImport = (file: File): void => {
     setBusy('import');
 
     void readXlsx(file)
       .then((table) => {
+        const columns = detectColumns(table);
+        const fallbackKind = filter === 'all' ? null : filter;
+
+        if (columns.kind === null && fallbackKind === null) {
+          toast.error(
+            'Не понятно, какого вида коды',
+            'В файле нет колонки «Вид». Выберите вид над списком — все коды загрузятся в него',
+          );
+          return;
+        }
+
         const items: { kind: StockKind; name: string; description: string | null }[] = [];
         const skipped: string[] = [];
 
-        for (const row of table) {
-          const name = (row[0] ?? '').trim();
-          const label = (row[1] ?? '').trim().toLowerCase();
-          if (name === '') continue;
+        table.forEach((row, index) => {
+          if (index <= columns.headerRow) return;
+          const name = (row[columns.code] ?? '').trim();
+          if (name === '') return;
 
-          const rowKind = KIND_BY_LABEL.get(label);
+          const rowKind =
+            (columns.kind === null ? undefined : kindOfLabel(row[columns.kind] ?? '')) ??
+            fallbackKind ??
+            undefined;
           if (rowKind === undefined) {
             skipped.push(name);
-            continue;
+            return;
           }
 
-          const text = (row[2] ?? '').trim();
+          const text = columns.description === null ? '' : (row[columns.description] ?? '').trim();
           items.push({ kind: rowKind, name, description: text === '' ? null : text });
-        }
+        });
 
         if (items.length === 0) {
-          toast.error('В файле нечего загружать', 'Нужны колонки «Код» и «Вид» — как в выгрузке');
+          toast.error(
+            'В файле нечего загружать',
+            skipped.length > 0
+              ? `Ни у одной из ${String(skipped.length)} строк не распознан вид. Выберите вид над списком и повторите`
+              : 'Не нашёл колонку с кодами: назовите её «Код» или поставьте первой',
+          );
           return;
         }
 
         if (skipped.length > 0) {
           toast.error(
             `Пропущено строк: ${String(skipped.length)}`,
-            `Непонятный вид у кодов: ${skipped.slice(0, 5).join(', ')}`,
+            `Непонятный вид у кодов: ${skipped.slice(0, 5).join(', ')}. Остальные ${String(items.length)} загружаю`,
           );
         }
 
@@ -278,7 +362,7 @@ export default function WarehousePage(): ReactElement {
         <input
           ref={fileInput}
           type="file"
-          accept=".xlsx,.xlsm"
+          accept=".xlsx,.xlsm,.csv"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
