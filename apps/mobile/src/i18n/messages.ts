@@ -604,7 +604,7 @@ const ru = {
   'sell.noCornice': 'Без карниза',
   'sell.cornices': 'Карнизы',
   'sell.corniceCode': 'Код карниза',
-  'sell.corniceCodeHint': 'С кодами заказ уйдёт карнизчику',
+  'sell.corniceCodeHint': 'Коды со склада — с ними заказ уйдёт карнизчику',
   'sell.plasticCode': 'Код пластика',
   'sell.pipeHint': 'Трубная модель: код трубы со склада, заказ уйдёт карнизчику',
   'sell.inStock': 'В наличии',
