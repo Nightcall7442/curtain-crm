@@ -153,6 +153,8 @@ const FIELD_ORDER: readonly string[] = [
   'reason',
   'fromStatus',
   'toStatus',
+  'startDate',
+  'endDate',
   'before',
   'from',
   'after',
