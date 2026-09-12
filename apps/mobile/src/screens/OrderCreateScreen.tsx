@@ -409,12 +409,15 @@ export function OrderCreateScreen(): ReactElement {
           item.protection,
           describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code),
         );
-        const cornice = onPipe
-          ? undefined
-          : toMaterial(item.cornice, describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code));
-        const plastic = onPipe
-          ? undefined
-          : toMaterial(item.plastic, describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code));
+        // Карниз и пластик уходят и у трубной модели — поля у неё показаны.
+        const cornice = toMaterial(
+          item.cornice,
+          describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code),
+        );
+        const plastic = toMaterial(
+          item.plastic,
+          describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code),
+        );
         const pipe = onPipe
           ? toMaterial(item.pipe, describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code))
           : undefined;
@@ -761,12 +764,13 @@ export function OrderCreateScreen(): ReactElement {
               />
 
               {/*
-                Крепление модели решает, что спрашивать: у трубных моделей
-                («Труба», «Киприк») карниза с пластиком не бывает, у остальных
-                не бывает трубы. Группу задаёт руководитель у модели
-                в справочнике.
+                Крепление модели решает, спрашивать ли трубу: у трубных
+                моделей («Труба», «Киприк») она есть, у остальных нет. Карниз
+                с пластиком остаются у всех — владелец попросил не прятать
+                их после выбора модели: к трубной модели их тоже берут.
+                Группу задаёт руководитель у модели в справочнике.
               */}
-              {mountOf(item.model) === CurtainMountKind.PIPE ? (
+              {mountOf(item.model) === CurtainMountKind.PIPE && (
                 <MaterialFields
                   label={m('create.pipe')}
                   placeholder={m('create.examplePipe')}
@@ -781,8 +785,9 @@ export function OrderCreateScreen(): ReactElement {
                     });
                   }}
                 />
-              ) : (
-                <>
+              )}
+
+              <>
                   <MaterialFields
                     label={m('create.cornice')}
                     placeholder={m('create.exampleCornice')}
@@ -812,8 +817,7 @@ export function OrderCreateScreen(): ReactElement {
                       });
                     }}
                   />
-                </>
-              )}
+              </>
 
               <Field label={m('create.rotation')}>
                 <ChipSelect
