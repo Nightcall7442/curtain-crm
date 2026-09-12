@@ -982,6 +982,115 @@
     контраст держит светлая подложка, а фирменный цвет остаётся тем же.
   */
 
+  /*
+    Экран входа — всегда тёмный «Неон», независимо от темы: это витрина,
+    а не рабочее место. Цвета здесь литералами намеренно: токены темы
+    переключаются, а витрина обязана выглядеть одинаково у всех.
+  */
+  .login-canvas {
+    background-color: #0b1a13;
+    background-image:
+      radial-gradient(1000px 640px at 0% 0%, rgb(61 255 160 / 0.28), transparent 60%),
+      radial-gradient(760px 560px at 100% 100%, rgb(46 224 139 / 0.18), transparent 60%),
+      linear-gradient(160deg, #10241b 0%, #0b1a13 55%, #07110c 100%);
+  }
+
+  .login-canvas::before,
+  .login-canvas::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    border-radius: 9999px;
+    pointer-events: none;
+    filter: blur(80px);
+  }
+
+  .login-canvas::before {
+    width: 620px;
+    height: 620px;
+    left: -8%;
+    top: -12%;
+    background: radial-gradient(circle, rgb(61 255 160 / 0.40), transparent 65%);
+    animation: canvas-drift-a 28s ease-in-out infinite alternate;
+  }
+
+  .login-canvas::after {
+    width: 560px;
+    height: 560px;
+    right: -10%;
+    bottom: -14%;
+    background: radial-gradient(circle, rgb(46 224 139 / 0.28), transparent 65%);
+    animation: canvas-drift-b 36s ease-in-out infinite alternate;
+  }
+
+  .login-canvas > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .login-neon {
+    color: #3dffa0;
+    text-shadow: 0 0 24px rgb(61 255 160 / 0.45);
+  }
+
+  .login-tile {
+    background: rgb(255 255 255 / 0.05);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.10),
+      inset 0 1px 0 rgb(255 255 255 / 0.18);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .login-glass {
+    background-image: linear-gradient(150deg, rgb(255 255 255 / 0.12) 0%, rgb(255 255 255 / 0.05) 50%, rgb(16 36 27 / 0.55) 100%);
+    backdrop-filter: blur(28px) saturate(170%);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.14),
+      inset 0 1px 0 rgb(255 255 255 / 0.32),
+      0 40px 80px -40px rgb(0 0 0 / 0.9);
+  }
+
+  .login-field {
+    color: #eaf5ee;
+    background-color: rgb(255 255 255 / 0.07);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.12),
+      inset 0 1px 0 rgb(255 255 255 / 0.10);
+    transition: box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .login-field::placeholder {
+    color: rgb(234 245 238 / 0.4);
+  }
+
+  .login-field:focus {
+    background-color: rgb(255 255 255 / 0.10);
+    box-shadow:
+      inset 0 0 0 1px rgb(61 255 160 / 0.7),
+      0 0 0 4px rgb(61 255 160 / 0.15);
+  }
+
+  .login-submit {
+    color: #05150e;
+    background-color: #3dffa0;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.4),
+      0 12px 28px -12px rgb(61 255 160 / 0.8);
+  }
+
+  .login-submit:hover {
+    background-color: #7cffc0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .login-canvas::before,
+    .login-canvas::after {
+      animation: none;
+    }
+  }
+
   /* Бегущая линия конвейера: штрихи ползут слева направо — заказы движутся. */
   .pipeline-flow {
     background-size: 18px 100%;
