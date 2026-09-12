@@ -161,16 +161,19 @@ export function SellReadyMadeScreen(): ReactElement {
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.readyMadeItemId === null ? {} : { readyMadeItemId: item.readyMadeItemId }),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
-        ...(mountOf(item.model) === CurtainMountKind.PIPE && item.pipe.trim() !== ''
-          ? { pipe: item.pipe.trim() }
-          : {}),
-        ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
-        ...(item.cornice.trim() === '' || item.corniceCode.trim() === ''
-          ? {}
-          : { corniceCode: item.corniceCode.trim() }),
-        ...(item.cornice.trim() === '' || item.plastic.trim() === ''
-          ? {}
-          : { plastic: item.plastic.trim() }),
+        ...(mountOf(item.model) === CurtainMountKind.PIPE
+          ? item.pipe.trim() === ''
+            ? {}
+            : { pipe: item.pipe.trim() }
+          : {
+              ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
+              ...(item.cornice.trim() === '' || item.corniceCode.trim() === ''
+                ? {}
+                : { corniceCode: item.corniceCode.trim() }),
+              ...(item.cornice.trim() === '' || item.plastic.trim() === ''
+                ? {}
+                : { plastic: item.plastic.trim() }),
+            }),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
       })),
       ...(needsInstallation === 'yes'
@@ -303,7 +306,7 @@ export function SellReadyMadeScreen(): ReactElement {
               а не переписывает её описание: размер, цвет и код приезжают со
               склада, а остаток списывается при продаже.
             */}
-            {mountOf(item.model) === CurtainMountKind.PIPE && (
+            {mountOf(item.model) === CurtainMountKind.PIPE ? (
               <Field label={m('create.pipe')} hint={m('sell.pipeHint')}>
                 <Input
                   value={item.pipe}
@@ -315,8 +318,7 @@ export function SellReadyMadeScreen(): ReactElement {
                 />
                 <CodeDescription description={describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe)} />
               </Field>
-            )}
-
+            ) : (
             <Field label={m('create.cornice')} hint={m('sell.corniceHint')}>
               <CatalogPicker
                 value={item.cornice}
@@ -328,6 +330,7 @@ export function SellReadyMadeScreen(): ReactElement {
                 }}
               />
             </Field>
+            )}
 
             {/*
               Коды со склада показываются только при выбранном карнизе: без
@@ -335,7 +338,7 @@ export function SellReadyMadeScreen(): ReactElement {
               позицию только мешали бы. С ними заказ уходит карнизчикам —
               как заказ на пошив после проверки админом.
             */}
-            {item.cornice.trim() !== '' && (
+            {mountOf(item.model) !== CurtainMountKind.PIPE && item.cornice.trim() !== '' && (
               <>
                 <Field label={m('sell.corniceCode')} hint={m('sell.corniceCodeHint')}>
                   <Input
