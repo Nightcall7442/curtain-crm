@@ -69,7 +69,9 @@ const instrumentSerif = Instrument_Serif({
  */
 const playfairDisplay = Playfair_Display({
   subsets: ['latin', 'cyrillic'],
-  weight: ['600'],
+  // 500 и 700 — для крупных цифр панели (`font-figure`): 600 одного
+  // веса на всех размерах читается либо жирно, либо жидко.
+  weight: ['500', '600', '700'],
   variable: '--font-editorial',
   display: 'swap',
 });
