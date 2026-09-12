@@ -32,7 +32,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusBadge, OrderTypeBadge } from '@/components/ui/Badge';
+import { OrderStatusDot, OrderTypeBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, controlClass, FilterBar, Input, Select } from '@/components/ui/Form';
 import { DataTable, Pagination, type RowKey } from '@/components/ui/Table';
@@ -636,11 +636,10 @@ export function OrdersView({
             key: 'status',
             header: 'Статус',
             render: (row) => (
-              // Длинный статус («Отклонён, решение за директором») переносится
-              // на две строки: иначе колонка раздувалась и на ноутбуке
-              // кнопки действий уезжали за правый край.
-              <span className="inline-flex max-w-[15rem] flex-wrap items-center gap-1.5 [&_span]:whitespace-normal">
-                <OrderStatusBadge status={row.status} />
+              // Ширина ограничена: самый длинный статус («Отклонён, решение за
+              // директором») иначе выталкивал кнопки действий за край ноутбука.
+              <span className="flex max-w-[15rem] items-center gap-2">
+                <OrderStatusDot status={row.status} />
                 <OrderTypeBadge orderType={row.orderType} />
               </span>
             ),
@@ -674,7 +673,7 @@ export function OrdersView({
           },
           {
             key: 'price',
-            header: 'Сумма, сум',
+            header: 'Сумма',
             align: 'right',
             sortValue: (row) => (row.workPrice === null ? 0 : parseMoney(row.workPrice)),
             render: (row) =>
@@ -693,7 +692,7 @@ export function OrdersView({
           },
           {
             key: 'remaining',
-            header: 'Остаток, сум',
+            header: 'Остаток',
             align: 'right',
             sortValue: (row) =>
               row.remainingPayment === null ? 0 : parseMoney(row.remainingPayment),

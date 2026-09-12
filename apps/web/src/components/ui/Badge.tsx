@@ -96,6 +96,35 @@ export function OrderStatusBadge({
   return <Badge tone={ORDER_STATUS_TONE[status]}>{t(ORDER_STATUS_LABELS, status)}</Badge>;
 }
 
+const TONE_DOT: Readonly<Record<Tone, string>> = {
+  neutral: 'bg-ink/40',
+  positive: 'bg-positive shadow-[0_0_8px] shadow-positive/60',
+  warning: 'bg-warning shadow-[0_0_8px] shadow-warning/60',
+  danger: 'bg-danger shadow-[0_0_8px] shadow-danger/60',
+  info: 'bg-info shadow-[0_0_8px] shadow-info/60',
+  accent: 'bg-accent shadow-[0_0_8px] shadow-accent/60',
+};
+
+/**
+ * Статус для длинного списка: точка цвета тона и обычный текст в одну строку.
+ *
+ * Двадцать разноцветных таблеток подряд, да ещё переносящихся на три
+ * строки, превращали таблицу заказов в мозаику. Точка несёт тон, текст —
+ * смысл, строка остаётся одной высоты.
+ */
+export function OrderStatusDot({ status }: { readonly status: OrderStatus }): ReactElement {
+  const { t } = useLocale();
+  return (
+    <span
+      className="inline-flex min-w-0 max-w-full items-center gap-2 whitespace-nowrap text-primary"
+      title={t(ORDER_STATUS_LABELS, status)}
+    >
+      <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', TONE_DOT[ORDER_STATUS_TONE[status]])} />
+      <span className="truncate">{t(ORDER_STATUS_LABELS, status)}</span>
+    </span>
+  );
+}
+
 const PRIORITY_TONE: Readonly<Record<Priority, Tone>> = {
   normal: 'neutral',
   urgent: 'warning',

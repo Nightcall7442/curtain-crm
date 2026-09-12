@@ -198,7 +198,7 @@ export function DataTable<TRow>({
           */}
           <tr className="border-b border-ink/[0.08] bg-ink/[0.03] backdrop-blur-md">
             {selection !== undefined && (
-              <th scope="col" className="w-10 px-3.5 py-2.5">
+              <th scope="col" className="w-10 px-3 py-2.5">
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
@@ -227,7 +227,7 @@ export function DataTable<TRow>({
                     active === null ? undefined : active === 'asc' ? 'ascending' : 'descending'
                   }
                   className={cn(
-                    'whitespace-nowrap px-3.5 py-2.5 text-overline font-semibold uppercase text-muted',
+                    'whitespace-nowrap px-3 py-2.5 text-overline font-semibold uppercase text-muted',
                     alignClass,
                     column.className,
                   )}
@@ -261,9 +261,9 @@ export function DataTable<TRow>({
           {isLoading &&
             Array.from({ length: 5 }, (_unused, index) => (
               <tr key={`skeleton-${index.toString()}`} className="border-b border-subtle/60">
-                {selection !== undefined && <td className="px-3.5 py-2" />}
+                {selection !== undefined && <td className="px-3 py-2" />}
                 {columns.map((column) => (
-                  <td key={column.key} className="px-3.5 py-2">
+                  <td key={column.key} className="px-3 py-2">
                     <span className="block h-3 animate-pulse rounded bg-raised/70" />
                   </td>
                 ))}
@@ -341,7 +341,7 @@ export function DataTable<TRow>({
                   )}
                 >
                   {selection !== undefined && (
-                    <td className="px-3.5 py-2">
+                    <td className="px-3 py-2">
                       <Checkbox
                         checked={isSelected}
                         onChange={() => {
@@ -360,7 +360,7 @@ export function DataTable<TRow>({
                           таблицы панели читают списками, и лишние 8 px на строку
                           крадут четверть экрана на каждых двадцати строках.
                         */
-                        'px-3.5 py-2 text-secondary',
+                        'px-3 py-2 text-secondary',
                         column.align === 'right'
                           ? 'text-right'
                           : column.align === 'center'

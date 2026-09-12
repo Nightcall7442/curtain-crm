@@ -954,15 +954,20 @@
   .surface-hero {
     border-radius: 22px;
     color: rgb(var(--text-on-accent));
+    /*
+      Не чистый неон: карточка размером в четверть экрана таким цветом
+      слепила. Зелёный глубже, блик слабее — неон остаётся на цифрах и
+      кнопках, где его мало.
+    */
     background-image:
-      radial-gradient(420px 260px at 85% 0%, rgb(255 255 255 / 0.30), transparent 60%),
-      radial-gradient(300px 200px at 0% 100%, rgb(0 0 0 / 0.18), transparent 60%),
-      linear-gradient(150deg, rgb(var(--accent-strong)) 0%, rgb(var(--accent)) 45%, rgb(var(--accent-bright)) 100%);
+      radial-gradient(420px 260px at 85% 0%, rgb(255 255 255 / 0.14), transparent 60%),
+      radial-gradient(300px 200px at 0% 100%, rgb(0 0 0 / 0.22), transparent 60%),
+      linear-gradient(150deg, rgb(58 222 146) 0%, rgb(34 178 114) 50%, rgb(24 138 90) 100%);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.45),
-      inset 0 0 0 1px rgb(255 255 255 / 0.18),
-      0 30px 60px -30px rgb(var(--accent) / 0.65),
-      0 0 80px -20px rgb(var(--accent) / 0.35);
+      inset 0 1px 0 rgb(255 255 255 / 0.28),
+      inset 0 0 0 1px rgb(255 255 255 / 0.12),
+      0 30px 60px -30px rgb(var(--accent) / 0.5),
+      0 0 80px -20px rgb(var(--accent) / 0.22);
   }
 
   .hero-number {
