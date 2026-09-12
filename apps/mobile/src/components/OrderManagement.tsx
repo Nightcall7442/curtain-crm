@@ -1,5 +1,6 @@
 import {
   formatMoney,
+  groupDigits,
   ORDER_STAGE_FEE_LABELS,
   isAssignableRole,
   ORDER_STAGE_FEE_ROLE,
@@ -19,7 +20,7 @@ import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Row, Skeleton } from './Card';
-import { Field, Input, MoneyInput } from './Field';
+import { Field, MoneyInput } from './Field';
 
 /**
  * Управление заказом: назначение, цена, расценки, отмена.
@@ -331,13 +332,12 @@ export function OrderManagement({
               label={t(ORDER_STAGE_FEE_LABELS, stage)}
               hint={stored === null ? undefined : m('manage.now', { v: formatMoney(parseMoney(stored)) })}
             >
-              <Input
+              <MoneyInput
                 value={feeDrafts[stage] ?? ''}
                 onChangeText={(value) => {
                   setFeeDrafts((current) => ({ ...current, [stage]: value }));
                 }}
                 placeholder={stored === null ? '0' : trimAmount(stored)}
-                keyboardType="numeric"
               />
             </Field>
           );
@@ -372,8 +372,9 @@ export function OrderManagement({
 }
 
 /** Сумма без хвоста «.00» — она нужна в подсказке, а не в расчёте. */
+/** Подсказка в пустом поле — теми же разрядами, что и ввод: «5 000 000». */
 function trimAmount(value: string): string {
-  return Number.parseFloat(value).toString();
+  return groupDigits(Number.parseFloat(value).toString());
 }
 
 const styles = StyleSheet.create({

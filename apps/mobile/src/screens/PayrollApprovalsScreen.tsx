@@ -1,5 +1,6 @@
 import {
   formatMoney,
+  groupDigits,
   parseMoney,
   PAYROLL_RECORD_STATUS_LABELS,
   ROLE_LABELS,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
-import { Input } from '../components/Field';
+import { MoneyInput } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -202,11 +203,10 @@ export function PayrollApprovalsScreen(): ReactElement {
               <Text style={styles.payLabel}>
                 {m('payroll.amountLabel', { amount: formatMoney(parseMoney(row.calculatedAmount)) })}
               </Text>
-              <Input
+              <MoneyInput
                 value={amount}
                 onChangeText={setAmount}
-                placeholder={Number.parseFloat(row.calculatedAmount).toString()}
-                keyboardType="numeric"
+                placeholder={groupDigits(Number.parseFloat(row.calculatedAmount).toString())}
                 autoFocus
               />
 
