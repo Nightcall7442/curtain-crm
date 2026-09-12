@@ -682,6 +682,15 @@ export const ordersRouter = router({
                   установщику незачем знать, откуда заказ пришёл.
                 */
                 cornice: optionalText(200),
+                /**
+                 * Коды со склада — карниза и пластика к нему. С ними продажа
+                 * уходит карнизчику так же, как заказ на пошив: ему нужно
+                 * знать, что именно взять со склада, а не только тип.
+                 */
+                corniceCode: optionalText(200),
+                plastic: optionalText(200),
+                /** Труба — для трубных моделей («Труба», «Киприк») вместо карниза. */
+                pipe: optionalText(200),
                 quantity: z.number().int().positive().max(1000).default(1),
                 comment: optionalText(500),
               }),
@@ -825,9 +834,19 @@ export const ordersRouter = router({
                       widthCm: Number.parseFloat(stock.widthCm),
                       heightCm: Number.parseFloat(stock.heightCm),
                     }),
-                ...(item.cornice === undefined || item.cornice === null
+                // Код карниза — в `code`, тип из справочника — в описании;
+                // без кода типом становится сам `code`, как было раньше.
+                ...(item.corniceCode !== undefined && item.corniceCode !== null
+                  ? { cornice: { code: item.corniceCode, meters: null, description: item.cornice ?? null } }
+                  : item.cornice === undefined || item.cornice === null
+                    ? {}
+                    : { cornice: { code: item.cornice, meters: null, description: null } }),
+                ...(item.plastic === undefined || item.plastic === null
                   ? {}
-                  : { cornice: { code: item.cornice, meters: null, description: null } }),
+                  : { plastic: { code: item.plastic, meters: null, description: null } }),
+                ...(item.pipe === undefined || item.pipe === null
+                  ? {}
+                  : { pipe: { code: item.pipe, meters: null, description: null } }),
                 ...(item.comment === undefined ? {} : { comment: item.comment }),
               },
               created.id,

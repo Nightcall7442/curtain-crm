@@ -154,7 +154,7 @@ export function ProductionPipeline({
                 </span>
 
                 <span
-                  className="font-hero text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums"
+                  className="font-figure text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums"
                   style={{ color, textShadow: `0 0 18px color-mix(in srgb, ${color} 45%, transparent)` }}
                 >
                   {stage.count}

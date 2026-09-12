@@ -15,6 +15,7 @@ import {
   ORDER_STATUS_LABELS_RU,
   ORDER_STATUS_REQUIRED_ASSIGNEE,
   OrderStatus,
+  OrderType,
   requiresComment,
   Role,
   ROLE_LABELS_RU,
@@ -424,13 +425,23 @@ export async function changeOrderStatus(
     `not_required` в условии — защита от повторного запуска: заказ может
     вернуться на проверку админом и уйти в цех второй раз, а карниз к тому
     времени уже могут вешать. Затирать чужую работу откатом статуса нельзя.
+
+    Готовые шторы проверку админом минуют: продажа уходит из «Новый» сразу
+    на назначение установщика. Карниз к такой продаже раньше терялся —
+    карнизчики о нём не узнавали. Поэтому для них точка отправки — этот
+    первый переход; продажа без установки (сразу «Выполнен») карниз не
+    запускает: клиент увозит его сам.
   */
+  const leavesIntake =
+    fromStatus === OrderStatus.PENDING_ADMIN_REVIEW ||
+    fromStatus === OrderStatus.REJECTED_TO_CEO ||
+    (order.orderType === OrderType.READY_MADE && fromStatus === OrderStatus.NEW);
   const startsCornice =
     order.corniceStatus === CorniceStatus.NOT_REQUIRED &&
-    (fromStatus === OrderStatus.PENDING_ADMIN_REVIEW ||
-      fromStatus === OrderStatus.REJECTED_TO_CEO) &&
+    leavesIntake &&
     !wasRollback &&
     toStatus !== OrderStatus.CANCELLED &&
+    toStatus !== OrderStatus.COMPLETED &&
     (await orderNeedsCornice(executor, order.id));
 
   const [updated] = await executor

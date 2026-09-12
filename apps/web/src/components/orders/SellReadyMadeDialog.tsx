@@ -33,6 +33,9 @@ export function SellReadyMadeDialog({
   const [clientPhone, setClientPhone] = useState('');
   const [model, setModel] = useState('');
   const [cornice, setCornice] = useState('');
+  /** Коды со склада — карниза и пластика. С ними продажа уходит карнизчику. */
+  const [corniceCode, setCorniceCode] = useState('');
+  const [plasticCode, setPlasticCode] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
@@ -74,6 +77,8 @@ export function SellReadyMadeDialog({
     setClientPhone('');
     setModel('');
     setCornice('');
+    setCorniceCode('');
+    setPlasticCode('');
     setQuantity('1');
     setWorkPrice('');
     setDeposit('');
@@ -101,6 +106,12 @@ export function SellReadyMadeDialog({
           ...(stockItemId === null ? {} : { readyMadeItemId: stockItemId }),
           ...(model.trim().length > 0 ? { model: model.trim() } : {}),
           ...(cornice.length > 0 ? { cornice } : {}),
+          ...(cornice.length > 0 && corniceCode.trim().length > 0
+            ? { corniceCode: corniceCode.trim() }
+            : {}),
+          ...(cornice.length > 0 && plasticCode.trim().length > 0
+            ? { plastic: plasticCode.trim() }
+            : {}),
           ...(comment.trim().length > 0 ? { comment: comment.trim() } : {}),
         },
       ],
@@ -195,6 +206,29 @@ export function SellReadyMadeDialog({
                 }))}
               />
             </Field>
+
+            {cornice.length > 0 && (
+              <>
+                <Field label="Код карниза" hint="С кодами заказ уйдёт карнизчику">
+                  <Input
+                    value={corniceCode}
+                    onChange={(event) => {
+                      setCorniceCode(event.target.value);
+                    }}
+                    placeholder="Например: К-104"
+                  />
+                </Field>
+                <Field label="Код пластика">
+                  <Input
+                    value={plasticCode}
+                    onChange={(event) => {
+                      setPlasticCode(event.target.value);
+                    }}
+                    placeholder="Например: ПЛ-12"
+                  />
+                </Field>
+              </>
+            )}
 
             <Field label="Количество">
               <Input

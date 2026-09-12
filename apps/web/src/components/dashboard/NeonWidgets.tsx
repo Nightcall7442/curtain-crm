@@ -92,7 +92,7 @@ export function HeroCard({
       <h2 className="font-hero text-heading font-semibold tracking-[-0.01em]">{title}</h2>
 
       <p className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="hero-number font-hero text-[44px] font-extrabold leading-none tracking-[-0.04em] [font-variant-numeric:tabular-nums]">
+        <span className="hero-number font-figure text-[46px] font-semibold leading-none tracking-[-0.02em] [font-variant-numeric:tabular-nums]">
           {value}
         </span>
         {unit !== undefined && <span className="text-subhead font-medium opacity-80">{unit}</span>}
@@ -112,7 +112,7 @@ export function HeroCard({
             </>
           );
           const className =
-            'hero-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption backdrop-blur-sm';
+            'hero-chip inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption';
           return (
             <li key={chip.label}>
               {chip.href === undefined ? (
@@ -166,7 +166,7 @@ export function PulseCard({
             <div key={stat.label} className="min-w-[120px]">
               <dt className="text-footnote text-muted">{stat.label}</dt>
               <dd className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="font-hero text-display font-extrabold leading-none tracking-[-0.03em] text-primary [font-variant-numeric:tabular-nums]">
+                <span className="font-figure text-display font-semibold leading-none tracking-[-0.02em] text-primary [font-variant-numeric:tabular-nums]">
                   {stat.value}
                 </span>
                 <DeltaPill value={stat.delta} />
@@ -224,7 +224,7 @@ export function BigNumberCard({
     <>
       <h2 className="section-title">{title}</h2>
       <p className="mt-3 flex items-end gap-4">
-        <span className="font-hero text-[48px] font-extrabold leading-none tracking-[-0.04em] text-primary [font-variant-numeric:tabular-nums]">
+        <span className="font-figure text-[50px] font-semibold leading-none tracking-[-0.02em] text-primary [font-variant-numeric:tabular-nums]">
           {value}
         </span>
         <Dots lit={litDots} className="mb-2 w-[92px]" />
@@ -315,7 +315,7 @@ export function AttentionCard({
 
       {headline !== undefined && (
         <p className="mt-4 flex items-end gap-3">
-          <span className="font-hero text-[40px] font-extrabold leading-none tracking-[-0.04em] text-primary [font-variant-numeric:tabular-nums]">
+          <span className="font-figure text-[42px] font-semibold leading-none tracking-[-0.02em] text-primary [font-variant-numeric:tabular-nums]">
             {headline.value}
           </span>
           <span className="mb-1 text-footnote text-muted">{headline.caption}</span>

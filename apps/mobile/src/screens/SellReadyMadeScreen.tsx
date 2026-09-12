@@ -12,7 +12,14 @@ import {
   View,
 } from 'react-native';
 
-import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
+import {
+  CatalogKind,
+  curtainMountKindOf,
+  CurtainMountKind,
+  formatMoney,
+  MATERIAL_CODE_KINDS,
+  parseMoney,
+} from '@curtain-crm/shared';
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
@@ -94,6 +101,29 @@ export function SellReadyMadeScreen(): ReactElement {
     [catalog.data],
   );
 
+  /**
+   * Крепление модели — из справочника: у трубных («Труба», «Киприк»)
+   * спрашивается труба, у остальных — карниз с пластиком. Как в пошиве.
+   */
+  const mountByModel = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const entry of catalog.data ?? []) {
+      if (entry.kind === CatalogKind.CURTAIN_MODEL) map.set(entry.name, entry.mountKind);
+    }
+    return map;
+  }, [catalog.data]);
+  const mountOf = (model: string): CurtainMountKind => curtainMountKindOf(mountByModel.get(model));
+
+  /** Мини-описание складского кода — как в заказе на пошив: «п-31» = «П-31». */
+  const describeCode = (kind: string, code: string): string | null => {
+    const needle = code.trim().toLowerCase();
+    if (needle === '') return null;
+    const entry = (catalog.data ?? []).find(
+      (row) => row.kind === kind && row.name.trim().toLowerCase() === needle,
+    );
+    return entry?.description ?? null;
+  };
+
   const updateItem = (id: number, patch: Partial<DraftItem>): void => {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
@@ -131,7 +161,16 @@ export function SellReadyMadeScreen(): ReactElement {
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.readyMadeItemId === null ? {} : { readyMadeItemId: item.readyMadeItemId }),
         ...(item.model.trim() === '' ? {} : { model: item.model.trim() }),
+        ...(mountOf(item.model) === CurtainMountKind.PIPE && item.pipe.trim() !== ''
+          ? { pipe: item.pipe.trim() }
+          : {}),
         ...(item.cornice.trim() === '' ? {} : { cornice: item.cornice.trim() }),
+        ...(item.cornice.trim() === '' || item.corniceCode.trim() === ''
+          ? {}
+          : { corniceCode: item.corniceCode.trim() }),
+        ...(item.cornice.trim() === '' || item.plastic.trim() === ''
+          ? {}
+          : { plastic: item.plastic.trim() }),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
       })),
       ...(needsInstallation === 'yes'
@@ -264,6 +303,20 @@ export function SellReadyMadeScreen(): ReactElement {
               а не переписывает её описание: размер, цвет и код приезжают со
               склада, а остаток списывается при продаже.
             */}
+            {mountOf(item.model) === CurtainMountKind.PIPE && (
+              <Field label={m('create.pipe')} hint={m('sell.pipeHint')}>
+                <Input
+                  value={item.pipe}
+                  onChangeText={(pipe) => {
+                    updateItem(item.id, { pipe });
+                  }}
+                  placeholder={m('create.examplePipe')}
+                  autoCapitalize="characters"
+                />
+                <CodeDescription description={describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe)} />
+              </Field>
+            )}
+
             <Field label={m('create.cornice')} hint={m('sell.corniceHint')}>
               <CatalogPicker
                 value={item.cornice}
@@ -275,6 +328,43 @@ export function SellReadyMadeScreen(): ReactElement {
                 }}
               />
             </Field>
+
+            {/*
+              Коды со склада показываются только при выбранном карнизе: без
+              него продажа к карнизчику не идёт, и два лишних поля на каждую
+              позицию только мешали бы. С ними заказ уходит карнизчикам —
+              как заказ на пошив после проверки админом.
+            */}
+            {item.cornice.trim() !== '' && (
+              <>
+                <Field label={m('sell.corniceCode')} hint={m('sell.corniceCodeHint')}>
+                  <Input
+                    value={item.corniceCode}
+                    onChangeText={(corniceCode) => {
+                      updateItem(item.id, { corniceCode });
+                    }}
+                    placeholder={m('create.exampleCornice')}
+                    autoCapitalize="characters"
+                  />
+                  <CodeDescription
+                    description={describeCode(MATERIAL_CODE_KINDS.cornice, item.corniceCode)}
+                  />
+                </Field>
+                <Field label={m('sell.plasticCode')}>
+                  <Input
+                    value={item.plastic}
+                    onChangeText={(plastic) => {
+                      updateItem(item.id, { plastic });
+                    }}
+                    placeholder={m('create.examplePlastic')}
+                    autoCapitalize="characters"
+                  />
+                  <CodeDescription
+                    description={describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic)}
+                  />
+                </Field>
+              </>
+            )}
 
             {item.model.trim() !== '' && (
               <View style={styles.stock}>
@@ -452,6 +542,11 @@ interface DraftItem {
   readonly model: string;
   /** Карниз из справочника. Пусто — продают одни шторы. */
   readonly cornice: string;
+  /** Коды со склада — карниза и пластика к нему. Только при выбранном карнизе. */
+  readonly corniceCode: string;
+  readonly plastic: string;
+  /** Труба — у трубных моделей вместо карниза. */
+  readonly pipe: string;
   readonly quantity: string;
   readonly comment: string;
   /**
@@ -465,6 +560,9 @@ const emptyItem = (id: number): DraftItem => ({
   id,
   model: '',
   cornice: '',
+  corniceCode: '',
+  plastic: '',
+  pipe: '',
   quantity: '1',
   comment: '',
   readyMadeItemId: null,
@@ -498,6 +596,12 @@ function toMoney(value: string): number {
   const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** Строка под кодом: что это за материал по справочнику, если код там есть. */
+function CodeDescription({ description }: { readonly description: string | null }): ReactElement | null {
+  if (description === null) return null;
+  return <Text style={styles.codeDescription}>{description}</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -546,6 +650,11 @@ const styles = StyleSheet.create({
   stock: {
     marginTop: spacing.sm,
     gap: spacing.xs,
+  },
+  codeDescription: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   stockTitle: {
     ...typography.caption,

@@ -35,8 +35,10 @@ import {
   type Database,
 } from '@curtain-crm/db';
 import {
+  CorniceStatus,
   moneyToDecimalString,
   ORDER_STATUS_LABELS_RU,
+  OrderItemKind,
   OrderStatus,
   OrderType,
   parseMoney,
@@ -621,6 +623,17 @@ async function run(db: Database): Promise<void> {
 
   const readyInstall = await makeReadyMadeOrder('с установкой', '+998901112255');
 
+  // Карниз к готовым шторам: продажа минует проверку админом, и карниз
+  // должен уйти карнизчикам на первом же переходе — иначе о нём не узнают.
+  await db.insert(orderItems).values({
+    orderId: readyInstall.id,
+    position: 0,
+    kind: OrderItemKind.OTHER,
+    quantity: 1,
+    cornice: { code: 'К-104', meters: null, description: 'Круглый металл' },
+    plastic: { code: 'ПЛ-12', meters: null, description: null },
+  });
+
   await db.transaction(async (tx) => {
     await changeOrderStatus(tx, {
       orderId: readyInstall.id,
@@ -635,6 +648,11 @@ async function run(db: Database): Promise<void> {
     'ready_made: продажа с установкой уходит на назначение установщика',
     sentToInstall?.status === OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
     sentToInstall?.status ?? 'null',
+  );
+  check(
+    'ready_made: карниз к продаже уходит карнизчикам',
+    sentToInstall?.corniceStatus === CorniceStatus.PENDING,
+    sentToInstall?.corniceStatus ?? 'null',
   );
 
   const [customDraft] = await db
