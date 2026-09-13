@@ -1,12 +1,31 @@
 'use client';
 
-import { STOCK_KIND_LABELS_RU, STOCK_KINDS, type StockKind } from '@curtain-crm/shared';
+import {
+  formatMoney,
+  parseMoney,
+  PURCHASE_UNIT_LABELS_RU,
+  PURCHASE_UNITS,
+  STOCK_KIND_LABELS_RU,
+  STOCK_KINDS,
+  type PurchaseUnit,
+  type StockKind,
+} from '@curtain-crm/shared';
 import { Download, FileText, Plus, Upload } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { useRef, useState, type ReactElement } from 'react';
 
 import { useToast } from '@/components/providers/ToastProvider';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
-import { Button, Field, fieldErrors, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import {
+  Button,
+  Field,
+  fieldErrors,
+  FormError,
+  Input,
+  Modal,
+  MoneyInput,
+  Select,
+} from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { exportToXlsx, readXlsx } from '@/lib/spreadsheet';
 import { trpc } from '@/lib/trpc';
@@ -28,7 +47,7 @@ import { cn } from '@/lib/utils';
 /** Виды, которые лежат на складе. Модели, цвета и прочее — в настройках. */
 const KIND_SET = new Set<string>(STOCK_KINDS);
 
-const HEADERS = ['Код', 'Вид', 'Описание'] as const;
+const HEADERS = ['Код', 'Вид', 'Описание', 'Цена', 'Ед.'] as const;
 
 /**
  * «Портьера» из файла обратно в вид справочника.
@@ -106,6 +125,8 @@ export default function WarehousePage(): ReactElement {
   const [kind, setKind] = useState<StockKind>('portiere_code');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [unit, setUnit] = useState<PurchaseUnit | ''>('');
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StockKind | 'all'>('all');
@@ -124,6 +145,8 @@ export default function WarehousePage(): ReactElement {
     setEditingId(null);
     setCode('');
     setDescription('');
+    setPrice('');
+    setUnit('');
   };
 
   const create = trpc.catalog.create.useMutation({
@@ -199,6 +222,8 @@ export default function WarehousePage(): ReactElement {
     row.name,
     STOCK_KIND_LABELS_RU[row.kind as StockKind],
     row.description ?? '',
+    row.price === null ? '' : formatMoney(parseMoney(row.price)),
+    row.unit === null ? '' : PURCHASE_UNIT_LABELS_RU[row.unit],
   ]);
 
   const errors = fieldErrors(editingId === null ? create.error : update.error);
@@ -456,6 +481,33 @@ export default function WarehousePage(): ReactElement {
                 ),
             },
             {
+              /*
+                Цена продажи — её ставит руководство; без неё код с кассы не
+                продать. Единица нужна кассе, чтобы спросить метры или штуки.
+              */
+              key: 'price',
+              header: 'Цена',
+              align: 'right',
+              sortValue: (row) => (row.price === null ? 0 : parseMoney(row.price)),
+              render: (row) =>
+                row.price === null ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <span className="font-figure tabular-nums">
+                    {formatMoney(parseMoney(row.price))}
+                    {row.unit === null ? '' : ` / ${PURCHASE_UNIT_LABELS_RU[row.unit]}`}
+                  </span>
+                ),
+            },
+            {
+              /* QR с кодом — на бирку: на кассе его сканируют вместо набора. */
+              key: 'qr',
+              header: 'QR',
+              render: (row) => (
+                <QRCode value={row.name} size={40} bgColor="transparent" fgColor="currentColor" />
+              ),
+            },
+            {
               key: 'actions',
               header: '',
               align: 'right',
@@ -471,6 +523,8 @@ export default function WarehousePage(): ReactElement {
                       setKind(row.kind as StockKind);
                       setCode(row.name);
                       setDescription(row.description ?? '');
+                      setPrice(row.price === null ? '' : String(parseMoney(row.price) / 100));
+                      setUnit(row.unit ?? '');
                       setFormOpen(true);
                     }}
                   >
@@ -524,6 +578,18 @@ export default function WarehousePage(): ReactElement {
             ))}
           </tbody>
         </table>
+
+        {/* Бирки: QR с кодом и подпись — вырезать и клеить на рулон. */}
+        <h1 style={{ pageBreakBefore: 'always' }}>Бирки</h1>
+        <div className="print-labels">
+          {visible.map((row) => (
+            <div key={row.id} className="print-label">
+              <QRCode value={row.name} size={64} />
+              <strong>{row.name}</strong>
+              <span>{row.description ?? STOCK_KIND_LABELS_RU[row.kind as StockKind]}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <Modal
@@ -539,9 +605,12 @@ export default function WarehousePage(): ReactElement {
               loading={create.isPending || update.isPending}
               disabled={code.trim() === ''}
               onClick={() => {
+                const parsedPrice = Number.parseFloat(price.replace(',', '.'));
                 const card = {
                   name: code.trim(),
                   description: description.trim() === '' ? null : description.trim(),
+                  price: Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : null,
+                  unit: unit === '' ? null : unit,
                 };
 
                 if (editingId === null) {
@@ -608,6 +677,24 @@ export default function WarehousePage(): ReactElement {
               placeholder="Например: тёмная сторона, плотный блэкаут"
             />
           </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Цена продажи" hint="За метр или штуку — для кассы" error={errors['price']}>
+              <MoneyInput value={price} onChange={setPrice} placeholder="0" />
+            </Field>
+            <Field label="Единица" error={errors['unit']}>
+              <Select
+                value={unit}
+                onChange={(event) => {
+                  setUnit(event.target.value as PurchaseUnit | '');
+                }}
+                options={[
+                  { value: '', label: '—' },
+                  ...PURCHASE_UNITS.map((value) => ({ value, label: PURCHASE_UNIT_LABELS_RU[value] })),
+                ]}
+              />
+            </Field>
+          </div>
         </div>
       </Modal>
     </div>

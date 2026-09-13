@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle } from '../components/Card';
+import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
@@ -65,6 +66,8 @@ export function CashDeskScreen(): ReactElement {
   const [method, setMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [clientName, setClientName] = useState('');
   const [comment, setComment] = useState('');
+  /* Какая строка ждёт код с камеры: QR с бирки вместо набора вручную. */
+  const [scanningKey, setScanningKey] = useState<number | null>(null);
 
   const sell = trpc.retail.sellByCodes.useMutation({
     async onSuccess(sale) {
@@ -108,6 +111,9 @@ export function CashDeskScreen(): ReactElement {
               }}
               onRemove={() => {
                 setLines((current) => current.filter((entry) => entry.key !== line.key));
+              }}
+              onScan={() => {
+                setScanningKey(line.key);
               }}
             />
           ))}
@@ -195,6 +201,17 @@ export function CashDeskScreen(): ReactElement {
           )}
         </Pressable>
       </View>
+      <CodeScanner
+        visible={scanningKey !== null}
+        label={m('cash.codePlaceholder')}
+        onScan={(code) => {
+          if (scanningKey !== null) updateLine(scanningKey, { code });
+          setScanningKey(null);
+        }}
+        onClose={() => {
+          setScanningKey(null);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -217,12 +234,14 @@ function CodeLine({
   canRemove,
   onChange,
   onRemove,
+  onScan,
 }: {
   readonly line: CartLine;
   readonly index: number;
   readonly canRemove: boolean;
   readonly onChange: (patch: Partial<CartLine>) => void;
   readonly onRemove: () => void;
+  readonly onScan: () => void;
 }): ReactElement {
   const { t, m } = useLocale();
   const code = line.code.trim();
@@ -273,6 +292,9 @@ function CodeLine({
                   ? m('cash.codeNoPrice')
                   : `${item.description ?? item.name} · ${formatMoney(parseMoney(item.price))} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
         </Text>
+        <Pressable onPress={onScan} hitSlop={8} accessibilityRole="button" accessibilityLabel={m('create.scanA11y')}>
+          <Icon name="camera" size={18} color={colors.accent} />
+        </Pressable>
         {canRemove && (
           <Pressable onPress={onRemove} hitSlop={8} accessibilityRole="button" accessibilityLabel={m('common.close')}>
             <Icon name="remove" size={16} color={colors.textMuted} />

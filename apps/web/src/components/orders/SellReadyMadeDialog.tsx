@@ -1,6 +1,14 @@
 'use client';
 
-import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
+import {
+  CatalogKind,
+  formatMoney,
+  parseMoney,
+  PAYMENT_METHOD_LABELS_RU,
+  PAYMENT_METHODS,
+  PaymentMethod,
+  type PaymentMethod as PaymentMethodName,
+} from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
 import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
@@ -39,6 +47,7 @@ export function SellReadyMadeDialog({
   const [quantity, setQuantity] = useState('1');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState(false);
   const [installAddress, setInstallAddress] = useState('');
@@ -97,6 +106,7 @@ export function SellReadyMadeDialog({
       clientPhone: clientPhone.trim(),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
+      depositMethod,
       needsInstallation,
       /* Одна позиция: несколько строк в продаже набирают в мобильном
          приложении, за кассой. Здесь форма осталась прежней. */
@@ -339,6 +349,19 @@ export function SellReadyMadeDialog({
                 value={deposit}
                 onChange={setDeposit}
                 placeholder="0"
+              />
+            </Field>
+
+            <Field label="Способ оплаты">
+              <Select
+                value={depositMethod}
+                onChange={(event) => {
+                  setDepositMethod(event.target.value as PaymentMethodName);
+                }}
+                options={PAYMENT_METHODS.map((value) => ({
+                  value,
+                  label: PAYMENT_METHOD_LABELS_RU[value],
+                }))}
               />
             </Field>
 

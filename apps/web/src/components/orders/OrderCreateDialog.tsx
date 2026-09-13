@@ -16,6 +16,10 @@ import {
   type CorniceRotation,
   type Priority as PriorityName,
   PRIORITY_LABELS_RU,
+  PAYMENT_METHOD_LABELS_RU,
+  PAYMENT_METHODS,
+  PaymentMethod,
+  type PaymentMethod as PaymentMethodName,
 } from '@curtain-crm/shared';
 import { Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState, type ReactElement } from 'react';
@@ -204,6 +208,7 @@ export function OrderCreateDialog({
   const [branchId, setBranchId] = useState('');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
 
   const utils = trpc.useUtils();
@@ -348,6 +353,7 @@ export function OrderCreateDialog({
       ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
+      depositMethod,
       items: items.map((item) => {
         /*
           Строки материала, которых у этой модели не бывает, не уезжают на
@@ -544,6 +550,19 @@ export function OrderCreateDialog({
                 value={deposit}
                 onChange={setDeposit}
                 placeholder={'2\u00A0000\u00A0000'}
+              />
+            </Field>
+
+            <Field label="Способ оплаты">
+              <Select
+                value={depositMethod}
+                onChange={(event) => {
+                  setDepositMethod(event.target.value as PaymentMethodName);
+                }}
+                options={PAYMENT_METHODS.map((value) => ({
+                  value,
+                  label: PAYMENT_METHOD_LABELS_RU[value],
+                }))}
               />
             </Field>
           </div>

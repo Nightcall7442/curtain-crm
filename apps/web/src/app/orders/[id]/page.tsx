@@ -31,6 +31,7 @@ import { OrderPackList } from '@/components/orders/OrderPackList';
 import { stageFeesFromOrder } from '@/components/orders/StageFeesFields';
 import { OrderPhotos } from '@/components/orders/OrderPhotos';
 import { ItemMeters } from '@/components/orders/ItemMeters';
+import { OrderPayments } from '@/components/orders/OrderPayments';
 import { OrderPurchases } from '@/components/orders/OrderPurchases';
 import { VoiceRecorder } from '@/components/orders/VoiceRecorder';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -610,6 +611,13 @@ export default function OrderDetailPage(): ReactElement {
       {ORDER_STATUS_PHASE[data.status] === 'installation' && <OrderPackList orderId={orderId} />}
 
       {/* --- Закупки и фото ------------------------------------------------- */}
+      {data.workPrice !== null && (
+        <OrderPayments
+          orderId={orderId}
+          remaining={data.remainingPayment}
+          canAccept={isManagement || data.creator.id === user?.id || data.installer?.id === user?.id}
+        />
+      )}
       <OrderPurchases orderId={orderId} />
       <OrderPhotos orderId={orderId} orderStatus={data.status} />
 
