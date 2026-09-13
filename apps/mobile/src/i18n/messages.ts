@@ -952,7 +952,7 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'notif.noUnread': 'O\'qilmaganlar yo\'q',
   'notif.noImportant': 'Muhim bildirishnomalar yo\'q',
   'notif.none': 'Hozircha bildirishnomalar yo\'q',
-  'attendance.now': 'Hozir sexda',
+  'attendance.now': 'Hozir ishda',
   'attendance.nobodyOpened': 'Hech kim smena ochmagan',
   'attendance.nobodyOpenedHint': 'Bu yerda belgilanganlar paydo bo\'ladi',
   'attendance.sinceTrip': '{start} dan · {trip} dan o\'rnatishda',
