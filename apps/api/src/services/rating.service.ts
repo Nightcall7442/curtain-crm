@@ -286,10 +286,20 @@ async function collectRoleRows(
       group by o.installer_id`),
     // Карниз закрывается своей отметкой, а не статусом заказа: считаем по
     // дате «карниз готов», и заказ при этом может быть ещё не закрыт.
+    // Балл — за каждую вырезку, а не за заказ: в заказе на пять окон
+    // карнизчик режет пять карнизов. Вырезка — позиция с карнизом,
+    // пластиком или трубой, помноженная на количество; заказ без таких
+    // позиций (старые данные) считается за одну.
     db.execute(sql`
       select o.cornice_installer_id as user_id,
-             count(*) as orders_count
+             sum(greatest(cuts.n, 1)) as orders_count
       from orders o
+      join lateral (
+        select coalesce(sum(i.quantity), 0) as n
+        from order_items i
+        where i.order_id = o.id
+          and (i.cornice is not null or i.plastic is not null or i.pipe is not null)
+      ) cuts on true
       where ${corniceDoneInPeriod(bounds, branchId)}
       group by o.cornice_installer_id`),
   ]);
