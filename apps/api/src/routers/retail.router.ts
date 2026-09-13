@@ -1,4 +1,5 @@
 import {
+  catalogItems,
   retailItems,
   retailSaleItems,
   retailSales,
@@ -14,6 +15,7 @@ import {
   paymentMethodSchema,
   purchaseCategorySchema,
   purchaseUnitSchema,
+  STOCK_KINDS,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -426,6 +428,138 @@ export const retailRouter = router({
 
         return loaded;
       });
+    }),
+
+  /**
+   * Чек по кодам склада.
+   *
+   * Продавец набирает код с бирки и количество; название, единица и цена
+   * берутся из справочника кодов (`catalog_items`), цену туда ставит
+   * руководство. Код без цены продать нельзя — это значит, что руководство
+   * ещё не решило, почём его отдавать. Остатков по кодам система не ведёт,
+   * поэтому ничего не списывается. Деньги — в кассу строкой «прочие продажи».
+   */
+  sellByCodes: orderIntakeProcedure
+    .input(
+      z.object({
+        branchId: idSchema.optional(),
+        clientName: optionalText(200),
+        comment: optionalText(500),
+        method: paymentMethodSchema.default(PaymentMethod.CASH),
+        lines: z
+          .array(z.object({ code: nonEmptyString(200), quantity: quantitySchema }))
+          .min(1, 'Добавьте хотя бы один товар')
+          .max(50),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const branchId = input.branchId ?? ctx.user.primaryBranchId;
+      if (branchId === null || branchId === undefined) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Укажите филиал: у вас не задан основной филиал',
+        });
+      }
+
+      return ctx.db.transaction(async (tx) => {
+        const codes = [...new Set(input.lines.map((line) => line.code.trim().toLowerCase()))];
+        const found = await tx
+          .select()
+          .from(catalogItems)
+          .where(
+            and(
+              inArray(catalogItems.kind, [...STOCK_KINDS]),
+              eq(catalogItems.isActive, true),
+              inArray(sql`lower(${catalogItems.name})`, codes),
+            ),
+          );
+        const byCode = new Map(found.map((item) => [item.name.trim().toLowerCase(), item]));
+
+        for (const line of input.lines) {
+          const item = byCode.get(line.code.trim().toLowerCase());
+          if (item === undefined) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: `Код «${line.code}» на складе не найден` });
+          }
+          if (item.price === null || item.unit === null) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `У кода «${item.name}» нет цены — её ставит руководство на складе`,
+            });
+          }
+        }
+
+        const [sale] = await tx
+          .insert(retailSales)
+          .values({
+            branchId,
+            sellerId: ctx.user.id,
+            clientName: input.clientName ?? null,
+            clientPhone: null,
+            comment: input.comment ?? null,
+          })
+          .returning();
+        if (sale === undefined) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Чек не создан' });
+        }
+
+        for (const line of input.lines) {
+          const item = byCode.get(line.code.trim().toLowerCase());
+          if (item === undefined || item.price === null || item.unit === null) continue;
+          await tx.insert(retailSaleItems).values({
+            saleId: sale.id,
+            catalogItemId: item.id,
+            itemName: item.description === null ? item.name : `${item.name} · ${item.description}`,
+            unit: item.unit,
+            unitPrice: item.price,
+            quantity: toQuantity(line.quantity),
+          });
+        }
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'retail_sale.created',
+          entityType: 'retail_sale',
+          entityId: sale.id,
+          details: { lines: input.lines.length, method: input.method },
+          ipAddress: ctx.ipAddress,
+        });
+
+        const loaded = await loadSale(tx, sale.id);
+        await recordPayment(tx, {
+          branchId,
+          kind: PaymentKind.OTHER,
+          method: input.method,
+          amount: parseMoney(loaded.total),
+          retailSaleId: sale.id,
+          receivedBy: ctx.user.id,
+        });
+
+        return loaded;
+      });
+    }),
+
+  /** Код склада для кассы: описание, цена, единица — по мере набора кода. */
+  codeLookup: protectedProcedure
+    .input(z.object({ code: z.string().trim().min(1).max(200) }))
+    .query(async ({ ctx, input }) => {
+      const [item] = await ctx.db
+        .select({
+          id: catalogItems.id,
+          name: catalogItems.name,
+          description: catalogItems.description,
+          price: catalogItems.price,
+          unit: catalogItems.unit,
+        })
+        .from(catalogItems)
+        .where(
+          and(
+            inArray(catalogItems.kind, [...STOCK_KINDS]),
+            eq(catalogItems.isActive, true),
+            eq(sql`lower(${catalogItems.name})`, input.code.toLowerCase()),
+          ),
+        )
+        .limit(1);
+      return item ?? null;
     }),
 
   sales: router({
