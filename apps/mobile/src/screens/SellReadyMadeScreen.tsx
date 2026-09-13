@@ -67,6 +67,7 @@ export function SellReadyMadeScreen(): ReactElement {
   const [deposit, setDeposit] = useState('');
   const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [needsInstallation, setNeedsInstallation] = useState<'no' | 'yes'>('no');
+  const [needsRework, setNeedsRework] = useState<'no' | 'yes'>('no');
   const [installAddress, setInstallAddress] = useState('');
   const [showErrors, setShowErrors] = useState(false);
 
@@ -126,8 +127,12 @@ export function SellReadyMadeScreen(): ReactElement {
     async onSuccess(order) {
       await utils.orders.list.invalidate();
       Alert.alert(
-        needsInstallation === 'yes' ? m('sell.sold') : m('sell.soldClosed'),
-        needsInstallation === 'yes' ? m('sell.soldBodyInstall') : m('sell.soldBodyClosed'),
+        needsRework === 'yes' || needsInstallation === 'yes' ? m('sell.sold') : m('sell.soldClosed'),
+        needsRework === 'yes'
+          ? m('sell.soldBodyRework')
+          : needsInstallation === 'yes'
+            ? m('sell.soldBodyInstall')
+            : m('sell.soldBodyClosed'),
       );
       navigation.navigate('OrderDetail', { orderId: order.id });
     },
@@ -150,6 +155,7 @@ export function SellReadyMadeScreen(): ReactElement {
       deposit: toMoney(deposit),
       depositMethod,
       needsInstallation: needsInstallation === 'yes',
+      needsRework: needsRework === 'yes',
       items: items.map((item) => ({
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
         ...(item.readyMadeItemId === null ? {} : { readyMadeItemId: item.readyMadeItemId }),
@@ -468,6 +474,18 @@ export function SellReadyMadeScreen(): ReactElement {
         <Card>
           <CardTitle title={m('sell.installation')} icon="deadline" />
 
+          {/* Переделка — штору подгоняют в цеху; продажа уходит админу, как заказ. */}
+          <Field label={m('sell.needRework')}>
+            <ChipSelect
+              value={needsRework}
+              onChange={setNeedsRework}
+              options={[
+                { value: 'no', label: m('sell.reworkNo') },
+                { value: 'yes', label: m('sell.reworkYes') },
+              ]}
+            />
+          </Field>
+
           <Field label={m('sell.needInstall')}>
             <ChipSelect
               value={needsInstallation}
@@ -514,7 +532,11 @@ export function SellReadyMadeScreen(): ReactElement {
             <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.submitText}>
-              {needsInstallation === 'yes' ? m('sell.submitInstall') : m('sell.submitClose')}
+              {needsRework === 'yes'
+                ? m('sell.submitRework')
+                : needsInstallation === 'yes'
+                  ? m('sell.submitInstall')
+                  : m('sell.submitClose')}
             </Text>
           )}
         </Pressable>

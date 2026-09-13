@@ -720,6 +720,12 @@ export const ordersRouter = router({
             .max(20, 'Слишком много позиций в одной продаже'),
 
           needsInstallation: z.boolean(),
+          /**
+           * Переделка: штору с полки надо подогнать — укоротить, сузить.
+           * Тогда продажа не закрывается и не уходит установщику, а идёт
+           * на проверку админу, как обычный заказ, и оттуда в цех.
+           */
+          needsRework: z.boolean().default(false),
           /* Расценки установщику здесь нет — её назначает руководство,
              см. комментарий в `create`. */
           /** Обязателен, если нужна установка; иначе заказ закрывается сразу. */
@@ -906,11 +912,17 @@ export const ordersRouter = router({
 
         const { order } = await changeOrderStatus(tx, {
           orderId: created.id,
-          toStatus: input.needsInstallation
-            ? OrderStatus.PENDING_INSTALLATION_ASSIGNMENT
-            : OrderStatus.COMPLETED,
+          toStatus: input.needsRework
+            ? OrderStatus.PENDING_ADMIN_REVIEW
+            : input.needsInstallation
+              ? OrderStatus.PENDING_INSTALLATION_ASSIGNMENT
+              : OrderStatus.COMPLETED,
           actor: ctx.user,
-          comment: input.needsInstallation ? null : 'Продано без установки',
+          comment: input.needsRework
+            ? 'Готовые шторы: нужна переделка'
+            : input.needsInstallation
+              ? null
+              : 'Продано без установки',
           ipAddress: ctx.ipAddress,
         });
 

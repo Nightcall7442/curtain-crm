@@ -194,10 +194,13 @@ export function OrderCreateDialog({
   open,
   onClose,
   onCreated,
+  onSellReadyMade,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly onCreated: (orderId: number) => void;
+  /** Клиент пришёл за готовой шторой — переключиться на продажу с полки. */
+  readonly onSellReadyMade?: () => void;
 }): ReactElement {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -443,7 +446,14 @@ export function OrderCreateDialog({
 
         {/* --- Клиент --------------------------------------------------- */}
         <section>
-          <h3 className="section-title mb-2">Клиент</h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="section-title">Клиент</h3>
+            {onSellReadyMade !== undefined && (
+              <button type="button" className="text-caption text-accent hover:underline" onClick={onSellReadyMade}>
+                Готовые шторы →
+              </button>
+            )}
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Имя клиента" required error={errors['clientName']}>
               <Input

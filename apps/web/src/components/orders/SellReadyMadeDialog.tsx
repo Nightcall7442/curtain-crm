@@ -50,6 +50,7 @@ export function SellReadyMadeDialog({
   const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState(false);
+  const [needsRework, setNeedsRework] = useState(false);
   const [installAddress, setInstallAddress] = useState('');
   /**
    * Выбранная штора со склада. `null` — продажа без склада: так продают то,
@@ -108,6 +109,7 @@ export function SellReadyMadeDialog({
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
       depositMethod,
       needsInstallation,
+      needsRework,
       /* Одна позиция: несколько строк в продаже набирают в мобильном
          приложении, за кассой. Здесь форма осталась прежней. */
       items: [
@@ -144,7 +146,11 @@ export function SellReadyMadeDialog({
             Отмена
           </Button>
           <Button onClick={handleSubmit} loading={sell.isPending}>
-            {needsInstallation ? 'Продать, передать на установку' : 'Продать и закрыть'}
+            {needsRework
+              ? 'Продать, отправить на переделку'
+              : needsInstallation
+                ? 'Продать, передать на установку'
+                : 'Продать и закрыть'}
           </Button>
         </>
       }
@@ -379,7 +385,20 @@ export function SellReadyMadeDialog({
         </section>
 
         <section>
-          <h3 className="section-title mb-2">Установка</h3>
+          <h3 className="section-title mb-2">Переделка и установка</h3>
+
+          {/* Переделка — штору подгоняют в цеху; продажа уходит админу, как заказ. */}
+          <label className="mb-2 flex items-center gap-2 text-caption text-primary">
+            <input
+              type="checkbox"
+              checked={needsRework}
+              onChange={(event) => {
+                setNeedsRework(event.target.checked);
+              }}
+              className="h-4 w-4 accent-accent"
+            />
+            Требуется переделка — подогнать в цеху, заказ уйдёт админу на проверку
+          </label>
 
           <label className="flex items-center gap-2 text-caption text-primary">
             <input

@@ -469,7 +469,22 @@ export function OrderCreateScreen(): ReactElement {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
-          <CardTitle title={m('create.client')} icon="person" />
+          {/* Клиент пришёл за готовой шторой — сразу на продажу с полки, не через пошив. */}
+          <CardTitle
+            title={m('create.client')}
+            icon="person"
+            action={
+              <Pressable
+                onPress={() => {
+                  navigation.navigate('SellReadyMade');
+                }}
+                hitSlop={8}
+                accessibilityRole="link"
+              >
+                <Text style={styles.addItemText}>{m('work.readyMade')} →</Text>
+              </Pressable>
+            }
+          />
 
           <Field label={m('create.name')} required error={showErrors ? errors.clientName : undefined}>
             <Input
