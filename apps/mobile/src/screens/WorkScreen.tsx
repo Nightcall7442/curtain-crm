@@ -13,6 +13,7 @@ import { useState, type ReactElement } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
+import { CashCollectionCard } from '../components/CashCollectionCard';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { OrderCard } from '../components/OrderCard';
@@ -73,6 +74,9 @@ export function WorkScreen(): ReactElement {
    */
   const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
   const isManager = useIsManagement();
+  /* Без открытой смены сервер не примет ни одного действия по работе —
+     баннер говорит об этом до того, как кнопка ответит отказом. */
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
   const isCorniceInstaller = (user?.roles ?? []).includes(Role.CORNICE_INSTALLER);
   const filters = isCorniceInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
@@ -128,6 +132,19 @@ export function WorkScreen(): ReactElement {
 
   return (
     <View style={styles.container}>
+      {!isManager && shift.data === null && (
+        <Pressable
+          onPress={() => {
+            navigation.navigate('CheckInOut');
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.shiftBanner, pressed ? styles.createPressed : null]}
+        >
+          <Icon name="checkin" size={18} color={colors.warning} />
+          <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
+        </Pressable>
+      )}
+
       {/*
         Фильтры прокручиваются по горизонтали.
 
@@ -377,6 +394,7 @@ export function WorkScreen(): ReactElement {
         onRefresh={() => {
           void query.refetch();
         }}
+        ListHeaderComponent={filter === 'active' ? <CashCollectionCard /> : null}
         ListEmptyComponent={
           query.isLoading ? (
             <Skeleton />
@@ -398,6 +416,7 @@ export function WorkScreen(): ReactElement {
             priority={item.priority}
             deadline={item.deadline}
             workPrice={item.workPrice}
+            remaining={item.remainingPayment}
             onPress={() => {
               navigation.navigate('OrderDetail', { orderId: item.id });
             }}
@@ -456,6 +475,21 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: colors.headerText,
     fontWeight: '600',
+  },
+  shiftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  shiftBannerText: {
+    ...typography.caption,
+    color: colors.warning,
+    flex: 1,
   },
   createRow: {
     flexDirection: 'row',

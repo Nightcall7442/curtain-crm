@@ -25,6 +25,8 @@ import {
   orderPhotos,
   orders,
   orderStatusHistory,
+  cashCollections,
+  payments,
   payrollRecords,
   payrollSchemes,
   purchases,
@@ -43,6 +45,8 @@ import {
   OrderStatus,
   OrderType,
   parseMoney,
+  PaymentKind,
+  PaymentMethod,
   PayrollRecordStatus,
   PayrollSchemeType,
   Role,
@@ -61,6 +65,7 @@ import {
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
+import { cashOnHands, cashSummary, recordPayment } from '../services/payments.service';
 import { employeeRating } from '../services/rating.service';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
@@ -167,6 +172,7 @@ async function cleanup(db: Database): Promise<void> {
   const userIds = smokeUsers.map((row) => row.id);
 
   if (orderIds.length > 0) {
+    await db.delete(payments).where(inArray(payments.orderId, orderIds));
     await db.delete(purchases).where(inArray(purchases.orderId, orderIds));
     await db.delete(orderPhotos).where(inArray(orderPhotos.orderId, orderIds));
     await db.delete(orderComments).where(inArray(orderComments.orderId, orderIds));
@@ -179,6 +185,7 @@ async function cleanup(db: Database): Promise<void> {
   if (userIds.length > 0) {
     // audit_log — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
+    await db.delete(cashCollections).where(inArray(cashCollections.userId, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -917,6 +924,88 @@ async function run(db: Database): Promise<void> {
         ? '—'
         : moneyToDecimalString(parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount))
     }`,
+  );
+
+  /* ---------------------------- 6c. Касса -------------------------------- */
+
+  /*
+    Продавец принял предоплату у ящика — сразу в кассе. Установщик принял
+    остаток наличными у двери — на руках, пока директор не отметил сдачу.
+    Карта сдачи не требует. Отчёт дня должен разложить это по способам.
+  */
+  const [cashOrder] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Касса`,
+      clientPhone: '+998901112288',
+      createdBy: seller.id,
+      workPrice: '1000000.00',
+      deposit: '300000.00',
+      installerId: installer.id,
+    })
+    .returning();
+  if (cashOrder === undefined) throw new Error('заказ для кассы не создан');
+
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_DEPOSIT,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('300000'),
+    orderId: cashOrder.id,
+    receivedBy: seller.id,
+  });
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('500000'),
+    orderId: cashOrder.id,
+    receivedBy: installer.id,
+  });
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CARD,
+    amount: parseMoney('200000'),
+    orderId: cashOrder.id,
+    receivedBy: installer.id,
+  });
+
+  // Установщик сдал 400 000 из 500 000 наличных — инкассация.
+  await db.insert(cashCollections).values({
+    branchId: branch.id,
+    userId: installer.id,
+    amount: '400000.00',
+  });
+
+  const today = new Date();
+  const cashRange = {
+    from: new Date(today.getTime() - 60 * 60 * 1000),
+    to: new Date(today.getTime() + 60 * 60 * 1000),
+  };
+  const cash = await cashSummary(db, cashRange, branch.id, [admin.id]);
+  const depositRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_DEPOSIT);
+  const balanceRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_BALANCE);
+  check(
+    'касса: приходы разложены по источнику и способу',
+    depositRow?.byMethod.cash === parseMoney('300000') &&
+      balanceRow?.byMethod.cash === parseMoney('500000') &&
+      balanceRow.byMethod.card === parseMoney('200000') &&
+      cash.total === parseMoney('1000000'),
+    `итого ${moneyToDecimalString(cash.total)}`,
+  );
+  const installerCash = await cashOnHands(db, installer.id);
+  const sellerCash = await cashOnHands(db, seller.id);
+  check(
+    'касса: на руках — принятые наличные минус инкассация',
+    installerCash.onHands === parseMoney('100000') && sellerCash.onHands === parseMoney('300000'),
+    `установщик ${moneyToDecimalString(installerCash.onHands)}, продавец ${moneyToDecimalString(sellerCash.onHands)}`,
+  );
+  check(
+    'касса: в кассе — только сданное инкассацией и принятое руководством',
+    cash.collected === parseMoney('400000') && cash.inKassa === parseMoney('400000') - cash.cashOut.payroll - cash.cashOut.purchases,
+    `сдано ${moneyToDecimalString(cash.collected)}, в кассе ${moneyToDecimalString(cash.inKassa)}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

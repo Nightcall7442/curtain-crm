@@ -41,6 +41,7 @@ export function OrderCard({
   priority,
   deadline,
   workPrice,
+  remaining,
   onPress,
 }: {
   readonly orderNumber: string;
@@ -52,6 +53,8 @@ export function OrderCard({
   readonly deadline: string | null;
   /** `null` — сумму этому сотруднику не показывают. */
   readonly workPrice: string | null;
+  /** Остаток по заказу: `0` — оплачен целиком. Не передан — не показывается. */
+  readonly remaining?: string | null;
   readonly onPress: () => void;
 }): ReactElement {
   const { t, m } = useLocale();
@@ -92,7 +95,18 @@ export function OrderCard({
           {isOverdue ? m('orderCard.overdue', { date: formatIsoDateShort(deadline) }) : deadlineLabel}
         </Text>
         {workPrice !== null && (
-          <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
+          <View style={styles.money}>
+            <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
+            {/* Продавцу важно с первого взгляда: взяли деньги или нет. */}
+            {remaining != null &&
+              (parseMoney(remaining) > 0 ? (
+                <Text style={styles.unpaid}>
+                  {m('orderCard.remaining', { sum: formatMoneyShort(parseMoney(remaining)) })}
+                </Text>
+              ) : (
+                <Text style={styles.paid}>{m('orderCard.paid')}</Text>
+              ))}
+          </View>
         )}
       </View>
     </View>
@@ -215,6 +229,19 @@ const styles = StyleSheet.create({
   overdue: {
     color: colors.danger,
     fontWeight: '700',
+  },
+  money: {
+    alignItems: 'flex-end',
+  },
+  unpaid: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.warning,
+  },
+  paid: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.positive,
   },
   price: {
     fontSize: 15,

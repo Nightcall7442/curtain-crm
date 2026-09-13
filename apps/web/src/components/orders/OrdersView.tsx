@@ -511,6 +511,10 @@ export function OrdersView({
           setCreateOpen(false);
           router.push(`/orders/${orderId.toString()}`);
         }}
+        onSellReadyMade={() => {
+          setCreateOpen(false);
+          setSellReadyMadeOpen(true);
+        }}
       />
 
       <SellReadyMadeDialog

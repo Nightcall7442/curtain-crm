@@ -232,6 +232,34 @@
       "when": 1789163627912,
       "tag": "0032_order_items_ready_made_code",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789335534816,
+      "tag": "0033_cash_desk",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789335773651,
+      "tag": "0034_order_number_prefix",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789335878455,
+      "tag": "0035_retail_by_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789336773524,
+      "tag": "0036_notification_cash_collection_due",
+      "breakpoints": true
     }
   ]
 }

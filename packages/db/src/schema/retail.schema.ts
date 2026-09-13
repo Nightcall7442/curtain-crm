@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { branches } from './branches.schema';
+import { catalogItems } from './catalog.schema';
 import { purchaseCategoryEnum, purchaseUnitEnum } from './enums';
 import { users } from './users.schema';
 
@@ -138,9 +139,16 @@ export const retailSaleItems = pgTable(
 
     // restrict: позиция прайса, по которой что-то продано, не удаляется —
     // её снимают с продажи (`is_active = false`).
-    itemId: integer('item_id')
-      .notNull()
-      .references(() => retailItems.id, { onDelete: 'restrict' }),
+    // Пусто у строк, проданных по коду склада (`catalogItemId`).
+    itemId: integer('item_id').references(() => retailItems.id, { onDelete: 'restrict' }),
+
+    /**
+     * Продажа по коду склада: касса набирает код с бирки, цена — из
+     * справочника (`catalog_items.price`). Либо это, либо `itemId`.
+     */
+    catalogItemId: integer('catalog_item_id').references(() => catalogItems.id, {
+      onDelete: 'restrict',
+    }),
 
     itemName: text('item_name').notNull(),
     unit: purchaseUnitEnum('unit').notNull(),
@@ -159,6 +167,10 @@ export const retailSaleItems = pgTable(
     index('retail_sale_items_sale_idx').on(table.saleId),
     index('retail_sale_items_item_idx').on(table.itemId),
 
+    check(
+      'retail_sale_items_source',
+      sql`(${table.itemId} is not null) or (${table.catalogItemId} is not null)`,
+    ),
     check('retail_sale_items_quantity_positive', sql`${table.quantity} > 0`),
     check('retail_sale_items_price_non_negative', sql`${table.unitPrice} >= 0`),
   ],

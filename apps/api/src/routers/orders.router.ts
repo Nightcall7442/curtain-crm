@@ -35,6 +35,9 @@ import {
   OrderStatus,
   OrderType,
   parseMoney,
+  PaymentKind,
+  PaymentMethod,
+  paymentMethodSchema,
   prioritySchema,
   TransitionKind,
   type OrderPhase,
@@ -63,6 +66,7 @@ import {
   changeOrderStatus,
   loadOrderForUpdate,
 } from '../services/orderWorkflow.service';
+import { recordPayment } from '../services/payments.service';
 import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
@@ -303,9 +307,10 @@ export type OrderWithVisibleFees<T> = Omit<T, StageFeeField | ClientMoneyField> 
  * его этап не платят ничего.
  *
  * Деньги клиента (стоимость, предоплата, остаток) — то же правило, только
- * круг шире: их видят руководство и продавец, который эту цену назвал.
- * Цеху — швее, мастеру, ОТК, установщику, карнизчику — сколько заплатил
- * клиент, знать не нужно.
+ * круг шире: их видят руководство, продавец, который эту цену назвал, и
+ * установщик ЭТОГО заказа — остаток с клиента получает он, у двери, и без
+ * суммы ему нечего требовать. Цеху — швее, мастеру, ОТК, карнизчику —
+ * сколько заплатил клиент, знать не нужно.
  *
  * Фильтрация здесь, а не в компонентах: скрытая в вёрстке сумма всё равно
  * уехала бы клиенту в ответе tRPC.
@@ -315,7 +320,8 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   user: { readonly id: number; readonly roles: readonly Role[] },
 ): OrderWithVisibleFees<T> {
   const seesEverything = isManagement(user.roles);
-  const seesClientMoney = seesEverything || user.roles.includes(Role.SELLER);
+  const seesClientMoney =
+    seesEverything || user.roles.includes(Role.SELLER) || order.installerId === user.id;
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
@@ -532,6 +538,8 @@ export const ordersRouter = router({
 
         workPrice: moneySchema.default(0),
         deposit: moneySchema.default(0),
+        /** Чем внесена предоплата — строка кассы. Без предоплаты не нужен. */
+        depositMethod: paymentMethodSchema.default(PaymentMethod.CASH),
 
         /*
           Расценок здесь нет намеренно.
@@ -594,6 +602,16 @@ export const ordersRouter = router({
           .insert(orderItems)
           .values(input.items.map((item, index) => toOrderItemValues(item, created.id, index)));
 
+        // Предоплата при приёме — первый приход по заказу в кассу.
+        await recordPayment(tx, {
+          branchId,
+          kind: PaymentKind.ORDER_DEPOSIT,
+          method: input.depositMethod,
+          amount: parseMoney(input.deposit),
+          orderId: created.id,
+          receivedBy: ctx.user.id,
+        });
+
         // Первая запись истории: у создания нет исходного статуса.
         await tx.insert(orderStatusHistory).values({
           orderId: created.id,
@@ -653,6 +671,8 @@ export const ordersRouter = router({
 
           workPrice: moneySchema.default(0),
           deposit: moneySchema.default(0),
+          /** Чем заплатили — строка кассы «Готовые шторы». */
+          depositMethod: paymentMethodSchema.default(PaymentMethod.CASH),
 
           /**
            * Позиции продажи.
@@ -700,6 +720,12 @@ export const ordersRouter = router({
             .max(20, 'Слишком много позиций в одной продаже'),
 
           needsInstallation: z.boolean(),
+          /**
+           * Переделка: штору с полки надо подогнать — укоротить, сузить.
+           * Тогда продажа не закрывается и не уходит установщику, а идёт
+           * на проверку админу, как обычный заказ, и оттуда в цех.
+           */
+          needsRework: z.boolean().default(false),
           /* Расценки установщику здесь нет — её назначает руководство,
              см. комментарий в `create`. */
           /** Обязателен, если нужна установка; иначе заказ закрывается сразу. */
@@ -866,6 +892,15 @@ export const ordersRouter = router({
           comment: 'Продажа готовых штор',
         });
 
+        await recordPayment(tx, {
+          branchId,
+          kind: PaymentKind.READY_MADE,
+          method: input.depositMethod,
+          amount: parseMoney(input.deposit),
+          orderId: created.id,
+          receivedBy: ctx.user.id,
+        });
+
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'order.created',
@@ -877,11 +912,17 @@ export const ordersRouter = router({
 
         const { order } = await changeOrderStatus(tx, {
           orderId: created.id,
-          toStatus: input.needsInstallation
-            ? OrderStatus.PENDING_INSTALLATION_ASSIGNMENT
-            : OrderStatus.COMPLETED,
+          toStatus: input.needsRework
+            ? OrderStatus.PENDING_ADMIN_REVIEW
+            : input.needsInstallation
+              ? OrderStatus.PENDING_INSTALLATION_ASSIGNMENT
+              : OrderStatus.COMPLETED,
           actor: ctx.user,
-          comment: input.needsInstallation ? null : 'Продано без установки',
+          comment: input.needsRework
+            ? 'Готовые шторы: нужна переделка'
+            : input.needsInstallation
+              ? null
+              : 'Продано без установки',
           ipAddress: ctx.ipAddress,
         });
 

@@ -29,6 +29,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Постоянный выходной снят': 'Doimiy dam olish kuni olib tashlandi',
   'Вам назначен выходной по графику': "Sizga jadval bo'yicha dam olish kuni tayinlandi",
   'Выходные отклонены': 'Dam olish kunlari rad etildi',
+  'Время инкассации': 'Inkassatsiya vaqti',
 };
 
 const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
@@ -41,6 +42,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['{actor} перевёл заказ в статус «{status}».', "{actor} buyurtmani «{status}» holatiga o'tkazdi."],
   ['Комментарий к заказу {n}', '{n} buyurtmasiga izoh'],
   ['Смена {date} скорректирована', '{date} smenasi tuzatildi'],
+  ['На руках {sum} — сдайте в кассу', 'Qo‘lda {sum} — kassaga topshiring'],
   ['{actor} изменил время смены. Причина: {reason}', "{actor} smena vaqtini o'zgartirdi. Sabab: {reason}"],
   ['Зарплата за {period} выплачена', "{period} uchun ish haqi to'landi"],
   ['Расчёт за {period} утверждён', '{period} uchun hisob tasdiqlandi'],

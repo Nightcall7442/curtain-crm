@@ -31,6 +31,7 @@ import {
 } from 'react-native';
 
 import { BottomSheet } from '../components/BottomSheet';
+import { OrderPayments } from '../components/OrderPayments';
 import { ItemMeters } from '../components/ItemMeters';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { OrderManagement } from '../components/OrderManagement';
@@ -259,6 +260,15 @@ export function OrderDetailScreen({
           )}
           <Row label={m('order.branch')} value={data.branch.name} />
         </View>
+        {data.workPrice !== null && (
+          <OrderPayments
+            orderId={orderId}
+            remaining={data.remainingPayment}
+            canAccept={
+              isManager || data.creator?.id === user?.id || data.installer?.id === user?.id
+            }
+          />
+        )}
 
         {/*
           Расценки по этапам. Сервер вернул `null` вместо тех, что этому

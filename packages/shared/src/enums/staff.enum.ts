@@ -53,7 +53,7 @@ export const DEPARTMENT_LABELS: Translated<Department> = {
     other: 'Другое',
   },
   uz: {
-    sewing: 'Tikuv sexi',
+    sewing: 'Tikuv bo‘limi',
     installation: "O'rnatish",
     cutting: 'Bichish',
     sales: 'Sotuv',

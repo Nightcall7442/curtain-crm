@@ -481,6 +481,27 @@ export async function notifyWeeklyDayOffChanged(
   });
 }
 
+/**
+ * Время инкассации — всем, у кого есть наличные на руках.
+ *
+ * Тем, у кого ноль, писать незачем: напоминание должно означать «у тебя
+ * деньги», а не «сейчас десять часов».
+ */
+export async function notifyCashCollectionDue(
+  executor: DbExecutor,
+  holders: readonly { readonly userId: number; readonly onHands: string }[],
+): Promise<void> {
+  await createNotifications(
+    executor,
+    holders.map((holder) => ({
+      userId: holder.userId,
+      type: NotificationType.CASH_COLLECTION_DUE,
+      title: 'Время инкассации',
+      body: `На руках ${holder.onHands} — сдайте в кассу`,
+    })),
+  );
+}
+
 /** Запрос на выходные отклонён — узнаёт сотрудник. */
 export async function notifyDayOffRejected(
   executor: DbExecutor,

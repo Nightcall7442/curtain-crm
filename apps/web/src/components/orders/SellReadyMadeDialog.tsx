@@ -1,6 +1,14 @@
 'use client';
 
-import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
+import {
+  CatalogKind,
+  formatMoney,
+  parseMoney,
+  PAYMENT_METHOD_LABELS_RU,
+  PAYMENT_METHODS,
+  PaymentMethod,
+  type PaymentMethod as PaymentMethodName,
+} from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
 import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
@@ -39,8 +47,10 @@ export function SellReadyMadeDialog({
   const [quantity, setQuantity] = useState('1');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState(false);
+  const [needsRework, setNeedsRework] = useState(false);
   const [installAddress, setInstallAddress] = useState('');
   /**
    * Выбранная штора со склада. `null` — продажа без склада: так продают то,
@@ -97,7 +107,9 @@ export function SellReadyMadeDialog({
       clientPhone: clientPhone.trim(),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
+      depositMethod,
       needsInstallation,
+      needsRework,
       /* Одна позиция: несколько строк в продаже набирают в мобильном
          приложении, за кассой. Здесь форма осталась прежней. */
       items: [
@@ -134,7 +146,11 @@ export function SellReadyMadeDialog({
             Отмена
           </Button>
           <Button onClick={handleSubmit} loading={sell.isPending}>
-            {needsInstallation ? 'Продать, передать на установку' : 'Продать и закрыть'}
+            {needsRework
+              ? 'Продать, отправить на переделку'
+              : needsInstallation
+                ? 'Продать, передать на установку'
+                : 'Продать и закрыть'}
           </Button>
         </>
       }
@@ -342,6 +358,19 @@ export function SellReadyMadeDialog({
               />
             </Field>
 
+            <Field label="Способ оплаты">
+              <Select
+                value={depositMethod}
+                onChange={(event) => {
+                  setDepositMethod(event.target.value as PaymentMethodName);
+                }}
+                options={PAYMENT_METHODS.map((value) => ({
+                  value,
+                  label: PAYMENT_METHOD_LABELS_RU[value],
+                }))}
+              />
+            </Field>
+
             <Field label="Комментарий" className="sm:col-span-2 lg:col-span-3">
               <Textarea
                 rows={2}
@@ -356,7 +385,20 @@ export function SellReadyMadeDialog({
         </section>
 
         <section>
-          <h3 className="section-title mb-2">Установка</h3>
+          <h3 className="section-title mb-2">Переделка и установка</h3>
+
+          {/* Переделка — штору подгоняют в цеху; продажа уходит админу, как заказ. */}
+          <label className="mb-2 flex items-center gap-2 text-caption text-primary">
+            <input
+              type="checkbox"
+              checked={needsRework}
+              onChange={(event) => {
+                setNeedsRework(event.target.checked);
+              }}
+              className="h-4 w-4 accent-accent"
+            />
+            Требуется переделка — подогнать в цеху, заказ уйдёт админу на проверку
+          </label>
 
           <label className="flex items-center gap-2 text-caption text-primary">
             <input

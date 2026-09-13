@@ -1,10 +1,16 @@
 import { catalogItems } from '@curtain-crm/db';
-import { CATALOG_KINDS, CURTAIN_MOUNT_KINDS } from '@curtain-crm/shared';
+import {
+  CATALOG_KINDS,
+  CURTAIN_MOUNT_KINDS,
+  moneyToDecimalString,
+  parseMoney,
+  purchaseUnitSchema,
+} from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { idSchema, nonEmptyString } from '../lib/schemas';
+import { idSchema, moneySchema, nonEmptyString } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
@@ -58,6 +64,8 @@ export const catalogRouter = router({
           name: catalogItems.name,
           description: catalogItems.description,
           mountKind: catalogItems.mountKind,
+          price: catalogItems.price,
+          unit: catalogItems.unit,
           sortOrder: catalogItems.sortOrder,
           isActive: catalogItems.isActive,
         })
@@ -78,6 +86,9 @@ export const catalogRouter = router({
         name: nonEmptyString(200, 'Укажите название'),
         description: descriptionSchema.default(null),
         mountKind: mountKindSchema.default(null),
+        /** Розничная цена за единицу — только у кодов склада; ставит руководство. */
+        price: moneySchema.nullable().default(null),
+        unit: purchaseUnitSchema.nullable().default(null),
         sortOrder: z.number().int().min(0).max(9999).default(0),
       }),
     )
@@ -90,6 +101,8 @@ export const catalogRouter = router({
             name: input.name,
             description: input.description === '' ? null : input.description,
             mountKind: input.mountKind,
+            price: input.price === null ? null : moneyToDecimalString(parseMoney(input.price)),
+            unit: input.unit,
             sortOrder: input.sortOrder,
             createdBy: ctx.user.id,
           })
@@ -124,6 +137,8 @@ export const catalogRouter = router({
         name: nonEmptyString(200).optional(),
         description: descriptionSchema.optional(),
         mountKind: mountKindSchema.optional(),
+        price: moneySchema.nullable().optional(),
+        unit: purchaseUnitSchema.nullable().optional(),
         sortOrder: z.number().int().min(0).max(9999).optional(),
       }),
     )
@@ -135,6 +150,10 @@ export const catalogRouter = router({
             ? {}
             : { description: input.description === '' ? null : input.description }),
           ...(input.mountKind === undefined ? {} : { mountKind: input.mountKind }),
+          ...(input.price === undefined
+            ? {}
+            : { price: input.price === null ? null : moneyToDecimalString(parseMoney(input.price)) }),
+          ...(input.unit === undefined ? {} : { unit: input.unit }),
           ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
         };
 

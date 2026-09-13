@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  numeric,
   pgTable,
   serial,
   text,
@@ -10,7 +11,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-import { catalogKindEnum } from './enums';
+import { catalogKindEnum, purchaseUnitEnum } from './enums';
 import { users } from './users.schema';
 
 /**
@@ -58,6 +59,17 @@ export const catalogItems = pgTable(
      * У остальных справочников не заполняется: крепление есть только у модели.
      */
     mountKind: text('mount_kind'),
+
+    /**
+     * Розничная цена за единицу — для кодов склада.
+     *
+     * Касса продаёт по коду: продавец набирает код с бирки и количество,
+     * сумму считает система по этой цене. Ставит её руководитель на складе;
+     * пустая цена — код в кассе не продаётся. Единица — за что цена:
+     * ткань, труба, карниз — за метр, аксессуары и пластик — за штуку.
+     */
+    price: numeric('price', { precision: 14, scale: 2 }),
+    unit: purchaseUnitEnum('unit'),
 
     /** Порядок в выпадающем списке; при равенстве — сортировка по названию. */
     sortOrder: integer('sort_order').notNull().default(0),

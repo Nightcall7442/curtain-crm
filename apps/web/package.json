@@ -24,6 +24,7 @@
     "next": "^15.1.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-qr-code": "2.0.15",
     "superjson": "^2.2.2",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.24.1"

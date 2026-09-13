@@ -24,7 +24,7 @@ import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
 import { ShiftInfoCard } from '../components/ShiftInfoCard';
 import { WeekAttendance, type WeekDay } from '../components/WeekAttendance';
-import { useAuth, useIsCeo } from '../hooks/useAuth';
+import { useAuth, useIsCeo, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -44,6 +44,8 @@ export function ProfileScreen(): ReactElement {
   const navigation = useNavigation();
   const { user, signOut } = useAuth();
   const isCeo = useIsCeo();
+  const isManagement = useIsManagement();
+  const myRating = trpc.rating.me.useQuery({});
 
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -153,7 +155,7 @@ export function ProfileScreen(): ReactElement {
       <ProfileCard
         fullName={data.fullName}
         jobTitle={data.jobTitle}
-        employeeCode={data.employeeCode}
+        ratingPlace={myRating.data?.me?.place ?? null}
         department={data.department}
         hiredAt={data.hiredAt}
         avatarUrl={data.avatarUrl}
@@ -166,6 +168,13 @@ export function ProfileScreen(): ReactElement {
         подряд («Продавец» и «Менеджер по продажам») только сбивали с толку.
       */}
 
+      {/*
+        Руководству — без явки, зарплаты, смены и «моих заказов»: смены оно
+        не открывает, заказы на него не назначают, а расчёт себе не делает.
+        Владелец попросил убрать — остаются карточка и переходы.
+      */}
+      {!isManagement && (
+      <>
       <WeekAttendance days={weekDays} today={now.toISOString().slice(0, 10)} />
 
       <View style={styles.pair}>
@@ -219,6 +228,8 @@ export function ProfileScreen(): ReactElement {
           </View>
         )}
       </Card>
+      </>
+      )}
 
       {/*
         Секция переходов.
@@ -335,6 +346,16 @@ export function ProfileScreen(): ReactElement {
             navigation.navigate('Rating');
           }}
         />
+        {/* Директору — сводный рейтинг всех и очередь запросов на выходные с графиком отдыхающих. */}
+        {isCeo && (
+          <ListRow
+            icon="people"
+            label={m('profile.ratingBoard')}
+            onPress={() => {
+              navigation.navigate('RatingBoard');
+            }}
+          />
+        )}
         <ListRow
           icon="orders"
           label={m('profile.myTasks')}
@@ -344,9 +365,9 @@ export function ProfileScreen(): ReactElement {
         />
         <ListRow
           icon="calendar"
-          label={m('profile.dayOff')}
+          label={isCeo ? m('profile.dayOffQueue') : m('profile.dayOff')}
           onPress={() => {
-            navigation.navigate('DayOff');
+            navigation.navigate(isCeo ? 'DayOffApprovals' : 'DayOff');
           }}
         />
         {/*

@@ -7,6 +7,7 @@ import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
+import { TeamDaysOff } from '../components/TeamDaysOff';
 import { Input } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
@@ -84,20 +85,18 @@ export function DayOffApprovalsScreen(): ReactElement {
     );
   }
 
-  if (query.data.items.length === 0) {
-    return (
-      <View style={styles.content}>
-        <Card>
-          <Empty message={m('approvals.none')} hint={m('approvals.noneHint')} />
-        </Card>
-      </View>
-    );
-  }
-
   const isBusy = approve.isPending || reject.isPending;
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
+      <TeamDaysOff />
+
+      {query.data.items.length === 0 && (
+        <Card>
+          <Empty message={m('approvals.none')} hint={m('approvals.noneHint')} />
+        </Card>
+      )}
+
       {query.data.items.map((item) => {
         const isPending = item.status === 'pending';
 

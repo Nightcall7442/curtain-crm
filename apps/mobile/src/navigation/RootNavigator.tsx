@@ -17,6 +17,7 @@ import { Icon } from '../components/Icon';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
+import { RatingBoardScreen } from '../screens/RatingBoardScreen';
 import { RatingScreen } from '../screens/RatingScreen';
 import { SaleDetailScreen } from '../screens/SaleDetailScreen';
 import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
@@ -70,6 +71,11 @@ export function RootNavigator(): ReactElement {
       />
       <Stack.Screen name="TaskList" component={TaskListScreen} options={{ title: m('nav.taskList') }} />
       <Stack.Screen name="Rating" component={RatingScreen} options={{ title: m('nav.rating') }} />
+      <Stack.Screen
+        name="RatingBoard"
+        component={RatingBoardScreen}
+        options={{ title: m('nav.ratingBoard') }}
+      />
       <Stack.Screen
         name="OrderCreate"
         component={OrderCreateScreen}

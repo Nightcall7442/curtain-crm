@@ -22,7 +22,7 @@ import { Icon, type IconName } from './Icon';
 export function ProfileCard({
   fullName,
   jobTitle,
-  employeeCode,
+  ratingPlace,
   department,
   hiredAt,
   avatarUrl,
@@ -31,7 +31,8 @@ export function ProfileCard({
 }: {
   readonly fullName: string;
   readonly jobTitle: string | null;
-  readonly employeeCode: string | null;
+  /** Место в сводном рейтинге за месяц; `null` — вне конкурса или пока нет данных. */
+  readonly ratingPlace: number | null;
   readonly department: Department;
   readonly hiredAt: string | null;
   readonly avatarUrl: string | null;
@@ -61,7 +62,12 @@ export function ProfileCard({
           <Field icon="branch" label={m('profileCard.department')} value={t(DEPARTMENT_LABELS, department)} />
           <Field icon="jobTitle" label={m('profileCard.jobTitle')} value={jobTitle ?? m('profileCard.jobTitleEmpty')} />
           <Field icon="calendar" label={m('profileCard.tenure')} value={formatTenure(hiredAt, new Date(), locale)} />
-          <Field icon="badge" label={m('profileCard.employeeCode')} value={employeeCode ?? '—'} isLast />
+          <Field
+            icon="badge"
+            label={m('profileCard.ratingPlace')}
+            value={ratingPlace === null ? '—' : `№ ${ratingPlace.toString()}`}
+            isLast
+          />
         </View>
 
         <View style={styles.photoColumn}>

@@ -135,6 +135,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'payroll.approved': 'Расчёт утверждён',
   'payroll.paid': 'Зарплата выплачена',
   'payroll.paid_part': 'Выплачена часть зарплаты',
+  'payment.received': 'Принята оплата',
+  'payment.handed_over': 'Наличные сданы в кассу',
 
   'catalog.item_created': 'Позиция справочника создана',
   'catalog.item_updated': 'Позиция справочника изменена',

@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server';
 
 import { baseProcedure, middleware } from '../trpc';
 import type { AuthenticatedUser } from '../types';
+import { requiresOpenShift } from './shiftGuard.middleware';
 
 /**
  * Проверка аутентификации.
@@ -40,4 +41,4 @@ export const isAuthenticated = middleware(({ ctx, next }) => {
  * Ограничение по ролям навешивается сверху через `roleProcedure(...)`
  * из `roleGuard.middleware.ts`.
  */
-export const protectedProcedure = baseProcedure.use(isAuthenticated);
+export const protectedProcedure = baseProcedure.use(isAuthenticated).use(requiresOpenShift);

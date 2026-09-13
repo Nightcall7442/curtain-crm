@@ -1,8 +1,10 @@
 import {
   formatIsoDateShort,
+  formatMoney,
   isActiveStatus,
   isOverdueDate,
   ORDER_STATUS_LABELS,
+  parseMoney,
   RatingScope,
   yesterdayIso,
 } from '@curtain-crm/shared';
@@ -187,7 +189,9 @@ export function HomeScreen(): ReactElement {
         хвойную шапку. Повесить его на обе карточки нельзя — вторая
         наехала бы уже на первую.
       */}
-      <View style={isManager ? styles.afterOverlap : styles.overlap}>
+      {/* Руководство смен не открывает — вместо «текущей смены» ему касса дня. */}
+      {!isManager && (
+      <View style={styles.overlap}>
         <Card>
           <CardTitle title={m('home.currentShift')} />
 
@@ -213,6 +217,7 @@ export function HomeScreen(): ReactElement {
           )}
         </Card>
       </View>
+      )}
 
       {/*
         Табло рейтинга.
@@ -328,6 +333,7 @@ export function HomeScreen(): ReactElement {
               priority={order.priority}
               deadline={order.deadline}
               workPrice={order.workPrice}
+              remaining={order.remainingPayment}
               onPress={() => {
                 navigation.navigate('OrderDetail', { orderId: order.id });
               }}
@@ -482,6 +488,10 @@ function WorkshopSummary(): ReactElement {
     year: now.getFullYear(),
     month: now.getMonth() + 1,
   });
+  /* Касса дня: сколько принято сегодня всеми способами и сколько наличных
+     ещё на руках у сотрудников — не сдано инкассацией. */
+  const today = trpc.payments.summary.useQuery({ day: now.toISOString().slice(0, 10) });
+  const onHands = trpc.payments.onHands.useQuery();
 
   if (dashboard.data === undefined) {
     return (
@@ -501,6 +511,18 @@ function WorkshopSummary(): ReactElement {
       <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
       <Row label={m('home.inProduction')} value={attention.toString()} />
+      {today.data !== undefined && (
+        <Row label={m('home.revenueToday')} value={formatMoney(today.data.total)} />
+      )}
+      {onHands.data !== undefined && onHands.data.byUser.length > 0 && (
+        <Row
+          label={m('home.cashOnHands')}
+          value={formatMoney(
+            onHands.data.byUser.reduce((sum, row) => sum + parseMoney(row.onHands), 0),
+          )}
+          valueColor={colors.warning}
+        />
+      )}
       <Row label={m('home.revenueMonth')} value={data.revenueThisMonthFormatted} />
 
       {/*
@@ -591,12 +613,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     // Ровно столько, чтобы карточка легла на хвойную подложку.
     marginTop: -(spacing.xl + spacing.sm),
-    marginBottom: -spacing.sm,
-  },
-  /** Обычная карточка в потоке — для той, что идёт следом за наехавшей. */
-  afterOverlap: {
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.lg,
     marginBottom: -spacing.sm,
   },
   shiftDetails: {

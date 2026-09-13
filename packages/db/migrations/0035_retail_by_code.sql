@@ -1,0 +1,4 @@
+ALTER TABLE "retail_sale_items" ALTER COLUMN "item_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "retail_sale_items" ADD COLUMN "catalog_item_id" integer;--> statement-breakpoint
+ALTER TABLE "retail_sale_items" ADD CONSTRAINT "retail_sale_items_catalog_item_id_catalog_items_id_fk" FOREIGN KEY ("catalog_item_id") REFERENCES "public"."catalog_items"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "retail_sale_items" ADD CONSTRAINT "retail_sale_items_source" CHECK (("retail_sale_items"."item_id" is not null) or ("retail_sale_items"."catalog_item_id" is not null));
