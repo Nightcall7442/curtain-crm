@@ -546,11 +546,16 @@ export const payrollRouter = router({
   /**
    * Отметка о выплате — целиком или частью.
    *
-   * Зарплату в цехе часто выдают частями: аванс в середине месяца, остаток
-   * потом. Каждая отметка ПРИБАВЛЯЕТСЯ к выплаченному; пока выплачено
-   * меньше начисленного, расчёт остаётся утверждённым с остатком, а
-   * «выплачен» он становится, когда остатка нет. Без суммы — выплачивается
+   * Зарплату в цехе выдают частями, а то и по дням: аванс, за сегодняшнее,
+   * остаток в конце. Каждая отметка ПРИБАВЛЯЕТСЯ к выплаченному; пока
+   * выплачено меньше начисленного, расчёт остаётся утверждённым с остатком,
+   * а «выплачен» он становится, когда остатка нет. Без суммы — выплачивается
    * весь остаток. Каждая часть записана в журнал своей суммой.
+   *
+   * Черновик утверждается самой выплатой: руководитель, выдающий деньги,
+   * тем самым и подтверждает расчёт — заставлять его нажимать две кнопки
+   * при ежедневных расчётах незачем. Массовое «Утвердить» в конце месяца
+   * остаётся для тех, кому удобнее так.
    */
   markPaid: managementProcedure
     .input(
@@ -570,14 +575,8 @@ export const payrollRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Расчёт не найден' });
         }
 
-        if (!canTransitionPayrollStatus(record.status, PayrollRecordStatus.PAID)) {
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message:
-              record.status === PayrollRecordStatus.DRAFT
-                ? 'Сначала утвердите расчёт'
-                : 'Расчёт уже выплачен',
-          });
+        if (record.status === PayrollRecordStatus.PAID) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Расчёт уже выплачен' });
         }
 
         const calculated = parseMoney(record.calculatedAmount);
@@ -597,6 +596,9 @@ export const payrollRouter = router({
           .update(payrollRecords)
           .set({
             status: settled ? PayrollRecordStatus.PAID : PayrollRecordStatus.APPROVED,
+            ...(record.status === PayrollRecordStatus.DRAFT
+              ? { approvedBy: ctx.user.id, approvedAt: new Date() }
+              : {}),
             paidAmount: moneyToDecimalString(paidTotal),
             paidAt: new Date(),
             comment: input.comment ?? record.comment,

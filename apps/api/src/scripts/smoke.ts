@@ -26,6 +26,7 @@ import {
   orders,
   orderStatusHistory,
   payrollRecords,
+  payrollSchemes,
   purchases,
   refreshTokens,
   shifts,
@@ -42,6 +43,8 @@ import {
   OrderStatus,
   OrderType,
   parseMoney,
+  PayrollRecordStatus,
+  PayrollSchemeType,
   Role,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -52,7 +55,9 @@ import { loadAuthenticatedUser } from '../context';
 import { login, refreshSession } from '../services/auth.service';
 import {
   calculateCompletedOrders,
+  calculateForUserRole,
   gatherPayrollInputs,
+  saveDraft,
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
@@ -176,6 +181,7 @@ async function cleanup(db: Database): Promise<void> {
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
+    await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
     await db.delete(refreshTokens).where(inArray(refreshTokens.userId, userIds));
     await db.delete(shifts).where(inArray(shifts.userId, userIds));
     await db.delete(userRoles).where(inArray(userRoles.userId, userIds));
@@ -862,6 +868,55 @@ async function run(db: Database): Promise<void> {
     'payroll: сдельная за сданный пошив начисляется до закрытия заказа',
     sewerInputsAfter.stageFeesAmount === parseMoney('550000'),
     moneyToDecimalString(sewerInputsAfter.stageFeesAmount),
+  );
+
+  /* ---------------- 6b. Ежедневный расчёт: запись не замирает ------------- */
+
+  /*
+    Директор платит по дням: выдал за сданное сегодня, завтра сдали ещё.
+    Запись, уже утверждённая и даже выплаченная целиком, должна принять
+    новое начисление — переоткрыться с остатком, а не замереть.
+  */
+  await db.insert(payrollSchemes).values({
+    userId: sewer.id,
+    role: Role.SEWER,
+    type: PayrollSchemeType.PIECE_RATE,
+    effectiveFrom: '2020-01-01',
+    createdBy: admin.id,
+  });
+  const firstDraft = await calculateForUserRole(db, sewer.id, Role.SEWER, period);
+  await saveDraft(db, firstDraft);
+  await db
+    .update(payrollRecords)
+    .set({
+      status: PayrollRecordStatus.PAID,
+      paidAmount: moneyToDecimalString(firstDraft.calculation.amount),
+      approvedBy: admin.id,
+      approvedAt: new Date(),
+      paidAt: new Date(),
+    })
+    .where(and(eq(payrollRecords.userId, sewer.id), eq(payrollRecords.role, Role.SEWER)));
+
+  await db
+    .update(orders)
+    .set({ sewingFee: '250000.00' })
+    .where(eq(orders.id, sewnOpen.id));
+  const secondDraft = await calculateForUserRole(db, sewer.id, Role.SEWER, period);
+  const reopened = await saveDraft(db, secondDraft);
+  const [record] = await db
+    .select()
+    .from(payrollRecords)
+    .where(and(eq(payrollRecords.userId, sewer.id), eq(payrollRecords.role, Role.SEWER)));
+  check(
+    'payroll: выплаченная запись переоткрывается новым начислением с остатком',
+    reopened &&
+      record?.status === PayrollRecordStatus.APPROVED &&
+      parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount) === parseMoney('100000'),
+    `${record?.status ?? 'null'}, остаток ${
+      record === undefined
+        ? '—'
+        : moneyToDecimalString(parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount))
+    }`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

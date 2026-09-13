@@ -635,14 +635,19 @@ export async function calculateForUserRole(
 }
 
 /**
- * Сохраняет черновик расчёта.
+ * Сохраняет расчёт за период.
  *
- * Утверждённые и выплаченные записи НЕ пересчитываются: снимок параметров
- * схемы в `scheme_snapshot` существует именно для того, чтобы изменение ставок
- * не переписывало задним числом уже закрытые месяцы.
+ * Пересчитываются черновики и утверждённые записи: директор рассчитывается
+ * с людьми и по дням — платит за сданное сегодня, а завтра сдадут ещё, и
+ * начисление должно расти дальше, а не замирать на первой выплате. Снимок
+ * схемы в `scheme_snapshot` при этом хранит ставки на момент расчёта.
  *
- * @returns `true`, если запись создана или обновлена; `false`, если она уже
- *   утверждена и пересчёт пропущен.
+ * Выплаченная целиком запись переоткрывается, если начислено больше, чем
+ * уже выдано: появился остаток — значит, снова есть что платить. Если новых
+ * начислений нет, закрытая запись не трогается.
+ *
+ * @returns `true`, если запись создана или обновлена; `false`, если она
+ *   выплачена и нового начисления по ней нет.
  */
 export async function saveDraft(
   executor: DbExecutor,
@@ -657,7 +662,14 @@ export async function saveDraft(
     ),
   });
 
-  if (existing !== undefined && existing.status !== PayrollRecordStatus.DRAFT) return false;
+  const amount = calculated.calculation.amount;
+  const reopens =
+    existing !== undefined &&
+    existing.status === PayrollRecordStatus.PAID &&
+    amount > parseMoney(existing.paidAmount);
+  if (existing !== undefined && existing.status === PayrollRecordStatus.PAID && !reopens) {
+    return false;
+  }
 
   const values = {
     userId: calculated.userId,
@@ -677,7 +689,11 @@ export async function saveDraft(
   } else {
     await executor
       .update(payrollRecords)
-      .set({ ...values, updatedAt: new Date() })
+      .set({
+        ...values,
+        ...(reopens ? { status: PayrollRecordStatus.APPROVED } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(payrollRecords.id, existing.id));
   }
 
@@ -697,8 +713,8 @@ export async function saveDraft(
  * Прибавлять к записи одну строку значило бы завести второй, расходящийся
  * с `calculatePayroll`, способ считать зарплату.
  *
- * Утверждённые и выплаченные записи не трогаются — за это отвечает
- * `saveDraft`. Ненастроенная схема не мешает закрыть заказ: без схемы
+ * Что пересчитывать, а что нет, решает `saveDraft`. Ненастроенная схема не
+ * мешает закрыть заказ: без схемы
  * начисление просто не появится, и это видно в ведомости пустой строкой,
  * а не отказом закрыть выполненную работу.
  */

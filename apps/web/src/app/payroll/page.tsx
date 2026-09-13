@@ -174,27 +174,29 @@ export default function PayrollPage(): ReactElement {
   }): ReactElement | null => {
     if (!isCeo) return null;
 
-    if (row.status === PayrollRecordStatus.DRAFT) {
-      return (
-        <button
-          type="button"
-          disabled={approve.isPending}
-          onClick={() => {
-            approve.mutate({ id: row.id });
-          }}
-          className="pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
-        >
-          Утвердить
-        </button>
-      );
-    }
+    if (row.status === PayrollRecordStatus.PAID) return null;
 
-    if (row.status === PayrollRecordStatus.APPROVED) {
-      const remaining = parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount);
-      return (
+    const remaining = parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount);
+
+    // Платить можно и по черновику — выплата сама его утверждает: директор,
+    // рассчитывающийся с людьми каждый день, не должен жать две кнопки.
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {row.status === PayrollRecordStatus.DRAFT && (
+          <button
+            type="button"
+            disabled={approve.isPending}
+            onClick={() => {
+              approve.mutate({ id: row.id });
+            }}
+            className="pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
+          >
+            Утвердить
+          </button>
+        )}
         <button
           type="button"
-          disabled={markPaid.isPending}
+          disabled={markPaid.isPending || remaining <= 0}
           onClick={() => {
             setPaying({ id: row.id, remaining, name: row.userFullName });
             setPayAmount('');
@@ -203,10 +205,8 @@ export default function PayrollPage(): ReactElement {
         >
           {parseMoney(row.paidAmount) > 0 ? 'Выплатить остаток' : 'Выплатить'}
         </button>
-      );
-    }
-
-    return null;
+      </span>
+    );
   };
 
   return (

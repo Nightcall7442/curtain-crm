@@ -190,7 +190,8 @@ export function PayrollApprovalsScreen(): ReactElement {
             </Pressable>
           )}
 
-          {row.status === 'approved' && paying !== row.id && (
+          {/* Выплата и из черновика: она сама его утверждает — ежедневный расчёт в одну кнопку. */}
+          {row.status !== 'paid' && paying !== row.id && (
             <Pressable
               onPress={() => {
                 setPaying(row.id);
