@@ -15,7 +15,7 @@ import { useState, type ReactElement } from 'react';
 import { PayrollBreakdownDialog } from '@/components/payroll/PayrollBreakdownDialog';
 import { SchemeDialog } from '@/components/payroll/SchemeDialog';
 import { Badge } from '@/components/ui/Badge';
-import { Button, controlClass } from '@/components/ui/Form';
+import { Button, controlClass, Field, Modal, MoneyInput } from '@/components/ui/Form';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, type RowKey } from '@/components/ui/Table';
@@ -42,6 +42,13 @@ export default function PayrollPage(): ReactElement {
   const [checked, setChecked] = useState<ReadonlySet<RowKey>>(new Set());
   /** Открытая разбивка начисления. `null` — окно закрыто. */
   const [breakdownId, setBreakdownId] = useState<number | null>(null);
+  /**
+   * Выплата частями: окно с суммой. `null` — закрыто. Зарплату в цехе
+   * выдают авансом и остатком, поэтому «выплачено» — не одна кнопка, а
+   * сумма, по умолчанию равная остатку.
+   */
+  const [paying, setPaying] = useState<{ id: number; remaining: number; name: string } | null>(null);
+  const [payAmount, setPayAmount] = useState('');
 
   const { hasRole } = useAuth();
   const isCeo = hasRole(Role.CEO);
@@ -85,9 +92,16 @@ export default function PayrollPage(): ReactElement {
   });
 
   const markPaid = trpc.payroll.markPaid.useMutation({
-    onSuccess: () => {
+    onSuccess: (record) => {
       void invalidate();
-      toast.success('Отмечено как выплаченное');
+      setPaying(null);
+      toast.success(
+        record.status === PayrollRecordStatus.PAID
+          ? 'Выплачено полностью'
+          : `Выплачена часть, остаток ${formatMoney(
+              parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount),
+            )}`,
+      );
     },
     onError: (error) => {
       toast.error('Не удалось отметить выплату', error.message);
@@ -154,40 +168,45 @@ export default function PayrollPage(): ReactElement {
   const renderRowAction = (row: {
     readonly id: number;
     readonly status: PayrollRecordStatus;
+    readonly userFullName: string;
+    readonly calculatedAmount: string;
+    readonly paidAmount: string;
   }): ReactElement | null => {
     if (!isCeo) return null;
 
-    if (row.status === PayrollRecordStatus.DRAFT) {
-      return (
-        <button
-          type="button"
-          disabled={approve.isPending}
-          onClick={() => {
-            approve.mutate({ id: row.id });
-          }}
-          className="pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
-        >
-          Утвердить
-        </button>
-      );
-    }
+    if (row.status === PayrollRecordStatus.PAID) return null;
 
-    if (row.status === PayrollRecordStatus.APPROVED) {
-      return (
+    const remaining = parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount);
+
+    // Платить можно и по черновику — выплата сама его утверждает: директор,
+    // рассчитывающийся с людьми каждый день, не должен жать две кнопки.
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {row.status === PayrollRecordStatus.DRAFT && (
+          <button
+            type="button"
+            disabled={approve.isPending}
+            onClick={() => {
+              approve.mutate({ id: row.id });
+            }}
+            className="pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
+          >
+            Утвердить
+          </button>
+        )}
         <button
           type="button"
-          disabled={markPaid.isPending}
+          disabled={markPaid.isPending || remaining <= 0}
           onClick={() => {
-            markPaid.mutate({ id: row.id });
+            setPaying({ id: row.id, remaining, name: row.userFullName });
+            setPayAmount('');
           }}
           className="pressable rounded-full border border-accent/40 px-2 py-1 text-footnote font-medium text-accent hover:bg-accent/10 disabled:opacity-50"
         >
-          Выплачено
+          {parseMoney(row.paidAmount) > 0 ? 'Выплатить остаток' : 'Выплатить'}
         </button>
-      );
-    }
-
-    return null;
+      </span>
+    );
   };
 
   return (
@@ -358,7 +377,21 @@ export default function PayrollPage(): ReactElement {
               key: 'paid',
               header: 'Выплачено',
               align: 'right',
-              render: (row) => formatMoney(parseMoney(row.paidAmount)),
+              // Частичная выплата — с остатком: «600 000 · остаток 400 000».
+              render: (row) => {
+                const paid = parseMoney(row.paidAmount);
+                const remaining = parseMoney(row.calculatedAmount) - paid;
+                return (
+                  <span className="block">
+                    {formatMoney(paid)}
+                    {paid > 0 && remaining > 0 && (
+                      <span className="block text-overline text-warning">
+                        остаток {formatMoney(remaining)}
+                      </span>
+                    )}
+                  </span>
+                );
+              },
             },
             {
               key: 'status',
@@ -422,6 +455,52 @@ export default function PayrollPage(): ReactElement {
           setBreakdownId(null);
         }}
       />
+
+      <Modal
+        open={paying !== null}
+        title={paying === null ? '' : `Выплата: ${paying.name}`}
+        onClose={() => {
+          setPaying(null);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPaying(null);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              disabled={markPaid.isPending || paying === null}
+              onClick={() => {
+                if (paying === null) return;
+                const typed = Number.parseFloat(payAmount.replace(',', '.'));
+                markPaid.mutate({
+                  id: paying.id,
+                  ...(Number.isFinite(typed) && typed > 0 ? { paidAmount: typed } : {}),
+                });
+              }}
+            >
+              Выплатить
+            </Button>
+          </>
+        }
+      >
+        {paying !== null && (
+          <Field
+            label="Сумма, сум"
+            hint={`Остаток ${formatMoney(paying.remaining)}. Пусто — выплатить весь остаток; меньше — часть, расчёт останется открытым`}
+          >
+            <MoneyInput
+              value={payAmount}
+              onChange={setPayAmount}
+              placeholder={Math.round(paying.remaining / 100).toString()}
+            />
+          </Field>
+        )}
+      </Modal>
 
       <SchemeDialog
         open={schemeOpen}

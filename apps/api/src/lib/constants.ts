@@ -187,6 +187,7 @@ export const AUDIT_ACTIONS = [
   'payroll.calculated',
   'payroll.approved',
   'payroll.paid',
+  'payroll.paid_part',
 
   'catalog.item_created',
   'catalog.item_updated',

@@ -543,7 +543,20 @@ export const payrollRouter = router({
       return { results, approved: results.filter((entry) => entry.ok).length };
     }),
 
-  /** Отметка о выплате. Сумма может отличаться от расчётной — с комментарием. */
+  /**
+   * Отметка о выплате — целиком или частью.
+   *
+   * Зарплату в цехе выдают частями, а то и по дням: аванс, за сегодняшнее,
+   * остаток в конце. Каждая отметка ПРИБАВЛЯЕТСЯ к выплаченному; пока
+   * выплачено меньше начисленного, расчёт остаётся утверждённым с остатком,
+   * а «выплачен» он становится, когда остатка нет. Без суммы — выплачивается
+   * весь остаток. Каждая часть записана в журнал своей суммой.
+   *
+   * Черновик утверждается самой выплатой: руководитель, выдающий деньги,
+   * тем самым и подтверждает расчёт — заставлять его нажимать две кнопки
+   * при ежедневных расчётах незачем. Массовое «Утвердить» в конце месяца
+   * остаётся для тех, кому удобнее так.
+   */
   markPaid: managementProcedure
     .input(
       z.object({
@@ -562,26 +575,31 @@ export const payrollRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Расчёт не найден' });
         }
 
-        if (!canTransitionPayrollStatus(record.status, PayrollRecordStatus.PAID)) {
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message:
-              record.status === PayrollRecordStatus.DRAFT
-                ? 'Сначала утвердите расчёт'
-                : 'Расчёт уже выплачен',
-          });
+        if (record.status === PayrollRecordStatus.PAID) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Расчёт уже выплачен' });
         }
 
-        const paidAmount =
-          input.paidAmount === undefined
-            ? record.calculatedAmount
-            : moneyToDecimalString(parseMoney(input.paidAmount));
+        const calculated = parseMoney(record.calculatedAmount);
+        const alreadyPaid = parseMoney(record.paidAmount);
+        const remaining = Math.max(0, calculated - alreadyPaid);
+        const part = input.paidAmount === undefined ? remaining : parseMoney(input.paidAmount);
+
+        if (part <= 0) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Сумма выплаты должна быть больше нуля' });
+        }
+
+        const paidTotal = alreadyPaid + part;
+        // Переплата допустима (премия сверх расчёта), но закрывает расчёт.
+        const settled = paidTotal >= calculated;
 
         const [updated] = await tx
           .update(payrollRecords)
           .set({
-            status: PayrollRecordStatus.PAID,
-            paidAmount,
+            status: settled ? PayrollRecordStatus.PAID : PayrollRecordStatus.APPROVED,
+            ...(record.status === PayrollRecordStatus.DRAFT
+              ? { approvedBy: ctx.user.id, approvedAt: new Date() }
+              : {}),
+            paidAmount: moneyToDecimalString(paidTotal),
             paidAt: new Date(),
             comment: input.comment ?? record.comment,
           })
@@ -594,17 +612,21 @@ export const payrollRouter = router({
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
-          action: 'payroll.paid',
+          action: settled ? 'payroll.paid' : 'payroll.paid_part',
           entityType: 'payroll_record',
           entityId: updated.id,
-          details: { calculated: updated.calculatedAmount, paid: updated.paidAmount },
+          details: {
+            calculated: updated.calculatedAmount,
+            payment: moneyToDecimalString(part),
+            paid: updated.paidAmount,
+          },
           ipAddress: ctx.ipAddress,
         });
 
         await notifyPayroll(tx, updated.userId, {
           paid: true,
           period: formatPeriod({ year: updated.periodYear, month: updated.periodMonth }),
-          amount: formatMoney(parseMoney(updated.paidAmount)),
+          amount: formatMoney(part),
           payrollRecordId: updated.id,
         });
 

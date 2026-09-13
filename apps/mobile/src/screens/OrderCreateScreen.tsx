@@ -31,6 +31,7 @@ import {
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
 import { CodeScanner } from '../components/CodeScanner';
+import { DateField } from '../components/DateField';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -511,17 +512,13 @@ export function OrderCreateScreen(): ReactElement {
             />
           </Field>
 
-          <Field
-            label={m('create.deadline')}
-            hint={m('create.deadlineHint')}
-            error={showErrors ? errors.deadline : undefined}
-          >
-            <Input
+          <Field label={m('create.deadline')} error={showErrors ? errors.deadline : undefined}>
+            <DateField
               value={deadline}
-              onChangeText={setDeadline}
-              placeholder="2026-09-15"
-              keyboardType="numbers-and-punctuation"
+              onChange={setDeadline}
+              placeholder={m('create.deadline')}
               invalid={showErrors && errors.deadline !== undefined}
+              minimumDate={new Date()}
             />
           </Field>
 

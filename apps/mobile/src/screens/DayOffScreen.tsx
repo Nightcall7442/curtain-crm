@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
+import { DateField } from '../components/DateField';
 import { Field, Input } from '../components/Field';
 import { MonthSchedule } from '../components/MonthSchedule';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -109,23 +110,23 @@ export function DayOffScreen(): ReactElement {
           <View style={styles.dates}>
             <View style={styles.dateItem}>
               <Field label={m('dayoff.from')} required error={showErrors ? errors.startDate : undefined}>
-                <Input
+                <DateField
                   value={startDate}
-                  onChangeText={setStartDate}
-                  placeholder="2026-09-15"
-                  keyboardType="numbers-and-punctuation"
+                  onChange={setStartDate}
+                  placeholder={m('dayoff.from')}
                   invalid={showErrors && errors.startDate !== undefined}
+                  minimumDate={new Date()}
                 />
               </Field>
             </View>
             <View style={styles.dateItem}>
               <Field label={m('dayoff.to')} required error={showErrors ? errors.endDate : undefined}>
-                <Input
+                <DateField
                   value={endDate}
-                  onChangeText={setEndDate}
-                  placeholder="2026-09-16"
-                  keyboardType="numbers-and-punctuation"
+                  onChange={setEndDate}
+                  placeholder={m('dayoff.to')}
                   invalid={showErrors && errors.endDate !== undefined}
+                  minimumDate={new Date()}
                 />
               </Field>
             </View>

@@ -377,10 +377,9 @@
 
       /* Стекло в темноте — затемняющее, а не осветляющее. */
       --glass-ink: 255 255 255;
-      --glass-ink: 255 255 255;
-    --glass-fill: 255 255 255;
-    --glass-control-alpha: 0.07;
-    --glass-light: 16 32 25;
+      --glass-fill: 255 255 255;
+      --glass-control-alpha: 0.07;
+      --glass-light: 16 32 25;
       --glass-light-alpha: 0.5;
       --glass-nav-alpha: 0.35;
 
@@ -450,17 +449,17 @@
     color-scheme: dark;
 
     /* Те же значения, что в медиазапросе выше: хвоя ночью, карточка выше фона. */
-    --surface-base: 14 28 22;
-    --surface-panel: 26 48 38;
-    --surface-raised: 38 66 52;
-    --surface-nav: 16 32 25;
-    --surface-nav-raised: 26 48 38;
+    --surface-base: 9 13 12;
+    --surface-panel: 17 24 21;
+    --surface-raised: 26 36 31;
+    --surface-nav: 10 15 13;
+    --surface-nav-raised: 17 24 21;
     --text-on-nav: 234 245 238;
-    --border-subtle: 48 82 66;
-    --border-strong: 66 108 86;
-    --text-primary: 237 246 240;
-    --text-secondary: 184 208 195;
-    --text-muted: 146 176 161;
+    --border-subtle: 34 46 40;
+    --border-strong: 50 66 58;
+    --text-primary: 240 244 242;
+    --text-secondary: 178 190 184;
+    --text-muted: 128 142 135;
     --accent: 61 255 160;
     --accent-strong: 124 255 192;
     --accent-bright: 46 224 139;
@@ -484,6 +483,14 @@
     --stage-installation: 166 160 255;
     --stage-done: 61 255 160;
 
+    /*
+      Те же три токена стекла, что и в media-блоке выше. Без них тёмная
+      схема, выбранная вручную на телефоне со светлой системной темой,
+      получала светлые поля ввода и тёмный «ink» — текст в полях пропадал.
+    */
+    --glass-ink: 255 255 255;
+    --glass-fill: 255 255 255;
+    --glass-control-alpha: 0.07;
     --glass-light: 16 32 25;
     --glass-light-alpha: 0.5;
     --glass-nav-alpha: 0.35;

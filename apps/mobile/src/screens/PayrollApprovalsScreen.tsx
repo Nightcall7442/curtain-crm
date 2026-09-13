@@ -141,10 +141,20 @@ export function PayrollApprovalsScreen(): ReactElement {
             </Text>
           </View>
 
-          {row.paidAmount !== null && (
+          {row.paidAmount !== null && parseMoney(row.paidAmount) > 0 && (
             <View style={styles.amountRow}>
               <Text style={styles.amountLabel}>{m('payroll.paid')}</Text>
               <Text style={styles.amountValue}>{formatMoney(parseMoney(row.paidAmount))}</Text>
+            </View>
+          )}
+
+          {/* Выплата частями: пока есть остаток, он виден отдельной строкой. */}
+          {row.status === 'approved' && parseMoney(row.paidAmount ?? '0') > 0 && (
+            <View style={styles.amountRow}>
+              <Text style={styles.amountLabel}>{m('payroll.remaining')}</Text>
+              <Text style={styles.amountValue}>
+                {formatMoney(parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'))}
+              </Text>
             </View>
           )}
 
@@ -180,7 +190,8 @@ export function PayrollApprovalsScreen(): ReactElement {
             </Pressable>
           )}
 
-          {row.status === 'approved' && paying !== row.id && (
+          {/* Выплата и из черновика: она сама его утверждает — ежедневный расчёт в одну кнопку. */}
+          {row.status !== 'paid' && paying !== row.id && (
             <Pressable
               onPress={() => {
                 setPaying(row.id);
@@ -201,12 +212,16 @@ export function PayrollApprovalsScreen(): ReactElement {
           {paying === row.id && (
             <View style={styles.payBox}>
               <Text style={styles.payLabel}>
-                {m('payroll.amountLabel', { amount: formatMoney(parseMoney(row.calculatedAmount)) })}
+                {m('payroll.amountLabel', {
+                  amount: formatMoney(
+                    parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'),
+                  ),
+                })}
               </Text>
               <MoneyInput
                 value={amount}
                 onChangeText={setAmount}
-                placeholder={groupDigits(Number.parseFloat(row.calculatedAmount).toString())}
+                placeholder={groupDigits(((parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0')) / 100).toString())}
                 autoFocus
               />
 
