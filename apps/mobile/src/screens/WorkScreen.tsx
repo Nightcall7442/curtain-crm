@@ -74,6 +74,9 @@ export function WorkScreen(): ReactElement {
    */
   const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
   const isManager = useIsManagement();
+  /* Без открытой смены сервер не примет ни одного действия по работе —
+     баннер говорит об этом до того, как кнопка ответит отказом. */
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
   const isCorniceInstaller = (user?.roles ?? []).includes(Role.CORNICE_INSTALLER);
   const filters = isCorniceInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
@@ -129,6 +132,19 @@ export function WorkScreen(): ReactElement {
 
   return (
     <View style={styles.container}>
+      {!isManager && shift.data === null && (
+        <Pressable
+          onPress={() => {
+            navigation.navigate('CheckInOut');
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.shiftBanner, pressed ? styles.createPressed : null]}
+        >
+          <Icon name="checkin" size={18} color={colors.warning} />
+          <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
+        </Pressable>
+      )}
+
       {/*
         Фильтры прокручиваются по горизонтали.
 
@@ -459,6 +475,21 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: colors.headerText,
     fontWeight: '600',
+  },
+  shiftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  shiftBannerText: {
+    ...typography.caption,
+    color: colors.warning,
+    flex: 1,
   },
   createRow: {
     flexDirection: 'row',

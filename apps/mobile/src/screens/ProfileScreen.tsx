@@ -346,6 +346,16 @@ export function ProfileScreen(): ReactElement {
             navigation.navigate('Rating');
           }}
         />
+        {/* Директору — сводный рейтинг всех и очередь запросов на выходные с графиком отдыхающих. */}
+        {isCeo && (
+          <ListRow
+            icon="people"
+            label={m('profile.ratingBoard')}
+            onPress={() => {
+              navigation.navigate('RatingBoard');
+            }}
+          />
+        )}
         <ListRow
           icon="orders"
           label={m('profile.myTasks')}
@@ -355,9 +365,9 @@ export function ProfileScreen(): ReactElement {
         />
         <ListRow
           icon="calendar"
-          label={m('profile.dayOff')}
+          label={isCeo ? m('profile.dayOffQueue') : m('profile.dayOff')}
           onPress={() => {
-            navigation.navigate('DayOff');
+            navigation.navigate(isCeo ? 'DayOffApprovals' : 'DayOff');
           }}
         />
         {/*

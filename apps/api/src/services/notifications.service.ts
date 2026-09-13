@@ -485,8 +485,7 @@ export async function notifyWeeklyDayOffChanged(
  * Время инкассации — всем, у кого есть наличные на руках.
  *
  * Тем, у кого ноль, писать незачем: напоминание должно означать «у тебя
- * деньги», а не «сейчас десять часов». Заголовок двуязычный — уведомление
- * хранится текстом, а читают его и на русском, и на узбекском.
+ * деньги», а не «сейчас десять часов».
  */
 export async function notifyCashCollectionDue(
   executor: DbExecutor,
@@ -497,8 +496,8 @@ export async function notifyCashCollectionDue(
     holders.map((holder) => ({
       userId: holder.userId,
       type: NotificationType.CASH_COLLECTION_DUE,
-      title: 'Время инкассации · Inkassatsiya vaqti',
-      body: `На руках ${holder.onHands} — сдайте в кассу · Qo‘lda ${holder.onHands} — kassaga topshiring`,
+      title: 'Время инкассации',
+      body: `На руках ${holder.onHands} — сдайте в кассу`,
     })),
   );
 }
