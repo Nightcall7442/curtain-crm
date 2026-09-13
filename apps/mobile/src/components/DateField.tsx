@@ -103,6 +103,9 @@ export function DateField({
             mode="date"
             display="inline"
             locale={locale === 'uz' ? 'uz' : 'ru'}
+            // Шторка всегда светлая, а календарь брал цвет текста у системной
+            // темы: на тёмной системе цифры выходили белым по белому.
+            themeVariant="light"
             accentColor={colors.accent}
             onChange={apply}
             {...(minimumDate === undefined ? {} : { minimumDate })}
