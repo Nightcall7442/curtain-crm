@@ -13,7 +13,7 @@ import { Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { useToast } from '@/components/providers/ToastProvider';
-import { Card, CardBody, CardHeader } from '@/components/ui/Card';
+import { Card, CardHeader } from '@/components/ui/Card';
 import { Button, Field, FormError, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -81,26 +81,40 @@ export function OrderPayments({
           ) : undefined
         }
       />
-      <CardBody>
-        <DataTable
-          isLoading={history.isLoading}
-          rows={rows}
-          rowKey={(row) => row.id}
-          emptyMessage="Платежей пока нет"
-          columns={[
-            { key: 'when', header: 'Когда', render: (row) => formatDateTime(row.receivedAt) },
-            { key: 'kind', header: 'Что', render: (row) => PAYMENT_KIND_LABELS_RU[row.kind] },
-            { key: 'method', header: 'Чем', render: (row) => PAYMENT_METHOD_LABELS_RU[row.method] },
-            { key: 'who', header: 'Принял', render: (row) => row.receivedByName },
-            {
-              key: 'amount',
-              header: 'Сумма',
-              align: 'right',
-              render: (row) => <span className="font-figure tabular-nums">{formatMoney(parseMoney(row.amount))}</span>,
-            },
-          ]}
-        />
-      </CardBody>
+      <DataTable
+        isLoading={history.isLoading}
+        rows={rows}
+        rowKey={(row) => row.id}
+        emptyMessage="Платежей пока нет"
+        columns={[
+          {
+            key: 'when',
+            header: 'Когда',
+            render: (row) => formatDateTime(row.receivedAt),
+          },
+          {
+            key: 'kind',
+            header: 'Что',
+            render: (row) => PAYMENT_KIND_LABELS_RU[row.kind],
+          },
+          {
+            key: 'method',
+            header: 'Чем',
+            render: (row) => PAYMENT_METHOD_LABELS_RU[row.method],
+          },
+          { key: 'who', header: 'Принял', render: (row) => row.receivedByName },
+          {
+            key: 'amount',
+            header: 'Сумма',
+            align: 'right',
+            render: (row) => (
+              <span className="font-figure tabular-nums">
+                {formatMoney(parseMoney(row.amount))}
+              </span>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         open={open}
@@ -141,7 +155,10 @@ export function OrderPayments({
               onChange={(event) => {
                 setMethod(event.target.value as PaymentMethodName);
               }}
-              options={PAYMENT_METHODS.map((value) => ({ value, label: PAYMENT_METHOD_LABELS_RU[value] }))}
+              options={PAYMENT_METHODS.map((value) => ({
+                value,
+                label: PAYMENT_METHOD_LABELS_RU[value],
+              }))}
             />
           </Field>
         </div>

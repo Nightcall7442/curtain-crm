@@ -6,6 +6,7 @@ import {
   PAYMENT_KIND_LABELS_RU,
   PAYMENT_METHOD_LABELS_RU,
   PAYMENT_METHODS,
+  todayIso,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
@@ -29,7 +30,8 @@ import { trpc } from '@/lib/trpc';
  * «Финансах».
  */
 export default function CashPage(): ReactElement {
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  // Местный день, не UTC: до пяти утра по Ташкенту касса иначе показывала бы вчера.
+  const [day, setDay] = useState(() => todayIso());
 
   const summary = trpc.payments.summary.useQuery({ day });
   const list = trpc.payments.list.useQuery({ day });
@@ -59,7 +61,11 @@ export default function CashPage(): ReactElement {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Принято за день" value={formatMoney(data?.total ?? 0)} caption="Все способы" />
+        <StatCard
+          label="Принято за день"
+          value={formatMoney(data?.total ?? 0)}
+          caption="Все способы"
+        />
         <StatCard
           label="В кассе"
           value={formatMoney(data?.inKassa ?? 0)}
@@ -80,7 +86,11 @@ export default function CashPage(): ReactElement {
           rowKey={(row) => row.kind}
           emptyMessage="За этот день приходов нет"
           columns={[
-            { key: 'kind', header: '', render: (row) => PAYMENT_KIND_LABELS_RU[row.kind] },
+            {
+              key: 'kind',
+              header: '',
+              render: (row) => PAYMENT_KIND_LABELS_RU[row.kind],
+            },
             ...PAYMENT_METHODS.map((method) => ({
               key: method,
               header: PAYMENT_METHOD_LABELS_RU[method],
@@ -98,7 +108,7 @@ export default function CashPage(): ReactElement {
           ]}
         />
         {data !== undefined && data.rows.length > 0 && (
-          <div className="mt-3 grid gap-2 border-t border-border pt-3 text-sm sm:grid-cols-5">
+          <div className="grid gap-2 border-t border-subtle px-5 py-4 text-caption sm:grid-cols-5">
             {PAYMENT_METHODS.map((method) => (
               <div key={method} className="flex justify-between sm:block">
                 <span className="text-muted">{PAYMENT_METHOD_LABELS_RU[method]} итого</span>
@@ -107,7 +117,7 @@ export default function CashPage(): ReactElement {
             ))}
             <div className="flex justify-between sm:block">
               <span className="text-muted">Total</span>
-              <div className="font-figure text-lg tabular-nums">{formatMoney(data.total)}</div>
+              <div className="font-figure text-title tabular-nums">{formatMoney(data.total)}</div>
             </div>
           </div>
         )}
@@ -127,7 +137,10 @@ export default function CashPage(): ReactElement {
                 key: 'when',
                 header: 'Когда',
                 render: (row) =>
-                  new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                  new Date(row.createdAt).toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
               },
               {
                 key: 'amount',
@@ -138,8 +151,11 @@ export default function CashPage(): ReactElement {
             ]}
           />
           {collections.data !== undefined && (
-            <p className="mt-3 text-sm text-secondary">
-              Сдано: <strong className="font-figure">{formatMoney(parseMoney(collections.data.total))}</strong>
+            <p className="px-5 pb-4 text-caption text-secondary">
+              Сдано:{' '}
+              <strong className="font-figure">
+                {formatMoney(parseMoney(collections.data.total))}
+              </strong>
             </p>
           )}
         </Card>
@@ -176,10 +192,21 @@ export default function CashPage(): ReactElement {
               key: 'time',
               header: 'Время',
               render: (row) =>
-                new Date(row.receivedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                new Date(row.receivedAt).toLocaleTimeString('ru-RU', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
             },
-            { key: 'kind', header: 'Источник', render: (row) => PAYMENT_KIND_LABELS_RU[row.kind] },
-            { key: 'method', header: 'Способ', render: (row) => PAYMENT_METHOD_LABELS_RU[row.method] },
+            {
+              key: 'kind',
+              header: 'Источник',
+              render: (row) => PAYMENT_KIND_LABELS_RU[row.kind],
+            },
+            {
+              key: 'method',
+              header: 'Способ',
+              render: (row) => PAYMENT_METHOD_LABELS_RU[row.method],
+            },
             {
               key: 'order',
               header: 'Заказ',
@@ -190,7 +217,11 @@ export default function CashPage(): ReactElement {
                   `${row.orderNumber} · ${row.clientName ?? ''}`
                 ),
             },
-            { key: 'who', header: 'Принял', render: (row) => row.receivedByName },
+            {
+              key: 'who',
+              header: 'Принял',
+              render: (row) => row.receivedByName,
+            },
             {
               key: 'amount',
               header: 'Сумма',
@@ -204,7 +235,17 @@ export default function CashPage(): ReactElement {
   );
 }
 
-function Money({ value, strong = false }: { readonly value: number; readonly strong?: boolean }): ReactElement {
+function Money({
+  value,
+  strong = false,
+}: {
+  readonly value: number;
+  readonly strong?: boolean;
+}): ReactElement {
   if (value === 0) return <span className="text-muted">—</span>;
-  return <span className={strong ? 'font-figure tabular-nums' : 'tabular-nums'}>{formatMoney(value)}</span>;
+  return (
+    <span className={strong ? 'font-figure tabular-nums' : 'tabular-nums'}>
+      {formatMoney(value)}
+    </span>
+  );
 }
