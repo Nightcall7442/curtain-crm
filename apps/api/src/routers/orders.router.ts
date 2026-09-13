@@ -303,9 +303,10 @@ export type OrderWithVisibleFees<T> = Omit<T, StageFeeField | ClientMoneyField> 
  * его этап не платят ничего.
  *
  * Деньги клиента (стоимость, предоплата, остаток) — то же правило, только
- * круг шире: их видят руководство и продавец, который эту цену назвал.
- * Цеху — швее, мастеру, ОТК, установщику, карнизчику — сколько заплатил
- * клиент, знать не нужно.
+ * круг шире: их видят руководство, продавец, который эту цену назвал, и
+ * установщик ЭТОГО заказа — остаток с клиента получает он, у двери, и без
+ * суммы ему нечего требовать. Цеху — швее, мастеру, ОТК, карнизчику —
+ * сколько заплатил клиент, знать не нужно.
  *
  * Фильтрация здесь, а не в компонентах: скрытая в вёрстке сумма всё равно
  * уехала бы клиенту в ответе tRPC.
@@ -315,7 +316,8 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   user: { readonly id: number; readonly roles: readonly Role[] },
 ): OrderWithVisibleFees<T> {
   const seesEverything = isManagement(user.roles);
-  const seesClientMoney = seesEverything || user.roles.includes(Role.SELLER);
+  const seesClientMoney =
+    seesEverything || user.roles.includes(Role.SELLER) || order.installerId === user.id;
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
