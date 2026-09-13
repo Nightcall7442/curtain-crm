@@ -133,21 +133,20 @@ export function ProductionPipeline({
                   'pressable group relative flex min-w-[112px] flex-1 flex-col gap-3 rounded-2xl bg-ink/[0.04] p-3 transition-[background-color,box-shadow,transform] duration-200',
                   'hover:-translate-y-0.5 hover:bg-ink/[0.07]',
                 )}
+                /*
+                  Цвет этапа — только на цифре и полоске. Плитка, рамка и
+                  значок нейтральные: восемь разноцветных плиток подряд
+                  читались как мозаика, а не как конвейер. Узкое место
+                  выделено рамкой своего цвета — одно на всём ряду.
+                */
                 style={{
                   boxShadow: isBottleneck
-                    ? `inset 0 0 0 1px color-mix(in srgb, ${color} 55%, transparent), 0 12px 28px -18px ${color}`
-                    : `inset 0 0 0 1px color-mix(in srgb, ${color} 22%, transparent)`,
+                    ? `inset 0 0 0 1px color-mix(in srgb, ${color} 60%, transparent), 0 12px 28px -18px ${color}`
+                    : 'inset 0 0 0 1px rgb(var(--glass-ink) / 0.08)',
                 }}
               >
                 <span className="flex items-center justify-between">
-                  <span
-                    className="grid h-8 w-8 place-items-center rounded-xl"
-                    style={{
-                      color,
-                      backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`,
-                      boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
-                    }}
-                  >
+                  <span className="grid h-8 w-8 place-items-center rounded-xl bg-ink/[0.06] text-secondary">
                     <Icon className="h-4 w-4" aria-hidden />
                   </span>
                   <span className="text-footnote text-muted tabular-nums">{share}%</span>
@@ -155,7 +154,7 @@ export function ProductionPipeline({
 
                 <span
                   className="font-figure text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums"
-                  style={{ color, textShadow: `0 0 18px color-mix(in srgb, ${color} 45%, transparent)` }}
+                  style={{ color }}
                 >
                   {stage.count}
                 </span>
