@@ -19,6 +19,10 @@ import {
   formatMoney,
   MATERIAL_CODE_KINDS,
   parseMoney,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHODS,
+  PaymentMethod,
+  type PaymentMethod as PaymentMethodName,
 } from '@curtain-crm/shared';
 
 import { Card, CardTitle } from '../components/Card';
@@ -52,7 +56,7 @@ import { useLocale, type Translate } from '../hooks/useLocale';
  * в обход этой формы.
  */
 export function SellReadyMadeScreen(): ReactElement {
-  const { m } = useLocale();
+  const { t, m } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
 
@@ -61,6 +65,7 @@ export function SellReadyMadeScreen(): ReactElement {
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [needsInstallation, setNeedsInstallation] = useState<'no' | 'yes'>('no');
   const [installAddress, setInstallAddress] = useState('');
   const [showErrors, setShowErrors] = useState(false);
@@ -143,6 +148,7 @@ export function SellReadyMadeScreen(): ReactElement {
       clientPhone: clientPhone.trim(),
       workPrice: toMoney(workPrice),
       deposit: toMoney(deposit),
+      depositMethod,
       needsInstallation: needsInstallation === 'yes',
       items: items.map((item) => ({
         quantity: Math.max(1, Number.parseInt(item.quantity, 10) || 1),
@@ -234,6 +240,17 @@ export function SellReadyMadeScreen(): ReactElement {
               </Field>
             </View>
           </View>
+          {/* Способ оплаты предоплаты — из него складывается касса дня. */}
+          <Field label={m('cash.method')}>
+            <ChipSelect
+              value={depositMethod}
+              onChange={setDepositMethod}
+              options={PAYMENT_METHODS.map((value) => ({
+                value,
+                label: t(PAYMENT_METHOD_LABELS, value),
+              }))}
+            />
+          </Field>
         </Card>
 
         {items.map((item, index) => (

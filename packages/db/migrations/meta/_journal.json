@@ -253,6 +253,13 @@
       "when": 1789335878455,
       "tag": "0035_retail_by_code",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789336773524,
+      "tag": "0036_notification_cash_collection_due",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ import { useState, type ReactElement } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
+import { CashCollectionCard } from '../components/CashCollectionCard';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { OrderCard } from '../components/OrderCard';
@@ -377,6 +378,7 @@ export function WorkScreen(): ReactElement {
         onRefresh={() => {
           void query.refetch();
         }}
+        ListHeaderComponent={filter === 'active' ? <CashCollectionCard /> : null}
         ListEmptyComponent={
           query.isLoading ? (
             <Skeleton />
@@ -398,6 +400,7 @@ export function WorkScreen(): ReactElement {
             priority={item.priority}
             deadline={item.deadline}
             workPrice={item.workPrice}
+            remaining={item.remainingPayment}
             onPress={() => {
               navigation.navigate('OrderDetail', { orderId: item.id });
             }}

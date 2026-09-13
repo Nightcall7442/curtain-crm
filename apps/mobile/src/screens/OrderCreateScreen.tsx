@@ -10,9 +10,13 @@ import {
   ORDER_ITEM_KINDS,
   OrderItemKind,
   PRIORITIES,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHODS,
+  PaymentMethod,
   PRIORITY_LABELS,
   Priority,
   type CorniceRotation,
+  type PaymentMethod as PaymentMethodName,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useRef, useState, type ReactElement } from 'react';
@@ -251,6 +255,7 @@ export function OrderCreateScreen(): ReactElement {
   const [deadline, setDeadline] = useState('');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [showErrors, setShowErrors] = useState(false);
 
@@ -395,6 +400,7 @@ export function OrderCreateScreen(): ReactElement {
       ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
       workPrice: toMoney(workPrice),
       deposit: toMoney(deposit),
+      depositMethod,
       items: items.map((item) => {
         /*
           Строки материала, которых у этой модели не бывает, на сервер не
@@ -542,6 +548,17 @@ export function OrderCreateScreen(): ReactElement {
               </Field>
             </View>
           </View>
+          {/* Способ оплаты предоплаты — из него складывается касса дня. */}
+          <Field label={m('cash.method')}>
+            <ChipSelect
+              value={depositMethod}
+              onChange={setDepositMethod}
+              options={PAYMENT_METHODS.map((value) => ({
+                value,
+                label: t(PAYMENT_METHOD_LABELS, value),
+              }))}
+            />
+          </Field>
         </Card>
 
 
