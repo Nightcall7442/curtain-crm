@@ -422,7 +422,6 @@ export const retailRouter = router({
           amount: parseMoney(loaded.total),
           retailSaleId: sale.id,
           receivedBy: ctx.user.id,
-          inKassa: true,
         });
 
         return loaded;

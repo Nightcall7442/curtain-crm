@@ -1,5 +1,5 @@
 {
-  "id": "a5602f20-9217-4421-a6b5-1e458cf8915f",
+  "id": "70db70eb-eab9-4ef5-b168-9055c285e5e4",
   "prevId": "2e344089-039c-4202-92b8-87342672751a",
   "version": "7",
   "dialect": "postgresql",
@@ -2138,6 +2138,125 @@
       },
       "isRLSEnabled": false
     },
+    "public.cash_collections": {
+      "name": "cash_collections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "branch_id": {
+          "name": "branch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cash_collections_user_idx": {
+          "name": "cash_collections_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "cash_collections_created_at_idx": {
+          "name": "cash_collections_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cash_collections_branch_id_branches_id_fk": {
+          "name": "cash_collections_branch_id_branches_id_fk",
+          "tableFrom": "cash_collections",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "branch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "cash_collections_user_id_users_id_fk": {
+          "name": "cash_collections_user_id_users_id_fk",
+          "tableFrom": "cash_collections",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "cash_collections_amount_positive": {
+          "name": "cash_collections_amount_positive",
+          "value": "\"cash_collections\".\"amount\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.payments": {
       "name": "payments",
       "schema": "",
@@ -2204,18 +2323,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "handed_over_at": {
-          "name": "handed_over_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "handed_over_to": {
-          "name": "handed_over_to",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -2249,18 +2356,23 @@
           "method": "btree",
           "with": {}
         },
-        "payments_pending_handover_idx": {
-          "name": "payments_pending_handover_idx",
+        "payments_received_by_idx": {
+          "name": "payments_received_by_idx",
           "columns": [
             {
               "expression": "received_by",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
+            },
+            {
+              "expression": "method",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,
-          "where": "\"payments\".\"handed_over_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2312,19 +2424,6 @@
           "tableTo": "users",
           "columnsFrom": [
             "received_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "payments_handed_over_to_users_id_fk": {
-          "name": "payments_handed_over_to_users_id_fk",
-          "tableFrom": "payments",
-          "tableTo": "users",
-          "columnsFrom": [
-            "handed_over_to"
           ],
           "columnsTo": [
             "id"
@@ -3600,6 +3699,19 @@
         "mount_kind": {
           "name": "mount_kind",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit": {
+          "name": "unit",
+          "type": "purchase_unit",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },

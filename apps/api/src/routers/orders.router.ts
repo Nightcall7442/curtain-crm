@@ -610,7 +610,6 @@ export const ordersRouter = router({
           amount: parseMoney(input.deposit),
           orderId: created.id,
           receivedBy: ctx.user.id,
-          inKassa: true,
         });
 
         // Первая запись истории: у создания нет исходного статуса.
@@ -894,7 +893,6 @@ export const ordersRouter = router({
           amount: parseMoney(input.deposit),
           orderId: created.id,
           receivedBy: ctx.user.id,
-          inKassa: true,
         });
 
         await recordAudit(tx, {

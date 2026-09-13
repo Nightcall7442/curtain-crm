@@ -49,24 +49,51 @@ export const payments = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
 
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
-
-    /**
-     * Наличные, принятые у клиента установщиком, до вечера лежат у него в
-     * кармане, а не в кассе. Сдача в кассу — отдельная отметка директора:
-     * пока её нет, в отчёте эти деньги «на руках», а не «в кассе». Карта,
-     * QR и Click сдачи не требуют — их и так нет в кармане; у них отметка
-     * ставится сразу при приёме.
-     */
-    handedOverAt: timestamp('handed_over_at', { withTimezone: true }),
-    handedOverTo: integer('handed_over_to').references(() => users.id, { onDelete: 'restrict' }),
   },
   (table) => [
     index('payments_received_at_idx').on(table.receivedAt),
     index('payments_order_idx').on(table.orderId),
-    index('payments_pending_handover_idx').on(table.receivedBy).where(sql`${table.handedOverAt} is null`),
+    index('payments_received_by_idx').on(table.receivedBy, table.method),
     check('payments_amount_positive', sql`${table.amount} > 0`),
   ],
 );
 
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;
+
+/**
+ * Инкассация: сотрудник сдал наличные в кассу.
+ *
+ * Наличные, принятые продавцом у прилавка или установщиком у двери, до
+ * инкассации лежат у него, а не в кассе. Сколько у кого на руках — разница
+ * между принятыми наличными и сданными. Сумму при сдаче сотрудник пишет
+ * сам, а не система по чекам: сдаёт он то, что лежит в кармане, и если
+ * оно разошлось с чеками — это должно быть видно, а не спрятано.
+ */
+export const cashCollections = pgTable(
+  'cash_collections',
+  {
+    id: serial('id').primaryKey(),
+
+    branchId: integer('branch_id')
+      .notNull()
+      .references(() => branches.id, { onDelete: 'restrict' }),
+
+    /** Кто сдал. */
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+    comment: text('comment'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('cash_collections_user_idx').on(table.userId, table.createdAt),
+    index('cash_collections_created_at_idx').on(table.createdAt),
+    check('cash_collections_amount_positive', sql`${table.amount} > 0`),
+  ],
+);
+
+export type CashCollection = typeof cashCollections.$inferSelect;

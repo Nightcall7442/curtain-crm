@@ -1,16 +1,16 @@
-import { orders, payments, users } from '@curtain-crm/db';
+import { cashCollections, orders, payments, userRoles, users } from '@curtain-crm/db';
 import {
   isManagement,
   moneyToDecimalString,
   parseMoney,
+  MANAGEMENT_ROLES,
   paymentKindSchema,
   PaymentKind,
-  PaymentMethod,
   paymentMethodSchema,
   Role,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText } from '../lib/schemas';
@@ -18,7 +18,13 @@ import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import { loadOrderForUpdate } from '../services/orderWorkflow.service';
-import { cashSummary, recordPayment } from '../services/payments.service';
+import {
+  cashOnHands,
+  cashOnHandsByUser,
+  cashSummary,
+  collectionsInRange,
+  recordPayment,
+} from '../services/payments.service';
 import { router } from '../trpc';
 
 /**
@@ -90,9 +96,6 @@ export const paymentsRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
         }
 
-        // Установщик принял у двери — наличные у него на руках до сдачи.
-        // Продавец и руководство принимают у ящика — деньги сразу в кассе.
-        const atDesk = isManagement(ctx.user.roles) || ctx.user.roles.includes(Role.SELLER);
         await recordPayment(tx, {
           branchId: order.branchId,
           kind: PaymentKind.ORDER_BALANCE,
@@ -101,7 +104,6 @@ export const paymentsRouter = router({
           orderId: order.id,
           receivedBy: ctx.user.id,
           comment: input.comment ?? null,
-          inKassa: atDesk,
         });
 
         await recordAudit(tx, {
@@ -122,65 +124,76 @@ export const paymentsRouter = router({
     ),
 
   /**
-   * Наличные на руках: приняты у клиента, в кассу ещё не сданы.
+   * Наличные на руках: принято наличными минус сдано инкассацией.
    *
-   * Руководству — по всем, чтобы знать, у кого сколько; сотруднику — свои,
-   * чтобы видеть, сколько сдать вечером.
+   * Сотруднику — свои, чтобы знать, сколько сдать; руководству — по всем,
+   * у кого что-то есть, чтобы знать, с кого спросить.
    */
   onHands: protectedProcedure.query(async ({ ctx }) => {
-    const mine = !isManagement(ctx.user.roles);
-    const rows = await ctx.db
-      .select({
-        id: payments.id,
-        amount: payments.amount,
-        receivedAt: payments.receivedAt,
-        receivedBy: payments.receivedBy,
-        receivedByName: users.fullName,
-        orderId: payments.orderId,
-        orderNumber: orders.orderNumber,
-        clientName: orders.clientName,
-      })
-      .from(payments)
-      .innerJoin(users, eq(users.id, payments.receivedBy))
-      .leftJoin(orders, eq(orders.id, payments.orderId))
-      .where(
-        and(
-          eq(payments.method, PaymentMethod.CASH),
-          isNull(payments.handedOverAt),
-          ...(mine ? [eq(payments.receivedBy, ctx.user.id)] : []),
-        ),
-      )
-      .orderBy(desc(payments.receivedAt))
-      .limit(500);
-
-    const total = rows.reduce((sum, row) => sum + parseMoney(row.amount), 0);
-    return { rows, total: moneyToDecimalString(total) };
+    const mine = await cashOnHands(ctx.db, ctx.user.id);
+    const byUser = isManagement(ctx.user.roles) ? await cashOnHandsByUser(ctx.db) : [];
+    return {
+      onHands: moneyToDecimalString(mine.onHands),
+      byUser: byUser.map((row) => ({ ...row, onHands: moneyToDecimalString(row.onHands) })),
+    };
   }),
 
-  /** Директор принял наличные у установщика: деньги дошли до кассы. */
-  confirmHandover: managementProcedure
-    .input(z.object({ ids: z.array(idSchema).min(1).max(200) }))
-    .mutation(async ({ ctx, input }) =>
-      ctx.db.transaction(async (tx) => {
-        const updated = await tx
-          .update(payments)
-          .set({ handedOverAt: new Date(), handedOverTo: ctx.user.id })
-          .where(and(inArray(payments.id, input.ids), isNull(payments.handedOverAt)))
-          .returning({ id: payments.id, amount: payments.amount, receivedBy: payments.receivedBy });
-
-        const total = updated.reduce((sum, row) => sum + parseMoney(row.amount), 0);
+  /**
+   * Инкассация: сотрудник сдал наличные в кассу.
+   *
+   * Сумму пишет сам — сдаёт то, что в кармане. Больше, чем на руках,
+   * сдать нельзя: иначе «на руках» ушло бы в минус и отчёт врал бы.
+   */
+  collect: protectedProcedure
+    .input(
+      z.object({
+        amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
+        comment: optionalText(500),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const branchId = ctx.user.primaryBranchId;
+      if (branchId === null || branchId === undefined) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите филиал: у вас не задан основной филиал' });
+      }
+      const amount = parseMoney(input.amount);
+      return ctx.db.transaction(async (tx) => {
+        const { onHands } = await cashOnHands(tx, ctx.user.id);
+        if (amount > onHands) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Сумма больше, чем на руках' });
+        }
+        const [created] = await tx
+          .insert(cashCollections)
+          .values({
+            branchId,
+            userId: ctx.user.id,
+            amount: moneyToDecimalString(amount),
+            comment: input.comment ?? null,
+          })
+          .returning();
         await recordAudit(tx, {
           actorId: ctx.user.id,
-          action: 'payment.handed_over',
-          entityType: 'branch',
-          entityId: ctx.user.primaryBranchId ?? 0,
-          details: { payment: moneyToDecimalString(total), lines: updated.length },
+          action: 'payment.collected',
+          entityType: 'user',
+          entityId: ctx.user.id,
+          details: { payment: moneyToDecimalString(amount), onHands: moneyToDecimalString(onHands - amount) },
           ipAddress: ctx.ipAddress,
         });
+        return { id: created?.id ?? 0, onHands: moneyToDecimalString(onHands - amount) };
+      });
+    }),
 
-        return { confirmed: updated.length, total: moneyToDecimalString(total) };
-      }),
-    ),
+  /** Инкассации за день: свои — сотруднику, все — руководству. */
+  collections: protectedProcedure
+    .input(z.object({ day: z.string().date() }))
+    .query(async ({ ctx, input }) => {
+      const result = await collectionsInRange(
+        ctx.db,
+        dayRange(input.day),
+        isManagement(ctx.user.roles) ? undefined : ctx.user.id,
+      );
+      return { rows: result.rows, total: moneyToDecimalString(result.total) };
+    }),
 
   /** Платежи по заказу — что и чем клиент уже отдал; видят те, кто видит деньги заказа. */
   byOrder: protectedProcedure
@@ -208,7 +221,6 @@ export const paymentsRouter = router({
           amount: payments.amount,
           receivedAt: payments.receivedAt,
           receivedByName: users.fullName,
-          handedOverAt: payments.handedOverAt,
         })
         .from(payments)
         .innerJoin(users, eq(users.id, payments.receivedBy))
@@ -234,7 +246,16 @@ export const paymentsRouter = router({
               from: dayRange(input.from ?? new Date().toISOString().slice(0, 10)).from,
               to: dayRange(input.to ?? new Date().toISOString().slice(0, 10)).to,
             };
-      return cashSummary(ctx.db, range, input.branchId);
+      const management = await ctx.db
+        .select({ userId: userRoles.userId })
+        .from(userRoles)
+        .where(inArray(userRoles.role, [...MANAGEMENT_ROLES]));
+      return cashSummary(
+        ctx.db,
+        range,
+        input.branchId,
+        [...new Set(management.map((row) => row.userId))],
+      );
     }),
 
   /** Строки кассы за день — кто, чем и за что; для сверки ящика вечером. */
@@ -251,7 +272,6 @@ export const paymentsRouter = router({
           comment: payments.comment,
           receivedAt: payments.receivedAt,
           receivedByName: users.fullName,
-          handedOverAt: payments.handedOverAt,
           orderId: payments.orderId,
           orderNumber: orders.orderNumber,
           clientName: orders.clientName,
@@ -294,7 +314,6 @@ export const paymentsRouter = router({
           amount: parseMoney(input.amount),
           receivedBy: ctx.user.id,
           comment: input.comment ?? null,
-          inKassa: true,
         });
         await recordAudit(tx, {
           actorId: ctx.user.id,

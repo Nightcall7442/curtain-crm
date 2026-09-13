@@ -25,6 +25,7 @@ import {
   orderPhotos,
   orders,
   orderStatusHistory,
+  cashCollections,
   payments,
   payrollRecords,
   payrollSchemes,
@@ -64,7 +65,7 @@ import {
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
-import { cashSummary, recordPayment } from '../services/payments.service';
+import { cashOnHands, cashSummary, recordPayment } from '../services/payments.service';
 import { employeeRating } from '../services/rating.service';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
@@ -184,6 +185,7 @@ async function cleanup(db: Database): Promise<void> {
   if (userIds.length > 0) {
     // audit_log — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
+    await db.delete(cashCollections).where(inArray(cashCollections.userId, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -952,7 +954,6 @@ async function run(db: Database): Promise<void> {
     amount: parseMoney('300000'),
     orderId: cashOrder.id,
     receivedBy: seller.id,
-    inKassa: true,
   });
   await recordPayment(db, {
     branchId: branch.id,
@@ -961,7 +962,6 @@ async function run(db: Database): Promise<void> {
     amount: parseMoney('500000'),
     orderId: cashOrder.id,
     receivedBy: installer.id,
-    inKassa: false,
   });
   await recordPayment(db, {
     branchId: branch.id,
@@ -970,15 +970,21 @@ async function run(db: Database): Promise<void> {
     amount: parseMoney('200000'),
     orderId: cashOrder.id,
     receivedBy: installer.id,
-    inKassa: false,
+  });
+
+  // Установщик сдал 400 000 из 500 000 наличных — инкассация.
+  await db.insert(cashCollections).values({
+    branchId: branch.id,
+    userId: installer.id,
+    amount: '400000.00',
   });
 
   const today = new Date();
-  const cash = await cashSummary(
-    db,
-    { from: new Date(today.getTime() - 60 * 60 * 1000), to: new Date(today.getTime() + 60 * 60 * 1000) },
-    branch.id,
-  );
+  const cashRange = {
+    from: new Date(today.getTime() - 60 * 60 * 1000),
+    to: new Date(today.getTime() + 60 * 60 * 1000),
+  };
+  const cash = await cashSummary(db, cashRange, branch.id, [admin.id]);
   const depositRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_DEPOSIT);
   const balanceRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_BALANCE);
   check(
@@ -989,10 +995,17 @@ async function run(db: Database): Promise<void> {
       cash.total === parseMoney('1000000'),
     `итого ${moneyToDecimalString(cash.total)}`,
   );
+  const installerCash = await cashOnHands(db, installer.id);
+  const sellerCash = await cashOnHands(db, seller.id);
   check(
-    'касса: наличные установщика на руках, а не в кассе, пока не сданы',
-    cash.onHands === parseMoney('500000') && cash.byMethod.cash - cash.onHands === parseMoney('300000'),
-    `на руках ${moneyToDecimalString(cash.onHands)}`,
+    'касса: на руках — принятые наличные минус инкассация',
+    installerCash.onHands === parseMoney('100000') && sellerCash.onHands === parseMoney('300000'),
+    `установщик ${moneyToDecimalString(installerCash.onHands)}, продавец ${moneyToDecimalString(sellerCash.onHands)}`,
+  );
+  check(
+    'касса: в кассе — только сданное инкассацией и принятое руководством',
+    cash.collected === parseMoney('400000') && cash.inKassa === parseMoney('400000') - cash.cashOut.payroll - cash.cashOut.purchases,
+    `сдано ${moneyToDecimalString(cash.collected)}, в кассе ${moneyToDecimalString(cash.inKassa)}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */
