@@ -9,6 +9,8 @@ import {
   ORDER_ITEM_KINDS,
   ORDER_STATUSES,
   ORDER_TYPES,
+  PAYMENT_KINDS,
+  PAYMENT_METHODS,
   PERSONAL_WORK_STATUSES,
   PAYROLL_RECORD_STATUSES,
   PAYROLL_SCHEME_TYPES,
@@ -52,3 +54,5 @@ export const employmentTypeEnum = pgEnum('employment_type', EMPLOYMENT_TYPES);
 
 export const orderItemKindEnum = pgEnum('order_item_kind', ORDER_ITEM_KINDS);
 export const corniceRotationEnum = pgEnum('cornice_rotation', CORNICE_ROTATIONS);
+export const paymentMethodEnum = pgEnum('payment_method', PAYMENT_METHODS);
+export const paymentKindEnum = pgEnum('payment_kind', PAYMENT_KINDS);

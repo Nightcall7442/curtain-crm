@@ -15,6 +15,7 @@ export * from './orderStatusHistory.schema';
 export * from './orderPhotos.schema';
 export * from './orderComments.schema';
 export * from './orderPackChecks.schema';
+export * from './payments.schema';
 export * from './shifts.schema';
 export * from './personalBreaks.schema';
 export * from './installationTrips.schema';

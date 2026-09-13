@@ -16,6 +16,7 @@ export * from './enums/orderType.enum';
 export * from './enums/orderItemKind.enum';
 export * from './enums/corniceRotation.enum';
 export * from './enums/corniceStatus.enum';
+export * from './enums/payment.enum';
 export * from './enums/priority.enum';
 export * from './enums/photoStage.enum';
 export * from './enums/notificationType.enum';

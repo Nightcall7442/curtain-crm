@@ -232,6 +232,13 @@
       "when": 1789163627912,
       "tag": "0032_order_items_ready_made_code",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789335081793,
+      "tag": "0033_payments",
+      "breakpoints": true
     }
   ]
 }

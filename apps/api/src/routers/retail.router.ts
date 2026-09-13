@@ -9,6 +9,9 @@ import {
   isManagement,
   moneyToDecimalString,
   parseMoney,
+  PaymentKind,
+  PaymentMethod,
+  paymentMethodSchema,
   purchaseCategorySchema,
   purchaseUnitSchema,
 } from '@curtain-crm/shared';
@@ -27,6 +30,7 @@ import {
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure, orderIntakeProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { recordPayment } from '../services/payments.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
@@ -288,6 +292,8 @@ export const retailRouter = router({
         clientName: optionalText(200),
         clientPhone: phoneSchema.optional(),
         comment: optionalText(500),
+        /** Чем заплатили — строка кассы «Прочие продажи». */
+        method: paymentMethodSchema.default(PaymentMethod.CASH),
         lines: z
           .array(z.object({ itemId: idSchema, quantity: quantitySchema }))
           .min(1, 'Добавьте хотя бы один товар')
@@ -408,7 +414,18 @@ export const retailRouter = router({
           ipAddress: ctx.ipAddress,
         });
 
-        return loadSale(tx, sale.id);
+        const loaded = await loadSale(tx, sale.id);
+        await recordPayment(tx, {
+          branchId,
+          kind: PaymentKind.OTHER,
+          method: input.method,
+          amount: parseMoney(loaded.total),
+          retailSaleId: sale.id,
+          receivedBy: ctx.user.id,
+          inKassa: true,
+        });
+
+        return loaded;
       });
     }),
 

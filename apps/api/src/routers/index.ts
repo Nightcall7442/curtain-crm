@@ -8,6 +8,7 @@ import { notificationsRouter } from './notifications.router';
 import { orderCommentsRouter } from './orderComments.router';
 import { orderPhotosRouter } from './orderPhotos.router';
 import { ordersRouter } from './orders.router';
+import { paymentsRouter } from './payments.router';
 import { payrollRouter } from './payroll.router';
 import { purchasesRouter } from './purchases.router';
 import { ratingRouter } from './rating.router';
@@ -43,6 +44,7 @@ export const appRouter = router({
   orderPhotos: orderPhotosRouter,
   orderComments: orderCommentsRouter,
   payroll: payrollRouter,
+  payments: paymentsRouter,
   notifications: notificationsRouter,
   reports: reportsRouter,
   rating: ratingRouter,

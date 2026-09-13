@@ -2,10 +2,12 @@ import type { ReactElement } from 'react';
 import {
   materialKindLabel,
   ORDER_STATUS_LABELS_RU,
+  PAYMENT_METHOD_LABELS_RU,
   ROLE_LABELS_RU,
   weekdayName,
   type CatalogKind,
   type OrderStatus,
+  type PaymentMethod,
   type Role,
 } from '@curtain-crm/shared';
 
@@ -118,6 +120,9 @@ function formatValue(key: string, raw: unknown): string {
   }
   if (WEEKDAY_KEYS.has(key)) {
     return weekdayName(Number.parseInt(text, 10)) || text;
+  }
+  if (key === 'method') {
+    return PAYMENT_METHOD_LABELS_RU[text as PaymentMethod] ?? text;
   }
   if (KIND_KEYS.has(key)) {
     /*
@@ -262,8 +267,9 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   type: 'тип',
   amount: 'сумма',
   calculated: 'начислено',
-  payment: 'выдано сейчас',
+  payment: 'сумма',
   paid: 'выплачено всего',
+  method: 'способ',
   skipped: 'пропущено',
   failures: 'ошибок',
   batch: 'массово',

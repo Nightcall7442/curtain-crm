@@ -25,6 +25,7 @@ import {
   orderPhotos,
   orders,
   orderStatusHistory,
+  payments,
   payrollRecords,
   payrollSchemes,
   purchases,
@@ -43,6 +44,8 @@ import {
   OrderStatus,
   OrderType,
   parseMoney,
+  PaymentKind,
+  PaymentMethod,
   PayrollRecordStatus,
   PayrollSchemeType,
   Role,
@@ -61,6 +64,7 @@ import {
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
+import { cashSummary, recordPayment } from '../services/payments.service';
 import { employeeRating } from '../services/rating.service';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
@@ -167,6 +171,7 @@ async function cleanup(db: Database): Promise<void> {
   const userIds = smokeUsers.map((row) => row.id);
 
   if (orderIds.length > 0) {
+    await db.delete(payments).where(inArray(payments.orderId, orderIds));
     await db.delete(purchases).where(inArray(purchases.orderId, orderIds));
     await db.delete(orderPhotos).where(inArray(orderPhotos.orderId, orderIds));
     await db.delete(orderComments).where(inArray(orderComments.orderId, orderIds));
@@ -917,6 +922,77 @@ async function run(db: Database): Promise<void> {
         ? '—'
         : moneyToDecimalString(parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount))
     }`,
+  );
+
+  /* ---------------------------- 6c. Касса -------------------------------- */
+
+  /*
+    Продавец принял предоплату у ящика — сразу в кассе. Установщик принял
+    остаток наличными у двери — на руках, пока директор не отметил сдачу.
+    Карта сдачи не требует. Отчёт дня должен разложить это по способам.
+  */
+  const [cashOrder] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Касса`,
+      clientPhone: '+998901112288',
+      createdBy: seller.id,
+      workPrice: '1000000.00',
+      deposit: '300000.00',
+      installerId: installer.id,
+    })
+    .returning();
+  if (cashOrder === undefined) throw new Error('заказ для кассы не создан');
+
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_DEPOSIT,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('300000'),
+    orderId: cashOrder.id,
+    receivedBy: seller.id,
+    inKassa: true,
+  });
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('500000'),
+    orderId: cashOrder.id,
+    receivedBy: installer.id,
+    inKassa: false,
+  });
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CARD,
+    amount: parseMoney('200000'),
+    orderId: cashOrder.id,
+    receivedBy: installer.id,
+    inKassa: false,
+  });
+
+  const today = new Date();
+  const cash = await cashSummary(
+    db,
+    { from: new Date(today.getTime() - 60 * 60 * 1000), to: new Date(today.getTime() + 60 * 60 * 1000) },
+    branch.id,
+  );
+  const depositRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_DEPOSIT);
+  const balanceRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_BALANCE);
+  check(
+    'касса: приходы разложены по источнику и способу',
+    depositRow?.byMethod.cash === parseMoney('300000') &&
+      balanceRow?.byMethod.cash === parseMoney('500000') &&
+      balanceRow.byMethod.card === parseMoney('200000') &&
+      cash.total === parseMoney('1000000'),
+    `итого ${moneyToDecimalString(cash.total)}`,
+  );
+  check(
+    'касса: наличные установщика на руках, а не в кассе, пока не сданы',
+    cash.onHands === parseMoney('500000') && cash.byMethod.cash - cash.onHands === parseMoney('300000'),
+    `на руках ${moneyToDecimalString(cash.onHands)}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

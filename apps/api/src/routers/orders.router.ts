@@ -35,6 +35,9 @@ import {
   OrderStatus,
   OrderType,
   parseMoney,
+  PaymentKind,
+  PaymentMethod,
+  paymentMethodSchema,
   prioritySchema,
   TransitionKind,
   type OrderPhase,
@@ -63,6 +66,7 @@ import {
   changeOrderStatus,
   loadOrderForUpdate,
 } from '../services/orderWorkflow.service';
+import { recordPayment } from '../services/payments.service';
 import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
@@ -534,6 +538,8 @@ export const ordersRouter = router({
 
         workPrice: moneySchema.default(0),
         deposit: moneySchema.default(0),
+        /** Чем внесена предоплата — строка кассы. Без предоплаты не нужен. */
+        depositMethod: paymentMethodSchema.default(PaymentMethod.CASH),
 
         /*
           Расценок здесь нет намеренно.
@@ -596,6 +602,17 @@ export const ordersRouter = router({
           .insert(orderItems)
           .values(input.items.map((item, index) => toOrderItemValues(item, created.id, index)));
 
+        // Предоплата при приёме — первый приход по заказу в кассу.
+        await recordPayment(tx, {
+          branchId,
+          kind: PaymentKind.ORDER_DEPOSIT,
+          method: input.depositMethod,
+          amount: parseMoney(input.deposit),
+          orderId: created.id,
+          receivedBy: ctx.user.id,
+          inKassa: true,
+        });
+
         // Первая запись истории: у создания нет исходного статуса.
         await tx.insert(orderStatusHistory).values({
           orderId: created.id,
@@ -655,6 +672,8 @@ export const ordersRouter = router({
 
           workPrice: moneySchema.default(0),
           deposit: moneySchema.default(0),
+          /** Чем заплатили — строка кассы «Готовые шторы». */
+          depositMethod: paymentMethodSchema.default(PaymentMethod.CASH),
 
           /**
            * Позиции продажи.
@@ -866,6 +885,16 @@ export const ordersRouter = router({
           toStatus: OrderStatus.NEW,
           changedBy: ctx.user.id,
           comment: 'Продажа готовых штор',
+        });
+
+        await recordPayment(tx, {
+          branchId,
+          kind: PaymentKind.READY_MADE,
+          method: input.depositMethod,
+          amount: parseMoney(input.deposit),
+          orderId: created.id,
+          receivedBy: ctx.user.id,
+          inKassa: true,
         });
 
         await recordAudit(tx, {
