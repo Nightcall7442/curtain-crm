@@ -43,6 +43,10 @@ function dayRange(day: string): { from: Date; to: Date } {
   return { from, to: new Date(from.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+/** Сегодня по Ташкенту, `YYYY-MM-DD` — не по UTC, где до пяти утра ещё вчера. */
+const workshopToday = (): string =>
+  new Date(Date.now() + WORKSHOP_OFFSET_MS).toISOString().slice(0, 10);
+
 export const paymentsRouter = router({
   /**
    * Принять деньги по заказу: остаток или ещё одна часть.
@@ -243,8 +247,8 @@ export const paymentsRouter = router({
         input.day !== undefined
           ? dayRange(input.day)
           : {
-              from: dayRange(input.from ?? new Date().toISOString().slice(0, 10)).from,
-              to: dayRange(input.to ?? new Date().toISOString().slice(0, 10)).to,
+              from: dayRange(input.from ?? workshopToday()).from,
+              to: dayRange(input.to ?? workshopToday()).to,
             };
       const management = await ctx.db
         .select({ userId: userRoles.userId })

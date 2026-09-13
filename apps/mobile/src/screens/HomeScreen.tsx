@@ -6,6 +6,7 @@ import {
   ORDER_STATUS_LABELS,
   parseMoney,
   RatingScope,
+  todayIso,
   yesterdayIso,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
@@ -490,7 +491,7 @@ function WorkshopSummary(): ReactElement {
   });
   /* Касса дня: сколько принято сегодня всеми способами и сколько наличных
      ещё на руках у сотрудников — не сдано инкассацией. */
-  const today = trpc.payments.summary.useQuery({ day: now.toISOString().slice(0, 10) });
+  const today = trpc.payments.summary.useQuery({ day: todayIso(now) });
   const onHands = trpc.payments.onHands.useQuery();
 
   if (dashboard.data === undefined) {

@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney } from '@curtain-crm/shared';
+import { formatMoney, parseMoney, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -25,7 +25,7 @@ import { Icon } from './Icon';
 export function CashCollectionCard(): ReactElement | null {
   const { m } = useLocale();
   const utils = trpc.useUtils();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const onHands = trpc.payments.onHands.useQuery();
   const collections = trpc.payments.collections.useQuery({ day: today });
 
