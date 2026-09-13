@@ -131,6 +131,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Не удалось утвердить расчёт': "Hisobni tasdiqlab bo'lmadi",
   'Сначала утвердите расчёт': 'Avval hisobni tasdiqlang',
   'Расчёт уже выплачен': "Hisob allaqachon to'langan",
+  'Сумма выплаты должна быть больше нуля': "To'lov summasi noldan katta bo'lishi kerak",
   'Это расчёт другого сотрудника': 'Bu boshqa xodimning hisobi',
   'Расчёт ещё не выплачен — подтверждать нечего': "Hisob hali to'lanmagan — tasdiqlash uchun narsa yo'q",
   'Получение уже подтверждено': 'Olinganligi allaqachon tasdiqlangan',
