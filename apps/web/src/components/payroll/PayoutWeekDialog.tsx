@@ -209,7 +209,7 @@ export function PayoutWeekDialog({
                       <td
                         key={day.day}
                         className={cn(
-                          'px-2 pt-2 text-right font-figure text-subhead',
+                          'px-2 pt-2 text-right font-semibold text-subhead tabular-nums',
                           day.paid !== null ? 'text-muted line-through' : 'text-primary',
                         )}
                       >
@@ -259,15 +259,15 @@ export function PayoutWeekDialog({
           <dl className="grid grid-cols-3 gap-3 text-caption">
             <div>
               <dt className="text-muted">Итого заработано</dt>
-              <dd className="font-figure text-subhead text-primary">{formatMoney(earned)}</dd>
+              <dd className="font-semibold text-subhead tabular-nums text-primary">{formatMoney(earned)}</dd>
             </div>
             <div>
               <dt className="text-muted">Получено</dt>
-              <dd className="font-figure text-subhead text-primary">{formatMoney(received)}</dd>
+              <dd className="font-semibold text-subhead tabular-nums text-primary">{formatMoney(received)}</dd>
             </div>
             <div>
               <dt className="text-muted">Выплатить</dt>
-              <dd className="font-figure text-subhead text-accent">
+              <dd className="font-semibold text-subhead tabular-nums text-accent">
                 {formatMoney(manualOn ? Math.round(manualValue * 100) : toPay)}
               </dd>
             </div>

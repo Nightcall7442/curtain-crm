@@ -112,12 +112,12 @@ export default function CashPage(): ReactElement {
             {PAYMENT_METHODS.map((method) => (
               <div key={method} className="flex justify-between sm:block">
                 <span className="text-muted">{PAYMENT_METHOD_LABELS_RU[method]} итого</span>
-                <div className="font-figure tabular-nums">{formatMoney(data.byMethod[method])}</div>
+                <div className="tabular-nums">{formatMoney(data.byMethod[method])}</div>
               </div>
             ))}
             <div className="flex justify-between sm:block">
               <span className="text-muted">Total</span>
-              <div className="font-figure text-title tabular-nums">{formatMoney(data.total)}</div>
+              <div className="text-subhead font-semibold tabular-nums">{formatMoney(data.total)}</div>
             </div>
           </div>
         )}
@@ -153,7 +153,7 @@ export default function CashPage(): ReactElement {
           {collections.data !== undefined && (
             <p className="px-5 pb-4 text-caption text-secondary">
               Сдано:{' '}
-              <strong className="font-figure">
+              <strong className="tabular-nums">
                 {formatMoney(parseMoney(collections.data.total))}
               </strong>
             </p>
@@ -244,7 +244,7 @@ function Money({
 }): ReactElement {
   if (value === 0) return <span className="text-muted">—</span>;
   return (
-    <span className={strong ? 'font-figure tabular-nums' : 'tabular-nums'}>
+    <span className={strong ? 'font-medium tabular-nums' : 'tabular-nums'}>
       {formatMoney(value)}
     </span>
   );
