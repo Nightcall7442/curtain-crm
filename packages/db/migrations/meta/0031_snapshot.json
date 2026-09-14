@@ -1,5 +1,5 @@
 {
-  "id": "ecbc0517-1d0e-4d0a-981c-a42c925ca8e3",
+  "id": "870f6993-d920-4c05-be68-c8aca6fcae43",
   "prevId": "98995767-0233-48f5-8ff4-5bc46ca1c522",
   "version": "7",
   "dialect": "postgresql",
@@ -517,6 +517,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "weekly_day_off": {
+          "name": "weekly_day_off",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "is_active": {
           "name": "is_active",
           "type": "boolean",
@@ -666,6 +672,10 @@
         "users_phone_e164": {
           "name": "users_phone_e164",
           "value": "\"users\".\"phone\" ~ '^\\+998[0-9]{9}$'"
+        },
+        "users_weekly_day_off_range": {
+          "name": "users_weekly_day_off_range",
+          "value": "\"users\".\"weekly_day_off\" between 1 and 7"
         },
         "users_fired_after_hired": {
           "name": "users_fired_after_hired",
@@ -5164,8 +5174,7 @@
       "schema": "public",
       "values": [
         "custom",
-        "ready_made",
-        "stock"
+        "ready_made"
       ]
     },
     "public.payroll_record_status": {

@@ -7,13 +7,14 @@ import {
   ROLE_LABELS_RU,
   type AssignableRole,
   type OrderType as OrderTypeName,
-  type Role,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Button, Field, FormError, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
+
+import { useAssigneeCandidates } from './useAssigneeCandidates';
 
 import { StageFeesFields, toStageFeesInput, type StageFeesDraft } from './StageFeesFields';
 
@@ -143,7 +144,8 @@ export function OrderManagePanel({
           статус заказа при этом не меняется.
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Один столбец: панель живёт в узкой правой колонке карточки, и четыре селекта в ряд там не помещались. */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           {ASSIGNABLE.map(({ role }) => (
             <AssigneeSelect
               key={role}
@@ -277,13 +279,7 @@ export function OrderManagePanel({
   );
 }
 
-/**
- * Выбор исполнителя на роль.
- *
- * Список приходит из `users.listByRole`, то есть содержит только активных
- * сотрудников с этой ролью. Назначить человека без нужной роли невозможно —
- * сервер отклонит, а список такого варианта и не покажет.
- */
+/** Выбор исполнителя на роль: свои по роли, по «Ещё» — все сотрудники. */
 function AssigneeSelect({
   role,
   value,
@@ -295,23 +291,35 @@ function AssigneeSelect({
   readonly disabled: boolean;
   readonly onChange: (assigneeId: number | null) => void;
 }): ReactElement {
-  const candidates = trpc.users.listByRole.useQuery({ role: role satisfies Role });
+  const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(role, value);
 
   return (
     <Field label={ROLE_LABELS_RU[role]}>
       <Select
         value={value === null ? '' : value.toString()}
-        disabled={disabled || candidates.isLoading}
+        disabled={disabled || loading}
         placeholder="Не назначен"
         onChange={(event) => {
           const next = event.target.value;
           onChange(next === '' ? null : Number.parseInt(next, 10));
         }}
-        options={(candidates.data ?? []).map((person) => ({
+        options={candidates.map((person) => ({
           value: person.id.toString(),
-          label: person.fullName,
+          label:
+            person.mainRole === null
+              ? person.fullName
+              : `${person.fullName} · ${ROLE_LABELS_RU[person.mainRole]}`,
         }))}
       />
+      {canShowMore && (
+        <button
+          type="button"
+          className="mt-1 text-footnote text-accent hover:underline"
+          onClick={showMore}
+        >
+          Ещё сотрудники
+        </button>
+      )}
     </Field>
   );
 }

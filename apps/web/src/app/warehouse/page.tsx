@@ -1,12 +1,31 @@
 'use client';
 
-import { STOCK_KIND_LABELS_RU, STOCK_KINDS, type StockKind } from '@curtain-crm/shared';
+import {
+  formatMoney,
+  parseMoney,
+  PURCHASE_UNIT_LABELS_RU,
+  PURCHASE_UNITS,
+  STOCK_KIND_LABELS_RU,
+  STOCK_KINDS,
+  type PurchaseUnit,
+  type StockKind,
+} from '@curtain-crm/shared';
 import { Download, FileText, Plus, Upload } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { useRef, useState, type ReactElement } from 'react';
 
 import { useToast } from '@/components/providers/ToastProvider';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
-import { Button, Field, fieldErrors, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import {
+  Button,
+  Field,
+  fieldErrors,
+  FormError,
+  Input,
+  Modal,
+  MoneyInput,
+  Select,
+} from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { exportToXlsx, readXlsx } from '@/lib/spreadsheet';
 import { trpc } from '@/lib/trpc';
@@ -28,12 +47,106 @@ import { cn } from '@/lib/utils';
 /** Виды, которые лежат на складе. Модели, цвета и прочее — в настройках. */
 const KIND_SET = new Set<string>(STOCK_KINDS);
 
-const HEADERS = ['Код', 'Вид', 'Описание'] as const;
+const HEADERS = ['Код', 'Вид', 'Описание', 'Цена', 'Ед.'] as const;
 
-/** «Портьера» из файла обратно в вид справочника. Регистр не важен. */
-const KIND_BY_LABEL = new Map<string, StockKind>(
-  STOCK_KINDS.map((kind) => [STOCK_KIND_LABELS_RU[kind].toLowerCase(), kind]),
-);
+/**
+ * «Портьера» из файла обратно в вид справочника.
+ *
+ * Не только точная подпись из выгрузки: файлы приходят от поставщиков и с
+ * телефона, где вид пишут по-узбекски, по-английски, сокращённо или во
+ * множественном числе. Регистр, пробелы и хвост слова («портьеры»,
+ * «портьерная») не важны — сравнивается начало.
+ */
+const KIND_ALIASES: Readonly<Record<StockKind, readonly string[]>> = {
+  portiere_code: ['портьер', 'порт', 'portiere', 'parda', 'штора', 'шторы'],
+  tulle_code: ['тюль', 'tyul', 'tulle', 'органза'],
+  protection_code: ['защит', 'himoya', 'protection', 'блэкаут', 'blackout'],
+  cornice_code: ['карниз', 'karniz', 'cornice'],
+  plastic_code: ['пластик', 'plastik', 'plastic'],
+  pipe_code: ['труб', 'truba', 'pipe'],
+  accessory_code: ['аксессуар', 'aksessuar', 'accessor', 'фурнитур', 'держател', 'кист'],
+};
+
+function kindOfLabel(label: string): StockKind | undefined {
+  const value = label.trim().toLowerCase();
+  if (value === '') return undefined;
+  for (const kind of STOCK_KINDS) {
+    if (STOCK_KIND_LABELS_RU[kind].toLowerCase() === value) return kind;
+  }
+  return STOCK_KINDS.find((kind) => KIND_ALIASES[kind].some((alias) => value.startsWith(alias)));
+}
+
+/** Названия колонок, по которым узнаётся шапка: код, вид, описание, цена, единица. */
+const HEADER_ALIASES = {
+  code: ['код', 'code', 'артикул', 'kod', 'sku', 'номер'],
+  kind: ['вид', 'тип', 'категор', 'kind', 'type', 'turi', 'tur'],
+  description: ['описан', 'назван', 'наимен', 'description', 'name', 'tavsif', 'nomi', 'коммент'],
+  price: ['цена', 'price', 'narx', 'стоим', 'сум'],
+  unit: ['ед', 'unit', 'birlik', 'изм'],
+} as const;
+
+/** «м», «шт», «metr», «dona» из файла — в единицу справочника. */
+const UNIT_ALIASES: Readonly<Record<PurchaseUnit, readonly string[]>> = {
+  m: ['м', 'm', 'метр', 'metr', 'пог'],
+  m2: ['м2', 'м²', 'm2', 'm²', 'кв'],
+  pcs: ['шт', 'pcs', 'pc', 'dona', 'штук'],
+  set: ['компл', 'set', 'komplekt', 'набор'],
+  kg: ['кг', 'kg'],
+  roll: ['рул', 'roll', 'rulon'],
+};
+
+function unitOfLabel(label: string): PurchaseUnit | undefined {
+  const value = label.trim().toLowerCase().replace(/\.$/, '');
+  if (value === '') return undefined;
+  // Точное совпадение раньше начала: «м2» не должно узнаваться как «м».
+  const exact = PURCHASE_UNITS.find((unit) => UNIT_ALIASES[unit].includes(value));
+  if (exact !== undefined) return exact;
+  return PURCHASE_UNITS.find((unit) => UNIT_ALIASES[unit].some((alias) => value.startsWith(alias)));
+}
+
+/** «1 250 000», «1250000,00», «1 250 000 сум» → число; пусто и не число → `null`. */
+function priceOfCell(cell: string): number | null {
+  const digits = cell.replace(/[^\d.,]/g, '').replace(/\s/g, '').replace(',', '.');
+  if (digits === '') return null;
+  const value = Number.parseFloat(digits);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * Где какая колонка. Шапка ищется в первых пяти строках по названиям; если
+ * её нет — считается, что порядок как в выгрузке: код, вид, описание.
+ */
+function detectColumns(table: readonly (readonly string[])[]): {
+  readonly headerRow: number;
+  readonly code: number;
+  readonly kind: number | null;
+  readonly description: number | null;
+  readonly price: number | null;
+  readonly unit: number | null;
+} {
+  const find = (row: readonly string[], aliases: readonly string[]): number =>
+    row.findIndex((cell) => aliases.some((alias) => cell.trim().toLowerCase().startsWith(alias)));
+
+  for (let index = 0; index < Math.min(5, table.length); index += 1) {
+    const row = table[index] ?? [];
+    const code = find(row, HEADER_ALIASES.code);
+    if (code === -1) continue;
+    const kind = find(row, HEADER_ALIASES.kind);
+    const description = find(row, HEADER_ALIASES.description);
+    const price = find(row, HEADER_ALIASES.price);
+    const unit = find(row, HEADER_ALIASES.unit);
+    return {
+      headerRow: index,
+      code,
+      kind: kind === -1 ? null : kind,
+      description: description === -1 ? null : description,
+      price: price === -1 ? null : price,
+      unit: unit === -1 ? null : unit,
+    };
+  }
+
+  return { headerRow: -1, code: 0, kind: 1, description: 2, price: null, unit: null };
+}
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -47,6 +160,8 @@ export default function WarehousePage(): ReactElement {
   const [kind, setKind] = useState<StockKind>('portiere_code');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [unit, setUnit] = useState<PurchaseUnit | ''>('');
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StockKind | 'all'>('all');
@@ -65,6 +180,8 @@ export default function WarehousePage(): ReactElement {
     setEditingId(null);
     setCode('');
     setDescription('');
+    setPrice('');
+    setUnit('');
   };
 
   const create = trpc.catalog.create.useMutation({
@@ -100,13 +217,6 @@ export default function WarehousePage(): ReactElement {
   });
 
   const importItems = trpc.catalog.importItems.useMutation({
-    onSuccess(result) {
-      toast.success(
-        'Файл загружен',
-        `Новых кодов: ${String(result.created)}, дополнено описаний: ${String(result.updated)}`,
-      );
-      refresh();
-    },
     onError: (error) => {
       toast.error('Не удалось загрузить файл', error.message);
     },
@@ -140,6 +250,8 @@ export default function WarehousePage(): ReactElement {
     row.name,
     STOCK_KIND_LABELS_RU[row.kind as StockKind],
     row.description ?? '',
+    row.price === null ? '' : formatMoney(parseMoney(row.price)),
+    row.unit === null ? '' : PURCHASE_UNIT_LABELS_RU[row.unit],
   ]);
 
   const errors = fieldErrors(editingId === null ? create.error : update.error);
@@ -182,45 +294,108 @@ export default function WarehousePage(): ReactElement {
     window.print();
   };
 
+  /*
+    Импорт терпим к файлу: шапка ищется по названиям колонок, вид узнаётся
+    по синонимам, а если колонки «Вид» в файле нет вовсе — берётся вид,
+    выбранный вкладкой над списком. Раньше строка без точного «Портьера»
+    во второй колонке молча пропускалась, и файл поставщика «не работал».
+  */
   const runImport = (file: File): void => {
     setBusy('import');
 
     void readXlsx(file)
       .then((table) => {
-        const items: { kind: StockKind; name: string; description: string | null }[] = [];
-        const skipped: string[] = [];
+        const columns = detectColumns(table);
+        const fallbackKind = filter === 'all' ? null : filter;
 
-        for (const row of table) {
-          const name = (row[0] ?? '').trim();
-          const label = (row[1] ?? '').trim().toLowerCase();
-          if (name === '') continue;
-
-          const rowKind = KIND_BY_LABEL.get(label);
-          if (rowKind === undefined) {
-            skipped.push(name);
-            continue;
-          }
-
-          const text = (row[2] ?? '').trim();
-          items.push({ kind: rowKind, name, description: text === '' ? null : text });
+        if (columns.kind === null && fallbackKind === null) {
+          toast.error(
+            'Не понятно, какого вида коды',
+            'В файле нет колонки «Вид». Выберите вид над списком — все коды загрузятся в него',
+          );
+          return;
         }
 
+        const items: {
+          kind: StockKind;
+          name: string;
+          description: string | null;
+          price: number | null;
+          unit: PurchaseUnit | null;
+        }[] = [];
+        const skipped: string[] = [];
+
+        table.forEach((row, index) => {
+          if (index <= columns.headerRow) return;
+          const name = (row[columns.code] ?? '').trim();
+          if (name === '') return;
+
+          const rowKind =
+            (columns.kind === null ? undefined : kindOfLabel(row[columns.kind] ?? '')) ??
+            fallbackKind ??
+            undefined;
+          if (rowKind === undefined) {
+            skipped.push(name);
+            return;
+          }
+
+          // Длинное описание режется, а не валит весь файл: сервер принимает до 300 знаков.
+          const text = (columns.description === null ? '' : (row[columns.description] ?? '')).trim().slice(0, 300);
+          items.push({
+            kind: rowKind,
+            name: name.slice(0, 200),
+            description: text === '' ? null : text,
+            price: columns.price === null ? null : priceOfCell(row[columns.price] ?? ''),
+            unit: columns.unit === null ? null : (unitOfLabel(row[columns.unit] ?? '') ?? null),
+          });
+        });
+
         if (items.length === 0) {
-          toast.error('В файле нечего загружать', 'Нужны колонки «Код» и «Вид» — как в выгрузке');
+          toast.error(
+            'В файле нечего загружать',
+            skipped.length > 0
+              ? `Ни у одной из ${String(skipped.length)} строк не распознан вид. Выберите вид над списком и повторите`
+              : 'Не нашёл колонку с кодами: назовите её «Код» или поставьте первой',
+          );
           return;
         }
 
         if (skipped.length > 0) {
           toast.error(
             `Пропущено строк: ${String(skipped.length)}`,
-            `Непонятный вид у кодов: ${skipped.slice(0, 5).join(', ')}`,
+            `Непонятный вид у кодов: ${skipped.slice(0, 5).join(', ')}. Остальные ${String(items.length)} загружаю`,
           );
         }
 
-        importItems.mutate({ items });
+        // Частями: у сервера потолок на один запрос, а файл склада бывает на тысячи строк.
+        const CHUNK = 500;
+        const chunks = Array.from({ length: Math.ceil(items.length / CHUNK) }, (_, index) =>
+          items.slice(index * CHUNK, (index + 1) * CHUNK),
+        );
+        return chunks
+          .reduce(
+            (chain, chunk) =>
+              chain.then(async (totals) => {
+                const result = await importItems.mutateAsync({ items: chunk });
+                return { created: totals.created + result.created, updated: totals.updated + result.updated };
+              }),
+            Promise.resolve({ created: 0, updated: 0 }),
+          )
+          .then((totals) => {
+            toast.success(
+              'Файл загружен',
+              totals.created === 0 && totals.updated === 0
+                ? `Все ${String(items.length)} кодов уже на складе, менять нечего`
+                : `Новых кодов: ${String(totals.created)}, обновлено: ${String(totals.updated)}`,
+            );
+            refresh();
+          });
       })
       .catch((error: unknown) => {
-        toast.error('Не удалось прочитать файл', error instanceof Error ? error.message : 'Ошибка');
+        // Ошибку сервера уже показал `onError` мутации — тут только чтение файла.
+        if (error instanceof Error && !('data' in error)) {
+          toast.error('Не удалось прочитать файл', error.message);
+        }
       })
       .finally(() => {
         setBusy(null);
@@ -278,7 +453,7 @@ export default function WarehousePage(): ReactElement {
         <input
           ref={fileInput}
           type="file"
-          accept=".xlsx,.xlsm"
+          accept=".xlsx,.xlsm,.csv"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -306,7 +481,7 @@ export default function WarehousePage(): ReactElement {
                     'pressable h-8 rounded-tile border px-3 text-footnote font-medium',
                     active
                       ? 'border-nav bg-nav text-nav-text'
-                      : 'border-subtle bg-panel text-secondary hover:bg-raised hover:text-primary',
+                      : 'border-subtle bg-panel text-secondary hover:bg-ink/[0.08] hover:text-primary',
                   )}
                 >
                   {value === 'all' ? 'Все' : STOCK_KIND_LABELS_RU[value]}
@@ -372,6 +547,33 @@ export default function WarehousePage(): ReactElement {
                 ),
             },
             {
+              /*
+                Цена продажи — её ставит руководство; без неё код с кассы не
+                продать. Единица нужна кассе, чтобы спросить метры или штуки.
+              */
+              key: 'price',
+              header: 'Цена',
+              align: 'right',
+              sortValue: (row) => (row.price === null ? 0 : parseMoney(row.price)),
+              render: (row) =>
+                row.price === null ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <span className="tabular-nums">
+                    {formatMoney(parseMoney(row.price))}
+                    {row.unit === null ? '' : ` / ${PURCHASE_UNIT_LABELS_RU[row.unit]}`}
+                  </span>
+                ),
+            },
+            {
+              /* QR с кодом — на бирку: на кассе его сканируют вместо набора. */
+              key: 'qr',
+              header: 'QR',
+              render: (row) => (
+                <QRCode value={row.name} size={40} bgColor="transparent" fgColor="currentColor" />
+              ),
+            },
+            {
               key: 'actions',
               header: '',
               align: 'right',
@@ -387,6 +589,8 @@ export default function WarehousePage(): ReactElement {
                       setKind(row.kind as StockKind);
                       setCode(row.name);
                       setDescription(row.description ?? '');
+                      setPrice(row.price === null ? '' : String(parseMoney(row.price) / 100));
+                      setUnit(row.unit ?? '');
                       setFormOpen(true);
                     }}
                   >
@@ -440,6 +644,18 @@ export default function WarehousePage(): ReactElement {
             ))}
           </tbody>
         </table>
+
+        {/* Бирки: QR с кодом и подпись — вырезать и клеить на рулон. */}
+        <h1 style={{ pageBreakBefore: 'always' }}>Бирки</h1>
+        <div className="print-labels">
+          {visible.map((row) => (
+            <div key={row.id} className="print-label">
+              <QRCode value={row.name} size={64} />
+              <strong>{row.name}</strong>
+              <span>{row.description ?? STOCK_KIND_LABELS_RU[row.kind as StockKind]}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <Modal
@@ -455,9 +671,12 @@ export default function WarehousePage(): ReactElement {
               loading={create.isPending || update.isPending}
               disabled={code.trim() === ''}
               onClick={() => {
+                const parsedPrice = Number.parseFloat(price.replace(',', '.'));
                 const card = {
                   name: code.trim(),
                   description: description.trim() === '' ? null : description.trim(),
+                  price: Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : null,
+                  unit: unit === '' ? null : unit,
                 };
 
                 if (editingId === null) {
@@ -524,6 +743,24 @@ export default function WarehousePage(): ReactElement {
               placeholder="Например: тёмная сторона, плотный блэкаут"
             />
           </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Цена продажи" hint="За метр или штуку — для кассы" error={errors['price']}>
+              <MoneyInput value={price} onChange={setPrice} placeholder="0" />
+            </Field>
+            <Field label="Единица" error={errors['unit']}>
+              <Select
+                value={unit}
+                onChange={(event) => {
+                  setUnit(event.target.value as PurchaseUnit | '');
+                }}
+                options={[
+                  { value: '', label: '—' },
+                  ...PURCHASE_UNITS.map((value) => ({ value, label: PURCHASE_UNIT_LABELS_RU[value] })),
+                ]}
+              />
+            </Field>
+          </div>
         </div>
       </Modal>
     </div>

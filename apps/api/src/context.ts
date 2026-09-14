@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { createDatabase, users, type Database, type DbExecutor } from '@curtain-crm/db';
-import type { Role } from '@curtain-crm/shared';
+import { resolveLocale, type Locale, type Role } from '@curtain-crm/shared';
 import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch';
 import { eq } from 'drizzle-orm';
 
@@ -23,6 +23,8 @@ export interface AppContext {
   readonly requestId: string;
   readonly ipAddress: string | null;
   readonly userAgent: string | null;
+  /** Язык клиента из заголовка `x-locale` — на нём уходят сообщения об ошибках. */
+  readonly locale: Locale;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -75,7 +77,7 @@ export async function loadAuthenticatedUser(
 ): Promise<AuthenticatedUser | null> {
   const row = await executor.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: { id: true, fullName: true, phone: true, isActive: true },
+    columns: { id: true, fullName: true, phone: true, isActive: true, weeklyDayOff: true },
     with: {
       roles: { columns: { role: true } },
       branches: { columns: { branchId: true, isPrimary: true } },
@@ -89,6 +91,7 @@ export async function loadAuthenticatedUser(
     fullName: row.fullName,
     phone: row.phone,
     isActive: row.isActive,
+    weeklyDayOff: row.weeklyDayOff,
     roles: row.roles.map((entry) => entry.role satisfies Role),
     branchIds: row.branches.map((entry) => entry.branchId),
     primaryBranchId: row.branches.find((entry) => entry.isPrimary)?.branchId ?? null,
@@ -136,5 +139,6 @@ export async function createContext(opts: FetchCreateContextFnOptions): Promise<
     requestId: randomUUID(),
     ipAddress: readClientIp(headers),
     userAgent: headers.get('user-agent'),
+    locale: resolveLocale(headers.get('x-locale')),
   };
 }

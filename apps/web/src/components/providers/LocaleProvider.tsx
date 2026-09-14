@@ -1,6 +1,7 @@
 'use client';
 
 import { DEFAULT_LOCALE, type Locale, type Translated } from '@curtain-crm/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
@@ -54,11 +55,19 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
     applyLocale(stored);
   }, []);
 
-  const setLocale = useCallback((next: Locale): void => {
-    setLocaleState(next);
-    applyLocale(next);
-    storeLocale(next);
-  }, []);
+  const queryClient = useQueryClient();
+
+  const setLocale = useCallback(
+    (next: Locale): void => {
+      setLocaleState(next);
+      applyLocale(next);
+      storeLocale(next);
+      // Ошибки и уведомления переводит сервер по языку запроса — кэш на
+      // прежнем языке надо перечитать.
+      void queryClient.invalidateQueries();
+    },
+    [queryClient],
+  );
 
   const value = useMemo<LocaleContextValue>(
     () => ({

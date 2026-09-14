@@ -6,6 +6,7 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import {
+  Banknote,
   BarChart3,
   Boxes,
   ClipboardList,
@@ -91,7 +92,8 @@ export const NAVIGATION: readonly NavItem[] = [
       { href: '/employees/timesheet', label: 'Табель', roles: MANAGEMENT_ROLES },
     ],
   },
-  { href: '/retail', label: 'Касса', icon: Store, roles: MANAGEMENT_ROLES },
+  { href: '/cash', label: 'Касса', icon: Banknote, roles: MANAGEMENT_ROLES },
+  { href: '/retail', label: 'Витрина', icon: Store, roles: MANAGEMENT_ROLES },
   /*
     Готовые шторы видит и продавец: полку пополняет тот же, кто с неё
     продаёт, и ждать, пока приход оприходует руководство, значит не продать

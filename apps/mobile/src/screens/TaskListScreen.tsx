@@ -26,7 +26,7 @@ import { cardShadow, colors, radius, spacing, typography, opacity } from '../the
  * счётчик — тем более.
  */
 export function TaskListScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const navigation = useNavigation();
   const { user } = useAuth();
 
@@ -60,7 +60,7 @@ export function TaskListScreen(): ReactElement {
       ListHeaderComponent={
         tasks.length === 0 ? null : (
           <Text style={styles.heading}>
-            {`Заказов, ждущих вашего действия: ${tasks.length.toString()}`}
+            {m('taskList.heading', { n: tasks.length })}
           </Text>
         )
       }
@@ -71,8 +71,8 @@ export function TaskListScreen(): ReactElement {
           <ErrorState />
         ) : (
           <Empty
-            message="Задач нет"
-            hint="Здесь появляются заказы, по которым вы можете сделать следующий шаг"
+            message={m('taskList.empty')}
+            hint={m('taskList.emptyHint')}
           />
         )
       }

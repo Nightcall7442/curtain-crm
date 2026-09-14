@@ -4,6 +4,8 @@ import {
   ORDER_STATUS_LABELS_RU,
   OrderStatus,
   ROLE_LABELS_RU,
+  WEEKDAY_NAMES_RU,
+  type IsoWeekday,
   type NotificationType as NotificationTypeName,
   type Role,
 } from '@curtain-crm/shared';
@@ -323,7 +325,9 @@ export async function notifyRoleChanged(
     userId,
     type: NotificationType.ROLE_CHANGED,
     title: params.granted ? 'Вам выдана новая роль' : 'Роль отозвана',
-    body: `${params.actorName} ${params.granted ? 'назначил вам роль' : 'отозвал роль'} «${ROLE_LABELS_RU[params.role]}»`,
+    body: params.granted
+      ? `${params.actorName} назначил вам роль «${ROLE_LABELS_RU[params.role]}»`
+      : `${params.actorName} отозвал роль «${ROLE_LABELS_RU[params.role]}»`,
   });
 }
 
@@ -458,6 +462,44 @@ export async function notifyDayOffAssigned(
     title: 'Вам назначен выходной',
     body: `${params.assignedByName}: ${formatPeriod(params.startDate, params.endDate)}`,
   });
+}
+
+/** Руководитель поставил или снял фиксированный выходной по графику. */
+export async function notifyWeeklyDayOffChanged(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly weekday: IsoWeekday | null; readonly assignedByName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.DAY_OFF_APPROVED,
+    title: params.weekday === null ? 'Постоянный выходной снят' : 'Вам назначен выходной по графику',
+    body:
+      params.weekday === null
+        ? `${params.assignedByName}: выходные теперь только по запросу`
+        : `${params.assignedByName}: каждую неделю — ${WEEKDAY_NAMES_RU[params.weekday].toLowerCase()}`,
+  });
+}
+
+/**
+ * Время инкассации — всем, у кого есть наличные на руках.
+ *
+ * Тем, у кого ноль, писать незачем: напоминание должно означать «у тебя
+ * деньги», а не «сейчас десять часов».
+ */
+export async function notifyCashCollectionDue(
+  executor: DbExecutor,
+  holders: readonly { readonly userId: number; readonly onHands: string }[],
+): Promise<void> {
+  await createNotifications(
+    executor,
+    holders.map((holder) => ({
+      userId: holder.userId,
+      type: NotificationType.CASH_COLLECTION_DUE,
+      title: 'Время инкассации',
+      body: `На руках ${holder.onHands} — сдайте в кассу`,
+    })),
+  );
 }
 
 /** Запрос на выходные отклонён — узнаёт сотрудник. */

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import { colors, radius, spacing, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Круглый счётчик времени открытой смены.
@@ -36,6 +37,7 @@ export function ShiftRing({
   /** Из-за чего стоит время: выезд на установку или личная отлучка. */
   readonly pausedReason?: 'trip' | 'break' | null;
 }): ReactElement {
+  const { m } = useLocale();
   const elapsed = useElapsed(startedAt, pausedSeconds, pausedSince);
   const isOpen = startedAt !== null;
   const isPaused = isOpen && pausedSince !== null;
@@ -74,12 +76,12 @@ export function ShiftRing({
       <View style={styles.inner} pointerEvents="none">
         <Text style={styles.caption}>
           {!isOpen
-            ? 'Смена не открыта'
+            ? m('ring.notOpen')
             : !isPaused
-              ? 'Сейчас на работе'
+              ? m('ring.working')
               : pausedReason === 'break'
-                ? 'На отлучке'
-                : 'На установке'}
+                ? m('ring.onBreak')
+                : m('ring.onTrip')}
         </Text>
         <Text
           style={[
@@ -91,7 +93,7 @@ export function ShiftRing({
           {elapsed}
         </Text>
         <Text style={styles.caption}>
-          {!isOpen ? 'с начала смены' : isPaused ? 'время стоит' : 'Рабочее время'}
+          {!isOpen ? m('ring.sinceStart') : isPaused ? m('ring.paused') : m('ring.workTime')}
         </Text>
       </View>
     </View>

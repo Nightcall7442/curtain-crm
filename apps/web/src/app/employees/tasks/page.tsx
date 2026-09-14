@@ -8,9 +8,10 @@ import {
   TaskStatus,
   type TaskStatus as TaskStatusName,
 } from '@curtain-crm/shared';
-import { Check } from 'lucide-react';
+import { Check, Plus } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
+import { TaskCreateDialog } from '@/components/employees/TaskCreateDialog';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
@@ -23,14 +24,14 @@ import { formatDate } from '@/lib/utils';
  * Доп работы (в коде — tasks) — дополнительная работа мимо конвейера заказов.
  *
  * Руководитель видит здесь все поручения мастерской: кто, что и к какому
- * сроку. Выдаются поручения из списка сотрудников (кнопка в строке —
- * «Дать поручение»): поручение начинается с человека, а не с текста.
+ * сроку. Выдать новое можно отсюда («+ Новая») или из строки сотрудника.
  * Отмена — только с причиной; адресат получает уведомление.
  */
 export default function EmployeeTasksPage(): ReactElement {
   const toast = useToast();
 
   const [status, setStatus] = useState<TaskStatusName | ''>(TaskStatus.OPEN);
+  const [creating, setCreating] = useState(false);
   /** Доп. работа, ожидающее причину отмены. `null` — окно закрыто. */
   const [cancelling, setCancelling] = useState<{ id: number; title: string } | null>(null);
   const [reason, setReason] = useState('');
@@ -97,11 +98,24 @@ export default function EmployeeTasksPage(): ReactElement {
                 label: TASK_STATUS_LABELS_RU[value],
               }))}
             />
-            <span className="text-footnote text-muted">
-              Выдать новое — из списка сотрудников, кнопкой в строке
-            </span>
+            <Button
+              size="sm"
+              icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => {
+                setCreating(true);
+              }}
+            >
+              Новая
+            </Button>
           </FilterBar>
         }
+      />
+
+      <TaskCreateDialog
+        open={creating}
+        onClose={() => {
+          setCreating(false);
+        }}
       />
 
       <Modal
@@ -245,7 +259,7 @@ export default function EmployeeTasksPage(): ReactElement {
                     onClick={() => {
                       complete.mutate({ id: row.id });
                     }}
-                    className="inline-flex items-center gap-1 rounded border border-positive/40 px-2 py-1 text-footnote text-positive hover:bg-positive/10 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
                   >
                     <Check className="h-3 w-3" aria-hidden />
                     Выполнено
@@ -256,7 +270,7 @@ export default function EmployeeTasksPage(): ReactElement {
                       setReason('');
                       setCancelling({ id: row.id, title: row.title });
                     }}
-                    className="rounded border border-danger/40 px-2 py-1 text-footnote text-danger hover:bg-danger/10"
+                    className="pressable rounded-full border border-danger/40 px-2 py-1 text-footnote font-medium text-danger hover:bg-danger/10"
                   >
                     Отменить
                   </button>

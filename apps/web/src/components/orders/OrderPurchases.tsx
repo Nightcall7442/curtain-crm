@@ -11,7 +11,7 @@ import { useState, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Card, CardBody, CardHeader, Skeleton } from '@/components/ui/Card';
-import { Button, Field, FormError, Input, Modal, Select } from '@/components/ui/Form';
+import { Button, Field, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { formatDate, formatPercent, formatQuantity } from '@/lib/utils';
@@ -238,13 +238,7 @@ export function OrderPurchases({ orderId }: { readonly orderId: number }): React
             </Field>
 
             <Field label="Цена за единицу, сум" hint="По умолчанию — из каталога">
-              <Input
-                inputMode="decimal"
-                value={unitPrice}
-                onChange={(event) => {
-                  setUnitPrice(event.target.value);
-                }}
-              />
+              <MoneyInput value={unitPrice} onChange={setUnitPrice} />
             </Field>
           </div>
 

@@ -15,16 +15,21 @@
 import {
   auditLog,
   branches,
+  catalogItems,
   closeDatabase,
   createDatabase,
   hashPassword,
   notifications,
   orderComments,
   orderItems,
+  orderPackChecks,
   orderPhotos,
   orders,
   orderStatusHistory,
+  cashCollections,
+  payments,
   payrollRecords,
+  payrollSchemes,
   purchases,
   refreshTokens,
   shifts,
@@ -34,11 +39,17 @@ import {
   type Database,
 } from '@curtain-crm/db';
 import {
+  CorniceStatus,
   moneyToDecimalString,
   ORDER_STATUS_LABELS_RU,
+  OrderItemKind,
   OrderStatus,
   OrderType,
   parseMoney,
+  PaymentKind,
+  PaymentMethod,
+  PayrollRecordStatus,
+  PayrollSchemeType,
   Role,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -49,9 +60,19 @@ import { loadAuthenticatedUser } from '../context';
 import { login, refreshSession } from '../services/auth.service';
 import {
   calculateCompletedOrders,
+  calculateForDay,
+  calculateForUserRole,
   gatherPayrollInputs,
+  saveDraft,
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
+import { loadPackList } from '../services/packList.service';
+import { cashOnHands, cashSummary, recordPayment } from '../services/payments.service';
+import { employeeRating } from '../services/rating.service';
+import { TRPCError } from '@trpc/server';
+
+import { appRouter } from '../routers';
+import { createCallerFactory } from '../trpc';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
   attendanceByDay,
@@ -157,6 +178,7 @@ async function cleanup(db: Database): Promise<void> {
   const userIds = smokeUsers.map((row) => row.id);
 
   if (orderIds.length > 0) {
+    await db.delete(payments).where(inArray(payments.orderId, orderIds));
     await db.delete(purchases).where(inArray(purchases.orderId, orderIds));
     await db.delete(orderPhotos).where(inArray(orderPhotos.orderId, orderIds));
     await db.delete(orderComments).where(inArray(orderComments.orderId, orderIds));
@@ -169,8 +191,12 @@ async function cleanup(db: Database): Promise<void> {
   if (userIds.length > 0) {
     // audit_log — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
+    await db.delete(cashCollections).where(inArray(cashCollections.userId, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
+    await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
+    // Коды склада ссылаются на автора — удаляются раньше пользователей.
+    await db.delete(catalogItems).where(like(catalogItems.name, `${PREFIX}%`));
     await db.delete(refreshTokens).where(inArray(refreshTokens.userId, userIds));
     await db.delete(shifts).where(inArray(shifts.userId, userIds));
     await db.delete(userRoles).where(inArray(userRoles.userId, userIds));
@@ -220,6 +246,7 @@ async function run(db: Database): Promise<void> {
   const qc = await makeUser('Контролёр', Role.QC, '+998900000104');
   const installer = await makeUser('Установщик', Role.INSTALLER, '+998900000105');
   const admin = await makeUser('Админ', Role.ADMIN, '+998900000106');
+  const corniceMan = await makeUser('Карнизчик', Role.CORNICE_INSTALLER, '+998900000107');
 
   check('users: создание с ролями и филиалом', true);
 
@@ -409,6 +436,34 @@ async function run(db: Database): Promise<void> {
   });
 
   /*
+   * Сбор на выезд: пока установщик не отметил по листу всё, что везёт,
+   * «Установка идёт» отбивается — забытый держатель это второй выезд.
+   */
+  await expectRejectedWith(
+    'workflow: без сборки на выезд установка не начинается',
+    () =>
+      db.transaction(async (tx) => {
+        await changeOrderStatus(tx, {
+          orderId: order.id,
+          toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+          actor: adminActor,
+        });
+        await changeOrderStatus(tx, {
+          orderId: order.id,
+          toStatus: OrderStatus.INSTALLATION_IN_PROGRESS,
+          actor: adminActor,
+        });
+      }),
+    (message) => message.includes('соберитесь на выезд'),
+  );
+
+  for (const row of await loadPackList(db, order.id)) {
+    await db
+      .insert(orderPackChecks)
+      .values({ orderId: order.id, key: row.key, checkedBy: installer.id });
+  }
+
+  /*
    * Два перехода ОДНОЙ транзакцией — это не украшение сценария, а условие
    * проверки порядка истории ниже: только так обе записи получают одинаковый
    * `created_at` (в PostgreSQL `now()` — время начала транзакции). Сценарий
@@ -591,6 +646,17 @@ async function run(db: Database): Promise<void> {
 
   const readyInstall = await makeReadyMadeOrder('с установкой', '+998901112255');
 
+  // Карниз к готовым шторам: продажа минует проверку админом, и карниз
+  // должен уйти карнизчикам на первом же переходе — иначе о нём не узнают.
+  await db.insert(orderItems).values({
+    orderId: readyInstall.id,
+    position: 0,
+    kind: OrderItemKind.OTHER,
+    quantity: 1,
+    cornice: { code: 'К-104', meters: null, description: 'Круглый металл' },
+    plastic: { code: 'ПЛ-12', meters: null, description: null },
+  });
+
   await db.transaction(async (tx) => {
     await changeOrderStatus(tx, {
       orderId: readyInstall.id,
@@ -605,6 +671,11 @@ async function run(db: Database): Promise<void> {
     'ready_made: продажа с установкой уходит на назначение установщика',
     sentToInstall?.status === OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
     sentToInstall?.status ?? 'null',
+  );
+  check(
+    'ready_made: карниз к продаже уходит карнизчикам',
+    sentToInstall?.corniceStatus === CorniceStatus.PENDING,
+    sentToInstall?.corniceStatus ?? 'null',
   );
 
   const [customDraft] = await db
@@ -767,6 +838,319 @@ async function run(db: Database): Promise<void> {
     'payroll: продавцу сдельные за этапы не начисляются',
     sellerInputs.stageFeesAmount === 0,
     moneyToDecimalString(sellerInputs.stageFeesAmount),
+  );
+
+  /* ------------------ 6a. Рейтинг: балл за задачу, а не за заказ ---------- */
+
+  /*
+    Швея сдала пошив, а заказ ещё не закрыт — установки не было. Раньше балл
+    шёл только за `completed`, и до установки у неё стоял ноль.
+  */
+  const [sewnOpen] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Пошив сдан, не закрыт`,
+      clientPhone: '+998901112277',
+      createdBy: seller.id,
+      status: OrderStatus.SEWING_DONE,
+      sewerId: sewer.id,
+      sewingFee: '150000.00',
+    })
+    .returning();
+  if (sewnOpen === undefined) throw new Error('заказ со сданным пошивом не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: sewnOpen.id,
+    fromStatus: OrderStatus.SEWING_IN_PROGRESS,
+    toStatus: OrderStatus.SEWING_DONE,
+    changedBy: sewer.id,
+  });
+
+  const [sewerRating] = await employeeRating(
+    db,
+    [{ id: sewer.id, fullName: sewer.fullName, avatarStorageKey: null, roles: [Role.SEWER] }],
+    bounds,
+  );
+  const sewerTasks = sewerRating?.byRole.find((entry) => entry.role === Role.SEWER)?.ordersCount ?? 0;
+  check(
+    'rating: сданный пошив идёт в балл до закрытия заказа',
+    sewerTasks >= 2 && sewerRating?.score === sewerTasks,
+    `задач ${sewerTasks.toString()}, балл ${String(sewerRating?.score ?? null)}`,
+  );
+
+  // Карнизчику — балл за каждую вырезку: позиция с карнизом на три окна
+  // (quantity 3) плюс позиция с трубой — четыре, а не «один заказ».
+  await db.insert(orderItems).values([
+    {
+      orderId: sewnOpen.id,
+      position: 0,
+      kind: OrderItemKind.OTHER,
+      quantity: 3,
+      cornice: { code: 'К-1', meters: null, description: null },
+    },
+    {
+      orderId: sewnOpen.id,
+      position: 1,
+      kind: OrderItemKind.OTHER,
+      quantity: 1,
+      pipe: { code: 'Т-1', meters: null, description: null },
+    },
+  ]);
+  await db
+    .update(orders)
+    .set({
+      corniceStatus: CorniceStatus.DONE,
+      corniceInstallerId: corniceMan.id,
+      corniceDoneAt: new Date(),
+    })
+    .where(eq(orders.id, sewnOpen.id));
+  const [corniceRating] = await employeeRating(
+    db,
+    [{ id: corniceMan.id, fullName: corniceMan.fullName, avatarStorageKey: null, roles: [Role.CORNICE_INSTALLER] }],
+    bounds,
+  );
+  const cuts = corniceRating?.byRole.find((entry) => entry.role === Role.CORNICE_INSTALLER)?.ordersCount ?? 0;
+  check(
+    'rating: карнизчику балл за каждую вырезку, а не за заказ',
+    cuts === 4 && corniceRating?.score === 4,
+    `вырезок ${cuts.toString()}, балл ${String(corniceRating?.score ?? null)}`,
+  );
+
+  // И в зарплату: сдельная за сданный пошив — в месяц сдачи, не закрытия.
+  const sewerInputsAfter = await gatherPayrollInputs(db, sewer.id, Role.SEWER, period);
+  check(
+    'payroll: сдельная за сданный пошив начисляется до закрытия заказа',
+    sewerInputsAfter.stageFeesAmount === parseMoney('550000'),
+    moneyToDecimalString(sewerInputsAfter.stageFeesAmount),
+  );
+
+  /* ---------------- 6a. Склад: импорт файла с ценой и единицей ------------ */
+
+  // Через роутер, как с панели: файл с ценой заводит коды с ценой, а повторный
+  // файл дополняет описание и цену, не трогая то, чего в нём нет.
+  const caller = createCallerFactory(appRouter)({
+    db,
+    user: adminActor,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const imported = await caller.catalog.importItems({
+    items: [
+      { kind: 'portiere_code', name: `${PREFIX} П-1`, description: 'Тёмная', price: 150000, unit: 'm' },
+      { kind: 'portiere_code', name: `${PREFIX} П-1`, description: 'дубль в файле' },
+      { kind: 'cornice_code', name: `${PREFIX} К-1`, description: null },
+    ],
+  });
+  // Выведенный код возвращается в работу, если пришёл в новом файле.
+  await db
+    .update(catalogItems)
+    .set({ isActive: false })
+    .where(and(eq(catalogItems.kind, 'cornice_code'), like(catalogItems.name, `${PREFIX}%`)));
+  const reimported = await caller.catalog.importItems({
+    items: [
+      { kind: 'portiere_code', name: `${PREFIX} п-1`, description: null, price: 175000 },
+      { kind: 'cornice_code', name: `${PREFIX} К-1`, description: 'Круглый', unit: 'pcs' },
+    ],
+  });
+  const importedRows = await db
+    .select({
+      name: catalogItems.name,
+      description: catalogItems.description,
+      price: catalogItems.price,
+      unit: catalogItems.unit,
+      isActive: catalogItems.isActive,
+    })
+    .from(catalogItems)
+    .where(like(catalogItems.name, `${PREFIX}%`));
+  const p1 = importedRows.find((row) => row.name.endsWith('П-1'));
+  const k1 = importedRows.find((row) => row.name.endsWith('К-1'));
+  check(
+    'склад: импорт заводит коды с ценой, повтор дополняет и не стирает',
+    imported.created === 2 &&
+      reimported.created === 0 &&
+      reimported.updated === 2 &&
+      p1?.description === 'Тёмная' &&
+      p1.price === '175000.00' &&
+      p1.unit === 'm' &&
+      k1?.description === 'Круглый' &&
+      k1.unit === 'pcs' &&
+      k1.isActive,
+    `создано ${imported.created.toString()}, обновлено ${reimported.updated.toString()}, П-1 ${p1?.price ?? 'null'}/${p1?.unit ?? 'null'}`,
+  );
+
+  /* ---------------- 6b. Ежедневный расчёт: запись не замирает ------------- */
+
+  /*
+    Директор платит по дням: выдал за сданное сегодня, завтра сдали ещё.
+    Запись, уже утверждённая и даже выплаченная целиком, должна принять
+    новое начисление — переоткрыться с остатком, а не замереть.
+  */
+  await db.insert(payrollSchemes).values({
+    userId: sewer.id,
+    role: Role.SEWER,
+    type: PayrollSchemeType.PIECE_RATE,
+    effectiveFrom: '2020-01-01',
+    createdBy: admin.id,
+  });
+  const firstDraft = await calculateForUserRole(db, sewer.id, Role.SEWER, period);
+  await saveDraft(db, firstDraft);
+  await db
+    .update(payrollRecords)
+    .set({
+      status: PayrollRecordStatus.PAID,
+      paidAmount: moneyToDecimalString(firstDraft.calculation.amount),
+      approvedBy: admin.id,
+      approvedAt: new Date(),
+      paidAt: new Date(),
+    })
+    .where(and(eq(payrollRecords.userId, sewer.id), eq(payrollRecords.role, Role.SEWER)));
+
+  await db
+    .update(orders)
+    .set({ sewingFee: '250000.00' })
+    .where(eq(orders.id, sewnOpen.id));
+  const secondDraft = await calculateForUserRole(db, sewer.id, Role.SEWER, period);
+  const reopened = await saveDraft(db, secondDraft);
+  const [record] = await db
+    .select()
+    .from(payrollRecords)
+    .where(and(eq(payrollRecords.userId, sewer.id), eq(payrollRecords.role, Role.SEWER)));
+  check(
+    'payroll: выплаченная запись переоткрывается новым начислением с остатком',
+    reopened &&
+      record?.status === PayrollRecordStatus.APPROVED &&
+      parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount) === parseMoney('100000'),
+    `${record?.status ?? 'null'}, остаток ${
+      record === undefined
+        ? '—'
+        : moneyToDecimalString(parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount))
+    }`,
+  );
+
+  // За день: сданное сегодня считается сегодняшним днём — тем, что директор
+  // выдаёт вечером; ставки те же, что за месяц, границы — сутки.
+  const dayStart = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const dayCalc = await calculateForDay(db, sewer.id, Role.SEWER, {
+    start: dayStart,
+    end: new Date(dayStart.getTime() + 24 * 60 * 60 * 1000),
+  });
+  check(
+    'payroll: начисление за день складывается из сданного за сутки',
+    dayCalc !== null &&
+      dayCalc.inputs.stageFeesAmount === parseMoney(secondDraft.snapshot.inputs.stageFeesAmount ?? '0') &&
+      dayCalc.calculation.amount === secondDraft.calculation.amount,
+    `за день ${moneyToDecimalString(dayCalc?.calculation.amount ?? 0)}, за месяц ${moneyToDecimalString(secondDraft.calculation.amount)}`,
+  );
+
+  // Неделя выплат через роутер: сегодняшний день видно с итогом и расчётом,
+  // выплата по дню закрывает его, второй раз тот же день не выплатить.
+  const todayTashkent = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const mondayDate = new Date(`${todayTashkent}T00:00:00Z`);
+  mondayDate.setUTCDate(mondayDate.getUTCDate() - ((mondayDate.getUTCDay() + 6) % 7));
+  const weekStart = mondayDate.toISOString().slice(0, 10);
+  const weekBefore = await caller.payroll.week({ userId: sewer.id, role: Role.SEWER, weekStart });
+  const todayCell = weekBefore.days.find((entry) => entry.day === todayTashkent);
+  await caller.payroll.markPaid({
+    id: record?.id ?? 0,
+    days: [{ day: todayTashkent, amount: parseMoney(todayCell?.total ?? '0') / 100 }],
+  });
+  const weekAfter = await caller.payroll.week({ userId: sewer.id, role: Role.SEWER, weekStart });
+  const paidCell = weekAfter.days.find((entry) => entry.day === todayTashkent);
+  const secondPay = await caller.payroll
+    .markPaid({ id: record?.id ?? 0, days: [{ day: todayTashkent, amount: 1 }] })
+    .then(() => 'ok')
+    .catch((error: unknown) => (error instanceof TRPCError ? error.code : 'other'));
+  check(
+    'payroll: неделя выплат — день выплачивается один раз и помечается',
+    todayCell?.recordId === record?.id &&
+      todayCell?.total === moneyToDecimalString(secondDraft.calculation.amount) &&
+      paidCell?.paid === todayCell?.total &&
+      secondPay === 'CONFLICT',
+    `день ${todayCell?.total ?? 'null'}, выплачено ${paidCell?.paid ?? 'null'}, повтор ${secondPay}`,
+  );
+
+  /* ---------------------------- 6c. Касса -------------------------------- */
+
+  /*
+    Продавец принял предоплату у ящика — сразу в кассе. Установщик принял
+    остаток наличными у двери — на руках, пока директор не отметил сдачу.
+    Карта сдачи не требует. Отчёт дня должен разложить это по способам.
+  */
+  const [cashOrder] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Касса`,
+      clientPhone: '+998901112288',
+      createdBy: seller.id,
+      workPrice: '1000000.00',
+      deposit: '300000.00',
+      installerId: installer.id,
+    })
+    .returning();
+  if (cashOrder === undefined) throw new Error('заказ для кассы не создан');
+
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_DEPOSIT,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('300000'),
+    orderId: cashOrder.id,
+    receivedBy: seller.id,
+  });
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('500000'),
+    orderId: cashOrder.id,
+    receivedBy: installer.id,
+  });
+  await recordPayment(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CARD,
+    amount: parseMoney('200000'),
+    orderId: cashOrder.id,
+    receivedBy: installer.id,
+  });
+
+  // Установщик сдал 400 000 из 500 000 наличных — инкассация.
+  await db.insert(cashCollections).values({
+    branchId: branch.id,
+    userId: installer.id,
+    amount: '400000.00',
+  });
+
+  const today = new Date();
+  const cashRange = {
+    from: new Date(today.getTime() - 60 * 60 * 1000),
+    to: new Date(today.getTime() + 60 * 60 * 1000),
+  };
+  const cash = await cashSummary(db, cashRange, branch.id, [admin.id]);
+  const depositRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_DEPOSIT);
+  const balanceRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_BALANCE);
+  check(
+    'касса: приходы разложены по источнику и способу',
+    depositRow?.byMethod.cash === parseMoney('300000') &&
+      balanceRow?.byMethod.cash === parseMoney('500000') &&
+      balanceRow.byMethod.card === parseMoney('200000') &&
+      cash.total === parseMoney('1000000'),
+    `итого ${moneyToDecimalString(cash.total)}`,
+  );
+  const installerCash = await cashOnHands(db, installer.id);
+  const sellerCash = await cashOnHands(db, seller.id);
+  check(
+    'касса: на руках — принятые наличные минус инкассация',
+    installerCash.onHands === parseMoney('100000') && sellerCash.onHands === parseMoney('300000'),
+    `установщик ${moneyToDecimalString(installerCash.onHands)}, продавец ${moneyToDecimalString(sellerCash.onHands)}`,
+  );
+  check(
+    'касса: в кассе — только сданное инкассацией и принятое руководством',
+    cash.collected === parseMoney('400000') && cash.inKassa === parseMoney('400000') - cash.cashOut.payroll - cash.cashOut.purchases,
+    `сдано ${moneyToDecimalString(cash.collected)}, в кассе ${moneyToDecimalString(cash.inKassa)}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

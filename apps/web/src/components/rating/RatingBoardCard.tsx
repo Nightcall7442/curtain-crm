@@ -66,7 +66,7 @@ export function RatingBoardCard({
         </CardBody>
       ) : rows.length === 0 ? (
         <EmptyState
-          message="За период нет закрытых заказов"
+          message="За период нет выполненных задач"
           hint="Строки появятся, когда первый заказ месяца дойдёт до статуса «Выполнен»"
         />
       ) : (
@@ -75,7 +75,7 @@ export function RatingBoardCard({
             <li
               key={row.userId}
               className={cn(
-                'flex items-center gap-3 rounded-tile px-2 py-2 transition-colors hover:bg-raised/60',
+                'flex items-center gap-3 rounded-tile px-2 py-2 transition-colors hover:bg-ink/[0.08]',
                 // Разделитель внутри строки, а не на всю ширину карточки:
                 // линия начинается там же, где текст.
                 index === rows.length - 1 ? null : 'border-b border-subtle/60',
@@ -108,7 +108,11 @@ export function RatingBoardCard({
                 </span>
               </span>
 
-              <ScoreMeter score={row.score ?? 0} className="w-[124px] shrink-0" />
+              <ScoreMeter
+                score={row.score ?? 0}
+                best={Math.max(0, ...rows.map((entry) => entry.score ?? 0))}
+                className="w-[124px] shrink-0"
+              />
             </li>
           ))}
         </ul>

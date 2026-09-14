@@ -187,6 +187,9 @@ export const AUDIT_ACTIONS = [
   'payroll.calculated',
   'payroll.approved',
   'payroll.paid',
+  'payroll.paid_part',
+  'payment.received',
+  'payment.collected',
 
   'catalog.item_created',
   'catalog.item_updated',
@@ -202,6 +205,7 @@ export const AUDIT_ACTIONS = [
   'dayoff.cancelled',
   'dayoff.assigned',
   'dayoff.withdrawn',
+  'dayoff.weekly_set',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

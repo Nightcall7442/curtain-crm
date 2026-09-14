@@ -8,7 +8,6 @@ import {
   TransitionKind,
   type AssigneeKind,
   type OrderStatus,
-  type Role,
   type TransitionKind as TransitionKindName,
 } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
@@ -17,6 +16,8 @@ import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Button, Field, FormError, Modal, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
+
+import { useAssigneeCandidates } from './useAssigneeCandidates';
 
 /**
  * Подтверждение действия по заказам — одно на все случаи.
@@ -249,13 +250,7 @@ export function OrderActionDialog({
   );
 }
 
-/**
- * Выбор исполнителя на роль, которую требует целевой статус.
- *
- * Список — только активные сотрудники с этой ролью: назначить постороннего
- * невозможно, и сервер такую попытку отклонит независимо от того, что
- * покажет этот список.
- */
+/** Исполнитель на роль, которую требует целевой статус: свои, по «Ещё» — все. */
 function AssigneePicker({
   role,
   value,
@@ -268,23 +263,38 @@ function AssigneePicker({
   readonly hint?: string;
 }): ReactElement {
   const { t } = useLocale();
-  const candidates = trpc.users.listByRole.useQuery({ role: role satisfies Role });
+  const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(
+    role,
+    value === '' ? null : Number.parseInt(value, 10),
+  );
 
   return (
     <Field label={t(ROLE_LABELS, role)} required hint={hint}>
       <Select
         value={value}
         autoFocus
-        disabled={candidates.isLoading}
-        placeholder={candidates.isLoading ? 'Загрузка…' : 'Выберите исполнителя'}
+        disabled={loading}
+        placeholder={loading ? 'Загрузка…' : 'Выберите исполнителя'}
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        options={(candidates.data ?? []).map((person) => ({
+        options={candidates.map((person) => ({
           value: person.id.toString(),
-          label: person.fullName,
+          label:
+            person.mainRole === null
+              ? person.fullName
+              : `${person.fullName} · ${t(ROLE_LABELS, person.mainRole)}`,
         }))}
       />
+      {canShowMore && (
+        <button
+          type="button"
+          className="mt-1 text-footnote text-accent hover:underline"
+          onClick={showMore}
+        >
+          Ещё сотрудники
+        </button>
+      )}
     </Field>
   );
 }

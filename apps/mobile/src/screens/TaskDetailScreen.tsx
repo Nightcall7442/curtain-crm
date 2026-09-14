@@ -43,7 +43,7 @@ import type { RootStackScreenProps } from '../types';
  * всего фото идёт с подписью, а не отдельно.
  */
 export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const { taskId } = route.params;
@@ -73,7 +73,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отправить', error.message);
+      Alert.alert(m('task.sendError'), error.message);
     },
   });
 
@@ -84,14 +84,14 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отметить выполнение', error.message);
+      Alert.alert(m('task.completeError'), error.message);
     },
   });
 
   const pickPhoto = async (): Promise<void> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Нет доступа', 'Разрешите доступ к галерее в настройках телефона.');
+      Alert.alert(m('photo.noAccess'), m('photo.allowGallery'));
       return;
     }
 
@@ -150,11 +150,11 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
 
           {data.details !== null && <Text style={styles.details}>{data.details}</Text>}
 
-          <Row label="Кому" value={data.assignee.fullName} />
-          <Row label="Выдал" value={data.creator.fullName} />
-          {data.dueDate !== null && <Row label="Срок" value={formatIsoDate(data.dueDate)} />}
+          <Row label={m('task.to')} value={data.assignee.fullName} />
+          <Row label={m('task.from')} value={data.creator.fullName} />
+          {data.dueDate !== null && <Row label={m('task.due')} value={formatIsoDate(data.dueDate)} />}
           {data.cancelReason !== null && (
-            <Row label="Причина отмены" value={data.cancelReason} />
+            <Row label={m('task.cancelReason')} value={data.cancelReason} />
           )}
 
           {/*
@@ -176,7 +176,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               ) : (
                 <>
                   <Icon name="completed" size={18} color={colors.onAccent} />
-                  <Text style={styles.doneText}>Выполнено</Text>
+                  <Text style={styles.doneText}>{m('task.done')}</Text>
                 </>
               )}
             </Pressable>
@@ -184,12 +184,12 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
         </Card>
 
         <Card>
-          <CardTitle title="Переписка" icon="comment" />
+          <CardTitle title={m('task.chat')} icon="comment" />
 
           {data.messages.length === 0 ? (
             <Empty
-              message="Сообщений нет"
-              hint="Приложите фото или напишите, если что-то непонятно"
+              message={m('task.noMessages')}
+              hint={m('task.noMessagesHint')}
             />
           ) : (
             data.messages.map((message) => {
@@ -201,7 +201,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
                   style={[styles.message, isMine ? styles.messageMine : null]}
                 >
                   <Text style={styles.messageAuthor}>
-                    {isMine ? 'Вы' : message.author.fullName}
+                    {isMine ? m('task.you') : message.author.fullName}
                   </Text>
 
                   {message.body !== null && (
@@ -232,7 +232,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
                     >
                       <Icon name="order" size={16} color={colors.accentStrong} />
                       <Text style={styles.fileText} numberOfLines={1}>
-                        {message.originalFileName ?? 'Открыть файл'}
+                        {message.originalFileName ?? m('task.openFile')}
                       </Text>
                     </Pressable>
                   )}
@@ -243,12 +243,12 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
         </Card>
 
         <Card>
-          <CardTitle title="Ответить" icon="voice" />
+          <CardTitle title={m('task.reply')} icon="voice" />
 
           <Input
             value={body}
             onChangeText={setBody}
-            placeholder="Что сделано или что непонятно"
+            placeholder={m('task.replyPlaceholder')}
             multiline
           />
 
@@ -260,7 +260,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
                   setAttachment(null);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Убрать фото"
+                accessibilityLabel={m('task.removePhoto')}
                 style={({ pressed }) => [styles.previewRemove, pressed ? styles.pressed : null]}
               >
                 <Icon name="remove" size={16} color={colors.danger} />
@@ -278,7 +278,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               style={({ pressed }) => [styles.attach, pressed ? styles.pressed : null]}
             >
               <Icon name="photo" size={18} color={colors.accentStrong} />
-              <Text style={styles.attachText}>Фото</Text>
+              <Text style={styles.attachText}>{m('task.photo')}</Text>
             </Pressable>
 
             <Pressable
@@ -308,7 +308,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               {reply.isPending ? (
                 <ActivityIndicator color={colors.onAccent} size="small" />
               ) : (
-                <Text style={styles.sendText}>Отправить</Text>
+                <Text style={styles.sendText}>{m('common.send')}</Text>
               )}
             </Pressable>
           </View>

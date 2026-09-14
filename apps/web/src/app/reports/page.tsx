@@ -12,6 +12,9 @@ import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { formatDuration, formatPercent } from '@/lib/utils';
 
+/** Все двенадцать месяцев под осью графика фонда. */
+const MONTH_TICKS = MONTH_NAMES_RU.map((_, index) => index + 1);
+
 /**
  * Отчёты: финансовый итог месяца, фонд зарплаты по году и выработка сотрудников.
  *
@@ -141,6 +144,8 @@ export default function ReportsPage(): ReactElement {
               currentLabel="Начислено"
               previousLabel="Выплачено"
               formatValue={(value) => `${value.toString()} млн`}
+              formatX={(month) => MONTH_NAMES_RU[month - 1]?.slice(0, 3) ?? month.toString()}
+              ticks={MONTH_TICKS}
             />
           )}
         </CardBody>

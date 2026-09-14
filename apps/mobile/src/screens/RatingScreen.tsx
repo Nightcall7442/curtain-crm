@@ -28,7 +28,7 @@ import { colors, radius, spacing, typography } from '../theme';
  * их невозможно достать, подобрав параметры запроса.
  */
 export function RatingScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const [scope, setScope] = useState<RatingScopeName>(RatingScope.MONTH);
 
   const rating = trpc.rating.me.useQuery({ scope });
@@ -78,7 +78,7 @@ export function RatingScreen(): ReactElement {
           {scope === RatingScope.WEEK
             ? formatDayRange(new Date(data.period.start), new Date(data.period.end))
             : `${monthName(new Date(data.period.start).getUTCMonth() + 1)} ${new Date(data.period.start).getUTCFullYear().toString()}`}
-          {` · ${data.participants.toString()} участников`}
+          {m('rating.participants', { n: data.participants })}
         </Text>
       )}
 
@@ -87,14 +87,14 @@ export function RatingScreen(): ReactElement {
 
       {/* Пьедестал --------------------------------------------------------- */}
       <Card>
-        <CardTitle title="Лучшие за период" icon="rating" />
+        <CardTitle title={m('rating.best')} icon="rating" />
 
         {data === undefined ? (
-          <Empty message="Загружаем таблицу" />
+          <Empty message={m('rating.loading')} />
         ) : data.podium.length === 0 ? (
           <Empty
-            message="За период ещё нет закрытых заказов"
-            hint="Строки появятся, когда первый заказ дойдёт до статуса «Выполнен»"
+            message={m('rating.noOrders')}
+            hint={m('rating.noOrdersHint')}
           />
         ) : (
           <View>
@@ -105,10 +105,7 @@ export function RatingScreen(): ReactElement {
         )}
       </Card>
 
-      <Text style={styles.footnote}>
-        Балл собирается из объёма работы, качества (заказы без возврата на переделку) и
-        попадания в срок. В зачёт идут только заказы, закрытые внутри периода.
-      </Text>
+      <Text style={styles.footnote}>{m('rating.footnote')}</Text>
     </ScrollView>
   );
 }
@@ -128,12 +125,12 @@ function MyPlaceCard({
   readonly data: RatingData | undefined;
   readonly isLoading: boolean;
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
 
   if (isLoading || data === undefined) {
     return (
       <Card>
-        <Empty message="Считаем ваше место" />
+        <Empty message={m('rating.computing')} />
       </Card>
     );
   }
@@ -144,8 +141,8 @@ function MyPlaceCard({
     return (
       <Card>
         <Empty
-          message="Вас нет в рейтинге за этот период"
-          hint="Так бывает у учётной записи, которую отключили"
+          message={m('rating.notInList')}
+          hint={m('rating.notInListHint')}
         />
       </Card>
     );
@@ -154,7 +151,7 @@ function MyPlaceCard({
   if (me.unratedReason !== null) {
     return (
       <Card>
-        <CardTitle title="Вы вне конкурса" icon="escalated" />
+        <CardTitle title={m('rating.unrated')} icon="escalated" />
         <Text style={styles.unrated}>{me.unratedReason}</Text>
       </Card>
     );
@@ -164,15 +161,15 @@ function MyPlaceCard({
     <Card style={styles.myCard}>
       <View style={styles.myHeader}>
         <View>
-          <Text style={styles.myLabel}>Ваше место</Text>
+          <Text style={styles.myLabel}>{m('rating.yourPlace')}</Text>
           <View style={styles.myPlaceRow}>
             <Text style={styles.myPlace}>{me.place === null ? '—' : me.place.toString()}</Text>
-            <Text style={styles.myPlaceTotal}>{` из ${data.participants.toString()}`}</Text>
+            <Text style={styles.myPlaceTotal}>{m('rating.of', { n: data.participants })}</Text>
           </View>
         </View>
 
         <View style={styles.myScoreBlock}>
-          <Text style={styles.myLabel}>Балл</Text>
+          <Text style={styles.myLabel}>{m('rating.score')}</Text>
           <Text style={styles.myScore}>{me.score === null ? '—' : me.score.toString()}</Text>
         </View>
       </View>
@@ -181,7 +178,7 @@ function MyPlaceCard({
 
       <View style={styles.myFooter}>
         <PlaceDelta value={me.placeDelta} />
-        <Text style={styles.myOrders}>{`Закрыто заказов: ${me.ordersCount.toString()}`}</Text>
+        <Text style={styles.myOrders}>{m('rating.closedOrders', { n: me.ordersCount })}</Text>
       </View>
 
       {/*
@@ -212,6 +209,7 @@ function PodiumRow({
 }: {
   readonly entry: RatingData['podium'][number];
 }): ReactElement {
+  const { m } = useLocale();
   return (
     <View style={[styles.podiumRow, entry.isMe ? styles.podiumRowMine : null]}>
       <Text style={styles.podiumPlace}>{entry.place === null ? '—' : entry.place.toString()}</Text>
@@ -226,7 +224,7 @@ function PodiumRow({
         конец строки, то есть ровно эту пометку: сотрудник с длинной фамилией
         переставал видеть, где в списке он сам.
       */}
-      {entry.isMe && <Text style={styles.podiumMine}>вы</Text>}
+      {entry.isMe && <Text style={styles.podiumMine}>{m('rating.you')}</Text>}
 
       <Text style={styles.podiumScore}>{entry.score === null ? '—' : entry.score.toString()}</Text>
     </View>
@@ -241,19 +239,20 @@ function PodiumRow({
  * направление читается и без цвета.
  */
 function PlaceDelta({ value }: { readonly value: number | null }): ReactElement {
+  const { m } = useLocale();
   if (value === null) {
-    return <Text style={styles.deltaNeutral}>Сравнить не с чем</Text>;
+    return <Text style={styles.deltaNeutral}>{m('rating.noCompare')}</Text>;
   }
 
   if (value === 0) {
-    return <Text style={styles.deltaNeutral}>Место не изменилось</Text>;
+    return <Text style={styles.deltaNeutral}>{m('rating.noChange')}</Text>;
   }
 
   const isUp = value > 0;
 
   return (
     <Text style={[styles.delta, { color: isUp ? colors.positive : colors.danger }]}>
-      {`${isUp ? '↑' : '↓'} ${Math.abs(value).toString()} к прошлому периоду`}
+      {m('rating.delta', { arrow: isUp ? '↑' : '↓', n: Math.abs(value) })}
     </Text>
   );
 }

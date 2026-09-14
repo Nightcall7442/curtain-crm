@@ -7,6 +7,7 @@ import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Личная отлучка — сотрудник ненадолго отходит по своим делам, не закрывая
@@ -26,6 +27,7 @@ export function PersonalBreakCard({
 }: {
   readonly shiftOpen: boolean;
 }): ReactElement | null {
+  const { m } = useLocale();
   const current = trpc.shifts.currentBreak.useQuery(undefined, { enabled: shiftOpen });
   const utils = trpc.useUtils();
 
@@ -42,7 +44,7 @@ export function PersonalBreakCard({
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось начать отлучку', error.message);
+      Alert.alert(m('break.startError'), error.message);
     },
   });
 
@@ -53,7 +55,7 @@ export function PersonalBreakCard({
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отметить возвращение', error.message);
+      Alert.alert(m('break.endError'), error.message);
     },
   });
 
@@ -79,11 +81,8 @@ export function PersonalBreakCard({
   if (active === null) {
     return (
       <Card>
-        <CardTitle title="Личная отлучка" icon="deadline" />
-        <Text style={styles.hint}>
-          Отходите по своим делам — выберите срок. Рабочее время встанет на паузу, а
-          коллеги увидят, когда вас ждать.
-        </Text>
+        <CardTitle title={m('break.title')} icon="deadline" />
+        <Text style={styles.hint}>{m('break.hint')}</Text>
         <View style={styles.chips}>
           {PERSONAL_BREAK_DURATION_OPTIONS.map((minutes) => (
             <Pressable
@@ -95,7 +94,7 @@ export function PersonalBreakCard({
               accessibilityRole="button"
               style={({ pressed }) => [styles.chip, pressed ? styles.pressed : null]}
             >
-              <Text style={styles.chipText}>{`${minutes.toString()} мин`}</Text>
+              <Text style={styles.chipText}>{m('shift.minutes', { n: minutes })}</Text>
             </Pressable>
           ))}
         </View>
@@ -112,9 +111,9 @@ export function PersonalBreakCard({
   return (
     <Card>
       <CardTitle
-        title="Личная отлучка"
+        title={m('break.title')}
         icon="deadline"
-        action={<Pill text={overdue ? 'Просрочено' : 'В отлучке'} tone={overdue ? 'danger' : 'warning'} />}
+        action={<Pill text={overdue ? m('break.overdue') : m('break.active')} tone={overdue ? 'danger' : 'warning'} />}
       />
 
       <Text style={[styles.timer, overdue ? styles.timerOverdue : null]}>
@@ -122,8 +121,8 @@ export function PersonalBreakCard({
       </Text>
       <Text style={styles.hint}>
         {overdue
-          ? 'Заявленное время вышло — отметьте возвращение'
-          : `Вернуться до ${new Date(expectedReturn).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`}
+          ? m('break.overdueHint')
+          : m('break.returnBy', { time: new Date(expectedReturn).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) })}
       </Text>
 
       <Pressable
@@ -137,7 +136,7 @@ export function PersonalBreakCard({
         {endBreak.isPending ? (
           <ActivityIndicator color={colors.onAccent} />
         ) : (
-          <Text style={styles.returnButtonText}>Я вернулся</Text>
+          <Text style={styles.returnButtonText}>{m('break.back')}</Text>
         )}
       </Pressable>
     </Card>

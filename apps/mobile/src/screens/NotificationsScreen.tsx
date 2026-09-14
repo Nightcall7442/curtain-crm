@@ -13,6 +13,8 @@ import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon, NOTIFICATION_ICONS } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import { cardShadow, colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
+import { useLocale } from '../hooks/useLocale';
+import type { MessageKey } from '../i18n/messages';
 
 /**
  * Уведомления.
@@ -31,9 +33,9 @@ import { cardShadow, colors, radius, spacing, tabBarSpace, typography, opacity }
  */
 
 const FILTERS = [
-  { key: 'all', label: 'Все' },
-  { key: 'unread', label: 'Непрочитанные' },
-  { key: 'important', label: 'Важные' },
+  { key: 'all', label: 'notif.filterAll' },
+  { key: 'unread', label: 'notif.filterUnread' },
+  { key: 'important', label: 'notif.filterImportant' },
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]['key'];
@@ -41,6 +43,7 @@ type FilterKey = (typeof FILTERS)[number]['key'];
 export function NotificationsScreen(): ReactElement {
   const navigation = useNavigation();
   const utils = trpc.useUtils();
+  const { m } = useLocale();
 
   const [filter, setFilter] = useState<FilterKey>('all');
 
@@ -65,7 +68,7 @@ export function NotificationsScreen(): ReactElement {
   const confirmReceipt = trpc.payroll.confirmReceipt.useMutation({
     onSuccess: invalidate,
     onError(error) {
-      Alert.alert('Не удалось подтвердить', error.message);
+      Alert.alert(m('notif.confirmError'), error.message);
     },
   });
 
@@ -98,7 +101,7 @@ export function NotificationsScreen(): ReactElement {
               style={[styles.chip, active ? styles.chipActive : null]}
             >
               <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                {entry.label}
+                {m(entry.label)}
               </Text>
             </Pressable>
           );
@@ -113,7 +116,7 @@ export function NotificationsScreen(): ReactElement {
           style={({ pressed }) => [styles.markAll, pressed ? styles.pressed : null]}
           accessibilityRole="button"
         >
-          <Text style={styles.markAllText}>Отметить все прочитанными</Text>
+          <Text style={styles.markAllText}>{m('notif.markAll')}</Text>
         </Pressable>
       )}
 
@@ -132,11 +135,11 @@ export function NotificationsScreen(): ReactElement {
             <ErrorState />
           ) : (
             <Empty
-              message={emptyMessage(filter)}
+              message={m(emptyMessage(filter))}
               hint={
                 filter === 'all'
-                  ? 'Здесь появятся события по вашим заказам и сменам'
-                  : 'Переключите фильтр, чтобы увидеть остальные'
+                  ? m('notif.emptyHintAll')
+                  : m('notif.emptyHintFilter')
               }
             />
           )
@@ -165,7 +168,7 @@ export function NotificationsScreen(): ReactElement {
                 <Text style={styles.title} numberOfLines={1}>
                   {item.title}
                 </Text>
-                <Text style={styles.time}>{shortTime(item.createdAt)}</Text>
+                <Text style={styles.time}>{shortTime(item.createdAt, m('common.yesterday'))}</Text>
               </View>
 
               <Text style={styles.text} numberOfLines={2}>
@@ -197,18 +200,18 @@ export function NotificationsScreen(): ReactElement {
                     {confirmReceipt.isPending ? (
                       <ActivityIndicator color={colors.onAccent} size="small" />
                     ) : (
-                      <Text style={styles.confirmText}>Деньги получил</Text>
+                      <Text style={styles.confirmText}>{m('notif.moneyReceived')}</Text>
                     )}
                   </Pressable>
                 ) : (
                   <Text style={styles.confirmed}>
-                    {`Получение подтверждено ${shortTime(item.payrollReceiptConfirmedAt)}`}
+                    {m('notif.receiptConfirmed', { time: shortTime(item.payrollReceiptConfirmedAt, m('common.yesterday')) })}
                   </Text>
                 ))}
             </View>
 
             {/* Точка непрочитанного — справа, как в макете */}
-            {!item.isRead && <View style={styles.dot} accessibilityLabel="Не прочитано" />}
+            {!item.isRead && <View style={styles.dot} accessibilityLabel={m('notif.unread')} />}
           </Pressable>
           );
         }}
@@ -247,7 +250,7 @@ const TILE_PALETTE: Readonly<
  * Полная дата и время у каждой строки превратили бы ленту в таблицу, а
  * сотруднику нужно понять «только что или на прошлой неделе».
  */
-function shortTime(value: string | Date): string {
+function shortTime(value: string | Date, yesterdayLabel: string): string {
   const date = new Date(value);
   const now = new Date();
 
@@ -258,16 +261,16 @@ function shortTime(value: string | Date): string {
   }
 
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  if (sameDay(date, yesterday)) return 'Вчера';
+  if (sameDay(date, yesterday)) return yesterdayLabel;
 
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 }
 
-function emptyMessage(filter: FilterKey): string {
-  if (filter === 'unread') return 'Непрочитанных нет';
-  if (filter === 'important') return 'Важных уведомлений нет';
+function emptyMessage(filter: FilterKey): MessageKey {
+  if (filter === 'unread') return 'notif.noUnread';
+  if (filter === 'important') return 'notif.noImportant';
 
-  return 'Уведомлений пока нет';
+  return 'notif.none';
 }
 
 /* -------------------------------------------------------------------------- */

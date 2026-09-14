@@ -5,6 +5,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { cardShadow, colors, radius, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Skeleton } from './Card';
+import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
  * Ближайшие дни рождения коллег.
@@ -31,15 +32,15 @@ export interface BirthdayPerson {
 }
 
 /** «сегодня» / «завтра» / «через 5 дней» — человеческий счёт, а не число. */
-function whenLabel(daysUntil: number): string {
-  if (daysUntil === 0) return 'сегодня';
-  if (daysUntil === 1) return 'завтра';
+function whenLabel(daysUntil: number, m: Translate): string {
+  if (daysUntil === 0) return m('birthday.today');
+  if (daysUntil === 1) return m('birthday.tomorrow');
 
   // 2–4 → «дня», остальное → «дней». Для 12–14 всегда «дней».
   const tail = daysUntil % 10;
   const teen = daysUntil % 100 >= 12 && daysUntil % 100 <= 14;
-  const word = !teen && tail >= 2 && tail <= 4 ? 'дня' : 'дней';
-  return `через ${daysUntil.toString()} ${word}`;
+  const word = !teen && tail >= 2 && tail <= 4 ? m('birthday.day2') : m('birthday.day5');
+  return m('birthday.inDays', { n: daysUntil, word });
 }
 
 function initials(fullName: string): string {
@@ -58,6 +59,7 @@ export function BirthdayBoard({
   readonly people: readonly BirthdayPerson[];
   readonly isLoading: boolean;
 }): ReactElement | null {
+  const { m } = useLocale();
   /*
     Пустую карточку не показываем вовсе.
 
@@ -69,7 +71,7 @@ export function BirthdayBoard({
 
   return (
     <Card>
-      <CardTitle title="Дни рождения" icon="calendar" />
+      <CardTitle title={m('birthday.title')} icon="calendar" />
 
       {isLoading ? (
         <Skeleton />
@@ -110,7 +112,7 @@ export function BirthdayBoard({
                 )}
 
                 <Text style={[styles.when, isToday ? styles.whenToday : null]}>
-                  {isToday ? '🎉 сегодня' : whenLabel(person.daysUntil)}
+                  {isToday ? m('birthday.todayMark') : whenLabel(person.daysUntil, m)}
                 </Text>
                 <Text style={styles.date}>{formatIsoDateShort(person.birthDate)}</Text>
               </View>
@@ -120,7 +122,7 @@ export function BirthdayBoard({
       )}
 
       {!isLoading && people.length > 0 && (
-        <Text style={styles.footnote}>{`Ближайшие ${HORIZON_DAYS.toString()} дней`}</Text>
+        <Text style={styles.footnote}>{m('birthday.horizon', { n: HORIZON_DAYS })}</Text>
       )}
     </Card>
   );

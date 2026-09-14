@@ -32,7 +32,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusBadge, OrderTypeBadge } from '@/components/ui/Badge';
+import { OrderStatusDot, OrderTypeBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, controlClass, FilterBar, Input, Select } from '@/components/ui/Form';
 import { DataTable, Pagination, type RowKey } from '@/components/ui/Table';
@@ -47,6 +47,7 @@ import {
   type OrderActionTarget,
 } from './OrderActionDialog';
 import { OrderCreateDialog } from './OrderCreateDialog';
+import { SellReadyMadeDialog } from './SellReadyMadeDialog';
 import { orderRowActions, OrderRowActions } from './OrderRowActions';
 
 /**
@@ -145,6 +146,8 @@ export function OrdersView({
   const [priority, setPriority] = useState<PriorityName | ''>('');
   const [createOpen, setCreateOpen] = useState(false);
   const [stockOrderOpen, setStockOrderOpen] = useState(false);
+  /** Продавец понял в новом заказе, что клиенту нужна штора с полки. */
+  const [sellReadyMadeOpen, setSellReadyMadeOpen] = useState(false);
 
   /**
    * Активная вкладка-пресет.
@@ -300,7 +303,7 @@ export function OrdersView({
       }
 
       // Открытое окно забирает клавиатуру себе целиком.
-      if (pending !== null || createOpen || stockOrderOpen) return;
+      if (pending !== null || createOpen || stockOrderOpen || sellReadyMadeOpen) return;
       if (rows.length === 0) return;
 
       const move = (delta: number): void => {
@@ -491,7 +494,7 @@ export function OrdersView({
                 className={
                   isActive
                     ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
-                    : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-raised hover:text-primary'
+                    : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary'
                 }
               >
                 {entry.label}
@@ -510,6 +513,10 @@ export function OrdersView({
           setCreateOpen(false);
           router.push(`/orders/${orderId.toString()}`);
         }}
+        onSellReadyMade={() => {
+          setCreateOpen(false);
+          setSellReadyMadeOpen(true);
+        }}
       />
 
       {/*
@@ -527,6 +534,18 @@ export function OrdersView({
         }}
         onCreated={(orderId) => {
           setStockOrderOpen(false);
+          router.push(`/orders/${orderId.toString()}`);
+        }}
+      />
+
+      {/* Открывается ссылкой «Готовые шторы →» внутри обычного нового заказа. */}
+      <SellReadyMadeDialog
+        open={sellReadyMadeOpen}
+        onClose={() => {
+          setSellReadyMadeOpen(false);
+        }}
+        onSold={(orderId) => {
+          setSellReadyMadeOpen(false);
           router.push(`/orders/${orderId.toString()}`);
         }}
       />
@@ -643,8 +662,10 @@ export function OrdersView({
             key: 'status',
             header: 'Статус',
             render: (row) => (
-              <span className="inline-flex items-center gap-1.5">
-                <OrderStatusBadge status={row.status} />
+              // Ширина ограничена: самый длинный статус («Отклонён, решение за
+              // директором») иначе выталкивал кнопки действий за край ноутбука.
+              <span className="flex max-w-[15rem] items-center gap-2">
+                <OrderStatusDot status={row.status} />
                 <OrderTypeBadge orderType={row.orderType} />
               </span>
             ),
@@ -678,23 +699,26 @@ export function OrdersView({
           },
           {
             key: 'price',
-            header: 'Сумма, сум',
+            header: 'Сумма',
             align: 'right',
-            sortValue: (row) => parseMoney(row.workPrice),
-            render: (row) => (
-              // Точная сумма — по наведению: в списке сравнивают порядки
-              // величин, а не тийины.
-              <span
-                className="font-mono text-primary"
-                title={formatMoney(parseMoney(row.workPrice), { locale })}
-              >
-                {formatMoneyShort(parseMoney(row.workPrice), { locale, withoutCurrency: true })}
-              </span>
-            ),
+            sortValue: (row) => (row.workPrice === null ? 0 : parseMoney(row.workPrice)),
+            render: (row) =>
+              row.workPrice === null ? (
+                <span className="text-muted">—</span>
+              ) : (
+                // Точная сумма — по наведению: в списке сравнивают порядки
+                // величин, а не тийины.
+                <span
+                  className="font-mono text-primary"
+                  title={formatMoney(parseMoney(row.workPrice), { locale })}
+                >
+                  {formatMoneyShort(parseMoney(row.workPrice), { locale, withoutCurrency: true })}
+                </span>
+              ),
           },
           {
             key: 'remaining',
-            header: 'Остаток, сум',
+            header: 'Остаток',
             align: 'right',
             sortValue: (row) =>
               row.remainingPayment === null ? 0 : parseMoney(row.remainingPayment),
@@ -753,7 +777,7 @@ export function OrdersView({
 /** Клавиша в подсказке — набирается как клавиша, а не как обычный текст. */
 function Key({ children }: { readonly children: ReactNode }): ReactElement {
   return (
-    <kbd className="rounded border border-subtle bg-base px-1 py-px font-mono text-[10px] text-secondary">
+    <kbd className="rounded-xl border border-ink/10 bg-base px-1 py-px font-mono text-[10px] text-secondary">
       {children}
     </kbd>
   );

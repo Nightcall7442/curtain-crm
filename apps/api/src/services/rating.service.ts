@@ -1,5 +1,6 @@
 import {
   assignPlaces,
+  CorniceStatus,
   normalizeVolume,
   OrderStatus,
   RATED_ROLES,
@@ -28,10 +29,12 @@ import { periodBounds, sqlTimestamp, type Period, type PeriodBounds } from './sh
  * Арифметика балла живёт в `@curtain-crm/shared`: её обязаны применять
  * одинаково и веб-панель, и мобильное приложение.
  *
- * ЧТО СЧИТАЕТСЯ СЛЕДОМ РАБОТЫ. Только закрытые заказы (`completed`) с
- * `completed_at` внутри периода. Незакрытый заказ в рейтинг не идёт: пока он
- * в работе, ни качества, ни срока по нему ещё не известно, и учитывать его
- * значило бы начислять балл авансом.
+ * ЧТО СЧИТАЕТСЯ СЛЕДОМ РАБОТЫ. Выполненная задача роли — закрытый ЭТАП, а не
+ * закрытый заказ: замер сдан, пошив завершён, контроль пройден, установка
+ * сделана, карниз готов. Раньше балл шёл только за заказ со статусом
+ * `completed`, и швея, отшившая за месяц десять заказов, до их установки
+ * стояла с нулём — «баллы не считаются». Дата задачи — запись истории
+ * статусов, продавцу задача — оформленный заказ.
  *
  * КАЧЕСТВО — через возвраты на переделку, единственный объективный след,
  * который есть в системе (см. `performance.service.ts`, там же разобрано,
@@ -113,31 +116,52 @@ const percent = (part: unknown, total: unknown): number | null => {
 /*  Запросы                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Заказы, закрытые в периоде; при необходимости — одного филиала. */
-const completedInPeriod = (bounds: PeriodBounds, branchId: number | undefined): SQL => {
+/** Момент внутри периода; при необходимости — заказ одного филиала. */
+const inPeriod = (at: SQL, bounds: PeriodBounds, branchId: number | undefined): SQL => {
   // Границы передаём строкой с явным приведением: драйвер не превращает
   // `Date` в параметр сырого запроса, а падает на нём (см. `sqlTimestamp`).
   const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
   const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
 
-  const period = sql`o.status = ${OrderStatus.COMPLETED}
-    and o.completed_at >= ${from} and o.completed_at < ${to}`;
+  const period = sql`${at} >= ${from} and ${at} < ${to} and o.status <> ${OrderStatus.CANCELLED}`;
 
   return branchId === undefined ? period : sql`${period} and o.branch_id = ${branchId}`;
 };
 
 /**
- * Попадание в срок — общие для всех ролей колонки.
+ * Этап роли закрыт: последняя запись истории с одним из этих статусов.
  *
- * Дата закрытия приводится к дате в UTC, а не в часовом поясе сервера:
- * иначе один и тот же заказ считался бы просроченным или нет в зависимости
- * от настроек машины, на которой запущен API.
+ * Последняя, а не первая: после возврата на переделку этап закрывают ещё
+ * раз, и задача одна — заказ, а не число попыток. Попытки учитывает качество.
  */
-const punctualityColumns = sql`
-  count(*) filter (where o.deadline is not null) as with_deadline,
+const stageDone = (statuses: readonly string[]): SQL => sql`
+  join lateral (
+    select max(h.created_at) as at from order_status_history h
+    where h.order_id = o.id and h.to_status in (${sql.join(statuses.map((status) => sql`${status}`), sql`, `)})
+  ) done on true`;
+
+/** Карнизы, отмеченные готовыми в периоде; при необходимости — одного филиала. */
+const corniceDoneInPeriod = (bounds: PeriodBounds, branchId: number | undefined): SQL => {
+  const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
+  const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
+  const period = sql`o.cornice_status = ${CorniceStatus.DONE}
+    and o.cornice_installer_id is not null
+    and o.cornice_done_at >= ${from} and o.cornice_done_at < ${to}`;
+  return branchId === undefined ? period : sql`${period} and o.branch_id = ${branchId}`;
+};
+
+/**
+ * Попадание в срок — общие для всех ролей колонки; `at` — момент задачи.
+ *
+ * Дата приводится к дате в UTC, а не в часовом поясе сервера: иначе один и
+ * тот же заказ считался бы просроченным или нет в зависимости от настроек
+ * машины, на которой запущен API.
+ */
+const punctualityColumns = (at: SQL): SQL => sql`
+  count(*) filter (where o.deadline is not null and ${at} is not null) as with_deadline,
   count(*) filter (
     where o.deadline is not null
-      and (o.completed_at at time zone 'UTC')::date <= o.deadline
+      and (${at} at time zone 'UTC')::date <= o.deadline
   ) as on_time`;
 
 /** Сырые строки одного роутинга «роль → показатели участников». */
@@ -164,33 +188,37 @@ const toRoleRow = (
 /**
  * Показатели всех участников по каждой роли.
  *
- * Пять независимых запросов вместо одного с `union`: у каждой роли свой набор
+ * Шесть независимых запросов вместо одного с `union`: у каждой роли свой набор
  * боковых подзапросов по истории статусов, и объединение читалось бы хуже, а
- * планировщику всё равно пришлось бы выполнять те же пять сканов.
+ * планировщику всё равно пришлось бы выполнять те же сканы.
  */
 async function collectRoleRows(
   db: Database,
   bounds: PeriodBounds,
   branchId: number | undefined,
 ): Promise<Record<RatedRole, RoleRow[]>> {
-  const scope = completedInPeriod(bounds, branchId);
+  const doneAt = sql`done.at`;
+  const scope = inPeriod(doneAt, bounds, branchId);
 
-  const [sellerRows, masterRows, sewerRows, qcRows, installerRows] = await Promise.all([
+  const [sellerRows, masterRows, sewerRows, qcRows, installerRows, corniceRows] =
+    await Promise.all([
+    // Продавцу задача — оформленный заказ; срок у него — закрытие заказа.
     db.execute(sql`
       select o.created_by as user_id,
              count(*) as orders_count,
              coalesce(sum(o.work_price), 0) as revenue,
-             ${punctualityColumns}
+             ${punctualityColumns(sql`o.completed_at`)}
       from orders o
-      where ${scope}
+      where ${inPeriod(sql`o.created_at`, bounds, branchId)}
       group by o.created_by`),
 
     db.execute(sql`
       select o.master_id as user_id,
              count(*) as orders_count,
              count(*) filter (where redone.n = 0) as clean_orders,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      ${stageDone([OrderStatus.MEASUREMENT_DONE])}
       -- Повторный замер: вход в measurement_assigned не из приёмки,
       -- то есть откат с более позднего этапа.
       left join lateral (
@@ -207,8 +235,9 @@ async function collectRoleRows(
              count(*) as orders_count,
              count(*) filter (where failed.n = 0) as clean_orders,
              coalesce(sum(area.total), 0) as area_m2,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      ${stageDone([OrderStatus.SEWING_DONE])}
       left join lateral (
         select count(*) as n from order_status_history h
         where h.order_id = o.id and h.to_status = ${OrderStatus.QC_FAILED}
@@ -224,8 +253,10 @@ async function collectRoleRows(
       select o.qc_id as user_id,
              count(*) as orders_count,
              count(*) filter (where missed.n = 0) as clean_orders,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      -- Проверка сделана и когда брак найден: это и есть работа контролёра.
+      ${stageDone([OrderStatus.QC_PASSED, OrderStatus.QC_FAILED])}
       -- Пропущенный брак: контролёр принял заказ, а установку затем
       -- вернули на доработку. Возврат ПЕРЕД установкой (qc_failed) в минус
       -- контролёру не идёт — это ровно та работа, за которую он отвечает.
@@ -242,8 +273,9 @@ async function collectRoleRows(
       select o.installer_id as user_id,
              count(*) as orders_count,
              count(*) filter (where redone.n = 0) as clean_orders,
-             ${punctualityColumns}
+             ${punctualityColumns(doneAt)}
       from orders o
+      ${stageDone([OrderStatus.INSTALLATION_DONE])}
       left join lateral (
         select count(*) as n from order_status_history h
         where h.order_id = o.id
@@ -252,6 +284,24 @@ async function collectRoleRows(
       ) redone on true
       where ${scope} and o.installer_id is not null
       group by o.installer_id`),
+    // Карниз закрывается своей отметкой, а не статусом заказа: считаем по
+    // дате «карниз готов», и заказ при этом может быть ещё не закрыт.
+    // Балл — за каждую вырезку, а не за заказ: в заказе на пять окон
+    // карнизчик режет пять карнизов. Вырезка — позиция с карнизом,
+    // пластиком или трубой, помноженная на количество; заказ без таких
+    // позиций (старые данные) считается за одну.
+    db.execute(sql`
+      select o.cornice_installer_id as user_id,
+             sum(greatest(cuts.n, 1)) as orders_count
+      from orders o
+      join lateral (
+        select coalesce(sum(i.quantity), 0) as n
+        from order_items i
+        where i.order_id = o.id
+          and (i.cornice is not null or i.plastic is not null or i.pipe is not null)
+      ) cuts on true
+      where ${corniceDoneInPeriod(bounds, branchId)}
+      group by o.cornice_installer_id`),
   ]);
 
   const cleanQuality = (row: Record<string, unknown>): number | null =>
@@ -271,6 +321,13 @@ async function collectRoleRows(
     installer: installerRows.map((row) =>
       toRoleRow(row, (r) => asInt(r['orders_count']), cleanQuality),
     ),
+    cornice_installer: corniceRows.map((row) => ({
+      userId: asInt(row['user_id']),
+      ordersCount: asInt(row['orders_count']),
+      volumeValue: asInt(row['orders_count']),
+      qualityPercent: null,
+      punctualityPercent: null,
+    })),
   };
 }
 
@@ -323,11 +380,7 @@ export async function employeeRating(
         volumeScore,
         qualityPercent: row.qualityPercent,
         punctualityPercent: row.punctualityPercent,
-        score: ratingScore({
-          volume: volumeScore,
-          quality: row.qualityPercent,
-          punctuality: row.punctualityPercent,
-        }),
+        score: ratingScore(row.ordersCount),
       };
 
       const existing = rowsByUser.get(row.userId);
@@ -360,21 +413,11 @@ export async function employeeRating(
 }
 
 /**
- * Общий балл сотрудника, совмещающего роли.
- *
- * Средневзвешенное по числу закрытых заказов: у швеи, которая двадцать раз
- * шила и дважды выезжала на замер, балл определяется пошивом. Простое
- * среднее дало бы двум замерам тот же вес, что и двадцати пошивам.
- *
- * Ноль заказов за период — ноль баллов: сотрудник в таблице есть, но внизу.
+ * Общий балл сотрудника, совмещающего роли, — сумма по ролям: замер и
+ * установка одного заказа — две работы, два балла.
  */
 function combineRoleScores(entries: readonly RatingRoleEntry[]): number {
-  const totalOrders = entries.reduce((sum, entry) => sum + entry.ordersCount, 0);
-  if (totalOrders === 0) return 0;
-
-  const weighted = entries.reduce((sum, entry) => sum + entry.score * entry.ordersCount, 0);
-
-  return Math.round(weighted / totalOrders);
+  return entries.reduce((sum, entry) => sum + entry.score, 0);
 }
 
 /**
@@ -399,10 +442,7 @@ function rankEntries(entries: readonly RatingEntry[]): RatingEntry[] {
     .filter((entry) => entry.unratedReason !== null)
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'));
 
-  // Место делят только полностью неразличимые строки. Одного балла для
-  // дележа мало: объём нормируется внутри роли, поэтому лидер каждой роли
-  // получает ровно 100, и без второго критерия первое место делили бы
-  // пятеро — по одному от каждой роли, что для соревнования бессмысленно.
+  // Место делят только полностью неразличимые строки.
   return [
     ...assignPlaces(ranked, (a, b) => a.score === b.score && a.ordersCount === b.ordersCount),
     ...unrated,

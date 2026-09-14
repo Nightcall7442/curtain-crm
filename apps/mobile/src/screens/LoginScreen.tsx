@@ -14,6 +14,7 @@ import {
 
 import { useAuth } from '../hooks/useAuth';
 import { colors, radius, spacing, typography, opacity } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Вход в приложение.
@@ -28,6 +29,7 @@ import { colors, radius, spacing, typography, opacity } from '../theme';
  */
 export function LoginScreen(): ReactElement {
   const { signIn, signInError, isSigningIn } = useAuth();
+  const { m } = useLocale();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
 
@@ -73,13 +75,13 @@ export function LoginScreen(): ReactElement {
             accessibilityLabel="Design House Parda Bozor"
           />
           <Text style={styles.brandName}>PARDA BOZOR</Text>
-          <Text style={styles.brandTagline}>шторы премиум класса</Text>
+          <Text style={styles.brandTagline}>{m('login.tagline')}</Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.formTitle}>Вход для сотрудников</Text>
+          <Text style={styles.formTitle}>{m('login.title')}</Text>
 
-          <Text style={styles.label}>Номер телефона</Text>
+          <Text style={styles.label}>{m('login.phone')}</Text>
           <TextInput
             value={phone}
             onChangeText={setPhone}
@@ -92,7 +94,7 @@ export function LoginScreen(): ReactElement {
             editable={!isSigningIn}
           />
 
-          <Text style={[styles.label, styles.labelSpacing]}>Пароль</Text>
+          <Text style={[styles.label, styles.labelSpacing]}>{m('login.password')}</Text>
           <TextInput
             value={password}
             onChangeText={setPassword}
@@ -126,13 +128,11 @@ export function LoginScreen(): ReactElement {
             {isSigningIn ? (
               <ActivityIndicator color={colors.onAccent} />
             ) : (
-              <Text style={styles.buttonText}>Войти</Text>
+              <Text style={styles.buttonText}>{m('login.submit')}</Text>
             )}
           </Pressable>
 
-          <Text style={styles.hint}>
-            Забыли пароль? Сбросить его может только директор.
-          </Text>
+          <Text style={styles.hint}>{m('login.hint')}</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

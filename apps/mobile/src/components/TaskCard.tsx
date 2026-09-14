@@ -42,7 +42,7 @@ export function TaskCard({
     readonly creatorName: string;
   };
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
 
@@ -52,7 +52,7 @@ export function TaskCard({
       await utils.tasks.my.invalidate();
     },
     onError(error) {
-      Alert.alert('Не удалось отметить выполнение', error.message);
+      Alert.alert(m('taskCard.completeError'), error.message);
     },
   });
 
@@ -65,7 +65,7 @@ export function TaskCard({
         navigation.navigate('TaskDetail', { taskId: task.id });
       }}
       accessibilityRole="button"
-      accessibilityLabel={`Открыть поручение «${task.title}»`}
+      accessibilityLabel={m('taskCard.open', { title: task.title })}
       style={[styles.card, !isOpen && styles.cardClosed]}
     >
       <View style={styles.header}>
@@ -78,7 +78,7 @@ export function TaskCard({
             }}
             disabled={complete.isPending}
             accessibilityRole="button"
-            accessibilityLabel={`Отметить выполненным: ${task.title}`}
+            accessibilityLabel={m('taskCard.complete', { title: task.title })}
             style={({ pressed }) => [styles.doneButton, pressed ? styles.doneButtonPressed : null]}
           >
             {complete.isPending ? (
@@ -107,13 +107,13 @@ export function TaskCard({
 
       <View style={styles.footer}>
         <Text style={styles.creator} numberOfLines={1}>
-          {`от: ${task.creatorName}`}
+          {m('taskCard.from', { name: task.creatorName })}
         </Text>
         {task.dueDate !== null && (
           <Text style={[styles.due, overdue ? styles.dueOverdue : null]}>
             {overdue
-              ? `просрочено · ${formatIsoDateShort(task.dueDate)}`
-              : `до ${formatIsoDateShort(task.dueDate)}`}
+              ? m('taskCard.overdue', { date: formatIsoDateShort(task.dueDate) })
+              : m('taskCard.until', { date: formatIsoDateShort(task.dueDate) })}
           </Text>
         )}
       </View>

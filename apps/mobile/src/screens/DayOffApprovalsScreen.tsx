@@ -7,6 +7,7 @@ import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
+import { TeamDaysOff } from '../components/TeamDaysOff';
 import { Input } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
@@ -29,7 +30,7 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
  * не работал бы.
  */
 export function DayOffApprovalsScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
 
   /** Заявка, которой пишут причину отказа. `null` — никому. */
@@ -49,7 +50,7 @@ export function DayOffApprovalsScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось одобрить', error.message);
+      Alert.alert(m('approvals.approveError'), error.message);
     },
   });
 
@@ -62,7 +63,7 @@ export function DayOffApprovalsScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отклонить', error.message);
+      Alert.alert(m('approvals.rejectError'), error.message);
     },
   });
 
@@ -84,20 +85,18 @@ export function DayOffApprovalsScreen(): ReactElement {
     );
   }
 
-  if (query.data.items.length === 0) {
-    return (
-      <View style={styles.content}>
-        <Card>
-          <Empty message="Заявок нет" hint="Здесь появятся просьбы об отгуле" />
-        </Card>
-      </View>
-    );
-  }
-
   const isBusy = approve.isPending || reject.isPending;
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
+      <TeamDaysOff />
+
+      {query.data.items.length === 0 && (
+        <Card>
+          <Empty message={m('approvals.none')} hint={m('approvals.noneHint')} />
+        </Card>
+      )}
+
       {query.data.items.map((item) => {
         const isPending = item.status === 'pending';
 
@@ -119,7 +118,7 @@ export function DayOffApprovalsScreen(): ReactElement {
 
             {item.rejectionReason !== null && (
               <Text style={styles.decision}>
-                {`Причина отказа: ${item.rejectionReason}`}
+                {m('dayoff.rejection', { reason: item.rejectionReason })}
               </Text>
             )}
 
@@ -138,7 +137,7 @@ export function DayOffApprovalsScreen(): ReactElement {
                     pressed ? styles.buttonPressed : null,
                   ]}
                 >
-                  <Text style={styles.buttonGhostText}>Отклонить</Text>
+                  <Text style={styles.buttonGhostText}>{m('approvals.reject')}</Text>
                 </Pressable>
 
                 <Pressable
@@ -156,7 +155,7 @@ export function DayOffApprovalsScreen(): ReactElement {
                   {approve.isPending ? (
                     <ActivityIndicator color={colors.onAccent} size="small" />
                   ) : (
-                    <Text style={styles.buttonPrimaryText}>Одобрить</Text>
+                    <Text style={styles.buttonPrimaryText}>{m('approvals.approve')}</Text>
                   )}
                 </Pressable>
               </View>
@@ -164,11 +163,11 @@ export function DayOffApprovalsScreen(): ReactElement {
 
             {rejecting === item.id && (
               <View style={styles.rejectBox}>
-                <Text style={styles.rejectLabel}>Почему отказ</Text>
+                <Text style={styles.rejectLabel}>{m('approvals.why')}</Text>
                 <Input
                   value={reason}
                   onChangeText={setReason}
-                  placeholder="Сотрудник должен понять причину"
+                  placeholder={m('approvals.whyPlaceholder')}
                   multiline
                   autoFocus
                 />
@@ -186,7 +185,7 @@ export function DayOffApprovalsScreen(): ReactElement {
                       pressed ? styles.buttonPressed : null,
                     ]}
                   >
-                    <Text style={styles.buttonGhostText}>Отмена</Text>
+                    <Text style={styles.buttonGhostText}>{m('common.cancel')}</Text>
                   </Pressable>
 
                   <Pressable
@@ -205,7 +204,7 @@ export function DayOffApprovalsScreen(): ReactElement {
                     {reject.isPending ? (
                       <ActivityIndicator color={colors.onAccent} size="small" />
                     ) : (
-                      <Text style={styles.buttonPrimaryText}>Отклонить</Text>
+                      <Text style={styles.buttonPrimaryText}>{m('approvals.reject')}</Text>
                     )}
                   </Pressable>
                 </View>

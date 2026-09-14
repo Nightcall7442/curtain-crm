@@ -6,6 +6,7 @@ import { InstallationTripCard } from '../components/InstallationTripCard';
 import { ShiftControl } from '../components/ShiftControl';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
  * Явка цеха: кто пришёл, во сколько, кто сейчас на месте, кто на перерыве и
@@ -23,6 +24,7 @@ import { colors, hairline, spacing, tabBarSpace, typography } from '../theme';
  * отсутствие видно по короткому списку, а не по строке «не пришёл».
  */
 export function AttendanceScreen(): ReactElement {
+  const { m } = useLocale();
   /* Границы суток берутся на каждый рендер, а не запоминаются: экран живёт
      открытым и после полуночи должен показывать уже новый день. */
   const { from, to } = todayBounds();
@@ -83,12 +85,12 @@ export function AttendanceScreen(): ReactElement {
       </ShiftControl>
 
       <Card>
-        <CardTitle title="Сейчас в цеху" icon="people" />
+        <CardTitle title={m('attendance.now')} icon="people" />
 
         {shifts.data === undefined ? (
           <Skeleton />
         ) : working.length === 0 ? (
-          <Empty message="Смену никто не открыл" hint="Здесь появятся те, кто отметился" />
+          <Empty message={m('attendance.nobodyOpened')} hint={m('attendance.nobodyOpenedHint')} />
         ) : (
           working.map((row) => {
             const rest = onBreak.get(row.userId);
@@ -102,12 +104,12 @@ export function AttendanceScreen(): ReactElement {
             */
             const meta =
               trip !== undefined
-                ? `с ${clock(row.startedAt)} · на установке с ${clock(trip.startedAt)}${
+                ? `${m('attendance.sinceTrip', { start: clock(row.startedAt), trip: clock(trip.startedAt) })}${
                     trip.orderNumber === null ? '' : ` · ${trip.orderNumber}`
                   }`
                 : rest !== undefined
-                  ? `с ${clock(row.startedAt)} · перерыв с ${clock(rest.startedAt)}`
-                  : `с ${clock(row.startedAt)} · ${elapsed(row.startedAt)}`;
+                  ? m('attendance.sinceBreak', { start: clock(row.startedAt), rest: clock(rest.startedAt) })
+                  : m('attendance.since', { start: clock(row.startedAt), elapsed: elapsed(row.startedAt, m) });
 
             return (
               <View key={`${row.userId.toString()}-${row.startedAt.toISOString()}`} style={styles.row}>
@@ -125,7 +127,7 @@ export function AttendanceScreen(): ReactElement {
                   «кто сегодня работает».
                 */}
                 <Pill
-                  text={trip !== undefined ? 'установка' : rest !== undefined ? 'перерыв' : 'работает'}
+                  text={trip !== undefined ? m('attendance.trip') : rest !== undefined ? m('attendance.break') : m('attendance.working')}
                   tone={trip !== undefined ? 'info' : rest !== undefined ? 'warning' : 'positive'}
                 />
               </View>
@@ -135,12 +137,12 @@ export function AttendanceScreen(): ReactElement {
       </Card>
 
       <Card>
-        <CardTitle title="Уже ушли" icon="shift" />
+        <CardTitle title={m('attendance.left')} icon="shift" />
 
         {shifts.data === undefined ? (
           <Skeleton rows={2} />
         ) : finished.length === 0 ? (
-          <Empty message="Смены никто не закрыл" />
+          <Empty message={m('attendance.nobodyClosed')} />
         ) : (
           finished.map((row) => (
             <View key={`${row.userId.toString()}-${row.startedAt.toISOString()}`} style={styles.row}>
@@ -151,7 +153,7 @@ export function AttendanceScreen(): ReactElement {
                 <Text style={styles.meta}>
                   {`${clock(row.startedAt)} — ${
                     row.endedAt === null ? '' : clock(row.endedAt)
-                  } · ${worked(row.startedAt, row.endedAt)}`}
+                  } · ${worked(row.startedAt, row.endedAt, m)}`}
                 </Text>
               </View>
             </View>
@@ -160,8 +162,7 @@ export function AttendanceScreen(): ReactElement {
       </Card>
 
       <Text style={styles.note}>
-        {`Сегодня отметились: ${rows.length.toString()}. Кого нет в списке — тот
-        смену не открывал.`}
+        {m('attendance.note', { n: rows.length })}
       </Text>
     </ScrollView>
   );
@@ -180,19 +181,21 @@ const clock = (value: Date): string =>
   value.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
 
 /** Сколько прошло с начала смены — в часах и минутах. */
-function elapsed(startedAt: Date): string {
-  return humanize(Date.now() - startedAt.getTime());
+function elapsed(startedAt: Date, m: Translate): string {
+  return humanize(Date.now() - startedAt.getTime(), m);
 }
 
-function worked(startedAt: Date, endedAt: Date | null): string {
+function worked(startedAt: Date, endedAt: Date | null, m: Translate): string {
   if (endedAt === null) return '';
-  return humanize(endedAt.getTime() - startedAt.getTime());
+  return humanize(endedAt.getTime() - startedAt.getTime(), m);
 }
 
-function humanize(ms: number): string {
+function humanize(ms: number, m: Translate): string {
   const minutes = Math.max(0, Math.round(ms / 60_000));
   const hours = Math.floor(minutes / 60);
-  return hours === 0 ? `${minutes.toString()} мин` : `${hours.toString()} ч ${(minutes % 60).toString()} мин`;
+  return hours === 0
+    ? m('shift.minutes', { n: minutes })
+    : m('shift.hoursMinutes', { h: hours, m: minutes % 60 });
 }
 
 const styles = StyleSheet.create({

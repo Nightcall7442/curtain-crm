@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -29,42 +29,33 @@ export interface LineSeriesProps {
   readonly previousLabel?: string;
   /** Форматирование значения в подсказке и в подписи на конце линии. */
   readonly formatValue?: (value: number) => string;
+  /** Подпись позиции по X в подсказке и на оси: по умолчанию — день месяца. */
+  readonly formatX?: (x: number) => string;
+  /** Какие позиции по X подписывать под осью; по умолчанию — 1, 5, 10… и последняя. */
+  readonly ticks?: readonly number[];
   readonly className?: string;
 }
 
-const VIEW_WIDTH = 460;
-const VIEW_HEIGHT = 180;
+const VIEW_HEIGHT = 200;
 
 /**
- * Кегль подписей внутри SVG — В ЕДИНИЦАХ viewBox, а не в пикселях.
+ * Холст рисуется в пикселях контейнера, а не в условных единицах viewBox.
  *
- * Здесь нельзя пользоваться типографической шкалой страницы, и это не
- * стилистическое предпочтение, а разные системы координат. Холст шириной
- * 460 единиц растягивается на всю карточку — около 1450 px, — то есть всё
- * внутри увеличивается втрое. Класс `text-overline` (11 px) превращался на
- * экране в 35 px: подписи оси разносило, а число вида «115 млн» вылезало за
- * левый край холста и обрезалось до «млн».
- *
- * Отсюда же запрет на разрядку из шкалы: 0,08em при таком масштабе добавляет
- * подписи ещё несколько единиц ширины и добивает то, что не поместилось.
- *
- * Значения подобраны под этот холст: при изменении `VIEW_WIDTH` их надо
- * пересчитывать вместе с ним.
+ * Растягиваемый viewBox увеличивал вместе с линиями и шрифт: на широкой
+ * карточке подписи оси вырастали до 25 px и спорили с заголовком. Ширина
+ * снимается с контейнера наблюдателем, и текст остаётся 11-пиксельным при
+ * любой ширине карточки.
  */
-const AXIS_FONT_SIZE = 9;
-const VALUE_FONT_SIZE = 10;
+const AXIS_FONT_SIZE = 11;
+const VALUE_FONT_SIZE = 12;
 
-/**
- * Левое поле держит подпись оси.
- *
- * Самая широкая подпись — денежная («115 млн»), около 30 единиц при кегле 9.
- * Поле меньше этого молча обрезает начало числа, и на графике остаётся
- * хвост единицы измерения.
- */
-const PADDING = { top: 16, right: 44, bottom: 24, left: 40 };
+/** Левое поле держит подпись оси — самая широкая денежная, «115 млн». */
+const PADDING = { top: 16, right: 64, bottom: 26, left: 56 };
 
-const PLOT_WIDTH = VIEW_WIDTH - PADDING.left - PADDING.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - PADDING.top - PADDING.bottom;
+
+const DEFAULT_TICKS = [1, 5, 10, 15, 20, 25];
+const defaultFormatX = (x: number): string => `День ${x.toString()}`;
 
 export function LineSeries({
   current,
@@ -72,10 +63,31 @@ export function LineSeries({
   currentLabel = 'Текущий месяц',
   previousLabel = 'Прошлый месяц',
   formatValue = (value) => value.toString(),
+  formatX = defaultFormatX,
+  ticks = DEFAULT_TICKS,
   className,
 }: LineSeriesProps): ReactElement {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [viewWidth, setViewWidth] = useState(600);
+  // На странице бывает несколько графиков — у каждого свои <defs>.
+  const gradientId = useId().replace(/:/g, '');
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (svg === null) return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined && entry.contentRect.width > 0) {
+        setViewWidth(Math.round(entry.contentRect.width));
+      }
+    });
+    observer.observe(svg);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const plotWidth = Math.max(40, viewWidth - PADDING.left - PADDING.right);
 
   const scale = useMemo(() => {
     const allPoints = [...current, ...previous];
@@ -90,22 +102,40 @@ export function LineSeries({
     return {
       maxX: Math.max(1, maxX),
       maxY: niceMax,
-      toX: (x: number) => PADDING.left + (x / Math.max(1, maxX)) * PLOT_WIDTH,
+      toX: (x: number) => PADDING.left + (x / Math.max(1, maxX)) * plotWidth,
       toY: (y: number) =>
         PADDING.top + PLOT_HEIGHT - (niceMax === 0 ? 0 : (y / niceMax) * PLOT_HEIGHT),
     };
-  }, [current, previous]);
+  }, [current, previous, plotWidth]);
 
+  /*
+    Плавная кривая вместо ломаной: кубические сегменты с горизонтальными
+    касательными в каждой точке. Такая кривая не «перелетает» значения —
+    между двумя точками она никогда не выше большей и не ниже меньшей.
+  */
   const buildPath = useCallback(
     (points: readonly SeriesPoint[]): string =>
       points
-        .map(
-          (point, index) =>
-            `${index === 0 ? 'M' : 'L'} ${scale.toX(point.x).toFixed(2)} ${scale.toY(point.y).toFixed(2)}`,
-        )
+        .map((point, index) => {
+          const x = scale.toX(point.x);
+          const y = scale.toY(point.y);
+          if (index === 0) return `M ${x.toFixed(2)} ${y.toFixed(2)}`;
+          const prev = points[index - 1];
+          if (prev === undefined) return '';
+          const px = scale.toX(prev.x);
+          const py = scale.toY(prev.y);
+          const mid = ((px + x) / 2).toFixed(2);
+          return `C ${mid} ${py.toFixed(2)} ${mid} ${y.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
         .join(' '),
     [scale],
   );
+
+  const baseline = scale.toY(0);
+  const areaPath =
+    current.length > 1
+      ? `${buildPath(current)} L ${scale.toX(current.at(-1)?.x ?? 0).toFixed(2)} ${baseline.toFixed(2)} L ${scale.toX(current[0]?.x ?? 0).toFixed(2)} ${baseline.toFixed(2)} Z`
+      : null;
 
   const handlePointer = useCallback(
     (event: React.PointerEvent<SVGRectElement>) => {
@@ -115,13 +145,12 @@ export function LineSeries({
       const bounds = svg.getBoundingClientRect();
       if (bounds.width === 0) return;
 
-      // Переводим экранные координаты в координаты viewBox.
-      const viewX = ((event.clientX - bounds.left) / bounds.width) * VIEW_WIDTH;
-      const dataX = Math.round(((viewX - PADDING.left) / PLOT_WIDTH) * scale.maxX);
+      const viewX = event.clientX - bounds.left;
+      const dataX = Math.round(((viewX - PADDING.left) / plotWidth) * scale.maxX);
 
       setHoverX(Math.min(scale.maxX, Math.max(1, dataX)));
     },
-    [scale],
+    [scale, plotWidth],
   );
 
   const hoveredCurrent = hoverX === null ? undefined : findNearest(current, hoverX);
@@ -148,26 +177,38 @@ export function LineSeries({
 
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${VIEW_WIDTH.toString()} ${VIEW_HEIGHT.toString()}`}
-        className="h-auto w-full"
+        viewBox={`0 0 ${viewWidth.toString()} ${VIEW_HEIGHT.toString()}`}
+        height={VIEW_HEIGHT}
+        className="block w-full"
         role="img"
         aria-label={
           `${currentLabel}: ${formatValue(lastCurrent?.y ?? 0)}. ` +
           `${previousLabel}: ${formatValue(lastPrevious?.y ?? 0)}.`
         }
       >
-        {/* Сетка — намеренно неконтрастная, чтобы не спорить с данными */}
+        <defs>
+          <linearGradient id={`${gradientId}-area`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgb(var(--series-current))" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="rgb(var(--series-current))" stopOpacity="0" />
+          </linearGradient>
+          <filter id={`${gradientId}-glow`} x="-10%" y="-50%" width="120%" height="200%">
+            <feGaussianBlur stdDeviation="4" />
+          </filter>
+        </defs>
+
+        {/* Сетка — пунктир, намеренно неконтрастный, чтобы не спорить с данными */}
         {gridValues.map((value) => {
           const y = scale.toY(value);
           return (
             <g key={value}>
               <line
                 x1={PADDING.left}
-                x2={PADDING.left + PLOT_WIDTH}
+                x2={PADDING.left + plotWidth}
                 y1={y}
                 y2={y}
-                stroke="rgb(var(--border-subtle))"
+                stroke="rgb(var(--glass-ink) / 0.14)"
                 strokeWidth="1"
+                strokeDasharray={value === 0 ? undefined : '2 5'}
               />
               <text
                 x={PADDING.left - 6}
@@ -182,21 +223,24 @@ export function LineSeries({
           );
         })}
 
-        {/* Подписи оси X: первый, средние и последний день */}
-        {[1, 5, 10, 15, 20, 25, scale.maxX]
-          .filter((day, index, all) => day <= scale.maxX && all.indexOf(day) === index)
-          .map((day) => (
+        {/* Подписи оси X: заданные деления и последняя позиция */}
+        {[...ticks, scale.maxX]
+          .filter((x, index, all) => x <= scale.maxX && all.indexOf(x) === index)
+          .map((x) => (
             <text
-              key={day}
-              x={scale.toX(day)}
+              key={x}
+              x={scale.toX(x)}
               y={VIEW_HEIGHT - 8}
               textAnchor="middle"
               fontSize={AXIS_FONT_SIZE}
               className="fill-muted"
             >
-              {day}
+              {ticks === DEFAULT_TICKS ? x : formatX(x)}
             </text>
           ))}
+
+        {/* Заливка под текущей серией — тает к нулю */}
+        {areaPath !== null && <path d={areaPath} fill={`url(#${gradientId}-area)`} />}
 
         {/* Прошлый период — опорная линия, рисуется первой и лежит ниже */}
         {previous.length > 1 && (
@@ -204,45 +248,63 @@ export function LineSeries({
             d={buildPath(previous)}
             fill="none"
             stroke="rgb(var(--series-previous))"
-            strokeWidth="2"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
             strokeLinejoin="round"
             strokeLinecap="round"
           />
         )}
 
+        {/* Текущая серия: свечение под линией и сама линия */}
         {current.length > 1 && (
-          <path
-            d={buildPath(current)}
-            fill="none"
-            stroke="rgb(var(--series-current))"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
+          <>
+            <path
+              d={buildPath(current)}
+              fill="none"
+              stroke="rgb(var(--series-current))"
+              strokeWidth="6"
+              strokeOpacity="0.45"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              filter={`url(#${gradientId}-glow)`}
+            />
+            <path
+              d={buildPath(current)}
+              fill="none"
+              stroke="rgb(var(--series-current))"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </>
         )}
 
-        {/* Точки серий */}
-        {previous.map((point) => (
-          <circle
-            key={`prev-${point.x.toString()}`}
-            cx={scale.toX(point.x)}
-            cy={scale.toY(point.y)}
-            r="2"
-            fill="rgb(var(--series-previous))"
-          />
-        ))}
-        {current.map((point) => (
-          <circle
-            key={`cur-${point.x.toString()}`}
-            cx={scale.toX(point.x)}
-            cy={scale.toY(point.y)}
-            r="2"
-            fill="rgb(var(--series-current))"
-          />
-        ))}
+        {/* Точка только на конце текущей серии: по каждой точке — шум */}
+        {lastCurrent !== undefined && (
+          <>
+            <circle
+              cx={scale.toX(lastCurrent.x)}
+              cy={scale.toY(lastCurrent.y)}
+              r="8"
+              fill="rgb(var(--series-current))"
+              fillOpacity="0.25"
+            />
+            <circle
+              cx={scale.toX(lastCurrent.x)}
+              cy={scale.toY(lastCurrent.y)}
+              r="3.5"
+              fill="rgb(var(--series-current))"
+              stroke="rgb(var(--surface-panel))"
+              strokeWidth="2"
+            />
+          </>
+        )}
 
         {/* Подписи итогов на концах линий — вместо чисел над каждой точкой */}
-        {lastPrevious !== undefined && (
+        {/* Совпадающие концы подписываются один раз, иначе цифры ложатся друг на друга. */}
+        {lastPrevious !== undefined &&
+          (lastCurrent === undefined ||
+            Math.abs(scale.toY(lastPrevious.y) - scale.toY(lastCurrent.y)) > 12) && (
           <text
             x={scale.toX(lastPrevious.x) + 6}
             y={scale.toY(lastPrevious.y) + 3}
@@ -270,7 +332,7 @@ export function LineSeries({
             x2={scale.toX(hoverX)}
             y1={PADDING.top}
             y2={PADDING.top + PLOT_HEIGHT}
-            stroke="rgb(var(--border-strong))"
+            stroke="rgb(var(--glass-ink) / 0.35)"
             strokeWidth="1"
             strokeDasharray="3 3"
           />
@@ -300,7 +362,7 @@ export function LineSeries({
         <rect
           x={PADDING.left}
           y={PADDING.top}
-          width={PLOT_WIDTH}
+          width={plotWidth}
           height={PLOT_HEIGHT}
           fill="transparent"
           onPointerMove={handlePointer}
@@ -321,7 +383,7 @@ export function LineSeries({
       >
         {hoverX !== null && (
           <>
-            <span className="text-muted">{`День ${hoverX.toString()}`}</span>
+            <span className="text-muted">{formatX(hoverX)}</span>
             <span className="text-positive">
               {`${currentLabel}: ${formatValue(hoveredCurrent?.y ?? 0)}`}
             </span>

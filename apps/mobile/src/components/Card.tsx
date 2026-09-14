@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { cardShadow, colors, hairline, radius, spacing, typography } from '../theme';
 
 import { Icon, type IconName } from './Icon';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Базовые блоки экранов.
@@ -203,12 +204,16 @@ export function Empty({
  * сломано — разные вещи, и выглядеть они обязаны по-разному.
  */
 export function ErrorState({
-  message = 'Не удалось загрузить',
-  hint = 'Проверьте связь и потяните вниз',
+  message,
+  hint,
 }: {
   readonly message?: string;
   readonly hint?: string;
 }): ReactElement {
+  const { m } = useLocale();
+  message ??= m('common.loadError');
+  hint ??= m('common.retryHint');
+
   return (
     <View style={styles.empty} accessibilityRole="alert" accessibilityLiveRegion="polite">
       <Text style={styles.errorText}>{message}</Text>

@@ -15,6 +15,7 @@ import {
   ORDER_STATUS_LABELS_RU,
   ORDER_STATUS_REQUIRED_ASSIGNEE,
   OrderStatus,
+  OrderType,
   requiresComment,
   Role,
   ROLE_LABELS_RU,
@@ -28,10 +29,11 @@ import { and, eq, isNotNull, or } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
 import { assertOrderPacked } from './packList.service';
-import { accrueForClosedOrder } from './payroll.service';
+import { accrueForClosedOrder, accrueForStage, STAGE_ACCRUAL_STATUSES } from './payroll.service';
 import {
   notifyOrderAssigned,
   notifyOrderStatusChanged,
+  notifyRoleChanged,
   notifyStageAwaitingExecutor,
 } from './notifications.service';
 import type { AuthenticatedUser } from '../types';
@@ -423,13 +425,23 @@ export async function changeOrderStatus(
     `not_required` в условии — защита от повторного запуска: заказ может
     вернуться на проверку админом и уйти в цех второй раз, а карниз к тому
     времени уже могут вешать. Затирать чужую работу откатом статуса нельзя.
+
+    Готовые шторы проверку админом минуют: продажа уходит из «Новый» сразу
+    на назначение установщика. Карниз к такой продаже раньше терялся —
+    карнизчики о нём не узнавали. Поэтому для них точка отправки — этот
+    первый переход; продажа без установки (сразу «Выполнен») карниз не
+    запускает: клиент увозит его сам.
   */
+  const leavesIntake =
+    fromStatus === OrderStatus.PENDING_ADMIN_REVIEW ||
+    fromStatus === OrderStatus.REJECTED_TO_CEO ||
+    (order.orderType === OrderType.READY_MADE && fromStatus === OrderStatus.NEW);
   const startsCornice =
     order.corniceStatus === CorniceStatus.NOT_REQUIRED &&
-    (fromStatus === OrderStatus.PENDING_ADMIN_REVIEW ||
-      fromStatus === OrderStatus.REJECTED_TO_CEO) &&
+    leavesIntake &&
     !wasRollback &&
     toStatus !== OrderStatus.CANCELLED &&
+    toStatus !== OrderStatus.COMPLETED &&
     (await orderNeedsCornice(executor, order.id));
 
   const [updated] = await executor
@@ -461,6 +473,10 @@ export async function changeOrderStatus(
   */
   if (toStatus === OrderStatus.COMPLETED) {
     await accrueForClosedOrder(executor, updated);
+  } else if (STAGE_ACCRUAL_STATUSES.has(toStatus) && !wasRollback) {
+    // Сданный этап — тоже: сдельная за него идёт в месяц сдачи, а не в
+    // месяц закрытия заказа.
+    await accrueForStage(executor, updated);
   }
 
   /* 7. История — только добавление, никогда перезапись. */
@@ -646,7 +662,7 @@ export async function assignExecutor(
   if (previousId === params.assigneeId) return order;
 
   if (params.assigneeId !== null) {
-    await assertUserHasRole(executor, params.assigneeId, params.role);
+    await ensureUserHasRole(executor, params.assigneeId, params.role, params);
   }
 
   const [updated] = await executor
@@ -685,35 +701,56 @@ export async function assignExecutor(
 }
 
 /**
- * Проверяет, что назначаемый сотрудник существует, активен и владеет ролью.
+ * Проверяет, что назначаемый сотрудник существует и активен, и выдаёт ему
+ * роль, если её ещё нет.
  *
- * Без этой проверки админ мог бы назначить замерщиком человека без роли
- * мастера, и тот не смог бы сдвинуть заказ ни на шаг — а причина была бы
- * неочевидна.
+ * Назначить можно любого: швея, которая сегодня едет на установку, — обычная
+ * подработка, а не ошибка. Но переходы статусов и сдельная считаются по
+ * ролям, и человек без роли не смог бы сдвинуть заказ ни на шаг и не попал
+ * бы в ведомость. Поэтому назначение на работу и есть выдача роли — с
+ * записью в журнал и уведомлением, как при выдаче вручную.
  */
-async function assertUserHasRole(
+async function ensureUserHasRole(
   executor: DbExecutor,
   userId: number,
   role: RoleName,
+  params: { readonly actor: AuthenticatedUser; readonly ipAddress?: string | null },
 ): Promise<void> {
-  const [row] = await executor
-    .select({ id: users.id, isActive: users.isActive })
-    .from(users)
-    .innerJoin(userRoles, eq(userRoles.userId, users.id))
-    .where(and(eq(users.id, userId), eq(userRoles.role, role)))
-    .limit(1);
+  const person = await executor.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { isActive: true },
+  });
 
-  if (row === undefined) {
-    throw new TRPCError({
-      code: 'BAD_REQUEST',
-      message: `У выбранного сотрудника нет роли «${ROLE_LABELS_RU[role]}»`,
-    });
+  if (person === undefined) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден' });
   }
-
-  if (!row.isActive) {
+  if (!person.isActive) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
       message: 'Нельзя назначить деактивированного сотрудника',
     });
   }
+
+  const granted = await executor
+    .insert(userRoles)
+    .values({ userId, role, grantedBy: params.actor.id })
+    .onConflictDoNothing()
+    .returning({ role: userRoles.role });
+
+  if (granted.length === 0) return;
+
+  await recordAudit(executor, {
+    actorId: params.actor.id,
+    action: 'user.role_granted',
+    entityType: 'user',
+    entityId: userId,
+    details: { role, viaOrderAssignment: true },
+    ipAddress: params.ipAddress ?? null,
+  });
+
+  await notifyRoleChanged(executor, userId, {
+    role,
+    granted: true,
+    actorName: params.actor.fullName,
+  });
 }

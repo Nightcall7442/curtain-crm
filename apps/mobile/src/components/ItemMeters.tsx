@@ -1,4 +1,9 @@
-import type { OrderItemMaterial } from '@curtain-crm/shared';
+import {
+  MATERIAL_SLOT_LABELS,
+  type Locale,
+  type MaterialSlot,
+  type OrderItemMaterial,
+} from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -7,6 +12,7 @@ import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 import { Input } from './Field';
+import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
  * Метраж материалов позиции — заполняет админ или директор.
@@ -39,19 +45,21 @@ export interface MeterableItem {
 }
 
 /** Строки материалов в том же порядке, в каком они показаны выше в карточке. */
-function linesOf(item: MeterableItem): readonly MaterialLine[] {
+function linesOf(item: MeterableItem, t: Translate, locale: Locale): readonly MaterialLine[] {
+  const slot = (name: MaterialSlot): string => MATERIAL_SLOT_LABELS[locale][name];
   const single: readonly (readonly [string, string, OrderItemMaterial | null])[] = [
-    ['tulle', 'Тюль', item.tulle],
-    ['protection', 'Защита', item.protection],
-    ['cornice', 'Карниз', item.cornice],
-    ['plastic', 'Пластик', item.plastic],
-    ['pipe', 'Труба', item.pipe],
+    ['tulle', slot('tulle'), item.tulle],
+    ['protection', slot('protection'), item.protection],
+    ['cornice', slot('cornice'), item.cornice],
+    ['plastic', slot('plastic'), item.plastic],
+    ['pipe', slot('pipe'), item.pipe],
   ];
 
   return [
     ...item.portieres.map((material, index) => ({
       key: `portiere:${index.toString()}`,
-      label: item.portieres.length > 1 ? `Портьера ${(index + 1).toString()}` : 'Портьера',
+      label:
+        item.portieres.length > 1 ? t('meters.portiereN', { n: index + 1 }) : slot('portiere'),
       material,
     })),
     ...single
@@ -79,8 +87,9 @@ export function ItemMeters({
   readonly orderId: number;
   readonly item: MeterableItem;
 }): ReactElement | null {
+  const { m, locale } = useLocale();
   const utils = trpc.useUtils();
-  const lines = linesOf(item);
+  const lines = linesOf(item, m, locale);
 
   /*
     Черновик заводится сразу из сохранённых значений, а не пустым: метраж
@@ -98,7 +107,7 @@ export function ItemMeters({
     },
     onError(error) {
       notifyError();
-      Alert.alert('Метраж не сохранён', error.message);
+      Alert.alert(m('meters.error'), error.message);
     },
   });
 
@@ -131,7 +140,7 @@ export function ItemMeters({
 
   return (
     <View style={styles.block}>
-      <Text style={styles.title}>Метраж</Text>
+      <Text style={styles.title}>{m('meters.title')}</Text>
 
       {lines.map((line) => (
         <View key={line.key} style={styles.row}>
@@ -145,8 +154,8 @@ export function ItemMeters({
                 setDrafts((current) => ({ ...current, [line.key]: value }));
               }}
               keyboardType="decimal-pad"
-              placeholder="метр"
-              accessibilityLabel={`Метраж: ${line.label}`}
+              placeholder={m('meters.placeholder')}
+              accessibilityLabel={m('meters.a11y', { label: line.label })}
             />
           </View>
         </View>
@@ -165,7 +174,7 @@ export function ItemMeters({
         {save.isPending ? (
           <ActivityIndicator color={colors.onAccent} size="small" />
         ) : (
-          <Text style={styles.submitText}>Сохранить метраж</Text>
+          <Text style={styles.submitText}>{m('meters.save')}</Text>
         )}
       </Pressable>
     </View>

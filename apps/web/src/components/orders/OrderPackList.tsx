@@ -61,7 +61,7 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
             <li key={row.key}>
               <label
                 className={cn(
-                  'flex cursor-pointer items-start gap-3 rounded-tile px-2 py-2 hover:bg-raised',
+                  'flex cursor-pointer items-start gap-3 rounded-tile px-2 py-2 hover:bg-ink/[0.08]',
                   setPacked.isPending ? 'opacity-60' : null,
                 )}
               >

@@ -47,14 +47,15 @@ export const orders = pgTable(
     id: serial('id').primaryKey(),
 
     /**
-     * Человекочитаемый номер заказа: `DH-000123`.
+     * Человекочитаемый номер заказа: `DH-000123`, у готовых штор — `TDH-000123`.
      *
      * Вычисляемая колонка, а не поле, которое заполняет сервис: так номер
      * физически не может разъехаться с `id` и не требует отдельного счётчика
-     * с гонками при параллельном создании заказов.
+     * с гонками при параллельном создании заказов. Префикс по типу — чтобы
+     * пошив и продажу с витрины не перепутать на слух и в переписке.
      */
     orderNumber: text('order_number').generatedAlwaysAs(
-      sql`'DH-' || lpad(id::text, 6, '0')`,
+      sql`(case when order_type = 'ready_made' then 'TDH-' else 'DH-' end) || lpad(id::text, 6, '0')`,
     ),
 
     branchId: integer('branch_id')
@@ -254,6 +255,12 @@ export const orderItems = pgTable(
     position: integer('position').notNull().default(0),
 
     model: text('model'),
+    /**
+     * Код с бирки готовой шторы, проданной со склада, — снимок на момент
+     * продажи: складскую карточку потом могут поправить, а в заказе должно
+     * остаться то, что клиент назвал по телефону.
+     */
+    readyMadeCode: text('ready_made_code'),
     /** Материалы — множественный выбор, поэтому массив, а не одно поле. */
     materials: text('materials').array().notNull().default(sql`'{}'::text[]`),
     materialOptions: text('material_options').array().notNull().default(sql`'{}'::text[]`),

@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import { useCallback, useState } from 'react';
+import { useLocale } from './useLocale';
 
 /**
  * Получение координат для отметки смены.
@@ -25,6 +26,7 @@ export interface LocationState {
 }
 
 export function useLocation(): LocationState {
+  const { m } = useLocale();
   const [isRequesting, setIsRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,15 +40,15 @@ export function useLocation(): LocationState {
       if (permission.status !== Location.PermissionStatus.GRANTED) {
         setError(
           permission.canAskAgain
-            ? 'Без доступа к геолокации отметить смену нельзя. Разрешите доступ и попробуйте снова.'
-            : 'Доступ к геолокации запрещён. Включите его в настройках телефона для приложения Design House.',
+            ? m('geo.denied')
+            : m('geo.blocked'),
         );
         return null;
       }
 
       const services = await Location.hasServicesEnabledAsync();
       if (!services) {
-        setError('Геолокация выключена в настройках телефона. Включите её и попробуйте снова.');
+        setError(m('geo.off'));
         return null;
       }
 
@@ -59,12 +61,12 @@ export function useLocation(): LocationState {
         longitude: position.coords.longitude,
       };
     } catch {
-      setError('Не удалось определить местоположение. Выйдите на открытое место и повторите.');
+      setError(m('geo.failed'));
       return null;
     } finally {
       setIsRequesting(false);
     }
-  }, []);
+  }, [m]);
 
   return { requestPosition, isRequesting, error };
 }

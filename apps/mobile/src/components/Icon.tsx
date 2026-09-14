@@ -75,7 +75,8 @@ export type IconName =
   | 'roleChanged'
   | 'dayOffRequested'
   | 'dayOffApproved'
-  | 'dayOffRejected';
+  | 'dayOffRejected'
+  | 'collection';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -126,6 +127,7 @@ const GLYPHS: Readonly<Record<IconName, IoniconName>> = {
   dayOffRequested: 'sunny-outline',
   dayOffApproved: 'checkmark-circle',
   dayOffRejected: 'close-circle',
+  collection: 'cash-outline',
 };
 
 export function Icon({
@@ -175,4 +177,5 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   day_off_requested: 'dayOffRequested',
   day_off_approved: 'dayOffApproved',
   day_off_rejected: 'dayOffRejected',
+  cash_collection_due: 'collection',
 };

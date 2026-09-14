@@ -33,13 +33,14 @@ import {
   employmentLabel,
   tenureColor,
 } from '@/components/employees/palette';
+import { Avatar } from '@/components/ui/Avatar';
 import { Badge, PresenceBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { Button, controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDate, formatPercent, initials } from '@/lib/utils';
+import { formatDate, formatPercent } from '@/lib/utils';
 
 /**
  * Ведомость рабочих.
@@ -323,20 +324,7 @@ function EmployeesInner({
                 <span className="flex items-center gap-2.5">
                   {/* Фото сотрудник загружает сам в мобильном приложении;
                       пока его нет — инициалы, а не пустая рамка. */}
-                  {row.avatarUrl === null ? (
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-overline text-secondary">
-                      {initials(row.fullName)}
-                    </span>
-                  ) : (
-                    // Обычный <img>, а не next/image: адрес приходит из
-                    // хранилища и меняется вместе с драйвером, а оптимизатору
-                    // Next нужен заранее известный список источников.
-                    <img
-                      src={row.avatarUrl}
-                      alt=""
-                      className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover object-top"
-                    />
-                  )}
+                  <Avatar url={row.avatarUrl} fullName={row.fullName} />
                   <span className="block min-w-0">
                     <span className="block truncate text-primary">{row.fullName}</span>
                     <span className="block text-overline text-muted">
@@ -377,26 +365,29 @@ function EmployeesInner({
               ),
             },
             {
-              key: 'hired',
-              header: 'Дата приёма',
-              render: (row) => formatDate(row.hiredAt),
-            },
-            {
               key: 'tenure',
               header: 'Стаж',
-              render: (row) => formatTenure(row.hiredAt),
+              // Дата приёма — по наведению: стаж говорит то же самое короче,
+              // а таблице на ноутбуке и так не хватает ширины.
+              render: (row) => (
+                <span className="whitespace-nowrap" title={`Принят ${formatDate(row.hiredAt)}`}>
+                  {formatTenure(row.hiredAt)}
+                </span>
+              ),
             },
             {
               key: 'plan',
-              header: 'План / мес.',
+              header: 'Выполнено / план',
               align: 'right',
-              render: (row) => performanceByUser.get(row.id)?.plan ?? '—',
-            },
-            {
-              key: 'fact',
-              header: 'Выполнено',
-              align: 'right',
-              render: (row) => performanceByUser.get(row.id)?.completed ?? 0,
+              render: (row) => {
+                const perf = performanceByUser.get(row.id);
+                if (perf === undefined) return <span className="text-muted">—</span>;
+                return (
+                  <span className="whitespace-nowrap tabular-nums">
+                    {perf.completed} / {perf.plan ?? '—'}
+                  </span>
+                );
+              },
             },
             {
               key: 'percent',
@@ -666,7 +657,7 @@ function EmployeesInner({
               {birthdays.data.map((entry) => (
                 <li
                   key={entry.userId}
-                  className="flex items-center gap-3 rounded border border-subtle bg-base/40 px-3 py-2"
+                  className="flex items-center gap-3 rounded-2xl border border-ink/[0.06] bg-ink/[0.04] px-3 py-2"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-caption text-primary">

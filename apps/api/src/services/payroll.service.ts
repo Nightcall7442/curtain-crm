@@ -1,5 +1,6 @@
 import {
   orders,
+  orderStatusHistory,
   payrollRecords,
   payrollSchemes,
   userRoles,
@@ -10,6 +11,7 @@ import {
   type PayrollSchemeSnapshot,
 } from '@curtain-crm/db';
 import {
+  CorniceStatus,
   moneyToDecimalString,
   multiplyMoney,
   OrderStatus,
@@ -24,15 +26,17 @@ import {
   sumMoney,
   type MoneyMinor,
   type OrderStageFee,
+  type OrderStatus as OrderStatusName,
   type PayrollSchemeType as PayrollSchemeTypeName,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, gte, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 
 import {
   calculateWorkedHours,
   periodBounds,
+  sqlTimestamp,
   type Period,
   type PeriodBounds,
 } from './shifts.service';
@@ -355,7 +359,77 @@ const STAGE_FEE_COLUMN = {
   installation: orders.installationFee,
 } as const satisfies Record<OrderStageFee, unknown>;
 
-/** Закрытые за период заказы, засчитанные сотруднику в данной роли. */
+/**
+ * Статусы, которыми исполнитель закрывает свой этап.
+ *
+ * Сдельная за этап идёт в месяц, когда этап СДАН, а не когда закрыт весь
+ * заказ: швея отшила в сентябре, установили в октябре — раньше её расценка
+ * уезжала в октябрь, а до того в ведомости стоял ноль («начисление сломано»).
+ * Контролёру засчитывается и найденный брак: проверка сделана в обоих случаях.
+ */
+const STAGE_DONE_STATUSES: Partial<Record<RoleName, readonly OrderStatusName[]>> = {
+  master: [OrderStatus.MEASUREMENT_DONE],
+  sewer: [OrderStatus.SEWING_DONE],
+  qc: [OrderStatus.QC_PASSED, OrderStatus.QC_FAILED],
+  installer: [OrderStatus.INSTALLATION_DONE],
+};
+
+/** Момент, когда этап роли был сдан в последний раз (после переделки — снова). */
+const stageDoneAt = (statuses: readonly OrderStatusName[]): SQL => sql`(
+  select max(${orderStatusHistory.createdAt}) from ${orderStatusHistory}
+  where ${orderStatusHistory.orderId} = ${orders.id}
+    and ${orderStatusHistory.toStatus} in (${sql.join(
+      statuses.map((status) => sql`${status}`),
+      sql`, `,
+    )})
+)`;
+
+/**
+ * Заказы, засчитанные сотруднику в роли за период.
+ *
+ * Исполнителю этапа — те, где его этап сдан внутри периода (заказ при этом
+ * не отменён). Карнизчику — по отметке «карниз готов». Остальным (продавцу)
+ * — закрытые за период заказы: его процент считается от закрытой работы.
+ */
+function attributedOrdersFilter(userId: number, role: RoleName, bounds: PeriodBounds): SQL {
+  const doneStatuses = STAGE_DONE_STATUSES[role];
+  // Границы — строкой с приведением: драйвер не принимает `Date` параметром
+  // сырого запроса (см. `sqlTimestamp`).
+  const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
+  const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
+
+  if (hasOrderAttribution(role) && doneStatuses !== undefined) {
+    const doneAt = stageDoneAt(doneStatuses);
+    return sql`${ORDER_ROLE_COLUMN[role]} = ${userId}
+      and ${orders.status} <> ${OrderStatus.CANCELLED}
+      and ${doneAt} >= ${from} and ${doneAt} < ${to}`;
+  }
+
+  if (role === Role.CORNICE_INSTALLER) {
+    return sql`${orders.corniceInstallerId} = ${userId}
+      and ${orders.corniceStatus} = ${CorniceStatus.DONE}
+      and ${orders.corniceDoneAt} >= ${from} and ${orders.corniceDoneAt} < ${to}`;
+  }
+
+  const completed = sql`${orders.status} = ${OrderStatus.COMPLETED}
+    and ${orders.completedAt} >= ${from} and ${orders.completedAt} < ${to}`;
+
+  if (!hasOrderAttribution(role)) return completed;
+
+  /*
+    Пошив для склада продавцу не продажа: у него нет клиента и цены, и без
+    исключения продавец с «за заказ» или процентом получал бы деньги за
+    штору, которую сам поставил в план, — не продав никому. Только для
+    продавца: швея и контролёр за этот же заказ свои сдельные получают как
+    обычно, их отсекает не эта привязка, а собственная колонка `*_fee`.
+  */
+  const excludeStock =
+    role === Role.SELLER ? sql` and ${orders.orderType} <> ${OrderType.STOCK}` : sql``;
+
+  return sql`${completed} and ${ORDER_ROLE_COLUMN[role]} = ${userId}${excludeStock}`;
+}
+
+/** Заказы (сданные этапы) за период, засчитанные сотруднику в данной роли. */
 export async function calculateCompletedOrders(
   executor: DbExecutor,
   userId: number,
@@ -366,28 +440,7 @@ export async function calculateCompletedOrders(
   readonly amount: MoneyMinor;
   readonly stageFees: MoneyMinor;
 }> {
-  const periodFilter = and(
-    eq(orders.status, OrderStatus.COMPLETED),
-    isNotNull(orders.completedAt),
-    gte(orders.completedAt, bounds.start),
-    lt(orders.completedAt, bounds.end),
-  );
-
-  const where = hasOrderAttribution(role)
-    ? and(
-        periodFilter,
-        eq(ORDER_ROLE_COLUMN[role], userId),
-        /*
-          Пошив для склада продавцу не продажа: у него нет клиента и цены,
-          и без исключения продавец с `per_order` получал бы ставку за
-          заказ, который сам поставил в план, — не продав ничего.
-          Швея и контролёр при этом свои сдельные ЗА ЭТОТ заказ получают
-          как обычно: работа настоящая, её оплачивают колонки `*_fee` ниже,
-          а не эта привязка «заказ = продажа».
-        */
-        ...(role === Role.SELLER ? [ne(orders.orderType, OrderType.STOCK)] : []),
-      )
-    : periodFilter;
+  const where = attributedOrdersFilter(userId, role, bounds);
 
   /*
     Расценка достаётся тому, кто числится исполнителем этапа в закрытом
@@ -454,21 +507,7 @@ export async function listCompletedOrdersForPayroll(
     readonly stageFee: string;
   }[]
 > {
-  const periodFilter = and(
-    eq(orders.status, OrderStatus.COMPLETED),
-    isNotNull(orders.completedAt),
-    gte(orders.completedAt, bounds.start),
-    lt(orders.completedAt, bounds.end),
-  );
-
-  const where = hasOrderAttribution(role)
-    ? and(
-        periodFilter,
-        eq(ORDER_ROLE_COLUMN[role], userId),
-        // См. тот же исключённый случай в `calculateCompletedOrders` выше.
-        ...(role === Role.SELLER ? [ne(orders.orderType, OrderType.STOCK)] : []),
-      )
-    : periodFilter;
+  const where = attributedOrdersFilter(userId, role, bounds);
 
   const stages = stageFeesOfRole(role);
   const stageFee =
@@ -607,14 +646,64 @@ export async function calculateForUserRole(
 }
 
 /**
- * Сохраняет черновик расчёта.
+ * Начисление за один день — для ежедневного расчёта.
  *
- * Утверждённые и выплаченные записи НЕ пересчитываются: снимок параметров
- * схемы в `scheme_snapshot` существует именно для того, чтобы изменение ставок
- * не переписывало задним числом уже закрытые месяцы.
+ * Почасовая, сдельная, за заказ и процент складываются из событий дня:
+ * часы по сменам, сданные этапы, закрытые заказы — те же формулы, что за
+ * месяц, но в границах суток. Оклад и KPI — суммы за месяц, по дням их не
+ * разложить: для них за день считаются только сдельные за этапы, а
+ * `monthlyBase` говорит панели показать «оклад — по месяцу».
  *
- * @returns `true`, если запись создана или обновлена; `false`, если она уже
- *   утверждена и пересчёт пропущен.
+ * `null` — условий оплаты в этой роли нет; это не ошибка, а «нечего считать».
+ */
+export async function calculateForDay(
+  executor: DbExecutor,
+  userId: number,
+  role: RoleName,
+  bounds: PeriodBounds,
+): Promise<{
+  readonly type: PayrollSchemeTypeName;
+  readonly monthlyBase: boolean;
+  readonly inputs: PayrollInputs;
+  readonly calculation: PayrollCalculation;
+} | null> {
+  const scheme = await findActiveSchemeOrNull(executor, userId, role);
+  if (scheme === null) return null;
+
+  const [workedHours, completed] = await Promise.all([
+    calculateWorkedHours(executor, userId, bounds),
+    calculateCompletedOrders(executor, userId, role, bounds),
+  ]);
+  const inputs: PayrollInputs = {
+    workedHours,
+    completedOrders: completed.count,
+    completedOrdersAmount: completed.amount,
+    stageFeesAmount: completed.stageFees,
+  };
+
+  const monthlyBase =
+    scheme.type === PayrollSchemeType.FIXED || scheme.type === PayrollSchemeType.KPI;
+  const calculation = monthlyBase
+    ? withStageFees(calculatePieceRate(), inputs)
+    : calculatePayroll(toSchemeParams(scheme), inputs);
+
+  return { type: scheme.type, monthlyBase, inputs, calculation };
+}
+
+/**
+ * Сохраняет расчёт за период.
+ *
+ * Пересчитываются черновики и утверждённые записи: директор рассчитывается
+ * с людьми и по дням — платит за сданное сегодня, а завтра сдадут ещё, и
+ * начисление должно расти дальше, а не замирать на первой выплате. Снимок
+ * схемы в `scheme_snapshot` при этом хранит ставки на момент расчёта.
+ *
+ * Выплаченная целиком запись переоткрывается, если начислено больше, чем
+ * уже выдано: появился остаток — значит, снова есть что платить. Если новых
+ * начислений нет, закрытая запись не трогается.
+ *
+ * @returns `true`, если запись создана или обновлена; `false`, если она
+ *   выплачена и нового начисления по ней нет.
  */
 export async function saveDraft(
   executor: DbExecutor,
@@ -629,7 +718,14 @@ export async function saveDraft(
     ),
   });
 
-  if (existing !== undefined && existing.status !== PayrollRecordStatus.DRAFT) return false;
+  const amount = calculated.calculation.amount;
+  const reopens =
+    existing !== undefined &&
+    existing.status === PayrollRecordStatus.PAID &&
+    amount > parseMoney(existing.paidAmount);
+  if (existing !== undefined && existing.status === PayrollRecordStatus.PAID && !reopens) {
+    return false;
+  }
 
   const values = {
     userId: calculated.userId,
@@ -649,7 +745,11 @@ export async function saveDraft(
   } else {
     await executor
       .update(payrollRecords)
-      .set({ ...values, updatedAt: new Date() })
+      .set({
+        ...values,
+        ...(reopens ? { status: PayrollRecordStatus.APPROVED } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(payrollRecords.id, existing.id));
   }
 
@@ -669,17 +769,21 @@ export async function saveDraft(
  * Прибавлять к записи одну строку значило бы завести второй, расходящийся
  * с `calculatePayroll`, способ считать зарплату.
  *
- * Утверждённые и выплаченные записи не трогаются — за это отвечает
- * `saveDraft`. Ненастроенная схема не мешает закрыть заказ: без схемы
+ * Что пересчитывать, а что нет, решает `saveDraft`. Ненастроенная схема не
+ * мешает закрыть заказ: без схемы
  * начисление просто не появится, и это видно в ведомости пустой строкой,
  * а не отказом закрыть выполненную работу.
  */
 export async function accrueForClosedOrder(
   executor: DbExecutor,
   order: Order,
+  /**
+   * Момент события. По умолчанию — закрытие заказа; при сдаче этапа
+   * (`accrueForStage`) — сейчас: сдельная за этап идёт в месяц сдачи.
+   */
+  at: Date = order.completedAt ?? new Date(),
 ): Promise<void> {
-  const closedAt = order.completedAt ?? new Date();
-  const period: Period = { year: closedAt.getUTCFullYear(), month: closedAt.getUTCMonth() + 1 };
+  const period: Period = { year: at.getUTCFullYear(), month: at.getUTCMonth() + 1 };
 
   const participants = [
     order.createdBy,
@@ -713,6 +817,21 @@ export async function accrueForClosedOrder(
     const calculated = await calculateForUserRole(executor, entry.userId, entry.role, period);
     await saveDraft(executor, calculated);
   }
+}
+
+/** Статусы, после которых у исполнителя появляется сдельная за этап. */
+export const STAGE_ACCRUAL_STATUSES: ReadonlySet<OrderStatusName> = new Set(
+  Object.values(STAGE_DONE_STATUSES).flat(),
+);
+
+/**
+ * Сдача этапа доводит сдельную до ведомости сразу — как закрытие заказа.
+ *
+ * Пересчитываются все участники, а не один исполнитель: расчёт дешёвый, а
+ * так не нужно сопоставлять статус с ролью ещё в одном месте.
+ */
+export async function accrueForStage(executor: DbExecutor, order: Order): Promise<void> {
+  await accrueForClosedOrder(executor, order, new Date());
 }
 
 /** Роли, по которым сотруднику начисляется зарплата. */

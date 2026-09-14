@@ -1,5 +1,6 @@
 import {
   formatMoney,
+  groupDigits,
   parseMoney,
   PAYROLL_RECORD_STATUS_LABELS,
   ROLE_LABELS,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
-import { Input } from '../components/Field';
+import { MoneyInput } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -40,7 +41,7 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
  * до купюр. Поле необязательное — пустое значит «выплачено как посчитано».
  */
 export function PayrollApprovalsScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -66,7 +67,7 @@ export function PayrollApprovalsScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось утвердить', error.message);
+      Alert.alert(m('payroll.approveError'), error.message);
     },
   });
 
@@ -79,7 +80,7 @@ export function PayrollApprovalsScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отметить выплату', error.message);
+      Alert.alert(m('payroll.payError'), error.message);
     },
   });
 
@@ -106,8 +107,8 @@ export function PayrollApprovalsScreen(): ReactElement {
       <View style={styles.content}>
         <Card>
           <Empty
-            message="За этот месяц расчёта нет"
-            hint="Начисление делается в панели, здесь — только утверждение и выплата"
+            message={m('payroll.none')}
+            hint={m('payroll.noneHint')}
           />
         </Card>
       </View>
@@ -134,16 +135,26 @@ export function PayrollApprovalsScreen(): ReactElement {
           <Text style={styles.role}>{t(ROLE_LABELS, row.role)}</Text>
 
           <View style={styles.amountRow}>
-            <Text style={styles.amountLabel}>Начислено</Text>
+            <Text style={styles.amountLabel}>{m('payroll.accrued')}</Text>
             <Text style={styles.amountValue}>
               {formatMoney(parseMoney(row.calculatedAmount))}
             </Text>
           </View>
 
-          {row.paidAmount !== null && (
+          {row.paidAmount !== null && parseMoney(row.paidAmount) > 0 && (
             <View style={styles.amountRow}>
-              <Text style={styles.amountLabel}>Выплачено</Text>
+              <Text style={styles.amountLabel}>{m('payroll.paid')}</Text>
               <Text style={styles.amountValue}>{formatMoney(parseMoney(row.paidAmount))}</Text>
+            </View>
+          )}
+
+          {/* Выплата частями: пока есть остаток, он виден отдельной строкой. */}
+          {row.status === 'approved' && parseMoney(row.paidAmount ?? '0') > 0 && (
+            <View style={styles.amountRow}>
+              <Text style={styles.amountLabel}>{m('payroll.remaining')}</Text>
+              <Text style={styles.amountValue}>
+                {formatMoney(parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'))}
+              </Text>
             </View>
           )}
 
@@ -153,7 +164,7 @@ export function PayrollApprovalsScreen(): ReactElement {
             деньги реально дошли, а не только что он их отметил.
           */}
           {row.receiptConfirmedAt !== null && (
-            <Text style={styles.confirmed}>Сотрудник подтвердил получение</Text>
+            <Text style={styles.confirmed}>{m('payroll.confirmed')}</Text>
           )}
 
           {row.comment !== null && <Text style={styles.comment}>{row.comment}</Text>}
@@ -174,12 +185,13 @@ export function PayrollApprovalsScreen(): ReactElement {
               {approve.isPending ? (
                 <ActivityIndicator color={colors.onAccent} size="small" />
               ) : (
-                <Text style={styles.buttonPrimaryText}>Утвердить расчёт</Text>
+                <Text style={styles.buttonPrimaryText}>{m('payroll.approve')}</Text>
               )}
             </Pressable>
           )}
 
-          {row.status === 'approved' && paying !== row.id && (
+          {/* Выплата и из черновика: она сама его утверждает — ежедневный расчёт в одну кнопку. */}
+          {row.status !== 'paid' && paying !== row.id && (
             <Pressable
               onPress={() => {
                 setPaying(row.id);
@@ -193,22 +205,23 @@ export function PayrollApprovalsScreen(): ReactElement {
                 pressed ? styles.buttonPressed : null,
               ]}
             >
-              <Text style={styles.buttonPrimaryText}>Отметить выплату</Text>
+              <Text style={styles.buttonPrimaryText}>{m('payroll.markPaid')}</Text>
             </Pressable>
           )}
 
           {paying === row.id && (
             <View style={styles.payBox}>
               <Text style={styles.payLabel}>
-                {`Сколько выдали, сум — пусто значит «${formatMoney(
-                  parseMoney(row.calculatedAmount),
-                )}»`}
+                {m('payroll.amountLabel', {
+                  amount: formatMoney(
+                    parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'),
+                  ),
+                })}
               </Text>
-              <Input
+              <MoneyInput
                 value={amount}
                 onChangeText={setAmount}
-                placeholder={Number.parseFloat(row.calculatedAmount).toString()}
-                keyboardType="numeric"
+                placeholder={groupDigits(((parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0')) / 100).toString())}
                 autoFocus
               />
 
@@ -226,7 +239,7 @@ export function PayrollApprovalsScreen(): ReactElement {
                     pressed ? styles.buttonPressed : null,
                   ]}
                 >
-                  <Text style={styles.buttonGhostText}>Отмена</Text>
+                  <Text style={styles.buttonGhostText}>{m('common.cancel')}</Text>
                 </Pressable>
 
                 <Pressable
@@ -249,7 +262,7 @@ export function PayrollApprovalsScreen(): ReactElement {
                   {markPaid.isPending ? (
                     <ActivityIndicator color={colors.onAccent} size="small" />
                   ) : (
-                    <Text style={styles.buttonPrimaryText}>Выплачено</Text>
+                    <Text style={styles.buttonPrimaryText}>{m('payroll.paidBtn')}</Text>
                   )}
                 </Pressable>
               </View>

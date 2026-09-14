@@ -19,12 +19,8 @@ export function Card({
 }): ReactElement {
   return (
     <section
-      className={cn(
-        // Рамка почти невидима и держит форму там, где тень пропадает:
-        // при печати, в режиме высокой контрастности и на белом фоне.
-        'rounded-panel border border-subtle/70 bg-panel shadow-raised',
-        className,
-      )}
+      // Стекло: полупрозрачная карточка над свечением холста, см. `.surface-card`.
+      className={cn('surface-card', className)}
     >
       {children}
     </section>
@@ -59,7 +55,7 @@ export function CardHeader({
   return (
     // `flex-wrap` обязателен: на телефоне ряд фильтров шире заголовка,
     // и без переноса вся шапка карточки уезжала за правый край экрана.
-    <div className={cn('flex flex-wrap items-center gap-2 border-b border-subtle px-4 py-3', className)}>
+    <div className={cn('flex flex-wrap items-center gap-2 px-5 pb-1 pt-4', className)}>
       {icon !== undefined && <span className="text-accent-muted">{icon}</span>}
       <Heading className="section-title">{title}</Heading>
       {action !== undefined && <div className="ml-auto min-w-0">{action}</div>}
@@ -74,7 +70,7 @@ export function CardBody({
   readonly children: ReactNode;
   readonly className?: string;
 }): ReactElement {
-  return <div className={cn('p-4', className)}>{children}</div>;
+  return <div className={cn('px-5 pb-5 pt-3', className)}>{children}</div>;
 }
 
 /**
@@ -140,7 +136,7 @@ export function ErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="rounded border border-subtle px-3 py-1.5 text-caption text-secondary transition-colors hover:bg-raised hover:text-primary"
+          className="rounded-xl border border-ink/10 px-3 py-1.5 text-caption text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary"
         >
           Повторить
         </button>

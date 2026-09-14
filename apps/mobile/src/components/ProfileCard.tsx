@@ -22,7 +22,7 @@ import { Icon, type IconName } from './Icon';
 export function ProfileCard({
   fullName,
   jobTitle,
-  employeeCode,
+  ratingPlace,
   department,
   hiredAt,
   avatarUrl,
@@ -31,7 +31,8 @@ export function ProfileCard({
 }: {
   readonly fullName: string;
   readonly jobTitle: string | null;
-  readonly employeeCode: string | null;
+  /** Место в сводном рейтинге за месяц; `null` — вне конкурса или пока нет данных. */
+  readonly ratingPlace: number | null;
   readonly department: Department;
   readonly hiredAt: string | null;
   readonly avatarUrl: string | null;
@@ -39,7 +40,7 @@ export function ProfileCard({
   readonly onPressPhoto?: () => void;
   readonly isPhotoBusy?: boolean;
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m, locale } = useLocale();
   const initials = fullName
     .trim()
     .split(/\s+/)
@@ -57,11 +58,16 @@ export function ProfileCard({
             в цеху человека ищут сначала по участку, а уже потом по
             должности.
           */}
-          <Field icon="person" label="Имя и фамилия" value={fullName} />
-          <Field icon="branch" label="Подразделение" value={t(DEPARTMENT_LABELS, department)} />
-          <Field icon="jobTitle" label="Должность" value={jobTitle ?? 'Не указана'} />
-          <Field icon="calendar" label="Стаж работы" value={formatTenure(hiredAt)} />
-          <Field icon="badge" label="Табельный номер" value={employeeCode ?? '—'} isLast />
+          <Field icon="person" label={m('profileCard.fullName')} value={fullName} />
+          <Field icon="branch" label={m('profileCard.department')} value={t(DEPARTMENT_LABELS, department)} />
+          <Field icon="jobTitle" label={m('profileCard.jobTitle')} value={jobTitle ?? m('profileCard.jobTitleEmpty')} />
+          <Field icon="calendar" label={m('profileCard.tenure')} value={formatTenure(hiredAt, new Date(), locale)} />
+          <Field
+            icon="badge"
+            label={m('profileCard.ratingPlace')}
+            value={ratingPlace === null ? '—' : `№ ${ratingPlace.toString()}`}
+            isLast
+          />
         </View>
 
         <View style={styles.photoColumn}>
@@ -71,8 +77,8 @@ export function ProfileCard({
             accessibilityRole={onPressPhoto === undefined ? 'image' : 'button'}
             accessibilityLabel={
               onPressPhoto === undefined
-                ? `Фото сотрудника ${fullName}`
-                : 'Изменить фото профиля'
+                ? m('profileCard.photoOf', { name: fullName })
+                : m('profileCard.changePhoto')
             }
           >
             {({ pressed }) => (

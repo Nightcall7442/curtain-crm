@@ -75,7 +75,7 @@ export function RoleBoard({ board }: { readonly board: Board }): ReactElement {
               },
               {
                 key: 'orders',
-                header: 'Заказов',
+                header: 'Задач',
                 align: 'right',
                 className: 'font-mono tabular-nums',
                 render: (row) => row.ordersCount,
@@ -104,7 +104,7 @@ export function RoleBoard({ board }: { readonly board: Board }): ReactElement {
                 key: 'score',
                 header: 'Балл',
                 className: 'w-[132px]',
-                render: (row) => <ScoreMeter score={row.score} />,
+                render: (row) => <ScoreMeter score={row.score} best={Math.max(0, ...board.rows.map((entry) => entry.score))} />,
               },
             ]}
           />

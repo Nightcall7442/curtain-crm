@@ -2,13 +2,16 @@ import type { ReactElement } from 'react';
 import {
   materialKindLabel,
   ORDER_STATUS_LABELS_RU,
+  PAYMENT_METHOD_LABELS_RU,
   ROLE_LABELS_RU,
+  weekdayName,
   type CatalogKind,
   type OrderStatus,
+  type PaymentMethod,
   type Role,
 } from '@curtain-crm/shared';
 
-import { formatDateTime } from '@/lib/utils';
+import { formatDate, formatDateTime } from '@/lib/utils';
 
 /**
  * Колонка «Подробности» журнала действий.
@@ -112,6 +115,15 @@ function formatValue(key: string, raw: unknown): string {
   if (DATE_KEYS.has(key)) {
     return formatDateTime(text);
   }
+  if (DAY_KEYS.has(key)) {
+    return formatDate(text);
+  }
+  if (WEEKDAY_KEYS.has(key)) {
+    return weekdayName(Number.parseInt(text, 10)) || text;
+  }
+  if (key === 'method') {
+    return PAYMENT_METHOD_LABELS_RU[text as PaymentMethod] ?? text;
+  }
   if (KIND_KEYS.has(key)) {
     /*
       «вид portiere_code» читалось кодом таблицы. Тот же словарь, что и на
@@ -146,6 +158,8 @@ const FIELD_ORDER: readonly string[] = [
   'reason',
   'fromStatus',
   'toStatus',
+  'startDate',
+  'endDate',
   'before',
   'from',
   'after',
@@ -167,6 +181,10 @@ function rank(path: string): number {
 const STATUS_KEYS = new Set(['fromStatus', 'toStatus', 'status']);
 const ROLE_KEYS = new Set(['role', 'roles']);
 const DATE_KEYS = new Set(['startedAt', 'endedAt', 'periodStart', 'periodEnd']);
+/** Календарные даты без времени — заявки на выходные. */
+const DAY_KEYS = new Set(['startDate', 'endDate']);
+/** Еженедельный выходной пишется номером дня недели. */
+const WEEKDAY_KEYS = new Set(['weekday', 'weeklyDayOff']);
 const KIND_KEYS = new Set(['kind']);
 
 /** Число с дробной частью, записанное строкой: «57.500», «-4.000». */
@@ -206,6 +224,9 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   comment: 'комментарий',
   systemInitiated: 'автоматически',
   clientName: 'клиент',
+  orderType: 'тип заказа',
+  corniceInstallerId: 'карнизчик',
+  title: 'поручение',
   itemsCount: 'позиций',
   itemsReplaced: 'позиции заменены',
   workPrice: 'стоимость работ',
@@ -222,7 +243,16 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   startedAt: 'начало',
   endedAt: 'конец',
   reason: 'причина',
-  created: 'создана',
+  created: 'создано',
+  updated: 'обновлено',
+  received: 'получено',
+  removed: 'удалён',
+  targetFullName: 'сотрудник',
+  startDate: 'с',
+  endDate: 'по',
+  weekday: 'день недели',
+  weeklyDayOff: 'еженедельный выходной',
+  viaOrderAssignment: 'по назначению на заказ',
 
   // справочники и закупки
   name: 'название',
@@ -237,9 +267,13 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   type: 'тип',
   amount: 'сумма',
   calculated: 'начислено',
-  paid: 'выплачено',
+  payment: 'сумма',
+  paid: 'выплачено всего',
+  method: 'способ',
   skipped: 'пропущено',
   failures: 'ошибок',
+  batch: 'массово',
+  lines: 'строк',
 
   // склад тканей, метраж и готовые шторы
   code: 'код',

@@ -196,9 +196,9 @@ export function DataTable<TRow>({
             как между строками: без этого первая строка данных читалась как
             вторая строка заголовка.
           */}
-          <tr className="border-b border-strong bg-raised/95 backdrop-blur">
+          <tr className="border-b border-ink/[0.08] bg-ink/[0.03] backdrop-blur-md">
             {selection !== undefined && (
-              <th scope="col" className="w-10 px-3.5 py-2.5">
+              <th scope="col" className="w-10 px-3 py-2.5">
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
@@ -227,7 +227,7 @@ export function DataTable<TRow>({
                     active === null ? undefined : active === 'asc' ? 'ascending' : 'descending'
                   }
                   className={cn(
-                    'whitespace-nowrap px-3.5 py-2.5 text-overline font-semibold uppercase text-muted',
+                    'whitespace-nowrap px-3 py-2.5 text-overline font-semibold uppercase text-muted',
                     alignClass,
                     column.className,
                   )}
@@ -261,9 +261,9 @@ export function DataTable<TRow>({
           {isLoading &&
             Array.from({ length: 5 }, (_unused, index) => (
               <tr key={`skeleton-${index.toString()}`} className="border-b border-subtle/60">
-                {selection !== undefined && <td className="px-3.5 py-2" />}
+                {selection !== undefined && <td className="px-3 py-2" />}
                 {columns.map((column) => (
-                  <td key={column.key} className="px-3.5 py-2">
+                  <td key={column.key} className="px-3 py-2">
                     <span className="block h-3 animate-pulse rounded bg-raised/70" />
                   </td>
                 ))}
@@ -327,8 +327,8 @@ export function DataTable<TRow>({
                         },
                       })}
                   className={cn(
-                    'border-b border-subtle/55 transition-colors last:border-0',
-                    isSelected ? 'bg-accent-soft/60' : 'hover:bg-raised/50',
+                    'border-b border-ink/[0.06] transition-colors last:border-0',
+                    isSelected ? 'bg-accent/10' : 'hover:bg-ink/[0.04]',
                     /*
                       Активная строка обведена вставленной рамкой, а не залита:
                       заливка уже занята выделением галочкой, и два разных
@@ -341,7 +341,7 @@ export function DataTable<TRow>({
                   )}
                 >
                   {selection !== undefined && (
-                    <td className="px-3.5 py-2">
+                    <td className="px-3 py-2">
                       <Checkbox
                         checked={isSelected}
                         onChange={() => {
@@ -360,7 +360,7 @@ export function DataTable<TRow>({
                           таблицы панели читают списками, и лишние 8 px на строку
                           крадут четверть экрана на каждых двадцати строках.
                         */
-                        'px-3.5 py-2 text-secondary',
+                        'px-3 py-2 text-secondary',
                         column.align === 'right'
                           ? 'text-right'
                           : column.align === 'center'
@@ -449,7 +449,7 @@ export function Pagination({
   ).filter((value) => value >= 1 && value <= totalPages);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-subtle px-3 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 border-t border-ink/[0.06] px-3 py-2.5">
       <span className="text-footnote text-muted">
         {`Показано ${from.toString()} – ${to.toString()} из ${total.toString()}`}
       </span>
@@ -477,7 +477,7 @@ export function Pagination({
               'h-7 min-w-7 rounded px-2 text-footnote transition-colors',
               value === page
                 ? 'bg-accent/15 text-accent'
-                : 'text-secondary hover:bg-raised hover:text-primary',
+                : 'text-secondary hover:bg-ink/[0.08] hover:text-primary',
             )}
           >
             {value}
@@ -515,7 +515,7 @@ function PageButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="grid h-7 w-7 place-items-center rounded text-secondary transition-colors hover:bg-raised hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      className="grid h-7 w-7 place-items-center rounded text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {children}
     </button>

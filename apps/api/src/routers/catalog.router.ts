@@ -1,10 +1,16 @@
 import { catalogItems } from '@curtain-crm/db';
-import { CATALOG_KINDS, CURTAIN_MOUNT_KINDS } from '@curtain-crm/shared';
+import {
+  CATALOG_KINDS,
+  CURTAIN_MOUNT_KINDS,
+  moneyToDecimalString,
+  parseMoney,
+  purchaseUnitSchema,
+} from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { idSchema, nonEmptyString } from '../lib/schemas';
+import { idSchema, moneySchema, nonEmptyString } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
@@ -58,6 +64,8 @@ export const catalogRouter = router({
           name: catalogItems.name,
           description: catalogItems.description,
           mountKind: catalogItems.mountKind,
+          price: catalogItems.price,
+          unit: catalogItems.unit,
           sortOrder: catalogItems.sortOrder,
           isActive: catalogItems.isActive,
         })
@@ -78,6 +86,9 @@ export const catalogRouter = router({
         name: nonEmptyString(200, 'Укажите название'),
         description: descriptionSchema.default(null),
         mountKind: mountKindSchema.default(null),
+        /** Розничная цена за единицу — только у кодов склада; ставит руководство. */
+        price: moneySchema.nullable().default(null),
+        unit: purchaseUnitSchema.nullable().default(null),
         sortOrder: z.number().int().min(0).max(9999).default(0),
       }),
     )
@@ -90,6 +101,8 @@ export const catalogRouter = router({
             name: input.name,
             description: input.description === '' ? null : input.description,
             mountKind: input.mountKind,
+            price: input.price === null ? null : moneyToDecimalString(parseMoney(input.price)),
+            unit: input.unit,
             sortOrder: input.sortOrder,
             createdBy: ctx.user.id,
           })
@@ -124,6 +137,8 @@ export const catalogRouter = router({
         name: nonEmptyString(200).optional(),
         description: descriptionSchema.optional(),
         mountKind: mountKindSchema.optional(),
+        price: moneySchema.nullable().optional(),
+        unit: purchaseUnitSchema.nullable().optional(),
         sortOrder: z.number().int().min(0).max(9999).optional(),
       }),
     )
@@ -135,6 +150,10 @@ export const catalogRouter = router({
             ? {}
             : { description: input.description === '' ? null : input.description }),
           ...(input.mountKind === undefined ? {} : { mountKind: input.mountKind }),
+          ...(input.price === undefined
+            ? {}
+            : { price: input.price === null ? null : moneyToDecimalString(parseMoney(input.price)) }),
+          ...(input.unit === undefined ? {} : { unit: input.unit }),
           ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
         };
 
@@ -178,10 +197,13 @@ export const catalogRouter = router({
               kind: kindSchema,
               name: nonEmptyString(200, 'Укажите код'),
               description: descriptionSchema.default(null),
+              /** Цена и единица из файла — если колонки есть; пустое не стирает заведённое. */
+              price: moneySchema.nullable().default(null),
+              unit: purchaseUnitSchema.nullable().default(null),
             }),
           )
           .min(1)
-          .max(1000),
+          .max(2000),
       }),
     )
     .mutation(async ({ ctx, input }) =>
@@ -192,19 +214,30 @@ export const catalogRouter = router({
             kind: catalogItems.kind,
             name: catalogItems.name,
             description: catalogItems.description,
+            price: catalogItems.price,
+            unit: catalogItems.unit,
+            isActive: catalogItems.isActive,
           })
           .from(catalogItems);
 
         const keyOf = (kind: string, name: string): string => `${kind} ${name.toLowerCase()}`;
         const known = new Map(existing.map((row) => [keyOf(row.kind, row.name), row]));
 
-        const fresh: { kind: (typeof input.items)[number]['kind']; name: string; description: string | null; createdBy: number }[] = [];
+        const fresh: {
+          kind: (typeof input.items)[number]['kind'];
+          name: string;
+          description: string | null;
+          price: string | null;
+          unit: (typeof input.items)[number]['unit'];
+          createdBy: number;
+        }[] = [];
         const seen = new Set<string>();
         let updated = 0;
 
         for (const item of input.items) {
           const name = item.name.trim();
           const description = item.description === null || item.description === '' ? null : item.description;
+          const price = item.price === null ? null : moneyToDecimalString(parseMoney(item.price));
           const key = keyOf(item.kind, name);
 
           const found = known.get(key);
@@ -213,17 +246,22 @@ export const catalogRouter = router({
             // нескольких строках накладной.
             if (seen.has(key)) continue;
             seen.add(key);
-            fresh.push({ kind: item.kind, name, description, createdBy: ctx.user.id });
+            fresh.push({ kind: item.kind, name, description, price, unit: item.unit, createdBy: ctx.user.id });
             continue;
           }
 
-          // Пустое описание в файле не стирает заведённое руками.
-          if (description === null || description === found.description) continue;
+          // Пустое в файле не стирает заведённое руками — обновляется только то, что задано.
+          // Выведенный код, пришедший в новом файле, снова в обращении: раз он в
+          // накладной — он на полке, а «загрузил и ничего не появилось» пугает.
+          const patch = {
+            ...(found.isActive ? {} : { isActive: true }),
+            ...(description === null || description === found.description ? {} : { description }),
+            ...(price === null || price === found.price ? {} : { price }),
+            ...(item.unit === null || item.unit === found.unit ? {} : { unit: item.unit }),
+          };
+          if (Object.keys(patch).length === 0) continue;
 
-          await tx
-            .update(catalogItems)
-            .set({ description })
-            .where(eq(catalogItems.id, found.id));
+          await tx.update(catalogItems).set(patch).where(eq(catalogItems.id, found.id));
           updated += 1;
         }
 

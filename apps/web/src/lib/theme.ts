@@ -20,7 +20,7 @@ export const THEMES = ['system', 'light', 'dark'] as const;
 
 export type Theme = (typeof THEMES)[number];
 
-export const DEFAULT_THEME: Theme = 'system';
+export const DEFAULT_THEME: Theme = 'dark';
 
 export const THEME_INFO: Readonly<
   Record<Theme, { readonly label: string; readonly hint: string }>
@@ -47,7 +47,10 @@ export function isTheme(value: unknown): value is Theme {
 export function applyTheme(theme: Theme): void {
   if (typeof document === 'undefined') return;
 
-  if (theme === DEFAULT_THEME) {
+  // «Как в системе» — единственный вариант без атрибута: тогда решает
+  // `prefers-color-scheme`. Явный выбор, включая тёмную по умолчанию,
+  // ставится атрибутом и системную настройку перекрывает.
+  if (theme === 'system') {
     delete document.documentElement.dataset['theme'];
     return;
   }
@@ -90,5 +93,6 @@ export const THEME_BOOTSTRAP_SCRIPT = `
 try {
   var t = localStorage.getItem('${THEME_STORAGE_KEY}');
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else if (t === 'system') delete document.documentElement.dataset.theme;
 } catch (e) {}
 `.trim();

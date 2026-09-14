@@ -15,13 +15,14 @@ import {
 
 import { RoleBoard } from '@/components/rating/RoleBoard';
 import { ScoreComponent, ScoreMeter } from '@/components/rating/ScoreMeter';
+import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { cn, formatNumber, initials } from '@/lib/utils';
+import { cn, formatNumber } from '@/lib/utils';
 
 /**
  * Рейтинг сотрудников.
@@ -31,10 +32,9 @@ import { cn, formatNumber, initials } from '@/lib/utils';
  * потому что нормирован внутри каждой. Доски по ролям — «кто впереди среди
  * швей»: там метрики в своих единицах, и сравнение прямое.
  *
- * Балл сопровождается разбивкой на объём, качество и сроки. Веса подобраны,
- * а не выведены из данных (см. `RATING_WEIGHTS` в `@curtain-crm/shared`),
- * и прятать составляющие за итоговой цифрой нельзя: рейтинг влияет на то,
- * как людей воспринимают, и должен быть оспоримым по существу.
+ * Балл — по одному за выполненную задачу (закрытый этап), без потолка. Рядом справочно объём,
+ * качество и сроки: рейтинг влияет на то, как людей воспринимают, и должен
+ * быть оспоримым по существу.
  */
 export default function RatingPage(): ReactElement {
   const now = new Date();
@@ -71,7 +71,7 @@ export default function RatingPage(): ReactElement {
               <div
                 role="group"
                 aria-label="Период"
-                className="flex overflow-hidden rounded border border-subtle"
+                className="flex overflow-hidden rounded-xl border border-ink/10"
               >
                 {RATING_SCOPES.map((value) => (
                   <button
@@ -85,7 +85,7 @@ export default function RatingPage(): ReactElement {
                       'px-3 py-1.5 text-footnote transition-colors',
                       scope === value
                         ? 'bg-accent/12 text-accent'
-                        : 'text-secondary hover:bg-raised hover:text-primary',
+                        : 'text-secondary hover:bg-ink/[0.08] hover:text-primary',
                     )}
                   >
                     {RATING_SCOPE_LABELS_RU[value]}
@@ -139,7 +139,7 @@ export default function RatingPage(): ReactElement {
               {scope === RatingScope.WEEK
                 ? `Текущая неделя, ${formatDayRange(new Date(data.period.start), new Date(data.period.end))}`
                 : `${MONTH_NAMES_RU[month - 1] ?? ''} ${year.toString()}`}
-              {' · в зачёт идут только заказы, закрытые внутри периода'}
+              {' · в зачёт идут задачи, выполненные внутри периода'}
             </p>
           </CardBody>
         )}
@@ -169,9 +169,9 @@ export default function RatingPage(): ReactElement {
               caption="Балл типичного сотрудника"
             />
             <StatCard
-              label="Заказов в зачёте"
+              label="Задач в зачёте"
               value={data.summary.ordersCounted.toString()}
-              caption="Закрыто за период"
+              caption="Выполнено за период"
             />
             <StatCard
               label="Без заказов"
@@ -199,7 +199,7 @@ export default function RatingPage(): ReactElement {
           isLoading={board.isLoading}
           rows={data?.rows ?? []}
           rowKey={(row) => row.userId}
-          emptyMessage="За период нет ни одного закрытого заказа"
+          emptyMessage="За период нет ни одной выполненной задачи"
           columns={[
             {
               key: 'place',
@@ -239,7 +239,7 @@ export default function RatingPage(): ReactElement {
             },
             {
               key: 'orders',
-              header: 'Заказов',
+              header: 'Задач',
               align: 'right',
               className: 'font-mono tabular-nums',
               render: (row) => row.ordersCount,
@@ -252,7 +252,7 @@ export default function RatingPage(): ReactElement {
                   <span className="text-footnote text-muted">{row.unratedReason}</span>
                 ) : row.byRole.length === 0 ? (
                   <span className="text-footnote text-muted">
-                    За период нет закрытых заказов
+                    За период нет выполненных задач
                   </span>
                 ) : (
                   <div className="flex flex-col gap-1">
@@ -275,7 +275,7 @@ export default function RatingPage(): ReactElement {
                 row.score === null ? (
                   <span className="text-footnote text-muted">вне конкурса</span>
                 ) : (
-                  <ScoreMeter score={row.score} />
+                  <ScoreMeter score={row.score} best={Math.max(0, ...(data?.rows ?? []).map((entry) => entry.score ?? 0))} />
                 ),
             },
           ]}
@@ -327,37 +327,6 @@ function PlaceDelta({ value }: { readonly value: number | null }): ReactElement 
     >
       <Icon className="h-3.5 w-3.5" aria-hidden />
       {isUp ? `+${value.toString()}` : value.toString()}
-    </span>
-  );
-}
-
-/** Фото сотрудника; при его отсутствии — инициалы. */
-function Avatar({
-  url,
-  fullName,
-}: {
-  readonly url: string | null;
-  readonly fullName: string;
-}): ReactElement {
-  if (url !== null) {
-    // Обычный <img>, а не next/image: адрес приходит из хранилища и меняется
-    // вместе с драйвером, а оптимизатору Next нужен заранее известный список
-    // источников. Так же сделано в списке сотрудников.
-    return (
-      <img
-        src={url}
-        alt=""
-        className="h-8 w-8 shrink-0 rounded-full border border-subtle object-cover"
-      />
-    );
-  }
-
-  return (
-    <span
-      aria-hidden
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-subtle bg-raised text-overline font-medium text-secondary"
-    >
-      {initials(fullName)}
     </span>
   );
 }

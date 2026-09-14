@@ -32,7 +32,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * поручение адресное, и «Малика» без идентификатора сервер не примет.
  */
 export function TaskAssignScreen(): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
 
@@ -57,7 +57,7 @@ export function TaskAssignScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось выдать поручение', error.message);
+      Alert.alert(m('assign.error'), error.message);
     },
   });
 
@@ -70,7 +70,7 @@ export function TaskAssignScreen(): ReactElement {
     },
     onError(error) {
       notifyError();
-      Alert.alert('Не удалось отменить', error.message);
+      Alert.alert(m('assign.cancelError'), error.message);
     },
   });
 
@@ -83,9 +83,9 @@ export function TaskAssignScreen(): ReactElement {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
-          <CardTitle title="Новое поручение" icon="assigned" />
+          <CardTitle title={m('assign.new')} icon="assigned" />
 
-          <Field label="Кому">
+          <Field label={m('assign.to')}>
             {people.isLoading ? (
               <Skeleton rows={1} />
             ) : (
@@ -117,19 +117,19 @@ export function TaskAssignScreen(): ReactElement {
             )}
           </Field>
 
-          <Field label="Что сделать">
+          <Field label={m('assign.what')}>
             <Input
               value={title}
               onChangeText={setTitle}
-              placeholder="Перешить ламбрекен на третьем заказе"
+              placeholder={m('assign.whatPlaceholder')}
             />
           </Field>
 
-          <Field label="Подробности">
+          <Field label={m('assign.details')}>
             <Input
               value={details}
               onChangeText={setDetails}
-              placeholder="Что важно знать исполнителю"
+              placeholder={m('assign.detailsPlaceholder')}
               multiline
             />
           </Field>
@@ -156,21 +156,21 @@ export function TaskAssignScreen(): ReactElement {
             ) : (
               <>
                 <Icon name="assigned" size={18} color={colors.onAccent} />
-                <Text style={styles.submitText}>Выдать поручение</Text>
+                <Text style={styles.submitText}>{m('assign.submit')}</Text>
               </>
             )}
           </Pressable>
         </Card>
 
         <Card>
-          <CardTitle title="Выданные" icon="orders" />
+          <CardTitle title={m('assign.issued')} icon="orders" />
 
           {tasks.isError ? (
             <ErrorState message={tasks.error.message} />
           ) : tasks.data === undefined ? (
             <Skeleton />
           ) : tasks.data.items.length === 0 ? (
-            <Empty message="Поручений нет" hint="Выданные задачи появятся здесь" />
+            <Empty message={m('assign.none')} hint={m('assign.noneHint')} />
           ) : (
             tasks.data.items.map((task) => (
               <View key={task.id}>
@@ -185,13 +185,13 @@ export function TaskAssignScreen(): ReactElement {
                       navigation.navigate('TaskDetail', { taskId: task.id });
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Открыть поручение «${task.title}»`}
+                    accessibilityLabel={m('assign.open', { title: task.title })}
                     style={({ pressed }) => [styles.taskText, pressed ? styles.pressed : null]}
                   >
                     <Text style={styles.taskTitle}>{task.title}</Text>
                     <Text style={styles.taskMeta}>
                       {`${task.assignee.fullName}${
-                        task.dueDate === null ? '' : ` · до ${formatIsoDate(task.dueDate)}`
+                        task.dueDate === null ? '' : m('assign.until', { date: formatIsoDate(task.dueDate) })
                       }`}
                     </Text>
                   </Pressable>
@@ -206,7 +206,7 @@ export function TaskAssignScreen(): ReactElement {
                       }}
                       disabled={cancel.isPending}
                       accessibilityRole="button"
-                      accessibilityLabel={`Отменить поручение «${task.title}»`}
+                      accessibilityLabel={m('assign.cancelA11y', { title: task.title })}
                       style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
                     >
                       <Icon name="remove" size={16} color={colors.textMuted} />
@@ -221,11 +221,11 @@ export function TaskAssignScreen(): ReactElement {
                 */}
                 {cancelling === task.id && (
                   <View style={styles.cancelBox}>
-                    <Field label="Почему отменяем">
+                    <Field label={m('assign.why')}>
                       <Input
                         value={cancelReason}
                         onChangeText={setCancelReason}
-                        placeholder="Исполнитель должен понять причину"
+                        placeholder={m('assign.whyPlaceholder')}
                         autoFocus
                       />
                     </Field>
@@ -243,7 +243,7 @@ export function TaskAssignScreen(): ReactElement {
                           pressed ? styles.pressed : null,
                         ]}
                       >
-                        <Text style={styles.cancelGhostText}>Оставить</Text>
+                        <Text style={styles.cancelGhostText}>{m('assign.keep')}</Text>
                       </Pressable>
 
                       <Pressable
@@ -259,7 +259,7 @@ export function TaskAssignScreen(): ReactElement {
                           pressed ? styles.pressed : null,
                         ]}
                       >
-                        <Text style={styles.submitText}>Отменить</Text>
+                        <Text style={styles.submitText}>{m('assign.cancel')}</Text>
                       </Pressable>
                     </View>
                   </View>

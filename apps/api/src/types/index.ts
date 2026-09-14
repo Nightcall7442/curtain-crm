@@ -17,6 +17,8 @@ export interface AuthenticatedUser {
   readonly fullName: string;
   readonly phone: string;
   readonly isActive: boolean;
+  /** Фиксированный выходной, ISO-день недели 1–7; `null` — нет. */
+  readonly weeklyDayOff: number | null;
   readonly roles: readonly Role[];
   readonly branchIds: readonly number[];
   /** Основной филиал — подставляется по умолчанию при создании заказа. */

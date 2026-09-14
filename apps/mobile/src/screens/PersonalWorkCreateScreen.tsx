@@ -19,6 +19,7 @@ import { Card, CardTitle } from '../components/Card';
 import { Field, Input } from '../components/Field';
 import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Запись личной работы — того, что сотрудник шьёт себе или знакомым в цеху.
@@ -32,6 +33,7 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
  * занять от чужого имени.
  */
 export function PersonalWorkCreateScreen(): ReactElement {
+  const { m } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
 
@@ -45,11 +47,11 @@ export function PersonalWorkCreateScreen(): ReactElement {
       navigation.goBack();
     },
     onError(error) {
-      Alert.alert('Не удалось записать', error.message);
+      Alert.alert(m('pw.error'), error.message);
     },
   });
 
-  const titleError = title.trim() === '' ? 'Напишите, что шьёте' : undefined;
+  const titleError = title.trim() === '' ? m('pw.titleRequired') : undefined;
 
   const submit = (): void => {
     setShowErrors(true);
@@ -68,29 +70,25 @@ export function PersonalWorkCreateScreen(): ReactElement {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
-          <CardTitle title="Личная работа" icon="window" />
+          <CardTitle title={m('pw.title')} icon="window" />
 
-          <Text style={styles.hint}>
-            Запишите, что делаете для себя на оборудовании цеха. Руководство
-            видит занятость — это не запрет, а учёт: занятая машинка перестаёт
-            выглядеть поломкой, а израсходованная ткань — недостачей.
-          </Text>
+          <Text style={styles.hint}>{m('pw.hint')}</Text>
 
-          <Field label="Что шьёте" required error={showErrors ? titleError : undefined}>
+          <Field label={m('pw.what')} required error={showErrors ? titleError : undefined}>
             <Input
               value={title}
               onChangeText={setTitle}
-              placeholder="Например, «Шторы в спальню, себе»"
+              placeholder={m('pw.whatPlaceholder')}
               maxLength={MAX_PERSONAL_WORK_TITLE_LENGTH}
               invalid={showErrors && titleError !== undefined}
             />
           </Field>
 
-          <Field label="Подробности" hint="Необязательно: ткань, размеры, для кого">
+          <Field label={m('pw.details')} hint={m('pw.detailsHint')}>
             <Input
               value={details}
               onChangeText={setDetails}
-              placeholder="Что важно помнить по этой работе"
+              placeholder={m('pw.detailsPlaceholder')}
               maxLength={MAX_PERSONAL_WORK_DETAILS_LENGTH}
               multiline
             />
@@ -106,7 +104,7 @@ export function PersonalWorkCreateScreen(): ReactElement {
           {create.isPending ? (
             <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.submitText}>Записать</Text>
+            <Text style={styles.submitText}>{m('pw.submit')}</Text>
           )}
         </Pressable>
       </ScrollView>

@@ -16,6 +16,7 @@ import { useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, radius } from '../theme';
 import type { TabParamList } from '../types';
+import { useLocale } from '../hooks/useLocale';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -49,6 +50,7 @@ export function TabNavigator(): ReactElement {
   /** Открыт ли список сохранённых входов. Живёт здесь — жест на вкладке. */
   const [isSwitcherOpen, setSwitcherOpen] = useState(false);
   const isManager = useIsManagement();
+  const { m } = useLocale();
 
   return (
     <>
@@ -95,7 +97,7 @@ export function TabNavigator(): ReactElement {
         name="Home"
         component={HomeScreen}
         options={{
-          title: 'Главная',
+          title: m('tabs.home'),
           /**
            * Системная шапка скрыта: у главного экрана своя.
            *
@@ -112,7 +114,7 @@ export function TabNavigator(): ReactElement {
         name="Work"
         component={WorkScreen}
         options={{
-          title: 'Работа',
+          title: m('tabs.work'),
           tabBarIcon: ({ color }) => <TabGlyph name="work" color={color} />,
         }}
       />
@@ -136,7 +138,7 @@ export function TabNavigator(): ReactElement {
         name="CheckInOut"
         component={isManager ? AttendanceScreen : CheckInOutScreen}
         options={{
-          title: isManager ? 'Явка' : 'Смена',
+          title: isManager ? m('tabs.attendance') : m('tabs.shift'),
           tabBarIcon: () => <CheckInGlyph />,
         }}
       />
@@ -144,7 +146,7 @@ export function TabNavigator(): ReactElement {
         name="Notifications"
         component={NotificationsScreen}
         options={{
-          title: 'Уведомления',
+          title: m('tabs.notifications'),
           tabBarIcon: ({ color }) => <TabGlyph name="notifications" color={color} />,
           // Показываем точку, а не число: точное количество непрочитанных
           // на бейдже вкладки не помогает — важен сам факт.
@@ -169,8 +171,8 @@ export function TabNavigator(): ReactElement {
           },
         }}
         options={{
-          title: 'Мой профиль',
-          tabBarLabel: 'Профиль',
+          title: m('tabs.profileTitle'),
+          tabBarLabel: m('tabs.profile'),
           tabBarIcon: ({ color }) => <TabGlyph name="profile" color={color} />,
         }}
       />

@@ -12,6 +12,7 @@ import { closeDb, createContext, getDb, readClientIp } from './context';
 import { getEnv } from './lib/constants';
 import { installRussianZodMessages } from './lib/zodMessages';
 import { appRouter } from './routers';
+import { startCollectionReminders } from './services/reminders.service';
 import { startTelegramPolling } from './services/telegram.service';
 import { consumeAuthRequestBudget } from './services/loginThrottle.service';
 import {
@@ -81,7 +82,7 @@ app.use(
   '/trpc/*',
   cors({
     origin: env.CORS_ORIGINS,
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Locale'],
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     credentials: true,
     maxAge: 600,
@@ -224,6 +225,7 @@ const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (
   аккаунт командой `/start`. Без токена в окружении не делает ничего.
 */
 const stopTelegramPolling = startTelegramPolling(getDb());
+const stopCollectionReminders = startCollectionReminders(getDb());
 
 /**
  * Корректное завершение.
@@ -234,6 +236,7 @@ const stopTelegramPolling = startTelegramPolling(getDb());
 const shutdown = (signal: string): void => {
   process.stdout.write(`\nПолучен ${signal}, останавливаю сервер...\n`);
   stopTelegramPolling();
+  stopCollectionReminders();
 
   server.close(() => {
     void closeDb().then(() => {

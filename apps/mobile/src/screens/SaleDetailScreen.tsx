@@ -22,7 +22,7 @@ import type { RootStackScreenProps } from '../types';
 export function SaleDetailScreen({
   route,
 }: RootStackScreenProps<'SaleDetail'>): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const sale = trpc.retail.sales.byId.useQuery({ id: route.params.saleId });
 
   if (sale.isError) {
@@ -48,14 +48,14 @@ export function SaleDetailScreen({
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Card>
-        <CardTitle title={`Чек №${data.id.toString()}`} icon="paid" />
-        <Row label="Клиент" value={data.clientName ?? 'Без имени'} />
-        {data.clientPhone !== null && <Row label="Телефон" value={data.clientPhone} />}
-        {data.comment !== null && <Row label="Комментарий" value={data.comment} />}
+        <CardTitle title={m('cash.receiptN', { n: data.id })} icon="paid" />
+        <Row label={m('sale.client')} value={data.clientName ?? m('cash.noName')} />
+        {data.clientPhone !== null && <Row label={m('sale.phone')} value={data.clientPhone} />}
+        {data.comment !== null && <Row label={m('sale.comment')} value={data.comment} />}
       </Card>
 
       <Card>
-        <CardTitle title="Что продано" icon="orders" />
+        <CardTitle title={m('sale.whatSold')} icon="orders" />
 
         {data.lines.map((line) => (
           <View key={line.id} style={styles.line}>
@@ -82,7 +82,7 @@ export function SaleDetailScreen({
         ))}
 
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Итого</Text>
+          <Text style={styles.totalLabel}>{m('sale.total')}</Text>
           <Text style={styles.totalValue}>{formatMoney(parseMoney(data.total))}</Text>
         </View>
       </Card>

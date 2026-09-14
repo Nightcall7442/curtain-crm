@@ -3,6 +3,7 @@ import superjson from 'superjson';
 import { ZodError } from 'zod';
 
 import type { AppContext } from './context';
+import { translateErrorMessage } from './lib/errorTranslations';
 
 /**
  * Инициализация tRPC.
@@ -27,11 +28,29 @@ const t = initTRPC.context<AppContext>().create({
      * цена ошибки — абсолютные пути файловой системы в ответе даже
      * неаутентифицированному запросу. Поэтому убираем явно.
      */
+    /*
+      Язык клиента — из заголовка `x-locale`, см. `createContext`. Тексты
+      ошибок в коде русские; для узбекского они переводятся здесь, на
+      выходе, по таблице в `lib/errorTranslations.ts`. Контекста может не
+      быть, если упало его создание, — тогда русский.
+    */
+    const locale = ctx?.locale ?? 'ru';
+    const translate = (text: string): string => translateErrorMessage(text, locale);
+
+    const zodError =
+      error.cause instanceof ZodError
+        ? Object.fromEntries(
+            Object.entries(error.cause.flatten().fieldErrors).map(([field, messages]) => [
+              field,
+              messages?.map(translate),
+            ]),
+          )
+        : null;
+
     const data = {
       ...shape.data,
       /** Ошибки валидации — по полям, чтобы форма подсветила нужный ввод. */
-      zodError:
-        error.cause instanceof ZodError ? error.cause.flatten().fieldErrors : null,
+      zodError,
       requestId: ctx?.requestId ?? null,
     };
 
@@ -39,7 +58,17 @@ const t = initTRPC.context<AppContext>().create({
       delete data.stack;
     }
 
-    return { ...shape, data };
+    /*
+      У ошибки валидации `shape.message` — JSON со списком проблем: в
+      приложении он показывался как есть, в `Alert`. Первая проблема словами
+      понятнее, а форма в панели всё равно берёт ошибки по полям из `data`.
+    */
+    const message =
+      error.cause instanceof ZodError
+        ? translate(error.cause.issues[0]?.message ?? shape.message)
+        : translate(shape.message);
+
+    return { ...shape, message, data };
   },
 });
 

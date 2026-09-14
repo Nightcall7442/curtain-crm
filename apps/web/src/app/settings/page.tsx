@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 
 import { BranchManager } from '@/components/settings/BranchManager';
 import { CatalogManager } from '@/components/settings/CatalogManager';
@@ -37,6 +37,14 @@ const SETTINGS_TABS: readonly { readonly key: SettingsTab; readonly label: strin
 export default function SettingsPage(): ReactElement {
   const [tab, setTab] = useState<SettingsTab>('organization');
 
+  // Вкладка адресуется якорем (`/settings#personal`), чтобы на неё можно
+  // было прийти по ссылке — из меню человека в шапке. Якорь, а не
+  // `?tab=`: `useSearchParams` потребовал бы Suspense вокруг всей страницы.
+  useEffect(() => {
+    const fromHash = window.location.hash.slice(1);
+    if (SETTINGS_TABS.some((entry) => entry.key === fromHash)) setTab(fromHash as SettingsTab);
+  }, []);
+
   return (
     <div className="space-y-4">
       <nav aria-label="Разделы настроек" className="flex flex-wrap gap-1.5">
@@ -49,11 +57,12 @@ export default function SettingsPage(): ReactElement {
               aria-pressed={isActive}
               onClick={() => {
                 setTab(entry.key);
+                window.history.replaceState(null, '', `#${entry.key}`);
               }}
               className={
                 isActive
                   ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
-                  : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-raised hover:text-primary'
+                  : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary'
               }
             >
               {entry.label}

@@ -16,6 +16,44 @@ const MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 /** Из библиотеки нужен один класс — на нём и держится тип. */
 type ExcelModule = { readonly Workbook: new () => Workbook };
 
+/** CSV: разделитель `;` или `,`, поля в кавычках с удвоенными кавычками внутри. */
+function parseCsv(text: string): readonly (readonly string[])[] {
+  const delimiter = (text.split('\n')[0] ?? '').includes(';') ? ';' : ',';
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i] ?? '';
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (ch === '"') {
+        quoted = false;
+      } else {
+        cell += ch;
+      }
+      continue;
+    }
+    if (ch === '"') quoted = true;
+    else if (ch === delimiter) {
+      row.push(cell.trim());
+      cell = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i += 1;
+      row.push(cell.trim());
+      if (row.some((value) => value !== '')) rows.push(row);
+      row = [];
+      cell = '';
+    } else cell += ch;
+  }
+  row.push(cell.trim());
+  if (row.some((value) => value !== '')) rows.push(row);
+  return rows;
+}
+
 const loadExcel = async (): Promise<ExcelModule> => {
   // Сборка `exceljs` — CommonJS, и в одних сборщиках модуль приходит целиком,
   // в других — завёрнутым в `default`.
@@ -80,6 +118,20 @@ export async function exportToXlsx(params: {
 export async function readXlsx(file: File): Promise<readonly (readonly string[])[]> {
   const excel = await loadExcel();
   const workbook = new excel.Workbook();
+
+  /*
+    Старый `.xls` (Excel 97–2003) — другой формат, библиотека его не читает.
+    Сказать об этом словами лучше, чем упасть на разборе zip-архива с
+    сообщением про «end of central directory».
+  */
+  if (/\.xls$/i.test(file.name)) {
+    throw new Error('Старый формат .xls не поддерживается — сохраните файл как .xlsx');
+  }
+
+  // CSV из 1С и Google-таблиц: свой разбор в десять строк, библиотеке для
+  // него нужен потоковый ввод, которого в браузере нет.
+  if (/\.csv$/i.test(file.name)) return parseCsv(await file.text());
+
   await workbook.xlsx.load(await file.arrayBuffer());
 
   const sheet = workbook.worksheets[0];
@@ -87,9 +139,9 @@ export async function readXlsx(file: File): Promise<readonly (readonly string[])
 
   const rows: string[][] = [];
 
-  sheet.eachRow((row, index) => {
-    if (index === 1) return;
-
+  // Шапка НЕ отбрасывается: какая строка шапка и где какая колонка, решает
+  // вызывающий по названиям, — файлы поставщиков начинаются с чего угодно.
+  sheet.eachRow((row) => {
     const values: string[] = [];
     row.eachCell({ includeEmpty: true }, (cell, column) => {
       values[column - 1] = cell.text.trim();

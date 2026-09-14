@@ -121,6 +121,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'dayoff.rejected': 'Отгул отклонён',
   'dayoff.cancelled': 'Отгул отменён',
   'dayoff.assigned': 'Выходной назначен',
+  'dayoff.weekly_set': 'Выходной по графику изменён',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 
@@ -133,6 +134,9 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'payroll.calculated': 'Зарплата рассчитана',
   'payroll.approved': 'Расчёт утверждён',
   'payroll.paid': 'Зарплата выплачена',
+  'payroll.paid_part': 'Выплачена часть зарплаты',
+  'payment.received': 'Принята оплата',
+  'payment.handed_over': 'Наличные сданы в кассу',
 
   'catalog.item_created': 'Позиция справочника создана',
   'catalog.item_updated': 'Позиция справочника изменена',

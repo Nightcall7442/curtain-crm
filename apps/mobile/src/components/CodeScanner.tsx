@@ -4,6 +4,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notifySuccess } from '../lib/haptics';
 import { colors, opacity, radius, spacing, typography } from '../theme';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Сканер кода с этикетки рулона.
@@ -33,6 +34,7 @@ export function CodeScanner({
   readonly onScan: (code: string) => void;
   readonly onClose: () => void;
 }): ReactElement | null {
+  const { m } = useLocale();
   const [permission, requestPermission] = useCameraPermissions();
 
   /*
@@ -66,7 +68,7 @@ export function CodeScanner({
               if (handled.current) return;
               const code = data.trim();
               if (code === '') {
-                setError('Код пустой — попробуйте ещё раз');
+                setError(m('scanner.empty'));
                 return;
               }
               handled.current = true;
@@ -79,8 +81,8 @@ export function CodeScanner({
           <View style={styles.permission}>
             <Text style={styles.permissionText}>
               {permission === null
-                ? 'Проверяем доступ к камере…'
-                : 'Чтобы считать код с этикетки, разрешите приложению камеру.'}
+                ? m('scanner.checking')
+                : m('scanner.allowHint')}
             </Text>
             {permission !== null && !permission.granted && (
               <Pressable
@@ -90,7 +92,7 @@ export function CodeScanner({
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.allow, pressed ? styles.pressed : null]}
               >
-                <Text style={styles.allowText}>Разрешить камеру</Text>
+                <Text style={styles.allowText}>{m('scanner.allow')}</Text>
               </Pressable>
             )}
           </View>
@@ -99,7 +101,7 @@ export function CodeScanner({
         <View style={styles.overlay} pointerEvents="box-none">
           <Text style={styles.title}>{label}</Text>
           <Text style={styles.hint}>
-            {error ?? 'Наведите камеру на код с этикетки рулона'}
+            {error ?? m('scanner.aim')}
           </Text>
 
           {granted && <View style={styles.frame} />}
@@ -109,7 +111,7 @@ export function CodeScanner({
             accessibilityRole="button"
             style={({ pressed }) => [styles.close, pressed ? styles.pressed : null]}
           >
-            <Text style={styles.closeText}>Отмена</Text>
+            <Text style={styles.closeText}>{m('common.cancel')}</Text>
           </Pressable>
         </View>
       </View>

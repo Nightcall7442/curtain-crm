@@ -47,7 +47,7 @@ export function OrderPhotoUpload({
   readonly orderId: number;
   readonly orderStatus: OrderStatus;
 }): ReactElement {
-  const { t } = useLocale();
+  const { t, m } = useLocale();
   const { user } = useAuth();
   const roles = user?.roles ?? [];
 
@@ -66,11 +66,11 @@ export function OrderPhotoUpload({
           utils.orders.availableTransitions.invalidate({ id: orderId }),
           utils.orders.list.invalidate(),
         ]);
-        Alert.alert('Заказ закрыт', 'Фото после установки загружено, заказ переведён в «Выполнен».');
+        Alert.alert(m('photo.closedTitle'), m('photo.closedBody'));
       }
     },
     onError(error) {
-      Alert.alert('Не удалось загрузить', error.message);
+      Alert.alert(m('photo.uploadError'), error.message);
     },
   });
 
@@ -90,10 +90,8 @@ export function OrderPhotoUpload({
 
     if (!permission.granted) {
       Alert.alert(
-        'Нет доступа',
-        fromCamera
-          ? 'Разрешите доступ к камере в настройках телефона.'
-          : 'Разрешите доступ к галерее в настройках телефона.',
+        m('photo.noAccess'),
+        fromCamera ? m('photo.allowCamera') : m('photo.allowGallery'),
       );
       return;
     }
@@ -113,7 +111,7 @@ export function OrderPhotoUpload({
 
     const asset = result.assets[0];
     if (asset?.base64 == null) {
-      Alert.alert('Не удалось прочитать снимок', 'Попробуйте ещё раз.');
+      Alert.alert(m('photo.readError'), m('common.tryAgain'));
       return;
     }
 
@@ -136,12 +134,12 @@ export function OrderPhotoUpload({
     }
 
     Alert.alert(
-      'Закрыть заказ?',
-      'Фото стадии «После установки» автоматически переведёт заказ в «Выполнен». Отменить сможет только руководство.',
+      m('photo.closeTitle'),
+      m('photo.closeBody'),
       [
-        { text: 'Отмена', style: 'cancel' },
+        { text: m('common.cancel'), style: 'cancel' },
         {
-          text: 'Загрузить и закрыть',
+          text: m('photo.uploadAndClose'),
           style: 'destructive',
           onPress: () => {
             void send(fromCamera);
@@ -154,20 +152,17 @@ export function OrderPhotoUpload({
   if (allowedStages.length === 0) {
     return (
       <Card>
-        <CardTitle title="Фотофиксация" icon="camera" />
-        <Empty
-          message="Загружать фото по этому заказу могут другие исполнители"
-          hint="Вы можете просматривать уже загруженные снимки"
-        />
+        <CardTitle title={m('photo.title')} icon="camera" />
+        <Empty message={m('photo.othersOnly')} hint={m('photo.viewOnly')} />
       </Card>
     );
   }
 
   return (
     <Card>
-      <CardTitle title="Фотофиксация" icon="camera" />
+      <CardTitle title={m('photo.title')} icon="camera" />
 
-      <Text style={styles.label}>Стадия</Text>
+      <Text style={styles.label}>{m('photo.stage')}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stages}>
         {allowedStages.map((value) => {
           const active = value === stage;
@@ -191,9 +186,7 @@ export function OrderPhotoUpload({
 
       {willClose && (
         <View style={styles.warning}>
-          <Text style={styles.warningText}>
-            Снимок этой стадии автоматически закроет заказ.
-          </Text>
+          <Text style={styles.warningText}>{m('photo.willClose')}</Text>
         </View>
       )}
 
@@ -209,7 +202,7 @@ export function OrderPhotoUpload({
           {upload.isPending ? (
             <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.actionPrimaryText}>Снять камерой</Text>
+            <Text style={styles.actionPrimaryText}>{m('photo.camera')}</Text>
           )}
         </Pressable>
 
@@ -221,12 +214,12 @@ export function OrderPhotoUpload({
           style={({ pressed }) => [styles.action, styles.actionSecondary, pressed ? styles.pressed : null]}
           accessibilityRole="button"
         >
-          <Text style={styles.actionSecondaryText}>Из галереи</Text>
+          <Text style={styles.actionSecondaryText}>{m('photo.gallery')}</Text>
         </Pressable>
       </View>
 
       {photos.data === undefined || photos.data.length === 0 ? (
-        <Empty message="Фотографий пока нет" />
+        <Empty message={m('photo.none')} />
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
           {photos.data.map((photo) => (

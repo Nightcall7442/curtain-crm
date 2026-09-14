@@ -1,6 +1,14 @@
 'use client';
 
-import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
+import {
+  CatalogKind,
+  formatMoney,
+  parseMoney,
+  PAYMENT_METHOD_LABELS_RU,
+  PAYMENT_METHODS,
+  PaymentMethod,
+  type PaymentMethod as PaymentMethodName,
+} from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
 import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
@@ -33,11 +41,16 @@ export function SellReadyMadeDialog({
   const [clientPhone, setClientPhone] = useState('');
   const [model, setModel] = useState('');
   const [cornice, setCornice] = useState('');
+  /** Коды со склада — карниза и пластика. С ними продажа уходит карнизчику. */
+  const [corniceCode, setCorniceCode] = useState('');
+  const [plasticCode, setPlasticCode] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [workPrice, setWorkPrice] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [comment, setComment] = useState('');
   const [needsInstallation, setNeedsInstallation] = useState(false);
+  const [needsRework, setNeedsRework] = useState(false);
   const [installAddress, setInstallAddress] = useState('');
   /**
    * Выбранная штора со склада. `null` — продажа без склада: так продают то,
@@ -74,6 +87,8 @@ export function SellReadyMadeDialog({
     setClientPhone('');
     setModel('');
     setCornice('');
+    setCorniceCode('');
+    setPlasticCode('');
     setQuantity('1');
     setWorkPrice('');
     setDeposit('');
@@ -92,7 +107,9 @@ export function SellReadyMadeDialog({
       clientPhone: clientPhone.trim(),
       workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
+      depositMethod,
       needsInstallation,
+      needsRework,
       /* Одна позиция: несколько строк в продаже набирают в мобильном
          приложении, за кассой. Здесь форма осталась прежней. */
       items: [
@@ -101,6 +118,12 @@ export function SellReadyMadeDialog({
           ...(stockItemId === null ? {} : { readyMadeItemId: stockItemId }),
           ...(model.trim().length > 0 ? { model: model.trim() } : {}),
           ...(cornice.length > 0 ? { cornice } : {}),
+          ...(cornice.length > 0 && corniceCode.trim().length > 0
+            ? { corniceCode: corniceCode.trim() }
+            : {}),
+          ...(cornice.length > 0 && plasticCode.trim().length > 0
+            ? { plastic: plasticCode.trim() }
+            : {}),
           ...(comment.trim().length > 0 ? { comment: comment.trim() } : {}),
         },
       ],
@@ -123,7 +146,11 @@ export function SellReadyMadeDialog({
             Отмена
           </Button>
           <Button onClick={handleSubmit} loading={sell.isPending}>
-            {needsInstallation ? 'Продать, передать на установку' : 'Продать и закрыть'}
+            {needsRework
+              ? 'Продать, отправить на переделку'
+              : needsInstallation
+                ? 'Продать, передать на установку'
+                : 'Продать и закрыть'}
           </Button>
         </>
       }
@@ -196,6 +223,29 @@ export function SellReadyMadeDialog({
               />
             </Field>
 
+            {cornice.length > 0 && (
+              <>
+                <Field label="Код карниза" hint="С кодами заказ уйдёт карнизчику">
+                  <Input
+                    value={corniceCode}
+                    onChange={(event) => {
+                      setCorniceCode(event.target.value);
+                    }}
+                    placeholder="Например: К-104"
+                  />
+                </Field>
+                <Field label="Код пластика">
+                  <Input
+                    value={plasticCode}
+                    onChange={(event) => {
+                      setPlasticCode(event.target.value);
+                    }}
+                    placeholder="Например: ПЛ-12"
+                  />
+                </Field>
+              </>
+            )}
+
             <Field label="Количество">
               <Input
                 type="number"
@@ -260,7 +310,7 @@ export function SellReadyMadeDialog({
                               }
                             }
                           }}
-                          className={`flex items-center gap-3 rounded border p-2 text-left transition-colors ${
+                          className={`flex items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
                             chosen
                               ? 'border-accent bg-accent/10'
                               : 'border-subtle hover:border-accent/50'
@@ -308,6 +358,19 @@ export function SellReadyMadeDialog({
               />
             </Field>
 
+            <Field label="Способ оплаты">
+              <Select
+                value={depositMethod}
+                onChange={(event) => {
+                  setDepositMethod(event.target.value as PaymentMethodName);
+                }}
+                options={PAYMENT_METHODS.map((value) => ({
+                  value,
+                  label: PAYMENT_METHOD_LABELS_RU[value],
+                }))}
+              />
+            </Field>
+
             <Field label="Комментарий" className="sm:col-span-2 lg:col-span-3">
               <Textarea
                 rows={2}
@@ -322,7 +385,20 @@ export function SellReadyMadeDialog({
         </section>
 
         <section>
-          <h3 className="section-title mb-2">Установка</h3>
+          <h3 className="section-title mb-2">Переделка и установка</h3>
+
+          {/* Переделка — штору подгоняют в цеху; продажа уходит админу, как заказ. */}
+          <label className="mb-2 flex items-center gap-2 text-caption text-primary">
+            <input
+              type="checkbox"
+              checked={needsRework}
+              onChange={(event) => {
+                setNeedsRework(event.target.checked);
+              }}
+              className="h-4 w-4 accent-accent"
+            />
+            Требуется переделка — подогнать в цеху, заказ уйдёт админу на проверку
+          </label>
 
           <label className="flex items-center gap-2 text-caption text-primary">
             <input

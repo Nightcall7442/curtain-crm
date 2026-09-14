@@ -56,6 +56,8 @@ export const NOTIFICATION_TYPES = [
   'day_off_approved',
   /** Запрос на выходные отклонён. */
   'day_off_rejected',
+  /** Время сдать наличные в кассу — тем, у кого они на руках. */
+  'cash_collection_due',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -81,6 +83,7 @@ export const NotificationType = {
   DAY_OFF_REQUESTED: 'day_off_requested',
   DAY_OFF_APPROVED: 'day_off_approved',
   DAY_OFF_REJECTED: 'day_off_rejected',
+  CASH_COLLECTION_DUE: 'cash_collection_due',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -125,6 +128,8 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   day_off_requested: 'warning',
   day_off_approved: 'accent',
   day_off_rejected: 'neutral',
+  // Деньги на руках — про них нельзя забыть до конца дня.
+  cash_collection_due: 'accent',
 };
 
 /**

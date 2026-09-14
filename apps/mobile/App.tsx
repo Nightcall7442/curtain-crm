@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
 import { AuthContext, type AuthState, type AuthUser } from './src/hooks/useAuth';
-import { LocaleProvider } from './src/hooks/useLocale';
+import { LocaleProvider, useLocale, type Translate } from './src/hooks/useLocale';
 import { authFetch, isUnauthorized, setSessionExpiredHandler } from './src/lib/authFetch';
 import { accountStorage, tokenStorage } from './src/lib/storage';
 import { resolveApiUrl, trpc } from './src/lib/trpc';
@@ -99,7 +99,7 @@ export default function App(): ReactElement {
  * и закрытие диалога системным жестом означает «нет». Согласие на живую
  * сессию без пароля должно быть нажато явно.
  */
-function confirmRememberAccount(fullName: string): Promise<boolean> {
+function confirmRememberAccount(fullName: string, m: Translate): Promise<boolean> {
   /*
     В браузере вопрос не задаётся, и ответ считается отказом.
 
@@ -112,11 +112,11 @@ function confirmRememberAccount(fullName: string): Promise<boolean> {
 
   return new Promise((resolve) => {
     Alert.alert(
-      'Сохранить этот вход?',
-      `${fullName} появится в списке быстрого входа — открывается долгим нажатием на «Профиль». Входить можно будет без пароля, с этого телефона.`,
+      m('auth.rememberTitle'),
+      m('auth.rememberBody', { name: fullName }),
       [
-        { text: 'Не сохранять', style: 'cancel', onPress: () => { resolve(false); } },
-        { text: 'Сохранить', onPress: () => { resolve(true); } },
+        { text: m('auth.dontSave'), style: 'cancel', onPress: () => { resolve(false); } },
+        { text: m('auth.save'), onPress: () => { resolve(true); } },
       ],
       { cancelable: true, onDismiss: () => { resolve(false); } },
     );
@@ -130,6 +130,7 @@ function confirmRememberAccount(fullName: string): Promise<boolean> {
  * tRPC, которые доступны только ниже `trpc.Provider`.
  */
 function AuthGate({ children }: { readonly children: React.ReactNode }): ReactElement {
+  const { m } = useLocale();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
 
@@ -285,7 +286,7 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
       */
       const saved = await accountStorage.list();
       if (!saved.some((account) => account.userId === result.user.id)) {
-        const shouldRemember = await confirmRememberAccount(result.user.fullName);
+        const shouldRemember = await confirmRememberAccount(result.user.fullName, m);
 
         if (shouldRemember) {
           await accountStorage.remember({
@@ -299,7 +300,7 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
 
       setUser(result.user);
     },
-    [loginMutation],
+    [loginMutation, m],
   );
 
   /**
@@ -318,7 +319,7 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
     async (userId: number): Promise<void> => {
       const account = (await accountStorage.list()).find((item) => item.userId === userId);
       if (account === undefined) {
-        throw new Error('Учётная запись больше не сохранена на этом телефоне');
+        throw new Error(m('auth.accountGone'));
       }
 
       /*
@@ -357,7 +358,7 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
       queryClient.clear();
       setUser(session.user);
     },
-    [utils, queryClient],
+    [utils, queryClient, m],
   );
 
   const value = useMemo<AuthState>(

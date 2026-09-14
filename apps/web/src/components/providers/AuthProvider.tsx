@@ -1,6 +1,7 @@
 'use client';
 
 import { isManagement, type Role } from '@curtain-crm/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode, type ReactElement } from 'react';
 
@@ -52,6 +53,7 @@ const PUBLIC_ROUTES = new Set(['/', LOGIN_PATH]);
 
 export function AuthProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const isPublicPage = PUBLIC_ROUTES.has(pathname);
 
@@ -77,7 +79,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode }): Re
     }
 
     router.replace(LOGIN_PATH);
-  }, [logoutMutation, router]);
+    // Данные вышедшего не должны пережить его сессию в памяти вкладки.
+    queryClient.clear();
+  }, [logoutMutation, queryClient, router]);
 
   /** Обработчик протухшей сессии для `authFetch`. */
   useEffect(() => {

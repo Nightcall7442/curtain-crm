@@ -175,7 +175,7 @@ export function OrderPhotos({
 
       <CardBody>
         {willAutoComplete && (
-          <p className="mb-3 rounded border border-warning/30 bg-warning/10 px-3 py-2 text-footnote text-warning">
+          <p className="mb-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-footnote text-warning">
             Фото стадии «После установки» автоматически закроет заказ.
             Отменить закрытие сможет только руководство.
           </p>
@@ -184,7 +184,7 @@ export function OrderPhotos({
         <FormError message={localError ?? upload.error?.message ?? null} />
 
         {upload.data?.autoCompleted === true && (
-          <p className="mb-3 rounded border border-positive/30 bg-positive/10 px-3 py-2 text-footnote text-positive">
+          <p className="mb-3 rounded-xl border border-positive/30 bg-positive/10 px-3 py-2 text-footnote text-positive">
             Заказ закрыт автоматически после загрузки фото.
           </p>
         )}
@@ -203,7 +203,7 @@ export function OrderPhotos({
         ) : (
           <ul className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {photos.data.map((photo) => (
-              <li key={photo.id} className="overflow-hidden rounded border border-subtle bg-base/40">
+              <li key={photo.id} className="overflow-hidden rounded-2xl border border-ink/[0.06] bg-ink/[0.04]">
                 {/* Обычный img, а не next/image: файлы отдаёт наш API по
                     подписанным ссылкам с ограниченным сроком жизни, и
                     оптимизатор Next не смог бы их закешировать. */}

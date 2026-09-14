@@ -9,6 +9,7 @@ import { colors, radius, spacing, typography } from '../theme';
 import { Card, CardTitle, Pill, Row } from './Card';
 import { ShiftRing } from './ShiftRing';
 import { SlideToConfirm } from './SlideToConfirm';
+import { useLocale } from '../hooks/useLocale';
 
 /**
  * Своя смена: открыть и закрыть.
@@ -40,6 +41,7 @@ export function ShiftControl({
   const [serverError, setServerError] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
+  const { m } = useLocale();
   const { requestPosition, isRequesting, error: locationError } = useLocation();
 
   const current = trpc.shifts.current.useQuery();
@@ -107,11 +109,11 @@ export function ShiftControl({
     <>
       <Card>
         <CardTitle
-          title="Смена"
+          title={m('shift.title')}
           icon="shift"
           action={
             <Pill
-              text={shift === null ? 'Не открыта' : 'Открыта'}
+              text={shift === null ? m('shift.notOpen') : m('shift.open')}
               tone={shift === null ? 'neutral' : 'positive'}
             />
           }
@@ -120,15 +122,12 @@ export function ShiftControl({
         {current.isLoading ? (
           <ActivityIndicator color={colors.accent} style={styles.loader} />
         ) : shift === null ? (
-          <Text style={styles.description}>
-            Смена не открыта. Проведите «Начать смену», находясь на территории цеха —
-            приложение определит филиал по вашим координатам.
-          </Text>
+          <Text style={styles.description}>{m('shift.closedHint')}</Text>
         ) : (
           <View>
-            <Row label="Филиал" value={shift.branchName} />
+            <Row label={m('shift.branch')} value={shift.branchName} />
             <Row
-              label="Начало"
+              label={m('shift.start')}
               value={
                 startedAt === null
                   ? '—'
@@ -140,8 +139,8 @@ export function ShiftControl({
             />
             {shift.startDistanceMeters !== null && (
               <Row
-                label="Отметка в"
-                value={`${shift.startDistanceMeters.toString()} м от цеха`}
+                label={m('shift.markedAt')}
+                value={m('shift.metersFrom', { m: shift.startDistanceMeters })}
               />
             )}
           </View>
@@ -176,7 +175,7 @@ export function ShiftControl({
         компонент остаётся обычной кнопкой.
       */}
       <SlideToConfirm
-        label={shift === null ? 'Проведите, чтобы начать смену →' : 'Проведите, чтобы завершить →'}
+        label={shift === null ? m('shift.slideStart') : m('shift.slideEnd')}
         onConfirm={shift === null ? handleCheckIn : handleCheckOut}
         disabled={current.isLoading}
         busy={isBusy}
@@ -184,8 +183,8 @@ export function ShiftControl({
 
       <Text style={styles.footnote}>
         {isRequesting
-          ? 'Определяем местоположение…'
-          : 'Геолокация запрашивается только в момент отметки и не отслеживается в фоне.'}
+          ? m('shift.locating')
+          : m('shift.geoNote')}
       </Text>
     </>
   );
