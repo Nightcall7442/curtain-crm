@@ -384,7 +384,9 @@ export default function WarehousePage(): ReactElement {
           .then((totals) => {
             toast.success(
               'Файл загружен',
-              `Новых кодов: ${String(totals.created)}, обновлено: ${String(totals.updated)}`,
+              totals.created === 0 && totals.updated === 0
+                ? `Все ${String(items.length)} кодов уже на складе, менять нечего`
+                : `Новых кодов: ${String(totals.created)}, обновлено: ${String(totals.updated)}`,
             );
             refresh();
           });
