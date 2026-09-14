@@ -108,7 +108,7 @@ export function OrderPayments({
             header: 'Сумма',
             align: 'right',
             render: (row) => (
-              <span className="font-figure tabular-nums">
+              <span className="tabular-nums">
                 {formatMoney(parseMoney(row.amount))}
               </span>
             ),

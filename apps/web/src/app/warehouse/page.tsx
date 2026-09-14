@@ -559,7 +559,7 @@ export default function WarehousePage(): ReactElement {
                 row.price === null ? (
                   <span className="text-muted">—</span>
                 ) : (
-                  <span className="font-figure tabular-nums">
+                  <span className="tabular-nums">
                     {formatMoney(parseMoney(row.price))}
                     {row.unit === null ? '' : ` / ${PURCHASE_UNIT_LABELS_RU[row.unit]}`}
                   </span>

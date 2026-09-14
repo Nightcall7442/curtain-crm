@@ -113,7 +113,7 @@ export function StatCard({
           разряды на месте и здесь.
         */}
         <span
-          className="font-figure font-semibold leading-none tracking-[-0.02em] text-primary [font-variant-numeric:tabular-nums]"
+          className="font-semibold leading-none tracking-[-0.02em] text-primary [font-variant-numeric:tabular-nums]"
           style={{ fontSize: `${valuePx}px` }}
         >
           {amount}

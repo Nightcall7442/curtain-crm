@@ -153,7 +153,7 @@ export function ProductionPipeline({
                 </span>
 
                 <span
-                  className="font-figure text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums"
+                  className="text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums"
                   style={{ color }}
                 >
                   {stage.count}
