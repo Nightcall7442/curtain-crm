@@ -260,6 +260,13 @@
       "when": 1789336773524,
       "tag": "0036_notification_cash_collection_due",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789379359552,
+      "tag": "0037_payroll_payouts",
+      "breakpoints": true
     }
   ]
 }

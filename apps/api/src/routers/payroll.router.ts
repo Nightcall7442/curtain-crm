@@ -1,4 +1,4 @@
-import { payrollRecords, payrollSchemes, userRoles, users } from '@curtain-crm/db';
+import { payrollPayouts, payrollRecords, payrollSchemes, userRoles, users } from '@curtain-crm/db';
 import {
   canTransitionPayrollStatus,
   formatMoney,
@@ -12,7 +12,7 @@ import {
   roleSchema,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText, periodSchema } from '../lib/schemas';
@@ -559,31 +559,84 @@ export const payrollRouter = router({
    * остаётся для тех, кому удобнее так.
    */
   /**
-   * Начислено за день — сколько выдать при ежедневном расчёте.
+   * Неделя выплат: начислено по дням, что уже выдано, что можно выдать.
    *
-   * День — календарный по Ташкенту; суммы в основных единицах строкой,
-   * как и везде в ведомости.
+   * Директор рассчитывается с людьми каждый день: отмечает дни недели и
+   * выдаёт за них. День — календарный по Ташкенту; в клетке — строки
+   * начисления (этапы по расценке — по заказам, часы, заказы) и итог.
+   * Выплаченный день помечен и второй раз не выбирается.
+   *
+   * Каждый день привязан к месячному расчёту (`recordId`): неделя может
+   * зацепить два месяца, и выдать за день без рассчитанного месяца нельзя —
+   * панель скажет «рассчитайте месяц».
    */
-  daily: managementProcedure
-    .input(z.object({ userId: idSchema, role: roleSchema, day: z.string().date() }))
+  week: managementProcedure
+    .input(z.object({ userId: idSchema, role: roleSchema, weekStart: z.string().date() }))
     .query(async ({ ctx, input }) => {
-      const start = new Date(new Date(`${input.day}T00:00:00Z`).getTime() - 5 * 60 * 60 * 1000);
-      const result = await calculateForDay(ctx.db, input.userId, input.role, {
-        start,
-        end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
-      });
-      if (result === null) return null;
-      return {
-        type: result.type,
-        monthlyBase: result.monthlyBase,
-        amount: moneyToDecimalString(result.calculation.amount),
-        breakdown: result.calculation.breakdown.map((line) => ({
-          label: line.label,
-          amount: moneyToDecimalString(line.amount),
-        })),
-        workedHours: result.inputs.workedHours,
-        completedOrders: result.inputs.completedOrders,
-      };
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const TASHKENT_MS = 5 * 60 * 60 * 1000;
+      const firstStart = new Date(new Date(`${input.weekStart}T00:00:00Z`).getTime() - TASHKENT_MS);
+
+      const records = await ctx.db
+        .select({
+          id: payrollRecords.id,
+          periodYear: payrollRecords.periodYear,
+          periodMonth: payrollRecords.periodMonth,
+        })
+        .from(payrollRecords)
+        .where(and(eq(payrollRecords.userId, input.userId), eq(payrollRecords.role, input.role)));
+      const recordIds = records.map((record) => record.id);
+      const payouts =
+        recordIds.length === 0
+          ? []
+          : await ctx.db
+              .select({ day: payrollPayouts.day, amount: payrollPayouts.amount })
+              .from(payrollPayouts)
+              .where(inArray(payrollPayouts.recordId, recordIds));
+      const paidByDay = new Map(payouts.map((payout) => [payout.day, parseMoney(payout.amount)]));
+
+      let monthlyBase = false;
+      let hasScheme = true;
+      const days = [];
+      for (let index = 0; index < 7; index += 1) {
+        const start = new Date(firstStart.getTime() + index * DAY_MS);
+        const bounds = { start, end: new Date(start.getTime() + DAY_MS) };
+        const day = new Date(start.getTime() + TASHKENT_MS).toISOString().slice(0, 10);
+        const [year, month] = day.split('-').map((part) => Number.parseInt(part, 10));
+        const record = records.find((entry) => entry.periodYear === year && entry.periodMonth === month);
+
+        const result = await calculateForDay(ctx.db, input.userId, input.role, bounds);
+        if (result === null) {
+          hasScheme = false;
+          days.push({ day, recordId: record?.id ?? null, lines: [], total: '0.00', paid: null });
+          continue;
+        }
+        monthlyBase = result.monthlyBase;
+
+        // Сдельные — по заказам, а не одной строкой: директор сверяет
+        // с тем, что видел в цехе, а не с суммой.
+        const orders = await listCompletedOrdersForPayroll(ctx.db, input.userId, input.role, bounds);
+        const orderLines = orders
+          .filter((order) => parseMoney(order.stageFee) > 0)
+          .map((order) => ({
+            label: order.orderNumber ?? `#${order.id.toString()}`,
+            amount: order.stageFee,
+          }));
+        const otherLines = result.calculation.breakdown
+          .filter((line) => orderLines.length === 0 || line.label !== 'Сдельно за этапы заказов')
+          .map((line) => ({ label: line.label, amount: moneyToDecimalString(line.amount) }));
+
+        const paid = paidByDay.get(day);
+        days.push({
+          day,
+          recordId: record?.id ?? null,
+          lines: [...otherLines, ...orderLines],
+          total: moneyToDecimalString(result.calculation.amount),
+          paid: paid === undefined ? null : moneyToDecimalString(paid),
+        });
+      }
+
+      return { hasScheme, monthlyBase, days };
     }),
 
   markPaid: managementProcedure
@@ -591,6 +644,11 @@ export const payrollRouter = router({
       z.object({
         id: idSchema,
         paidAmount: moneySchema.optional(),
+        /** Выплата по дням: сумма — сумма дней, дни запоминаются как выплаченные. */
+        days: z
+          .array(z.object({ day: z.string().date(), amount: moneySchema }))
+          .max(31)
+          .optional(),
         comment: optionalText(1000),
       }),
     )
@@ -611,7 +669,36 @@ export const payrollRouter = router({
         const calculated = parseMoney(record.calculatedAmount);
         const alreadyPaid = parseMoney(record.paidAmount);
         const remaining = Math.max(0, calculated - alreadyPaid);
-        const part = input.paidAmount === undefined ? remaining : parseMoney(input.paidAmount);
+        const days = input.days ?? [];
+        if (days.length > 0) {
+          const [dup] = await tx
+            .select({ day: payrollPayouts.day })
+            .from(payrollPayouts)
+            .where(
+              and(
+                eq(payrollPayouts.recordId, record.id),
+                inArray(payrollPayouts.day, days.map((entry) => entry.day)),
+              ),
+            )
+            .limit(1);
+          if (dup !== undefined) {
+            throw new TRPCError({ code: 'CONFLICT', message: `День ${dup.day} уже выплачен` });
+          }
+          await tx.insert(payrollPayouts).values(
+            days.map((entry) => ({
+              recordId: record.id,
+              day: entry.day,
+              amount: moneyToDecimalString(parseMoney(entry.amount)),
+              paidBy: ctx.user.id,
+            })),
+          );
+        }
+        const part =
+          days.length > 0
+            ? days.reduce((sum, entry) => sum + parseMoney(entry.amount), 0)
+            : input.paidAmount === undefined
+              ? remaining
+              : parseMoney(input.paidAmount);
 
         if (part <= 0) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Сумма выплаты должна быть больше нуля' });

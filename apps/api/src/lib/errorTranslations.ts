@@ -270,6 +270,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Радиус не может быть больше {n} м', "Radius {n} m dan katta bo'lishi mumkin emas"],
   ['Филиал с названием «{name}» уже существует', '«{name}» nomli filial allaqachon mavjud'],
   ['Код «{code}» на складе не найден', '«{code}» kodi omborda topilmadi'],
+  ['День {day} уже выплачен', '{day} kuni allaqachon to‘langan'],
   [
     'У кода «{name}» нет цены — её ставит руководство на складе',
     "«{name}» kodining narxi yo'q — uni rahbariyat omborda belgilaydi",
