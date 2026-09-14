@@ -15,6 +15,7 @@
 import {
   auditLog,
   branches,
+  catalogItems,
   closeDatabase,
   createDatabase,
   hashPassword,
@@ -67,6 +68,8 @@ import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.ser
 import { loadPackList } from '../services/packList.service';
 import { cashOnHands, cashSummary, recordPayment } from '../services/payments.service';
 import { employeeRating } from '../services/rating.service';
+import { appRouter } from '../routers';
+import { createCallerFactory } from '../trpc';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
   attendanceByDay,
@@ -196,6 +199,7 @@ async function cleanup(db: Database): Promise<void> {
     await db.delete(users).where(inArray(users.id, userIds));
   }
 
+  await db.delete(catalogItems).where(like(catalogItems.name, `${PREFIX}%`));
   await db.delete(branches).where(like(branches.name, `${PREFIX}%`));
 }
 
@@ -914,6 +918,50 @@ async function run(db: Database): Promise<void> {
     'payroll: сдельная за сданный пошив начисляется до закрытия заказа',
     sewerInputsAfter.stageFeesAmount === parseMoney('550000'),
     moneyToDecimalString(sewerInputsAfter.stageFeesAmount),
+  );
+
+  /* ---------------- 6a. Склад: импорт файла с ценой и единицей ------------ */
+
+  // Через роутер, как с панели: файл с ценой заводит коды с ценой, а повторный
+  // файл дополняет описание и цену, не трогая то, чего в нём нет.
+  const caller = createCallerFactory(appRouter)({
+    db,
+    user: adminActor,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const imported = await caller.catalog.importItems({
+    items: [
+      { kind: 'portiere_code', name: `${PREFIX} П-1`, description: 'Тёмная', price: 150000, unit: 'm' },
+      { kind: 'portiere_code', name: `${PREFIX} П-1`, description: 'дубль в файле' },
+      { kind: 'cornice_code', name: `${PREFIX} К-1`, description: null },
+    ],
+  });
+  const reimported = await caller.catalog.importItems({
+    items: [
+      { kind: 'portiere_code', name: `${PREFIX} п-1`, description: null, price: 175000 },
+      { kind: 'cornice_code', name: `${PREFIX} К-1`, description: 'Круглый', unit: 'pcs' },
+    ],
+  });
+  const importedRows = await db
+    .select({ name: catalogItems.name, description: catalogItems.description, price: catalogItems.price, unit: catalogItems.unit })
+    .from(catalogItems)
+    .where(like(catalogItems.name, `${PREFIX}%`));
+  const p1 = importedRows.find((row) => row.name.endsWith('П-1'));
+  const k1 = importedRows.find((row) => row.name.endsWith('К-1'));
+  check(
+    'склад: импорт заводит коды с ценой, повтор дополняет и не стирает',
+    imported.created === 2 &&
+      reimported.created === 0 &&
+      reimported.updated === 2 &&
+      p1?.description === 'Тёмная' &&
+      p1.price === '175000.00' &&
+      p1.unit === 'm' &&
+      k1?.description === 'Круглый' &&
+      k1.unit === 'pcs',
+    `создано ${imported.created.toString()}, обновлено ${reimported.updated.toString()}, П-1 ${p1?.price ?? 'null'}/${p1?.unit ?? 'null'}`,
   );
 
   /* ---------------- 6b. Ежедневный расчёт: запись не замирает ------------- */

@@ -76,12 +76,41 @@ function kindOfLabel(label: string): StockKind | undefined {
   return STOCK_KINDS.find((kind) => KIND_ALIASES[kind].some((alias) => value.startsWith(alias)));
 }
 
-/** Названия колонок, по которым узнаётся шапка: код, вид, описание. */
+/** Названия колонок, по которым узнаётся шапка: код, вид, описание, цена, единица. */
 const HEADER_ALIASES = {
   code: ['код', 'code', 'артикул', 'kod', 'sku', 'номер'],
   kind: ['вид', 'тип', 'категор', 'kind', 'type', 'turi', 'tur'],
   description: ['описан', 'назван', 'наимен', 'description', 'name', 'tavsif', 'nomi', 'коммент'],
+  price: ['цена', 'price', 'narx', 'стоим', 'сум'],
+  unit: ['ед', 'unit', 'birlik', 'изм'],
 } as const;
+
+/** «м», «шт», «metr», «dona» из файла — в единицу справочника. */
+const UNIT_ALIASES: Readonly<Record<PurchaseUnit, readonly string[]>> = {
+  m: ['м', 'm', 'метр', 'metr', 'пог'],
+  m2: ['м2', 'м²', 'm2', 'm²', 'кв'],
+  pcs: ['шт', 'pcs', 'pc', 'dona', 'штук'],
+  set: ['компл', 'set', 'komplekt', 'набор'],
+  kg: ['кг', 'kg'],
+  roll: ['рул', 'roll', 'rulon'],
+};
+
+function unitOfLabel(label: string): PurchaseUnit | undefined {
+  const value = label.trim().toLowerCase().replace(/\.$/, '');
+  if (value === '') return undefined;
+  // Точное совпадение раньше начала: «м2» не должно узнаваться как «м».
+  const exact = PURCHASE_UNITS.find((unit) => UNIT_ALIASES[unit].includes(value));
+  if (exact !== undefined) return exact;
+  return PURCHASE_UNITS.find((unit) => UNIT_ALIASES[unit].some((alias) => value.startsWith(alias)));
+}
+
+/** «1 250 000», «1250000,00», «1 250 000 сум» → число; пусто и не число → `null`. */
+function priceOfCell(cell: string): number | null {
+  const digits = cell.replace(/[^\d.,]/g, '').replace(/\s/g, '').replace(',', '.');
+  if (digits === '') return null;
+  const value = Number.parseFloat(digits);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 
 /**
  * Где какая колонка. Шапка ищется в первых пяти строках по названиям; если
@@ -92,6 +121,8 @@ function detectColumns(table: readonly (readonly string[])[]): {
   readonly code: number;
   readonly kind: number | null;
   readonly description: number | null;
+  readonly price: number | null;
+  readonly unit: number | null;
 } {
   const find = (row: readonly string[], aliases: readonly string[]): number =>
     row.findIndex((cell) => aliases.some((alias) => cell.trim().toLowerCase().startsWith(alias)));
@@ -102,15 +133,19 @@ function detectColumns(table: readonly (readonly string[])[]): {
     if (code === -1) continue;
     const kind = find(row, HEADER_ALIASES.kind);
     const description = find(row, HEADER_ALIASES.description);
+    const price = find(row, HEADER_ALIASES.price);
+    const unit = find(row, HEADER_ALIASES.unit);
     return {
       headerRow: index,
       code,
       kind: kind === -1 ? null : kind,
       description: description === -1 ? null : description,
+      price: price === -1 ? null : price,
+      unit: unit === -1 ? null : unit,
     };
   }
 
-  return { headerRow: -1, code: 0, kind: 1, description: 2 };
+  return { headerRow: -1, code: 0, kind: 1, description: 2, price: null, unit: null };
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -182,13 +217,6 @@ export default function WarehousePage(): ReactElement {
   });
 
   const importItems = trpc.catalog.importItems.useMutation({
-    onSuccess(result) {
-      toast.success(
-        'Файл загружен',
-        `Новых кодов: ${String(result.created)}, дополнено описаний: ${String(result.updated)}`,
-      );
-      refresh();
-    },
     onError: (error) => {
       toast.error('Не удалось загрузить файл', error.message);
     },
@@ -288,7 +316,13 @@ export default function WarehousePage(): ReactElement {
           return;
         }
 
-        const items: { kind: StockKind; name: string; description: string | null }[] = [];
+        const items: {
+          kind: StockKind;
+          name: string;
+          description: string | null;
+          price: number | null;
+          unit: PurchaseUnit | null;
+        }[] = [];
         const skipped: string[] = [];
 
         table.forEach((row, index) => {
@@ -305,8 +339,15 @@ export default function WarehousePage(): ReactElement {
             return;
           }
 
-          const text = columns.description === null ? '' : (row[columns.description] ?? '').trim();
-          items.push({ kind: rowKind, name, description: text === '' ? null : text });
+          // Длинное описание режется, а не валит весь файл: сервер принимает до 300 знаков.
+          const text = (columns.description === null ? '' : (row[columns.description] ?? '')).trim().slice(0, 300);
+          items.push({
+            kind: rowKind,
+            name: name.slice(0, 200),
+            description: text === '' ? null : text,
+            price: columns.price === null ? null : priceOfCell(row[columns.price] ?? ''),
+            unit: columns.unit === null ? null : (unitOfLabel(row[columns.unit] ?? '') ?? null),
+          });
         });
 
         if (items.length === 0) {
@@ -326,10 +367,33 @@ export default function WarehousePage(): ReactElement {
           );
         }
 
-        importItems.mutate({ items });
+        // Частями: у сервера потолок на один запрос, а файл склада бывает на тысячи строк.
+        const CHUNK = 500;
+        const chunks = Array.from({ length: Math.ceil(items.length / CHUNK) }, (_, index) =>
+          items.slice(index * CHUNK, (index + 1) * CHUNK),
+        );
+        return chunks
+          .reduce(
+            (chain, chunk) =>
+              chain.then(async (totals) => {
+                const result = await importItems.mutateAsync({ items: chunk });
+                return { created: totals.created + result.created, updated: totals.updated + result.updated };
+              }),
+            Promise.resolve({ created: 0, updated: 0 }),
+          )
+          .then((totals) => {
+            toast.success(
+              'Файл загружен',
+              `Новых кодов: ${String(totals.created)}, обновлено: ${String(totals.updated)}`,
+            );
+            refresh();
+          });
       })
       .catch((error: unknown) => {
-        toast.error('Не удалось прочитать файл', error instanceof Error ? error.message : 'Ошибка');
+        // Ошибку сервера уже показал `onError` мутации — тут только чтение файла.
+        if (error instanceof Error && !('data' in error)) {
+          toast.error('Не удалось прочитать файл', error.message);
+        }
       })
       .finally(() => {
         setBusy(null);
