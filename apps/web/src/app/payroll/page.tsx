@@ -2,23 +2,22 @@
 
 import {
   formatMoney,
-  groupDigits,
   parseMoney,
   PAYROLL_RECORD_STATUS_LABELS_RU,
   PAYROLL_SCHEME_TYPE_LABELS_RU,
   PayrollRecordStatus,
   Role,
   ROLE_LABELS_RU,
-  todayIso,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { Calculator, SlidersHorizontal } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
+import { PayoutWeekDialog } from '@/components/payroll/PayoutWeekDialog';
 import { PayrollBreakdownDialog } from '@/components/payroll/PayrollBreakdownDialog';
 import { SchemeDialog } from '@/components/payroll/SchemeDialog';
 import { Badge } from '@/components/ui/Badge';
-import { Button, controlClass, Field, Input, Modal, MoneyInput } from '@/components/ui/Form';
+import { Button, controlClass } from '@/components/ui/Form';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, type RowKey } from '@/components/ui/Table';
@@ -57,17 +56,7 @@ export default function PayrollPage(): ReactElement {
     remaining: number;
     name: string;
   } | null>(null);
-  const [payAmount, setPayAmount] = useState('');
-  /**
-   * День для ежедневного расчёта: сколько человек заработал за эти сутки —
-   * часы, сданные этапы, закрытые заказы. По умолчанию сегодня; утром
-   * рассчитываются за вчера.
-   */
-  const [payDay, setPayDay] = useState(() => todayIso());
-  const daily = trpc.payroll.daily.useQuery(
-    { userId: paying?.userId ?? 0, role: paying?.role ?? Role.SEWER, day: payDay },
-    { enabled: paying !== null },
-  );
+
 
   const { hasRole } = useAuth();
   const isCeo = hasRole(Role.CEO);
@@ -220,8 +209,6 @@ export default function PayrollPage(): ReactElement {
           disabled={markPaid.isPending || remaining <= 0}
           onClick={() => {
             setPaying({ id: row.id, userId: row.userId, role: row.role, remaining, name: row.userFullName });
-            setPayAmount('');
-            setPayDay(todayIso());
           }}
           className="pressable rounded-full border border-accent/40 px-2 py-1 text-footnote font-medium text-accent hover:bg-accent/10 disabled:opacity-50"
         >
@@ -478,107 +465,26 @@ export default function PayrollPage(): ReactElement {
         }}
       />
 
-      <Modal
-        open={paying !== null}
-        title={paying === null ? '' : `Выплата: ${paying.name}`}
+      <PayoutWeekDialog
+        target={
+          paying === null
+            ? null
+            : {
+                userId: paying.userId,
+                role: paying.role,
+                name: paying.name,
+                recordId: paying.id,
+                remaining: paying.remaining,
+              }
+        }
         onClose={() => {
           setPaying(null);
         }}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setPaying(null);
-              }}
-            >
-              Отмена
-            </Button>
-            <Button
-              disabled={markPaid.isPending || paying === null}
-              onClick={() => {
-                if (paying === null) return;
-                const typed = Number.parseFloat(payAmount.replace(',', '.'));
-                markPaid.mutate({
-                  id: paying.id,
-                  ...(Number.isFinite(typed) && typed > 0 ? { paidAmount: typed } : {}),
-                });
-              }}
-            >
-              Выплатить
-            </Button>
-          </>
-        }
-      >
-        {paying !== null && (
-          <div className="space-y-4">
-            {/*
-              За день: почасовая, сдельная, за заказ и процент складываются из
-              событий суток — директор платит за сегодняшнее, а не делит
-              месячный остаток на глаз. Кнопка подставляет сумму в поле.
-            */}
-            <div className="rounded-lg border border-subtle bg-ink/[0.03] p-3">
-              <div className="flex flex-wrap items-end gap-3">
-                <Field label="За день" className="min-w-40">
-                  <Input
-                    type="date"
-                    value={payDay}
-                    onChange={(event) => {
-                      setPayDay(event.target.value);
-                    }}
-                  />
-                </Field>
-                <div className="flex-1">
-                  {daily.isLoading ? (
-                    <Skeleton className="h-10" />
-                  ) : daily.data === null || daily.data === undefined ? (
-                    <p className="text-caption text-muted">Условий оплаты в этой роли нет</p>
-                  ) : (
-                    <>
-                      <p className="font-figure text-title tabular-nums text-primary">
-                        {formatMoney(parseMoney(daily.data.amount))}
-                      </p>
-                      <p className="text-footnote text-secondary">
-                        {daily.data.breakdown.length === 0
-                          ? daily.data.monthlyBase
-                            ? 'Оклад считается за месяц; за день — только сдельные'
-                            : 'За этот день начислений нет'
-                          : daily.data.breakdown
-                              .map((line) => `${line.label}: ${formatMoney(parseMoney(line.amount))}`)
-                              .join(' · ')}
-                        {daily.data.workedHours > 0 ? ` · ${daily.data.workedHours.toString()} ч` : ''}
-                      </p>
-                    </>
-                  )}
-                </div>
-                {daily.data != null && parseMoney(daily.data.amount) > 0 && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      const amount = Math.min(parseMoney(daily.data?.amount ?? '0'), paying.remaining);
-                      setPayAmount(String(amount / 100));
-                    }}
-                  >
-                    Подставить
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <Field
-              label="Сумма, сум"
-              hint={`Остаток за месяц ${formatMoney(paying.remaining)}. Пусто — выплатить весь остаток; меньше — часть, расчёт останется открытым`}
-            >
-              <MoneyInput
-                value={payAmount}
-                onChange={setPayAmount}
-                placeholder={groupDigits(String(Math.round(paying.remaining / 100)))}
-              />
-            </Field>
-          </div>
-        )}
-      </Modal>
+        onPaid={() => {
+          setPaying(null);
+          void utils.payroll.list.invalidate();
+        }}
+      />
 
       <SchemeDialog
         open={schemeOpen}

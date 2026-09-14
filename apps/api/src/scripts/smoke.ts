@@ -69,6 +69,8 @@ import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.ser
 import { loadPackList } from '../services/packList.service';
 import { cashOnHands, cashSummary, recordPayment } from '../services/payments.service';
 import { employeeRating } from '../services/rating.service';
+import { TRPCError } from '@trpc/server';
+
 import { appRouter } from '../routers';
 import { createCallerFactory } from '../trpc';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
@@ -1040,6 +1042,33 @@ async function run(db: Database): Promise<void> {
       dayCalc.inputs.stageFeesAmount === parseMoney(secondDraft.snapshot.inputs.stageFeesAmount ?? '0') &&
       dayCalc.calculation.amount === secondDraft.calculation.amount,
     `за день ${moneyToDecimalString(dayCalc?.calculation.amount ?? 0)}, за месяц ${moneyToDecimalString(secondDraft.calculation.amount)}`,
+  );
+
+  // Неделя выплат через роутер: сегодняшний день видно с итогом и расчётом,
+  // выплата по дню закрывает его, второй раз тот же день не выплатить.
+  const todayTashkent = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const mondayDate = new Date(`${todayTashkent}T00:00:00Z`);
+  mondayDate.setUTCDate(mondayDate.getUTCDate() - ((mondayDate.getUTCDay() + 6) % 7));
+  const weekStart = mondayDate.toISOString().slice(0, 10);
+  const weekBefore = await caller.payroll.week({ userId: sewer.id, role: Role.SEWER, weekStart });
+  const todayCell = weekBefore.days.find((entry) => entry.day === todayTashkent);
+  await caller.payroll.markPaid({
+    id: record?.id ?? 0,
+    days: [{ day: todayTashkent, amount: parseMoney(todayCell?.total ?? '0') / 100 }],
+  });
+  const weekAfter = await caller.payroll.week({ userId: sewer.id, role: Role.SEWER, weekStart });
+  const paidCell = weekAfter.days.find((entry) => entry.day === todayTashkent);
+  const secondPay = await caller.payroll
+    .markPaid({ id: record?.id ?? 0, days: [{ day: todayTashkent, amount: 1 }] })
+    .then(() => 'ok')
+    .catch((error: unknown) => (error instanceof TRPCError ? error.code : 'other'));
+  check(
+    'payroll: неделя выплат — день выплачивается один раз и помечается',
+    todayCell?.recordId === record?.id &&
+      todayCell?.total === moneyToDecimalString(secondDraft.calculation.amount) &&
+      paidCell?.paid === todayCell?.total &&
+      secondPay === 'CONFLICT',
+    `день ${todayCell?.total ?? 'null'}, выплачено ${paidCell?.paid ?? 'null'}, повтор ${secondPay}`,
   );
 
   /* ---------------------------- 6c. Касса -------------------------------- */
