@@ -216,6 +216,7 @@ export const catalogRouter = router({
             description: catalogItems.description,
             price: catalogItems.price,
             unit: catalogItems.unit,
+            isActive: catalogItems.isActive,
           })
           .from(catalogItems);
 
@@ -250,7 +251,10 @@ export const catalogRouter = router({
           }
 
           // Пустое в файле не стирает заведённое руками — обновляется только то, что задано.
+          // Выведенный код, пришедший в новом файле, снова в обращении: раз он в
+          // накладной — он на полке, а «загрузил и ничего не появилось» пугает.
           const patch = {
+            ...(found.isActive ? {} : { isActive: true }),
             ...(description === null || description === found.description ? {} : { description }),
             ...(price === null || price === found.price ? {} : { price }),
             ...(item.unit === null || item.unit === found.unit ? {} : { unit: item.unit }),
