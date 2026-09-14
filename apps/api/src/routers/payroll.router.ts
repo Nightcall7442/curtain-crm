@@ -21,6 +21,7 @@ import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import { notifyPayroll } from '../services/notifications.service';
 import {
+  calculateForDay,
   calculateForUserRole,
   listCompletedOrdersForPayroll,
   payableRoles,
@@ -557,6 +558,34 @@ export const payrollRouter = router({
    * при ежедневных расчётах незачем. Массовое «Утвердить» в конце месяца
    * остаётся для тех, кому удобнее так.
    */
+  /**
+   * Начислено за день — сколько выдать при ежедневном расчёте.
+   *
+   * День — календарный по Ташкенту; суммы в основных единицах строкой,
+   * как и везде в ведомости.
+   */
+  daily: managementProcedure
+    .input(z.object({ userId: idSchema, role: roleSchema, day: z.string().date() }))
+    .query(async ({ ctx, input }) => {
+      const start = new Date(new Date(`${input.day}T00:00:00Z`).getTime() - 5 * 60 * 60 * 1000);
+      const result = await calculateForDay(ctx.db, input.userId, input.role, {
+        start,
+        end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
+      });
+      if (result === null) return null;
+      return {
+        type: result.type,
+        monthlyBase: result.monthlyBase,
+        amount: moneyToDecimalString(result.calculation.amount),
+        breakdown: result.calculation.breakdown.map((line) => ({
+          label: line.label,
+          amount: moneyToDecimalString(line.amount),
+        })),
+        workedHours: result.inputs.workedHours,
+        completedOrders: result.inputs.completedOrders,
+      };
+    }),
+
   markPaid: managementProcedure
     .input(
       z.object({

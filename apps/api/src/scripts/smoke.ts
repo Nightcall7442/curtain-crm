@@ -60,6 +60,7 @@ import { loadAuthenticatedUser } from '../context';
 import { login, refreshSession } from '../services/auth.service';
 import {
   calculateCompletedOrders,
+  calculateForDay,
   calculateForUserRole,
   gatherPayrollInputs,
   saveDraft,
@@ -1024,6 +1025,21 @@ async function run(db: Database): Promise<void> {
         ? '—'
         : moneyToDecimalString(parseMoney(record.calculatedAmount) - parseMoney(record.paidAmount))
     }`,
+  );
+
+  // За день: сданное сегодня считается сегодняшним днём — тем, что директор
+  // выдаёт вечером; ставки те же, что за месяц, границы — сутки.
+  const dayStart = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const dayCalc = await calculateForDay(db, sewer.id, Role.SEWER, {
+    start: dayStart,
+    end: new Date(dayStart.getTime() + 24 * 60 * 60 * 1000),
+  });
+  check(
+    'payroll: начисление за день складывается из сданного за сутки',
+    dayCalc !== null &&
+      dayCalc.inputs.stageFeesAmount === parseMoney(secondDraft.snapshot.inputs.stageFeesAmount ?? '0') &&
+      dayCalc.calculation.amount === secondDraft.calculation.amount,
+    `за день ${moneyToDecimalString(dayCalc?.calculation.amount ?? 0)}, за месяц ${moneyToDecimalString(secondDraft.calculation.amount)}`,
   );
 
   /* ---------------------------- 6c. Касса -------------------------------- */

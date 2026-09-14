@@ -635,6 +635,51 @@ export async function calculateForUserRole(
 }
 
 /**
+ * Начисление за один день — для ежедневного расчёта.
+ *
+ * Почасовая, сдельная, за заказ и процент складываются из событий дня:
+ * часы по сменам, сданные этапы, закрытые заказы — те же формулы, что за
+ * месяц, но в границах суток. Оклад и KPI — суммы за месяц, по дням их не
+ * разложить: для них за день считаются только сдельные за этапы, а
+ * `monthlyBase` говорит панели показать «оклад — по месяцу».
+ *
+ * `null` — условий оплаты в этой роли нет; это не ошибка, а «нечего считать».
+ */
+export async function calculateForDay(
+  executor: DbExecutor,
+  userId: number,
+  role: RoleName,
+  bounds: PeriodBounds,
+): Promise<{
+  readonly type: PayrollSchemeTypeName;
+  readonly monthlyBase: boolean;
+  readonly inputs: PayrollInputs;
+  readonly calculation: PayrollCalculation;
+} | null> {
+  const scheme = await findActiveSchemeOrNull(executor, userId, role);
+  if (scheme === null) return null;
+
+  const [workedHours, completed] = await Promise.all([
+    calculateWorkedHours(executor, userId, bounds),
+    calculateCompletedOrders(executor, userId, role, bounds),
+  ]);
+  const inputs: PayrollInputs = {
+    workedHours,
+    completedOrders: completed.count,
+    completedOrdersAmount: completed.amount,
+    stageFeesAmount: completed.stageFees,
+  };
+
+  const monthlyBase =
+    scheme.type === PayrollSchemeType.FIXED || scheme.type === PayrollSchemeType.KPI;
+  const calculation = monthlyBase
+    ? withStageFees(calculatePieceRate(), inputs)
+    : calculatePayroll(toSchemeParams(scheme), inputs);
+
+  return { type: scheme.type, monthlyBase, inputs, calculation };
+}
+
+/**
  * Сохраняет расчёт за период.
  *
  * Пересчитываются черновики и утверждённые записи: директор рассчитывается
