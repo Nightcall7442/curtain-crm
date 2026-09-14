@@ -192,6 +192,8 @@ async function cleanup(db: Database): Promise<void> {
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
+    // Коды склада ссылаются на автора — удаляются раньше пользователей.
+    await db.delete(catalogItems).where(like(catalogItems.name, `${PREFIX}%`));
     await db.delete(refreshTokens).where(inArray(refreshTokens.userId, userIds));
     await db.delete(shifts).where(inArray(shifts.userId, userIds));
     await db.delete(userRoles).where(inArray(userRoles.userId, userIds));
@@ -199,7 +201,6 @@ async function cleanup(db: Database): Promise<void> {
     await db.delete(users).where(inArray(users.id, userIds));
   }
 
-  await db.delete(catalogItems).where(like(catalogItems.name, `${PREFIX}%`));
   await db.delete(branches).where(like(branches.name, `${PREFIX}%`));
 }
 
@@ -939,6 +940,11 @@ async function run(db: Database): Promise<void> {
       { kind: 'cornice_code', name: `${PREFIX} К-1`, description: null },
     ],
   });
+  // Выведенный код возвращается в работу, если пришёл в новом файле.
+  await db
+    .update(catalogItems)
+    .set({ isActive: false })
+    .where(and(eq(catalogItems.kind, 'cornice_code'), like(catalogItems.name, `${PREFIX}%`)));
   const reimported = await caller.catalog.importItems({
     items: [
       { kind: 'portiere_code', name: `${PREFIX} п-1`, description: null, price: 175000 },
@@ -946,7 +952,13 @@ async function run(db: Database): Promise<void> {
     ],
   });
   const importedRows = await db
-    .select({ name: catalogItems.name, description: catalogItems.description, price: catalogItems.price, unit: catalogItems.unit })
+    .select({
+      name: catalogItems.name,
+      description: catalogItems.description,
+      price: catalogItems.price,
+      unit: catalogItems.unit,
+      isActive: catalogItems.isActive,
+    })
     .from(catalogItems)
     .where(like(catalogItems.name, `${PREFIX}%`));
   const p1 = importedRows.find((row) => row.name.endsWith('П-1'));
@@ -960,7 +972,8 @@ async function run(db: Database): Promise<void> {
       p1.price === '175000.00' &&
       p1.unit === 'm' &&
       k1?.description === 'Круглый' &&
-      k1.unit === 'pcs',
+      k1.unit === 'pcs' &&
+      k1.isActive,
     `создано ${imported.created.toString()}, обновлено ${reimported.updated.toString()}, П-1 ${p1?.price ?? 'null'}/${p1?.unit ?? 'null'}`,
   );
 
