@@ -48,7 +48,6 @@ import {
 } from './OrderActionDialog';
 import { OrderCreateDialog } from './OrderCreateDialog';
 import { orderRowActions, OrderRowActions } from './OrderRowActions';
-import { SellReadyMadeDialog } from './SellReadyMadeDialog';
 
 /**
  * Список заказов с фильтрами.
@@ -145,7 +144,7 @@ export function OrdersView({
   });
   const [priority, setPriority] = useState<PriorityName | ''>('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [sellReadyMadeOpen, setSellReadyMadeOpen] = useState(false);
+  const [stockOrderOpen, setStockOrderOpen] = useState(false);
 
   /**
    * Активная вкладка-пресет.
@@ -301,7 +300,7 @@ export function OrdersView({
       }
 
       // Открытое окно забирает клавиатуру себе целиком.
-      if (pending !== null || createOpen || sellReadyMadeOpen) return;
+      if (pending !== null || createOpen || stockOrderOpen) return;
       if (rows.length === 0) return;
 
       const move = (delta: number): void => {
@@ -445,7 +444,7 @@ export function OrdersView({
                   variant="secondary"
                   icon={<ShoppingBag className="h-3.5 w-3.5" aria-hidden />}
                   onClick={() => {
-                    setSellReadyMadeOpen(true);
+                    setStockOrderOpen(true);
                   }}
                 >
                   Готовые шторы
@@ -513,13 +512,21 @@ export function OrdersView({
         }}
       />
 
-      <SellReadyMadeDialog
-        open={sellReadyMadeOpen}
+      {/*
+        Тот же диалог, в режиме «для склада»: клиент, установка и деньги
+        скрыты сами, форма позиций — та же. Продажа с полки переехала на
+        страницу склада (кнопка «Продать» на /ready-made) — здесь, рядом с
+        «Новый заказ», «Готовые шторы» значит «поставить цеху задачу сшить
+        ещё одну».
+      */}
+      <OrderCreateDialog
+        mode="stock"
+        open={stockOrderOpen}
         onClose={() => {
-          setSellReadyMadeOpen(false);
+          setStockOrderOpen(false);
         }}
-        onSold={(orderId) => {
-          setSellReadyMadeOpen(false);
+        onCreated={(orderId) => {
+          setStockOrderOpen(false);
           router.push(`/orders/${orderId.toString()}`);
         }}
       />

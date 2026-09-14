@@ -34,6 +34,7 @@ import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
+import type { RootStackScreenProps } from '../types';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
@@ -236,7 +237,11 @@ const emptyItem = (id: number): DraftItem => ({
   comment: '',
 });
 
-export function OrderCreateScreen(): ReactElement {
+export function OrderCreateScreen({
+  route,
+}: RootStackScreenProps<'OrderCreate'>): ReactElement {
+  // Пошив для склада — без клиента, установки и денег, той же формой позиций.
+  const forStock = route.params?.mode === 'stock';
   const { t } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
@@ -333,6 +338,18 @@ export function OrderCreateScreen(): ReactElement {
     },
   });
 
+  const produceForStock = trpc.orders.produceForStock.useMutation({
+    async onSuccess(order) {
+      await utils.orders.list.invalidate();
+      navigation.navigate('OrderDetail', { orderId: order.id });
+    },
+    onError(error) {
+      Alert.alert('Заказ не создан', error.message);
+    },
+  });
+
+  const submitting = forStock ? produceForStock : create;
+
   const updateItem = (id: number, patch: Partial<DraftItem>): void => {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
@@ -377,22 +394,14 @@ export function OrderCreateScreen(): ReactElement {
     );
   };
 
-  const errors = validate({ clientName, clientPhone, deadline, items });
+  const errors = validate({ clientName, clientPhone, deadline, items, skipClient: forStock });
   const hasErrors = Object.keys(errors).length > 0;
 
   const submit = (): void => {
     setShowErrors(true);
     if (hasErrors) return;
 
-    create.mutate({
-      clientName: clientName.trim(),
-      clientPhone: clientPhone.trim(),
-      priority,
-      ...(installAddress.trim() === '' ? {} : { installAddress: installAddress.trim() }),
-      ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
-      workPrice: toMoney(workPrice),
-      deposit: toMoney(deposit),
-      items: items.map((item) => {
+    const orderItemsPayload = items.map((item) => {
         /*
           Строки материала, которых у этой модели не бывает, на сервер не
           уезжают, даже если продавец успел их заполнить до смены модели.
@@ -447,7 +456,26 @@ export function OrderCreateScreen(): ReactElement {
           })),
         ...(item.comment.trim() === '' ? {} : { comment: item.comment.trim() }),
         };
-      }),
+      });
+
+    if (forStock) {
+      produceForStock.mutate({
+        priority,
+        ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
+        items: orderItemsPayload,
+      });
+      return;
+    }
+
+    create.mutate({
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      priority,
+      ...(installAddress.trim() === '' ? {} : { installAddress: installAddress.trim() }),
+      ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
+      workPrice: toMoney(workPrice),
+      deposit: toMoney(deposit),
+      items: orderItemsPayload,
     });
   };
 
@@ -459,44 +487,47 @@ export function OrderCreateScreen(): ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Card>
-          <CardTitle title="Клиент" icon="person" />
+        {/* У пошива для склада клиента нет: заказ существует не для него. */}
+        {!forStock && (
+          <Card>
+            <CardTitle title="Клиент" icon="person" />
 
-          <Field label="Имя" required error={showErrors ? errors.clientName : undefined}>
-            <Input
-              value={clientName}
-              onChangeText={setClientName}
-              placeholder="Как обращаться к клиенту"
-              autoCapitalize="words"
-              invalid={showErrors && errors.clientName !== undefined}
-            />
-          </Field>
+            <Field label="Имя" required error={showErrors ? errors.clientName : undefined}>
+              <Input
+                value={clientName}
+                onChangeText={setClientName}
+                placeholder="Как обращаться к клиенту"
+                autoCapitalize="words"
+                invalid={showErrors && errors.clientName !== undefined}
+              />
+            </Field>
 
-          <Field
-            label="Телефон"
-            required
-            hint="Любой формат: +998 90 123 45 67 или 901234567"
-            error={showErrors ? errors.clientPhone : undefined}
-          >
-            <Input
-              value={clientPhone}
-              onChangeText={setClientPhone}
-              placeholder="+998 __ ___ __ __"
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              invalid={showErrors && errors.clientPhone !== undefined}
-            />
-          </Field>
+            <Field
+              label="Телефон"
+              required
+              hint="Любой формат: +998 90 123 45 67 или 901234567"
+              error={showErrors ? errors.clientPhone : undefined}
+            >
+              <Input
+                value={clientPhone}
+                onChangeText={setClientPhone}
+                placeholder="+998 __ ___ __ __"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                invalid={showErrors && errors.clientPhone !== undefined}
+              />
+            </Field>
 
-          <Field label="Адрес установки">
-            <Input
-              value={installAddress}
-              onChangeText={setInstallAddress}
-              placeholder="Улица, дом, квартира"
-              multiline
-            />
-          </Field>
-        </Card>
+            <Field label="Адрес установки">
+              <Input
+                value={installAddress}
+                onChangeText={setInstallAddress}
+                placeholder="Улица, дом, квартира"
+                multiline
+              />
+            </Field>
+          </Card>
+        )}
 
         <Card>
           <CardTitle title="Условия" icon="deadline" />
@@ -523,26 +554,29 @@ export function OrderCreateScreen(): ReactElement {
             />
           </Field>
 
-          <View style={styles.money}>
-            <View style={styles.moneyItem}>
-              <Field label="Стоимость работ">
-                <MoneyInput
-                  value={workPrice}
-                  onChangeText={setWorkPrice}
-                  placeholder="0"
-                />
-              </Field>
+          {/* Платить здесь некому — заказ не для клиента. */}
+          {!forStock && (
+            <View style={styles.money}>
+              <View style={styles.moneyItem}>
+                <Field label="Стоимость работ">
+                  <MoneyInput
+                    value={workPrice}
+                    onChangeText={setWorkPrice}
+                    placeholder="0"
+                  />
+                </Field>
+              </View>
+              <View style={styles.moneyItem}>
+                <Field label="Предоплата">
+                  <MoneyInput
+                    value={deposit}
+                    onChangeText={setDeposit}
+                    placeholder="0"
+                  />
+                </Field>
+              </View>
             </View>
-            <View style={styles.moneyItem}>
-              <Field label="Предоплата">
-                <MoneyInput
-                  value={deposit}
-                  onChangeText={setDeposit}
-                  placeholder="0"
-                />
-              </Field>
-            </View>
-          </View>
+          )}
         </Card>
 
 
@@ -942,24 +976,25 @@ export function OrderCreateScreen(): ReactElement {
 
         <Pressable
           onPress={submit}
-          disabled={create.isPending}
+          disabled={submitting.isPending}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.submit,
-            create.isPending ? styles.submitBusy : null,
+            submitting.isPending ? styles.submitBusy : null,
             pressed ? styles.pressed : null,
           ]}
         >
-          {create.isPending ? (
+          {submitting.isPending ? (
             <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.submitText}>Создать заказ</Text>
+            <Text style={styles.submitText}>{forStock ? 'Создать пошив' : 'Создать заказ'}</Text>
           )}
         </Pressable>
 
         <Text style={styles.footnote}>
-          Заказ уйдёт администратору на проверку. Фотографии замера и остальные детали
-          можно добавить в карточке заказа.
+          {forStock
+            ? 'Заказ уйдёт администратору на проверку — так же, как обычный заказ, только без клиента и установки.'
+            : 'Заказ уйдёт администратору на проверку. Фотографии замера и остальные детали можно добавить в карточке заказа.'}
         </Text>
       </ScrollView>
       <CodeScanner
@@ -991,18 +1026,22 @@ function validate(values: {
   readonly clientPhone: string;
   readonly deadline: string;
   readonly items: readonly DraftItem[];
+  /** Пошив для склада — клиента нет, и его поля не проверяются. */
+  readonly skipClient: boolean;
 }): Partial<Record<'clientName' | 'clientPhone' | 'deadline', string>> {
   const errors: Record<string, string> = {};
 
-  if (values.clientName.trim() === '') {
-    errors['clientName'] = 'Укажите имя клиента';
-  }
+  if (!values.skipClient) {
+    if (values.clientName.trim() === '') {
+      errors['clientName'] = 'Укажите имя клиента';
+    }
 
-  // Только длина: приведение номера к единому виду делает сервер, и
-  // повторять здесь его правила означало бы разойтись с ними при первой правке.
-  const digits = values.clientPhone.replace(/\D/g, '');
-  if (digits.length < 9) {
-    errors['clientPhone'] = 'Похоже, номер неполный';
+    // Только длина: приведение номера к единому виду делает сервер, и
+    // повторять здесь его правила означало бы разойтись с ними при первой правке.
+    const digits = values.clientPhone.replace(/\D/g, '');
+    if (digits.length < 9) {
+      errors['clientPhone'] = 'Похоже, номер неполный';
+    }
   }
 
   if (values.deadline.trim() !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(values.deadline.trim())) {

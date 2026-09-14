@@ -106,6 +106,19 @@ const AUTHOR_EDITABLE_STATUSES: readonly OrderStatus[] = [
 /*                             Позиции заказа                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * «Клиент» у пошива для склада — сама мастерская.
+ *
+ * `client_name`/`client_phone` обязательны у каждого заказа: десятки мест
+ * интерфейса — карточка, звонок, WhatsApp-ссылка — читают их как есть.
+ * Заводить `null` ради одного типа заказа означало бы тащить эту развилку
+ * через все них. Телефон настоящий и уже публичный (указан на сайте
+ * мастерской), поэтому кнопка «Позвонить» на такой карточке не ведёт в
+ * никуда — хоть звонить по ней и незачем.
+ */
+const STOCK_ORDER_CLIENT_NAME = 'Склад';
+const STOCK_ORDER_CLIENT_PHONE = '+998932885995';
+
 const orderItemInputSchema = z
   .object({
     kind: orderItemKindSchema.default('window'),
@@ -608,6 +621,108 @@ export const ordersRouter = router({
         // ничего не скрывает. Она стоит ради инварианта: заказ не покидает
         // роутер в обход `maskStageFees`. Одно исключение «здесь-то можно» —
         // и следующий, кто скопирует этот `return`, унесёт чужие суммы.
+        return maskStageFees(order, ctx.user);
+      });
+    }),
+
+  /**
+   * Пошив для склада — цех шьёт штору заранее, без клиента и установки.
+   *
+   * Кнопка «Готовые шторы» рядом с «Новый заказ» раньше открывала продажу:
+   * продавец выбирал штору с полки и продавал её. Но НОВЫЙ заказ — это ещё
+   * не продажа, это решение «нам нужна ещё одна такая штора», и результат
+   * его — не чек, а работа для швеи. Продажа осталась готовыми шторами по
+   * смыслу, просто переехала на страницу склада: продают с полки, а не
+   * из списка заказов.
+   *
+   * У заказа нет клиента — вместо него подставляется сама мастерская
+   * («Склад», её собственный телефон): колонки `client_name`/`client_phone`
+   * обязательны у каждого заказа, а заводить исключение под один тип
+   * означало бы тащить `string | null` через десятки мест интерфейса ради
+   * одной галочки. Адреса установки и предоплаты нет вовсе — везти и
+   * получать оплату не с кого.
+   *
+   * Конвейер — тот же, что у пошива на заказ, с одним отличием на входе и
+   * одним на выходе. На входе замер не нужен: размер задаёт тот, кто ставит
+   * штору в план, а не визит к окну, которого не существует, — но кнопка
+   * «Назначить замер» технически остаётся доступной админу, если решит
+   * перепроверить размер на месте. На выходе — сразу «Готово, на склад»
+   * после контроля качества: см. `qc_passed -> completed` с
+   * `orderTypes: [OrderType.STOCK]` в `ORDER_TRANSITIONS`.
+   */
+  produceForStock: orderIntakeProcedure
+    .input(
+      z.object({
+        branchId: idSchema.optional(),
+        deadline: z.string().date().optional(),
+        priority: prioritySchema.default('normal'),
+        items: z.array(orderItemInputSchema).min(1, 'Добавьте хотя бы одну позицию').max(50),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const branchId = input.branchId ?? ctx.user.primaryBranchId;
+      if (branchId === null || branchId === undefined) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Укажите филиал: у вас не задан основной филиал',
+        });
+      }
+      if (!isManagement(ctx.user.roles) && !ctx.user.branchIds.includes(branchId)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Нельзя создать заказ в филиале, к которому вы не привязаны',
+        });
+      }
+
+      return ctx.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(orders)
+          .values({
+            branchId,
+            orderType: OrderType.STOCK,
+            clientName: STOCK_ORDER_CLIENT_NAME,
+            clientPhone: STOCK_ORDER_CLIENT_PHONE,
+            deadline: input.deadline ?? null,
+            priority: input.priority,
+            createdBy: ctx.user.id,
+          })
+          .returning();
+
+        if (created === undefined) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Не удалось создать заказ',
+          });
+        }
+
+        await tx
+          .insert(orderItems)
+          .values(input.items.map((item, index) => toOrderItemValues(item, created.id, index)));
+
+        await tx.insert(orderStatusHistory).values({
+          orderId: created.id,
+          fromStatus: null,
+          toStatus: OrderStatus.NEW,
+          changedBy: ctx.user.id,
+          comment: 'Заказ на пошив для склада создан',
+        });
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'order.created',
+          entityType: 'order',
+          entityId: created.id,
+          details: { orderType: OrderType.STOCK, itemsCount: input.items.length },
+          ipAddress: ctx.ipAddress,
+        });
+
+        const { order } = await changeOrderStatus(tx, {
+          orderId: created.id,
+          toStatus: OrderStatus.PENDING_ADMIN_REVIEW,
+          actor: ctx.user,
+          ipAddress: ctx.ipAddress,
+        });
+
         return maskStageFees(order, ctx.user);
       });
     }),

@@ -1,9 +1,11 @@
 'use client';
 
 import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
-import { Plus } from 'lucide-react';
+import { Plus, ShoppingBag } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
 
+import { SellReadyMadeDialog } from '@/components/orders/SellReadyMadeDialog';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
@@ -26,8 +28,10 @@ import { trpc } from '@/lib/trpc';
 export default function ReadyMadePage(): ReactElement {
   const toast = useToast();
   const utils = trpc.useUtils();
+  const router = useRouter();
 
   const [adding, setAdding] = useState(false);
+  const [selling, setSelling] = useState(false);
   /**
    * Правится существующая штора или заводится новая.
    *
@@ -188,21 +192,50 @@ export default function ReadyMadePage(): ReactElement {
         />
       </section>
 
+      <SellReadyMadeDialog
+        open={selling}
+        onClose={() => {
+          setSelling(false);
+        }}
+        onSold={(orderId) => {
+          setSelling(false);
+          router.push(`/orders/${orderId.toString()}`);
+        }}
+      />
+
       <Card>
         <CardHeader
           title="Готовые шторы"
           action={
-            <Button
-              size="sm"
-              icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => {
-                closeForm();
-                create.reset();
-                setAdding(true);
-              }}
-            >
-              Добавить готовые шторы
-            </Button>
+            <span className="flex flex-wrap items-center gap-2">
+              {/*
+                Продажа с полки — здесь, у самой полки. Раньше кнопка стояла
+                в списке заказов рядом с «Новый заказ»: тот, кто продаёт
+                готовую штору, начинал не со склада, а с чужого раздела.
+              */}
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<ShoppingBag className="h-3.5 w-3.5" aria-hidden />}
+                onClick={() => {
+                  setSelling(true);
+                }}
+              >
+                Продать
+              </Button>
+
+              <Button
+                size="sm"
+                icon={<Plus className="h-3.5 w-3.5" aria-hidden />}
+                onClick={() => {
+                  closeForm();
+                  create.reset();
+                  setAdding(true);
+                }}
+              >
+                Добавить готовые шторы
+              </Button>
+            </span>
           }
         />
 

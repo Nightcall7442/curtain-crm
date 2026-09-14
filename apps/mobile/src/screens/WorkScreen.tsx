@@ -301,7 +301,7 @@ export function WorkScreen(): ReactElement {
 
           <Pressable
             onPress={() => {
-              navigation.navigate('SellReadyMade');
+              navigation.navigate('OrderCreate', { mode: 'stock' });
             }}
             accessibilityRole="button"
             style={({ pressed }) => [
@@ -344,6 +344,28 @@ export function WorkScreen(): ReactElement {
             >
               <Icon name="paid" size={18} color={colors.accentStrong} />
               <Text style={styles.createSecondaryText}>Касса</Text>
+            </Pressable>
+          )}
+
+          {/*
+            Продажа с полки — своей кнопкой: «Готовые шторы» выше теперь
+            ставит цеху задачу сшить ещё одну, а продают то, что уже сшито,
+            отдельным действием, как и раньше.
+          */}
+          {canCreate && (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('SellReadyMade');
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.createSecondary,
+                styles.createFlex,
+                pressed ? styles.createPressed : null,
+              ]}
+            >
+              <Icon name="orders" size={18} color={colors.accentStrong} />
+              <Text style={styles.createSecondaryText}>Продать</Text>
             </Pressable>
           )}
 

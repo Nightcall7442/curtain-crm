@@ -111,12 +111,12 @@ export function PriorityBadge({ priority }: { readonly priority: Priority }): Re
 }
 
 /**
- * Метка «Готовые шторы».
+ * Метка типа заказа — у всего, кроме обычного пошива на заказ.
  *
- * Появляется только у продаж с витрины — обычный пошив ничем не помечен,
- * это ожидаемое большинство заказов. Без метки заказ, миновавший цех целиком
- * (замер, раскрой, контроль качества), выглядел бы в списке как пропущенные
- * этапы — а не как другой тип продажи.
+ * Обычный пошив ничем не помечен: это ожидаемое большинство заказов. Без
+ * метки продажа с витрины, миновавшая цех целиком, выглядела бы в списке
+ * как пропущенные этапы, а пошив для склада — как заказ без клиента, что
+ * читается ошибкой, а не другим типом работы.
  */
 export function OrderTypeBadge({
   orderType,
@@ -124,8 +124,12 @@ export function OrderTypeBadge({
   readonly orderType: OrderTypeName;
 }): ReactElement | null {
   const { t } = useLocale();
-  if (orderType !== OrderType.READY_MADE) return null;
-  return <Badge tone="accent">{t(ORDER_TYPE_LABELS, orderType)}</Badge>;
+  if (orderType === OrderType.CUSTOM) return null;
+  return (
+    <Badge tone={orderType === OrderType.STOCK ? 'warning' : 'accent'}>
+      {t(ORDER_TYPE_LABELS, orderType)}
+    </Badge>
+  );
 }
 
 const PRESENCE_TONE: Readonly<Record<PresenceStatus, Tone>> = {

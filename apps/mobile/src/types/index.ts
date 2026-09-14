@@ -13,7 +13,12 @@ export type RootStackParamList = {
   OrderDetail: { orderId: number };
   TaskList: undefined;
   Rating: undefined;
-  OrderCreate: undefined;
+  /**
+   * `mode: 'stock'` — тот же экран заводит пошив для склада: без клиента и
+   * установки, той же формой позиций. Кнопка «Готовые шторы» на «Работе»
+   * открывает именно этот режим — продажа с полки переехала на экран склада.
+   */
+  OrderCreate: { mode?: 'custom' | 'stock' } | undefined;
   SellReadyMade: undefined;
   DayOff: undefined;
   PersonalWorkCreate: undefined;

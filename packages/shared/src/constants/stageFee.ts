@@ -127,9 +127,15 @@ export function stageFeesOfRole(role: RoleName): readonly OrderStageFee[] {
  * витрины. Остаётся установка, и то не всегда. Показывать продавцу четыре
  * пустых поля при каждой продаже с витрины — верный способ, чтобы он
  * перестал заполнять и то единственное, которое нужно.
+ *
+ * У пошива для склада — зеркально наоборот: нет ни клиента, ни установки,
+ * есть только сам цех. Замер тоже лишний — размер штора получает от того,
+ * кто ставит её в план, а не от визита к окну, которого не существует.
  */
 export function stageFeesOfOrderType(orderType: OrderTypeName): readonly OrderStageFee[] {
-  return orderType === OrderType.READY_MADE
-    ? [OrderStageFee.INSTALLATION]
-    : ORDER_STAGE_FEES;
+  if (orderType === OrderType.READY_MADE) return [OrderStageFee.INSTALLATION];
+  if (orderType === OrderType.STOCK) {
+    return [OrderStageFee.CUTTING, OrderStageFee.SEWING, OrderStageFee.QC];
+  }
+  return ORDER_STAGE_FEES;
 }

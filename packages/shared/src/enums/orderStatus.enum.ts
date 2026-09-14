@@ -584,6 +584,19 @@ const EXPLICIT_TRANSITIONS: readonly OrderTransition[] = [
     roles: [Role.QC, Role.ADMIN, Role.CEO],
     kind: TransitionKind.FORWARD,
     label: 'Передать на назначение установки',
+    // Пошиву для склада ставить некуда: у него нет ни клиента, ни адреса —
+    // штора уходит на полку, а не к установщику. Свой выход у него ниже.
+    orderTypes: [OrderType.CUSTOM, OrderType.READY_MADE],
+  },
+  {
+    // Пошив для склада заканчивается здесь: контроль прошёл — штора готова
+    // лечь на витрину, и заказ закрывается сам, без визита к клиенту.
+    from: OrderStatus.QC_PASSED,
+    to: OrderStatus.COMPLETED,
+    roles: [Role.QC, Role.ADMIN, Role.CEO],
+    kind: TransitionKind.FORWARD,
+    label: 'Готово — на склад',
+    orderTypes: [OrderType.STOCK],
   },
   {
     from: OrderStatus.QC_PASSED,
@@ -749,6 +762,7 @@ const TRANSITION_LABELS_UZ: Readonly<Record<string, string>> = {
   'qc_failed->sewing_in_progress': 'Tuzatish uchun tikuvga qaytarish',
   'qc_failed->measurement_assigned': "Qayta o'lchovga qaytarish",
   'qc_passed->pending_installation_assignment': "O'rnatuvchi tayinlashga berish",
+  'qc_passed->completed': 'Tayyor — omborga',
   'qc_passed->pending_qc': 'Qayta nazoratga qaytarish',
   'pending_installation_assignment->installation_assigned': "O'rnatuvchini tayinlash",
   'pending_installation_assignment->pending_qc': 'Sifat nazoratiga qaytarish',

@@ -190,11 +190,21 @@ export function OrderCreateDialog({
   open,
   onClose,
   onCreated,
+  mode = 'custom',
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly onCreated: (orderId: number) => void;
+  /**
+   * `stock` — пошив для склада: без клиента, установки и предоплаты, той же
+   * формой позиций, что и обычный заказ. Кнопка «Готовые шторы» рядом с
+   * «Новый заказ» открывает диалог именно в этом режиме — продажа с полки
+   * переехала на страницу склада, а здесь теперь ставят цеху задачу сшить
+   * ещё одну штору.
+   */
+  readonly mode?: 'custom' | 'stock';
 }): ReactElement {
+  const forStock = mode === 'stock';
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientComment, setClientComment] = useState('');
@@ -218,6 +228,18 @@ export function OrderCreateDialog({
     },
   });
 
+  const produceForStock = trpc.orders.produceForStock.useMutation({
+    async onSuccess(order) {
+      await Promise.all([utils.orders.list.invalidate(), utils.reports.dashboard.invalidate()]);
+      reset();
+      onCreated(order.id);
+    },
+  });
+
+  // Одна из двух — та, что реально отправляла запрос: у обеих свой
+  // `error`/`isPending`, и вторая, неиспользованная, всегда в покое.
+  const submitting = forStock ? produceForStock : create;
+
   const reset = (): void => {
     setClientName('');
     setClientPhone('');
@@ -229,6 +251,7 @@ export function OrderCreateDialog({
     setDeposit('');
     setItems([emptyItem()]);
     create.reset();
+    produceForStock.reset();
   };
 
   /** Справочники, сгруппированные по виду. */
@@ -291,7 +314,7 @@ export function OrderCreateDialog({
     return Array.from(names).map((name) => ({ value: name, label: name }));
   }, [byKind]);
 
-  const errors = fieldErrors(create.error);
+  const errors = fieldErrors(submitting.error);
 
   const patchItem = (id: string, patch: Partial<ItemDraft>): void => {
     setItems((current) =>
@@ -338,17 +361,7 @@ export function OrderCreateDialog({
   };
 
   const handleSubmit = (): void => {
-    create.mutate({
-      clientName: clientName.trim(),
-      clientPhone: clientPhone.trim(),
-      ...(clientComment.trim().length > 0 ? { clientComment: clientComment.trim() } : {}),
-      ...(installAddress.trim().length > 0 ? { installAddress: installAddress.trim() } : {}),
-      ...(deadline.length > 0 ? { deadline } : {}),
-      priority,
-      ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
-      workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
-      deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
-      items: items.map((item) => {
+    const orderItemsPayload = items.map((item) => {
         /*
           Строки материала, которых у этой модели не бывает, не уезжают на
           сервер, даже если продавец успел их заполнить до смены модели.
@@ -409,14 +422,36 @@ export function OrderCreateDialog({
         quantity: item.quantity,
         ...(item.comment.trim().length > 0 ? { comment: item.comment.trim() } : {}),
         };
-      }),
+      });
+
+    if (forStock) {
+      produceForStock.mutate({
+        ...(deadline.length > 0 ? { deadline } : {}),
+        priority,
+        ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
+        items: orderItemsPayload,
+      });
+      return;
+    }
+
+    create.mutate({
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      ...(clientComment.trim().length > 0 ? { clientComment: clientComment.trim() } : {}),
+      ...(installAddress.trim().length > 0 ? { installAddress: installAddress.trim() } : {}),
+      ...(deadline.length > 0 ? { deadline } : {}),
+      priority,
+      ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
+      workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
+      deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
+      items: orderItemsPayload,
     });
   };
 
   return (
     <Modal
       open={open}
-      title="Новый заказ"
+      title={forStock ? 'Пошив для склада' : 'Новый заказ'}
       width="xl"
       onClose={() => {
         onClose();
@@ -426,69 +461,77 @@ export function OrderCreateDialog({
           <Button variant="secondary" onClick={onClose}>
             Отмена
           </Button>
-          <Button onClick={handleSubmit} loading={create.isPending}>
-            Создать заказ
+          <Button onClick={handleSubmit} loading={submitting.isPending}>
+            {forStock ? 'Создать пошив' : 'Создать заказ'}
           </Button>
         </>
       }
     >
       <div className="space-y-5">
-        <FormError message={create.error !== null && Object.keys(errors).length === 0 ? create.error.message : null} />
+        <FormError message={submitting.error !== null && Object.keys(errors).length === 0 ? submitting.error.message : null} />
 
-        {/* --- Клиент --------------------------------------------------- */}
-        <section>
-          <h3 className="section-title mb-2">Клиент</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Имя клиента" required error={errors['clientName']}>
-              <Input
-                value={clientName}
-                onChange={(event) => {
-                  setClientName(event.target.value);
-                }}
-                placeholder="Ахмедов Тимур"
-                invalid={errors['clientName'] !== undefined}
-              />
-            </Field>
+        {/*
+          --- Клиент -------------------------------------------------------
 
-            <Field
-              label="Телефон"
-              required
-              error={errors['clientPhone']}
-              hint="Можно с пробелами: +998 90 123 45 67"
-            >
-              <Input
-                value={clientPhone}
-                onChange={(event) => {
-                  setClientPhone(event.target.value);
-                }}
-                placeholder="+998 90 123 45 67"
-                inputMode="tel"
-                invalid={errors['clientPhone'] !== undefined}
-              />
-            </Field>
+          У пошива для склада её нет вовсе: заказ существует не для клиента,
+          а чтобы штора появилась на витрине. Задавать имя и телефон здесь
+          было бы вопросом без ответа.
+        */}
+        {!forStock && (
+          <section>
+            <h3 className="section-title mb-2">Клиент</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Имя клиента" required error={errors['clientName']}>
+                <Input
+                  value={clientName}
+                  onChange={(event) => {
+                    setClientName(event.target.value);
+                  }}
+                  placeholder="Ахмедов Тимур"
+                  invalid={errors['clientName'] !== undefined}
+                />
+              </Field>
 
-            <Field label="Адрес установки" className="sm:col-span-2" error={errors['installAddress']}>
-              <Input
-                value={installAddress}
-                onChange={(event) => {
-                  setInstallAddress(event.target.value);
-                }}
-                placeholder="г. Ургенч, ул. …"
-              />
-            </Field>
+              <Field
+                label="Телефон"
+                required
+                error={errors['clientPhone']}
+                hint="Можно с пробелами: +998 90 123 45 67"
+              >
+                <Input
+                  value={clientPhone}
+                  onChange={(event) => {
+                    setClientPhone(event.target.value);
+                  }}
+                  placeholder="+998 90 123 45 67"
+                  inputMode="tel"
+                  invalid={errors['clientPhone'] !== undefined}
+                />
+              </Field>
 
-            <Field label="Пожелания клиента" className="sm:col-span-2">
-              <Textarea
-                rows={2}
-                value={clientComment}
-                onChange={(event) => {
-                  setClientComment(event.target.value);
-                }}
-                placeholder="Например: не шуметь до 10 утра"
-              />
-            </Field>
-          </div>
-        </section>
+              <Field label="Адрес установки" className="sm:col-span-2" error={errors['installAddress']}>
+                <Input
+                  value={installAddress}
+                  onChange={(event) => {
+                    setInstallAddress(event.target.value);
+                  }}
+                  placeholder="г. Ургенч, ул. …"
+                />
+              </Field>
+
+              <Field label="Пожелания клиента" className="sm:col-span-2">
+                <Textarea
+                  rows={2}
+                  value={clientComment}
+                  onChange={(event) => {
+                    setClientComment(event.target.value);
+                  }}
+                  placeholder="Например: не шуметь до 10 утра"
+                />
+              </Field>
+            </div>
+          </section>
+        )}
 
         {/* --- Условия --------------------------------------------------- */}
         <section>
@@ -531,21 +574,26 @@ export function OrderCreateDialog({
               />
             </Field>
 
-            <Field label="Стоимость работ, сум" error={errors['workPrice']}>
-              <MoneyInput
-                value={workPrice}
-                onChange={setWorkPrice}
-                placeholder={'5\u00A0000\u00A0000'}
-              />
-            </Field>
-
-            <Field label="Предоплата, сум" error={errors['deposit']}>
-              <MoneyInput
-                value={deposit}
-                onChange={setDeposit}
-                placeholder={'2\u00A0000\u00A0000'}
-              />
-            </Field>
+            {/* Платить здесь некому — заказ не для клиента. */}
+            {!forStock && (
+                <>
+              <Field label="Стоимость работ, сум" error={errors['workPrice']}>
+                <MoneyInput
+                  value={workPrice}
+                  onChange={setWorkPrice}
+                  placeholder={'5\u00A0000\u00A0000'}
+                />
+              </Field>
+  
+              <Field label="Предоплата, сум" error={errors['deposit']}>
+                <MoneyInput
+                  value={deposit}
+                  onChange={setDeposit}
+                  placeholder={'2\u00A0000\u00A0000'}
+                />
+              </Field>
+            </>
+          )}
           </div>
         </section>
 

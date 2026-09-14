@@ -218,6 +218,13 @@
       "when": 1789044055378,
       "tag": "0030_order_pack_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789399655669,
+      "tag": "0031_order_type_stock",
+      "breakpoints": true
     }
   ]
 }

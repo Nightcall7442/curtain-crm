@@ -13,6 +13,7 @@ import {
   moneyToDecimalString,
   multiplyMoney,
   OrderStatus,
+  OrderType,
   parseMoney,
   PayrollRecordStatus,
   PayrollSchemeType,
@@ -27,7 +28,7 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 
 import {
   calculateWorkedHours,
@@ -373,7 +374,19 @@ export async function calculateCompletedOrders(
   );
 
   const where = hasOrderAttribution(role)
-    ? and(periodFilter, eq(ORDER_ROLE_COLUMN[role], userId))
+    ? and(
+        periodFilter,
+        eq(ORDER_ROLE_COLUMN[role], userId),
+        /*
+          Пошив для склада продавцу не продажа: у него нет клиента и цены,
+          и без исключения продавец с `per_order` получал бы ставку за
+          заказ, который сам поставил в план, — не продав ничего.
+          Швея и контролёр при этом свои сдельные ЗА ЭТОТ заказ получают
+          как обычно: работа настоящая, её оплачивают колонки `*_fee` ниже,
+          а не эта привязка «заказ = продажа».
+        */
+        ...(role === Role.SELLER ? [ne(orders.orderType, OrderType.STOCK)] : []),
+      )
     : periodFilter;
 
   /*
@@ -449,7 +462,12 @@ export async function listCompletedOrdersForPayroll(
   );
 
   const where = hasOrderAttribution(role)
-    ? and(periodFilter, eq(ORDER_ROLE_COLUMN[role], userId))
+    ? and(
+        periodFilter,
+        eq(ORDER_ROLE_COLUMN[role], userId),
+        // См. тот же исключённый случай в `calculateCompletedOrders` выше.
+        ...(role === Role.SELLER ? [ne(orders.orderType, OrderType.STOCK)] : []),
+      )
     : periodFilter;
 
   const stages = stageFeesOfRole(role);

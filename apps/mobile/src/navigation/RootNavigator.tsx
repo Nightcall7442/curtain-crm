@@ -71,7 +71,9 @@ export function RootNavigator(): ReactElement {
       <Stack.Screen
         name="OrderCreate"
         component={OrderCreateScreen}
-        options={{ title: 'Новый заказ' }}
+        options={({ route }) => ({
+          title: route.params?.mode === 'stock' ? 'Пошив для склада' : 'Новый заказ',
+        })}
       />
       {/*
         Склад открывается из шапки самой продажи, а не отдельной кнопкой на
@@ -147,7 +149,23 @@ export function RootNavigator(): ReactElement {
       <Stack.Screen
         name="ReadyMadeStock"
         component={ReadyMadeStockScreen}
-        options={{ title: 'Склад готовых штор' }}
+        options={({ navigation }) => ({
+          title: 'Склад готовых штор',
+          // Продажа с полки — отсюда: тот, кто дошёл до склада, и продаёт.
+          headerRight: () => (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('SellReadyMade');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Продать готовые шторы"
+              hitSlop={10}
+              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+            >
+              <Icon name="payroll" size={22} color={colors.headerText} />
+            </Pressable>
+          ),
+        })}
       />
       <Stack.Screen
         name="TaskDetail"
