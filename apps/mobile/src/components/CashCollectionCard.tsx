@@ -1,7 +1,8 @@
-import { formatMoney, parseMoney, todayIso } from '@curtain-crm/shared';
+import { formatMoney, parseMoney, Role, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -19,12 +20,17 @@ import { Icon } from './Icon';
  * сам — сдаёт то, что в кармане, а не то, что насчитала система. Ниже —
  * сколько уже сдано сегодня, чтобы не сдавать дважды.
  *
- * Карточка рисует себя только когда есть что показывать: на руках ноль и
- * сегодня ничего не сдано — карточки нет, чтобы швея не видела кассу.
+ * Продавцу и установщику карточка показывается всегда — это их раздел,
+ * и «на руках 0» тоже ответ. Остальным — только когда есть что показать:
+ * швее касса ни к чему.
  */
 export function CashCollectionCard(): ReactElement | null {
   const { m } = useLocale();
+  const { user } = useAuth();
   const utils = trpc.useUtils();
+  const handlesCash = (user?.roles ?? []).some(
+    (role) => role === Role.SELLER || role === Role.INSTALLER,
+  );
   const today = todayIso();
   const onHands = trpc.payments.onHands.useQuery();
   const collections = trpc.payments.collections.useQuery({ day: today });
@@ -46,7 +52,7 @@ export function CashCollectionCard(): ReactElement | null {
 
   const onHandsValue = onHands.data === undefined ? 0 : parseMoney(onHands.data.onHands);
   const todayTotal = collections.data === undefined ? 0 : parseMoney(collections.data.total);
-  if (onHandsValue === 0 && todayTotal === 0) return null;
+  if (!handlesCash && onHandsValue === 0 && todayTotal === 0) return null;
 
   return (
     <Card>
