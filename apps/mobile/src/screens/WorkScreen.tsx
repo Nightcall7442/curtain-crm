@@ -13,7 +13,6 @@ import { useState, type ReactElement } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
-import { CashCollectionCard } from '../components/CashCollectionCard';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { OrderCard } from '../components/OrderCard';
@@ -401,13 +400,6 @@ export function WorkScreen(): ReactElement {
         onRefresh={() => {
           void query.refetch();
         }}
-        /*
-          Инкассация переехала в «Кассу». Здесь карточка остаётся только для
-          тех, кому «Касса» недоступна: установщик принял остаток у клиента —
-          ему нужно где-то нажать «сдал», иначе деньги повиснут на нём.
-          Сама карточка при нуле у таких ролей ничего не рисует.
-        */
-        ListHeaderComponent={filter === 'active' && !canCreate ? <CashCollectionCard /> : null}
         ListEmptyComponent={
           query.isLoading ? (
             <Skeleton />
