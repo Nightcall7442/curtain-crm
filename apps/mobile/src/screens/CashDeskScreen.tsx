@@ -22,9 +22,12 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle } from '../components/Card';
+import { CashCollectionCard } from '../components/CashCollectionCard';
+import { CashDayReport } from '../components/CashDayReport';
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -61,6 +64,7 @@ export function CashDeskScreen(): ReactElement {
   const { t, m } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
+  const isManager = useIsManagement();
 
   const [lines, setLines] = useState<readonly CartLine[]>([emptyLine()]);
   const [method, setMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
@@ -96,6 +100,13 @@ export function CashDeskScreen(): ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/*
+          Руководству — сначала касса дня, как в панели: директор открывает
+          «Кассу» посчитать вечер, а не пробить чек. Продавцу отчёт по всем
+          не положен — у него ниже свои чеки и своя инкассация.
+        */}
+        {isManager && <CashDayReport />}
+
         <Card>
           <CardTitle title={m('cash.goods')} icon="orders" />
           <Text style={styles.hint}>{m('cash.codeHint')}</Text>
@@ -153,6 +164,10 @@ export function CashDeskScreen(): ReactElement {
         </Card>
 
         <MySales />
+
+        {/* Наличные на руках и «сдал в кассу» — здесь, у кассы, а не на
+            экране заказов: деньги живут там же, где продажа. */}
+        <CashCollectionCard />
       </ScrollView>
 
       {/*

@@ -1,5 +1,6 @@
 import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState, type ReactElement } from 'react';
 import {
   Alert,
@@ -59,6 +60,7 @@ const emptyForm = (): FormState => ({
 const toNumber = (raw: string): number => Number.parseFloat(raw.replace(',', '.')) || 0;
 
 export function ReadyMadeStockScreen(): ReactElement {
+  const navigation = useNavigation();
   const { m } = useLocale();
   const utils = trpc.useUtils();
 
@@ -194,6 +196,35 @@ export function ReadyMadeStockScreen(): ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/*
+          Склад — единственный вход во всё про готовые шторы. Две кнопки рядом:
+          продать то, что лежит, и заказать цеху ещё. На экране «Работа» они
+          стояли двумя одинаковыми кнопками и читались как одно действие.
+        */}
+        <View style={styles.actions}>
+          <Pressable
+            onPress={() => {
+              navigation.navigate('SellReadyMade');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
+          >
+            <Icon name="paid" size={18} color={colors.accentStrong} />
+            <Text style={styles.actionText}>{m('stock.sell')}</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              navigation.navigate('OrderCreate', { mode: 'stock' });
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
+          >
+            <Icon name="assigned" size={18} color={colors.accentStrong} />
+            <Text style={styles.actionText}>{m('stock.produce')}</Text>
+          </Pressable>
+        </View>
+
         <Pressable
           onPress={() => {
             setAdding((open) => !open);
@@ -448,6 +479,27 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: tabBarSpace,
     gap: spacing.md,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  action: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    borderRadius: radius.md,
+    borderWidth: hairline,
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  actionText: {
+    ...typography.body,
+    color: colors.accentStrong,
+    fontWeight: '600',
   },
   add: {
     flexDirection: 'row',

@@ -319,9 +319,16 @@ export function WorkScreen(): ReactElement {
             <Text style={styles.createText}>{m('work.newOrder')}</Text>
           </Pressable>
 
+          {/*
+            Одна кнопка на всё про готовые шторы. Раньше их было две —
+            «Готовые шторы» (пошив для склада) и «Продать» (с полки), — с
+            одним значком и одной интонацией: владелец увидел в них одно и то
+            же. Теперь кнопка ведёт на склад, а там уже — продать или заказать
+            цеху ещё.
+          */}
           <Pressable
             onPress={() => {
-              navigation.navigate('OrderCreate', { mode: 'stock' });
+              navigation.navigate('ReadyMadeStock');
             }}
             accessibilityRole="button"
             style={({ pressed }) => [
@@ -367,28 +374,6 @@ export function WorkScreen(): ReactElement {
             </Pressable>
           )}
 
-          {/*
-            Продажа с полки — своей кнопкой: «Готовые шторы» выше теперь
-            ставит цеху задачу сшить ещё одну, а продают то, что уже сшито,
-            отдельным действием, как и раньше.
-          */}
-          {canCreate && (
-            <Pressable
-              onPress={() => {
-                navigation.navigate('SellReadyMade');
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.createSecondary,
-                styles.createFlex,
-                pressed ? styles.createPressed : null,
-              ]}
-            >
-              <Icon name="orders" size={18} color={colors.accentStrong} />
-              <Text style={styles.createSecondaryText}>Продать</Text>
-            </Pressable>
-          )}
-
           {isManager && (
             <Pressable
               onPress={() => {
@@ -416,7 +401,13 @@ export function WorkScreen(): ReactElement {
         onRefresh={() => {
           void query.refetch();
         }}
-        ListHeaderComponent={filter === 'active' ? <CashCollectionCard /> : null}
+        /*
+          Инкассация переехала в «Кассу». Здесь карточка остаётся только для
+          тех, кому «Касса» недоступна: установщик принял остаток у клиента —
+          ему нужно где-то нажать «сдал», иначе деньги повиснут на нём.
+          Сама карточка при нуле у таких ролей ничего не рисует.
+        */
+        ListHeaderComponent={filter === 'active' && !canCreate ? <CashCollectionCard /> : null}
         ListEmptyComponent={
           query.isLoading ? (
             <Skeleton />

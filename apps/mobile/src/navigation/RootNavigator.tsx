@@ -157,23 +157,9 @@ export function RootNavigator(): ReactElement {
       <Stack.Screen
         name="ReadyMadeStock"
         component={ReadyMadeStockScreen}
-        options={({ navigation }) => ({
-          title: m('nav.readyMadeStock'),
-          // Продажа с полки — отсюда: тот, кто дошёл до склада, и продаёт.
-          headerRight: () => (
-            <Pressable
-              onPress={() => {
-                navigation.navigate('SellReadyMade');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={m('work.readyMade')}
-              hitSlop={10}
-              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
-            >
-              <Icon name="payroll" size={22} color={colors.headerText} />
-            </Pressable>
-          ),
-        })}
+        // «Продать» и «Пошив для склада» — кнопками на самом экране, а не
+        // значком в шапке: подпись читается, значок — угадывается.
+        options={{ title: m('nav.readyMadeStock') }}
       />
       <Stack.Screen
         name="TaskDetail"
