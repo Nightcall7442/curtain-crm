@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logo.png" alt="Design House" width="360">
+
 # Curtain CRM
 
 **Система учёта для мастерской штор Design House · Parda Bozor**
