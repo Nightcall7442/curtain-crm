@@ -3,6 +3,7 @@ import {
   groupDigits,
   ORDER_STAGE_FEE_LABELS,
   isAssignableRole,
+  isManagement,
   ORDER_STAGE_FEE_ROLE,
   parseMoney,
   ROLE_LABELS,
@@ -12,7 +13,7 @@ import {
   type Role,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
@@ -74,6 +75,8 @@ export function OrderManagement({
 
   /** Роль, которой сейчас выбирают исполнителя. `null` — никакая. */
   const [assigning, setAssigning] = useState<Role | null>(null);
+  /** Показывать и тех, у кого этой роли нет. Сбрасывается вместе с ролью. */
+  const [showOthers, setShowOthers] = useState(false);
 
   const stages = stageFeesOfOrderType(orderType);
 
@@ -192,6 +195,7 @@ export function OrderManagement({
               <Pressable
                 onPress={() => {
                   setAssigning(assigning === role ? null : role);
+                  setShowOthers(false);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('manage.assignRole', { role: t(ROLE_LABELS, role) })}
@@ -208,51 +212,86 @@ export function OrderManagement({
                   {people.isLoading ? (
                     <Skeleton rows={1} />
                   ) : (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.people}
-                    >
-                      {/*
-                        «Снять» отдельной кнопкой: процедура принимает
-                        `assigneeId: null`, и без этой кнопки ошибочное
-                        назначение нельзя было бы отменить с телефона.
-                      */}
-                      <Pressable
-                        onPress={() => {
-                          assign.mutate({ id: orderId, role, assigneeId: null });
-                        }}
-                        accessibilityRole="button"
-                        style={[styles.chip, styles.chipClear]}
-                      >
-                        <Text style={styles.chipClearText}>{m('manage.clear')}</Text>
-                      </Pressable>
+                    (() => {
+                      /*
+                        Как в панели: сначала свои — у кого роль есть, это
+                        обычный короткий список. По «Ещё» — все активные,
+                        кроме директора и админа: швея, которая сегодня едет
+                        на установку, — подработка, а не ошибка, роль ей
+                        выдаст сам API при назначении.
 
-                      {(people.data?.items ?? [])
-                        .filter((person) => person.roles.includes(role))
-                        .map((person) => (
+                        Кнопки переносятся строками, а не едут лентой:
+                        горизонтальная лента внутри экрана-ленты глотала
+                        нажатия и прятала половину имён за краем.
+                      */
+                      const items = people.data?.items ?? [];
+                      const own = items.filter((person) => person.roles.includes(role));
+                      const others = items.filter(
+                        (person) => !person.roles.includes(role) && !isManagement(person.roles),
+                      );
+                      const pool = showOthers ? [...own, ...others] : own;
+                      if (current !== null && !pool.some((person) => person.id === current.id)) {
+                        const kept = items.find((person) => person.id === current.id);
+                        if (kept !== undefined) pool.push(kept);
+                      }
+
+                      return (
+                        <View style={styles.people}>
+                          {/*
+                            «Снять» отдельной кнопкой: процедура принимает
+                            `assigneeId: null`, и без этой кнопки ошибочное
+                            назначение нельзя было бы отменить с телефона.
+                          */}
                           <Pressable
-                            key={person.id}
                             onPress={() => {
-                              assign.mutate({ id: orderId, role, assigneeId: person.id });
+                              assign.mutate({ id: orderId, role, assigneeId: null });
                             }}
                             accessibilityRole="button"
-                            style={[
-                              styles.chip,
-                              person.id === current?.id ? styles.chipActive : null,
-                            ]}
+                            style={[styles.chip, styles.chipClear]}
                           >
-                            <Text
-                              style={[
-                                styles.chipText,
-                                person.id === current?.id ? styles.chipTextActive : null,
-                              ]}
-                            >
-                              {person.fullName}
-                            </Text>
+                            <Text style={styles.chipClearText}>{m('manage.clear')}</Text>
                           </Pressable>
-                        ))}
-                    </ScrollView>
+
+                          {pool.map((person) => {
+                            const active = person.id === current?.id;
+                            const foreign = !person.roles.includes(role);
+                            return (
+                              <Pressable
+                                key={person.id}
+                                onPress={() => {
+                                  assign.mutate({ id: orderId, role, assigneeId: person.id });
+                                }}
+                                accessibilityRole="button"
+                                style={[styles.chip, active ? styles.chipActive : null]}
+                              >
+                                <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
+                                  {person.fullName}
+                                </Text>
+                                {foreign && person.roles[0] !== undefined && (
+                                  <Text style={[styles.chipRole, active ? styles.chipTextActive : null]}>
+                                    {t(ROLE_LABELS, person.roles[0])}
+                                  </Text>
+                                )}
+                              </Pressable>
+                            );
+                          })}
+
+                          {!showOthers && others.length > 0 && (
+                            <Pressable
+                              onPress={() => {
+                                setShowOthers(true);
+                              }}
+                              accessibilityRole="button"
+                              style={[styles.chip, styles.chipMore]}
+                            >
+                              <Text style={styles.chipText}>
+                                {m('manage.more', { n: others.length })}
+                              </Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      );
+                    })()
                   )}
 
                   {assign.isPending && <ActivityIndicator color={colors.accent} size="small" />}
@@ -405,6 +444,7 @@ const styles = StyleSheet.create({
   },
   people: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
@@ -428,9 +468,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.danger,
   },
+  chipMore: {
+    borderStyle: 'dashed',
+  },
   chipText: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  chipRole: {
+    ...typography.footnote,
+    color: colors.textMuted,
   },
   chipTextActive: {
     color: colors.headerText,
