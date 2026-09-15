@@ -4,6 +4,7 @@ import {
   isActiveStatus,
   isOverdueDate,
   ORDER_STATUS_LABELS,
+  parseMoney,
   RatingScope,
   todayIso,
   yesterdayIso,
@@ -181,6 +182,7 @@ export function HomeScreen(): ReactElement {
           <WorkshopSummary />
         </View>
       )}
+      {isManager && <CashTodayCard />}
       {isManager && <MonthCard />}
 
       {/*
@@ -477,10 +479,6 @@ function StatTile({
 function WorkshopSummary(): ReactElement {
   const { m } = useLocale();
   const dashboard = trpc.reports.dashboard.useQuery({});
-  const now = new Date();
-  /* Касса дня: сколько принято сегодня всеми способами и сколько наличных
-     дошло до кассы — сдано инкассацией и принято руководством, минус выдано. */
-  const today = trpc.payments.summary.useQuery({ day: todayIso(now) });
 
   if (dashboard.data === undefined) {
     return (
@@ -500,12 +498,59 @@ function WorkshopSummary(): ReactElement {
       <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
       <Row label={m('home.inProduction')} value={attention.toString()} />
-      {today.data !== undefined && (
-        <Row label={m('home.revenue')} value={formatMoney(today.data.total)} />
-      )}
-      {today.data !== undefined && (
-        <Row label={m('home.cashOnHands')} value={formatMoney(today.data.inKassa)} />
-      )}
+    </Card>
+  );
+}
+
+/**
+ * Деньги за сегодня — своей карточкой, не строками в «Цехе сегодня».
+ *
+ * Заказы, люди и производство — про работу; выручка и касса — про деньги.
+ * В одной карточке они стояли подряд, и владелец попросил развести — и
+ * сделать «как в панели»: там страница «Касса» открывается тремя цифрами
+ * (принято, в кассе, на руках). Здесь те же три, а полный разбор по
+ * источникам и сдачам — за «Подробнее», в кассе дня.
+ */
+function CashTodayCard(): ReactElement | null {
+  const { m } = useLocale();
+  const navigation = useNavigation();
+  const today = trpc.payments.summary.useQuery({ day: todayIso(new Date()) });
+  const onHands = trpc.payments.onHands.useQuery();
+
+  if (today.data === undefined) return null;
+  const byUser = onHands.data?.byUser ?? [];
+  const onHandsTotal = byUser.reduce((sum, row) => sum + parseMoney(row.onHands), 0);
+
+  return (
+    <Card>
+      <CardTitle
+        title={m('home.cashToday')}
+        icon="paid"
+        action={
+          <Pressable
+            onPress={() => {
+              navigation.navigate('CashDesk');
+            }}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            {({ pressed }) => (
+              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>{m('rating.more')}</Text>
+            )}
+          </Pressable>
+        }
+      />
+      <Row label={m('cashDay.received')} value={formatMoney(today.data.total)} />
+      <Row label={m('cashDay.inKassa')} value={formatMoney(today.data.inKassa)} />
+      <Row
+        label={
+          byUser.length === 0
+            ? m('cashDay.onHands')
+            : `${m('cashDay.onHands')} · ${m('cashDay.onHandsWho', { n: byUser.length })}`
+        }
+        value={formatMoney(onHandsTotal)}
+        valueColor={onHandsTotal > 0 ? colors.warning : undefined}
+      />
     </Card>
   );
 }
@@ -564,6 +609,14 @@ function MonthCard(): ReactElement | null {
 }
 
 const styles = StyleSheet.create({
+  link: {
+    ...typography.caption,
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  linkPressed: {
+    opacity: opacity.pressed,
+  },
   content: {
     paddingBottom: tabBarSpace,
     gap: spacing.lg,
