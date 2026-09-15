@@ -4,7 +4,6 @@ import {
   isActiveStatus,
   isOverdueDate,
   ORDER_STATUS_LABELS,
-  parseMoney,
   RatingScope,
   todayIso,
   yesterdayIso,
@@ -182,6 +181,7 @@ export function HomeScreen(): ReactElement {
           <WorkshopSummary />
         </View>
       )}
+      {isManager && <MonthCard />}
 
       {/*
         Карточка смены заезжает на подложку — но только когда она первая.
@@ -477,22 +477,10 @@ function StatTile({
 function WorkshopSummary(): ReactElement {
   const { m } = useLocale();
   const dashboard = trpc.reports.dashboard.useQuery({});
-
-  /*
-    Деньги отдельным запросом: выручку за месяц дашборд знает, а
-    себестоимость и маржу считает только `reports.finance` — по закупкам,
-    списанным на закрытые заказы. Без них «выручка за месяц» на первом
-    экране отвечала бы лишь на половину вопроса.
-  */
   const now = new Date();
-  const finance = trpc.reports.finance.useQuery({
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
-  });
   /* Касса дня: сколько принято сегодня всеми способами и сколько наличных
-     ещё на руках у сотрудников — не сдано инкассацией. */
+     дошло до кассы — сдано инкассацией и принято руководством, минус выдано. */
   const today = trpc.payments.summary.useQuery({ day: todayIso(now) });
-  const onHands = trpc.payments.onHands.useQuery();
 
   if (dashboard.data === undefined) {
     return (
@@ -513,18 +501,44 @@ function WorkshopSummary(): ReactElement {
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
       <Row label={m('home.inProduction')} value={attention.toString()} />
       {today.data !== undefined && (
-        <Row label={m('home.revenueToday')} value={formatMoney(today.data.total)} />
+        <Row label={m('home.revenue')} value={formatMoney(today.data.total)} />
       )}
-      {onHands.data !== undefined && onHands.data.byUser.length > 0 && (
-        <Row
-          label={m('home.cashOnHands')}
-          value={formatMoney(
-            onHands.data.byUser.reduce((sum, row) => sum + parseMoney(row.onHands), 0),
-          )}
-          valueColor={colors.warning}
-        />
+      {today.data !== undefined && (
+        <Row label={m('home.cashOnHands')} value={formatMoney(today.data.inKassa)} />
       )}
-      <Row label={m('home.revenueMonth')} value={data.revenueThisMonthFormatted} />
+    </Card>
+  );
+}
+
+/**
+ * Месяц — отдельной карточкой, не хвостом «Цеха сегодня».
+
+ * В одной карточке «выручка сегодня» и «выручка за месяц» стояли через
+ * строку и читались как одно число дважды; владелец попросил развести.
+ * Здесь месяц — то, что копится: выручка и маржа.
+ */
+function MonthCard(): ReactElement | null {
+  const { m } = useLocale();
+  const dashboard = trpc.reports.dashboard.useQuery({});
+  /*
+    Деньги отдельным запросом: выручку за месяц дашборд знает, а
+    себестоимость и маржу считает только `reports.finance` — по закупкам,
+    списанным на закрытые заказы. Без них выручка отвечала бы лишь на
+    половину вопроса.
+  */
+  const now = new Date();
+  const finance = trpc.reports.finance.useQuery({
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+  });
+
+  if (dashboard.data === undefined) return null;
+  const { data } = dashboard;
+
+  return (
+    <Card>
+      <CardTitle title={m('home.month')} icon="calendar" />
+      <Row label={m('home.revenue')} value={data.revenueThisMonthFormatted} />
 
       {/*
         Маржа рядом с выручкой, а не вместо неё: выручка говорит, сколько
@@ -536,7 +550,7 @@ function WorkshopSummary(): ReactElement {
       */}
       {finance.data !== undefined && (
         <Row
-          label={m('home.marginMonth')}
+          label={m('home.margin')}
           value={
             finance.data.marginPercent === null
               ? finance.data.marginFormatted

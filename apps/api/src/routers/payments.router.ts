@@ -134,10 +134,22 @@ export const paymentsRouter = router({
    * у кого что-то есть, чтобы знать, с кого спросить.
    */
   onHands: protectedProcedure.query(async ({ ctx }) => {
-    const mine = await cashOnHands(ctx.db, ctx.user.id);
-    const byUser = isManagement(ctx.user.roles) ? await cashOnHandsByUser(ctx.db) : [];
+    /*
+      У руководства «на руках» нет: принятые им наличные — это касса, а не
+      долг перед ней (так же считает `cashSummary`). Поэтому директору свой
+      остаток — ноль, а в списке «у кого что» руководства нет.
+    */
+    if (!isManagement(ctx.user.roles)) {
+      const mine = await cashOnHands(ctx.db, ctx.user.id);
+      return { onHands: moneyToDecimalString(mine.onHands), byUser: [] };
+    }
+    const management = await ctx.db
+      .select({ userId: userRoles.userId })
+      .from(userRoles)
+      .where(inArray(userRoles.role, [...MANAGEMENT_ROLES]));
+    const byUser = await cashOnHandsByUser(ctx.db, [...new Set(management.map((row) => row.userId))]);
     return {
-      onHands: moneyToDecimalString(mine.onHands),
+      onHands: moneyToDecimalString(0),
       byUser: byUser.map((row) => ({ ...row, onHands: moneyToDecimalString(row.onHands) })),
     };
   }),

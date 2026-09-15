@@ -80,10 +80,22 @@ export async function cashOnHands(
   };
 }
 
-/** У кого сколько на руках — по всем, у кого есть остаток. */
+/**
+ * У кого сколько на руках — по всем, у кого есть остаток.
+ *
+ * Руководство сюда не попадает: наличные, которые принял директор или
+ * админ, — это и есть касса (см. `cashByManagement` в `cashSummary`), им
+ * некому и незачем «сдавать». Показывать директора в списке «у кого на
+ * руках» значило бы спрашивать с него его же кассу.
+ */
 export async function cashOnHandsByUser(
   executor: DbExecutor,
+  excludeUserIds: readonly number[] = [],
 ): Promise<readonly { userId: number; fullName: string; onHands: MoneyMinor }[]> {
+  const exclude =
+    excludeUserIds.length === 0
+      ? sql``
+      : sql`and u.id not in (${sql.join(excludeUserIds.map((id) => sql`${id}`), sql`, `)})`;
   const rows = await executor.execute(sql`
     select u.id as user_id, u.full_name,
       coalesce((select sum(p.amount) from ${payments} p
@@ -91,7 +103,7 @@ export async function cashOnHandsByUser(
       - coalesce((select sum(c.amount) from ${cashCollections} c where c.user_id = u.id), 0)
       as on_hands
     from ${users} u
-    where u.is_active = true
+    where u.is_active = true ${exclude}
     order by on_hands desc`);
 
   return [...(rows as Iterable<Record<string, unknown>>)]

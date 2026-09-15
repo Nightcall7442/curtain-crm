@@ -1,4 +1,4 @@
-import { formatMoney, isManagement, parseMoney, Role, todayIso } from '@curtain-crm/shared';
+import { formatMoney, parseMoney, Role, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -20,18 +20,19 @@ import { Icon } from './Icon';
  * сам — сдаёт то, что в кармане, а не то, что насчитала система. Ниже —
  * сколько уже сдано сегодня, чтобы не сдавать дважды.
  *
- * Инкассация — дело продавца и руководства: так решил владелец. Им карточка
- * показывается всегда (и живёт она в «Кассе», рядом с продажей), «на руках 0»
- * тоже ответ. Остальным — только если у них что-то на руках: установщик
- * принимает остаток у клиента по своему заказу, и эти деньги должны быть
- * сданы, а не повиснуть на нём навсегда без кнопки «сдал».
+ * Сдаёт продавец: ему карточка показывается всегда (живёт в «Кассе», рядом с
+ * продажей), «на руках 0» тоже ответ. Руководству сдавать некому — принятые
+ * директором наличные и есть касса, сервер отдаёт ему «на руках 0», и
+ * карточка не рисуется; свой контроль у него в кассе дня. Остальным — только
+ * если у них что-то на руках: установщик принимает остаток у клиента по
+ * своему заказу, и эти деньги должны быть сданы, а не повиснуть на нём без
+ * кнопки «сдал».
  */
 export function CashCollectionCard(): ReactElement | null {
   const { m } = useLocale();
   const { user } = useAuth();
   const utils = trpc.useUtils();
-  const roles = user?.roles ?? [];
-  const handlesCash = roles.includes(Role.SELLER) || isManagement(roles);
+  const handlesCash = (user?.roles ?? []).includes(Role.SELLER);
   const today = todayIso();
   const onHands = trpc.payments.onHands.useQuery();
   const collections = trpc.payments.collections.useQuery({ day: today });
