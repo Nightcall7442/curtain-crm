@@ -1,0 +1,1 @@
+ALTER TABLE "cash_collections" ADD COLUMN "receipt_key" text;

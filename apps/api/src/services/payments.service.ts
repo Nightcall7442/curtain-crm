@@ -127,6 +127,7 @@ export async function collectionsInRange(
     fullName: string;
     amount: string;
     comment: string | null;
+    receiptKey: string | null;
     createdAt: Date;
   }[];
   total: MoneyMinor;
@@ -138,6 +139,7 @@ export async function collectionsInRange(
       fullName: users.fullName,
       amount: cashCollections.amount,
       comment: cashCollections.comment,
+      receiptKey: cashCollections.receiptKey,
       createdAt: cashCollections.createdAt,
     })
     .from(cashCollections)

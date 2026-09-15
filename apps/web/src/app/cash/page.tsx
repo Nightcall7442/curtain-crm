@@ -148,6 +148,25 @@ export default function CashPage(): ReactElement {
                 align: 'right',
                 render: (row) => <Money value={parseMoney(row.amount)} strong />,
               },
+              {
+                key: 'receipt',
+                header: 'Чек',
+                // Снимок чека онлайн-кассы — для налоговой. У сдач до этого
+                // правила чека нет, и прочерк честнее пустой ячейки.
+                render: (row) =>
+                  row.receiptUrl === null ? (
+                    <span className="text-muted">—</span>
+                  ) : (
+                    <a
+                      href={row.receiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-accent underline-offset-2 hover:underline"
+                    >
+                      Открыть
+                    </a>
+                  ),
+              },
             ]}
           />
           {collections.data !== undefined && (

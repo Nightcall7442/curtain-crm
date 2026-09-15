@@ -86,6 +86,14 @@ export const cashCollections = pgTable(
 
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
     comment: text('comment'),
+    /**
+     * Снимок фискального чека, пробитого на онлайн-кассе при сдаче.
+     *
+     * Инкассация без чека для налоговой — просто перекладывание денег; так
+     * решил владелец, и API без снимка сдачу не принимает. Колонка nullable
+     * ради записей, сделанных до этого правила, — переписывать их нечем.
+     */
+    receiptKey: text('receipt_key'),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
