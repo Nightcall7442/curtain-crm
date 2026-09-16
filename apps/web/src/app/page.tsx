@@ -7,6 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, type ReactElement, type RefObject } from 'react';
 
+import { ProcessFilm } from '@/components/landing/ProcessFilm';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { Skeleton } from '@/components/ui/Card';
 import { trpc } from '@/lib/trpc';
@@ -832,14 +833,15 @@ function Process({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const ref = useScrollReveal({ stagger: 100 });
 
   return (
-    <section id="process" ref={ref} className="px-6 py-24" style={{ backgroundColor: GREEN }}>
-      <div className="mx-auto max-w-6xl">
-        <div className="reveal-item mb-16 flex flex-col gap-4">
-          <Eyebrow tone="onGreen">{copy.processEyebrow}</Eyebrow>
-          <h2 className="font-hero text-[clamp(28px,3.4vw,40px)] font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white">
-            {copy.processTitle}
-          </h2>
-        </div>
+    <section id="process" ref={ref} style={{ backgroundColor: GREEN }}>
+      {/*
+        Путь заказа — ролик, который листает прокрутка (см. `ProcessFilm`).
+        Пять шагов ниже остались: это тот же путь словами, для тех, кто
+        читает быстрее, чем крутит, и для поисковика.
+      */}
+      <ProcessFilm steps={copy.processSteps} eyebrow={copy.processEyebrow} title={copy.processTitle} />
+
+      <div className="mx-auto max-w-6xl px-6 py-20">
 
         <ol className="relative grid gap-12 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
           {/* Линия пути — за засечками, во всю ширину ряда. Только на широком
