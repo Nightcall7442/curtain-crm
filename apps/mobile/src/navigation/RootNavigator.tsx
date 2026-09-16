@@ -23,6 +23,7 @@ import { SaleDetailScreen } from '../screens/SaleDetailScreen';
 import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
+import { TerminalChecksScreen } from '../screens/TerminalChecksScreen';
 import { colors, opacity } from '../theme';
 import type { RootStackParamList } from '../types';
 
@@ -175,6 +176,11 @@ export function RootNavigator(): ReactElement {
         name="Employees"
         component={EmployeesScreen}
         options={{ title: m('nav.employees') }}
+      />
+      <Stack.Screen
+        name="TerminalChecks"
+        component={TerminalChecksScreen}
+        options={{ title: m('nav.terminalChecks') }}
       />
     </Stack.Navigator>
   );

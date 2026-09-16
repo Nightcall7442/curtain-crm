@@ -1,3 +1,4 @@
+import { formatMoney, parseMoney } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +9,7 @@ import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
 import { Card, CardTitle } from './Card';
-import { Field, Input } from './Field';
+import { Field, Input, MoneyInput } from './Field';
 import { Icon } from './Icon';
 
 /**
@@ -27,6 +28,7 @@ export function TerminalCheckCard(): ReactElement {
   const today = trpc.terminalChecks.today.useQuery();
 
   const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
   const [photo, setPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
 
@@ -61,6 +63,7 @@ export function TerminalCheckCard(): ReactElement {
       notifySuccess();
       setOpen(false);
       setPhoto(null);
+      setAmount('');
       setComment('');
       await utils.terminalChecks.today.invalidate();
     },
@@ -95,7 +98,10 @@ export function TerminalCheckCard(): ReactElement {
 
           {data.rows.map((row) => (
             <View key={row.id} style={styles.row}>
-              <Text style={styles.rowName}>{row.fullName}</Text>
+              <Text style={styles.rowName} numberOfLines={1}>
+                {row.fullName}
+              </Text>
+              <Text style={styles.rowAmount}>{formatMoney(parseMoney(row.amount))}</Text>
               <Text style={styles.rowTime}>
                 {new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
               </Text>
@@ -151,6 +157,9 @@ export function TerminalCheckCard(): ReactElement {
             </Pressable>
           </View>
         </Field>
+        <Field label={m('terminal.amount')} required>
+          <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
+        </Field>
         <Field label={m('terminal.comment')}>
           <Input value={comment} onChangeText={setComment} placeholder={m('terminal.commentPlaceholder')} />
         </Field>
@@ -159,15 +168,16 @@ export function TerminalCheckCard(): ReactElement {
             if (photo === null) return;
             create.mutate({
               photo: { mimeType: photo.mimeType, content: photo.base64 },
+              amount: toMajor(amount),
               comment: comment.trim() === '' ? null : comment.trim(),
             });
           }}
-          disabled={create.isPending || photo === null}
+          disabled={create.isPending || photo === null || toMajor(amount) <= 0}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.submit,
             pressed ? styles.pressed : null,
-            photo === null ? styles.submitDisabled : null,
+            photo === null || toMajor(amount) <= 0 ? styles.submitDisabled : null,
           ]}
         >
           {create.isPending ? (
@@ -179,6 +189,11 @@ export function TerminalCheckCard(): ReactElement {
       </BottomSheet>
     </Card>
   );
+}
+
+function toMajor(value: string): number {
+  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 const styles = StyleSheet.create({
@@ -226,6 +241,12 @@ const styles = StyleSheet.create({
   rowName: {
     ...typography.body,
     color: colors.textSecondary,
+    flex: 1,
+  },
+  rowAmount: {
+    ...typography.value,
+    color: colors.textPrimary,
+    marginHorizontal: spacing.sm,
   },
   rowTime: {
     ...typography.body,

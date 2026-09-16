@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactElement, type ReactNode } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing, typography } from '../theme';
@@ -14,6 +14,10 @@ import { useLocale } from '../hooks/useLocale';
  * Реализована на системном `Modal` + `Animated`, без нативных зависимостей:
  * работает в Expo Go и в веб-превью. Высота — по содержимому; для длинных
  * списков внутрь кладётся свой `ScrollView`.
+ *
+ * Клавиатура поднимает шторку целиком: поле суммы стояло у нижнего края и
+ * уезжало под клавиатуру — владелец показал скриншотом. `Modal` живёт вне
+ * дерева экрана, поэтому `KeyboardAvoidingView` нужен внутри него, свой.
  */
 export function BottomSheet({
   visible,
@@ -41,7 +45,7 @@ export function BottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.host}>
+      <KeyboardAvoidingView style={styles.host} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable
           style={styles.backdrop}
           onPress={onClose}
@@ -58,7 +62,7 @@ export function BottomSheet({
           <Text style={styles.title}>{title}</Text>
           {children}
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

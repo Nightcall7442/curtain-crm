@@ -48,6 +48,9 @@ export const orders = pgTable(
 
     /**
      * Человекочитаемый номер заказа: `DH-000123`, у готовых штор — `TDH-000123`.
+     * Готовые — это и продажа с витрины (`ready_made`), и пошив на склад
+     * (`stock`): владелец различает обычный заказ и готовые шторы, а не
+     * продажу и пошив.
      *
      * Вычисляемая колонка, а не поле, которое заполняет сервис: так номер
      * физически не может разъехаться с `id` и не требует отдельного счётчика
@@ -55,7 +58,7 @@ export const orders = pgTable(
      * пошив и продажу с витрины не перепутать на слух и в переписке.
      */
     orderNumber: text('order_number').generatedAlwaysAs(
-      sql`(case when order_type = 'ready_made' then 'TDH-' else 'DH-' end) || lpad(id::text, 6, '0')`,
+      sql`(case when order_type in ('ready_made', 'stock') then 'TDH-' else 'DH-' end) || lpad(id::text, 6, '0')`,
     ),
 
     branchId: integer('branch_id')

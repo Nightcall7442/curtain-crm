@@ -24,7 +24,7 @@ import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
+import { colors, hairline, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
 
 /**
  * Главный экран: что нужно сотруднику в первые пять секунд после запуска.
@@ -183,6 +183,7 @@ export function HomeScreen(): ReactElement {
         </View>
       )}
       {isManager && <CashTodayCard />}
+      {isManager && <TerminalTodayCard />}
       {isManager && <MonthCard />}
 
       {/*
@@ -556,6 +557,64 @@ function CashTodayCard(): ReactElement | null {
 }
 
 /**
+ * Терминал — чеки, пробитые сегодня: сотрудник, сумма, время.
+ *
+ * Владелец хочет видеть их с главной, не заходя в кассу: это задание
+ * продавцов на день, и вечером вопрос «пробили ли три» — такой же, как
+ * «сколько в кассе». За «Подробнее» — те же чеки с фото.
+ */
+function TerminalTodayCard(): ReactElement | null {
+  const { m } = useLocale();
+  const navigation = useNavigation();
+  const today = trpc.terminalChecks.today.useQuery();
+
+  if (today.data === undefined) return null;
+  const { count, target, rows } = today.data;
+
+  return (
+    <Card>
+      <CardTitle
+        title={m('terminal.home')}
+        icon="paid"
+        action={
+          <Pressable
+            onPress={() => {
+              navigation.navigate('TerminalChecks');
+            }}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            {({ pressed }) => (
+              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>{m('rating.more')}</Text>
+            )}
+          </Pressable>
+        }
+      />
+      <Row
+        label={m('terminal.progress', { n: count, target })}
+        value={count >= target ? m('terminal.done') : m('terminal.remaining', { n: target - count })}
+        valueColor={count >= target ? colors.positive : colors.warning}
+      />
+      {rows.length === 0 ? (
+        <Empty message={m('terminal.homeEmpty')} />
+      ) : (
+        rows.map((row) => (
+          <View key={row.id} style={styles.terminalRow}>
+            <Text style={styles.terminalName} numberOfLines={1}>
+              {row.fullName}
+            </Text>
+            <Text style={styles.terminalAmount}>{formatMoney(parseMoney(row.amount))}</Text>
+            <Text style={styles.terminalTime}>
+              {new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+        ))
+      )}
+    </Card>
+  );
+}
+
+/**
  * Месяц — отдельной карточкой, не хвостом «Цеха сегодня».
 
  * В одной карточке «выручка сегодня» и «выручка за месяц» стояли через
@@ -609,6 +668,29 @@ function MonthCard(): ReactElement | null {
 }
 
 const styles = StyleSheet.create({
+  terminalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
+  },
+  terminalName: {
+    ...typography.body,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  terminalAmount: {
+    ...typography.value,
+    color: colors.textPrimary,
+  },
+  terminalTime: {
+    ...typography.footnote,
+    color: colors.textMuted,
+    minWidth: 40,
+    textAlign: 'right',
+  },
   link: {
     ...typography.caption,
     color: colors.accent,

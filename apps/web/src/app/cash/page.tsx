@@ -8,6 +8,7 @@ import {
   PAYMENT_METHODS,
   todayIso,
 } from '@curtain-crm/shared';
+import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
 
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
@@ -190,17 +191,22 @@ export default function CashPage(): ReactElement {
         <CardHeader
           title="Терминальные чеки"
           action={
-            checks.data === undefined ? undefined : (
-              <span
-                className={
-                  checks.data.count >= checks.data.target
-                    ? 'text-caption font-semibold text-positive'
-                    : 'text-caption font-semibold text-warning'
-                }
-              >
-                {`${checks.data.count.toString()} из ${checks.data.target.toString()}`}
-              </span>
-            )
+            <span className="flex items-center gap-3">
+              {checks.data !== undefined && (
+                <span
+                  className={
+                    checks.data.count >= checks.data.target
+                      ? 'text-caption font-semibold text-positive'
+                      : 'text-caption font-semibold text-warning'
+                  }
+                >
+                  {`${checks.data.count.toString()} из ${checks.data.target.toString()}`}
+                </span>
+              )}
+              <Link href="/cash/terminal" className="text-caption text-accent hover:underline">
+                Архив
+              </Link>
+            </span>
           }
         />
         <DataTable
@@ -215,6 +221,12 @@ export default function CashPage(): ReactElement {
               header: 'Когда',
               render: (row) =>
                 new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            },
+            {
+              key: 'amount',
+              header: 'Сумма',
+              align: 'right',
+              render: (row) => <Money value={parseMoney(row.amount)} strong />,
             },
             {
               key: 'comment',

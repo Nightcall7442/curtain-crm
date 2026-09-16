@@ -1,10 +1,16 @@
-import { ORDER_INTAKE_ROLES, Role, TERMINAL_CHECKS_DAILY_TARGET } from '@curtain-crm/shared';
+import {
+  moneyToDecimalString,
+  ORDER_INTAKE_ROLES,
+  parseMoney,
+  Role,
+  TERMINAL_CHECKS_DAILY_TARGET,
+} from '@curtain-crm/shared';
 import { terminalChecks, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
-import { base64FileSchema, optionalText } from '../lib/schemas';
+import { base64FileSchema, moneySchema, optionalText } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure, roleProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
@@ -36,37 +42,39 @@ async function countForDay(executor: DbExecutor, day: string | null): Promise<nu
   const [row] = await executor
     .select({ count: sql<number>`count(*)`.mapWith(Number) })
     .from(terminalChecks)
-    .where(
-      day === null
-        ? sql`${localDay(terminalChecks.createdAt)} = (now() at time zone 'Asia/Tashkent')::date`
-        : sql`${localDay(terminalChecks.createdAt)} = ${day}::date`,
-    );
+    .where(dayFilter(day));
   return row?.count ?? 0;
 }
 
-async function listForDay(executor: DbExecutor, day: string | null) {
+/** Условие «чек за этот день» / «за период»; `null` — сегодня по Ташкенту. */
+function dayFilter(day: string | null) {
+  return day === null
+    ? sql`${localDay(terminalChecks.createdAt)} = (now() at time zone 'Asia/Tashkent')::date`
+    : sql`${localDay(terminalChecks.createdAt)} = ${day}::date`;
+}
+
+async function listChecks(executor: DbExecutor, where: ReturnType<typeof sql>) {
   const storage = getStorage();
   const rows = await executor
     .select({
       id: terminalChecks.id,
       userId: terminalChecks.userId,
       fullName: users.fullName,
+      amount: terminalChecks.amount,
       comment: terminalChecks.comment,
       photoKey: terminalChecks.photoKey,
       createdAt: terminalChecks.createdAt,
     })
     .from(terminalChecks)
     .innerJoin(users, eq(users.id, terminalChecks.userId))
-    .where(
-      day === null
-        ? sql`${localDay(terminalChecks.createdAt)} = (now() at time zone 'Asia/Tashkent')::date`
-        : sql`${localDay(terminalChecks.createdAt)} = ${day}::date`,
-    )
+    .where(where)
     .orderBy(desc(terminalChecks.createdAt));
   return Promise.all(
     rows.map(async ({ photoKey, ...row }) => ({ ...row, photoUrl: await storage.getUrl(photoKey) })),
   );
 }
+
+const listForDay = (executor: DbExecutor, day: string | null) => listChecks(executor, dayFilter(day));
 
 /** Активные продавцы — адресаты «чек пробит» и напоминаний. */
 export async function sellerUserIds(executor: DbExecutor): Promise<number[]> {
@@ -81,9 +89,15 @@ export async function sellerUserIds(executor: DbExecutor): Promise<number[]> {
 export { countForDay as terminalChecksToday };
 
 export const terminalChecksRouter = router({
-  /** Пробить чек: фото обязательно, комментарий — по желанию. */
+  /** Пробить чек: фото и сумма обязательны, комментарий — по желанию. */
   create: roleProcedure(...ORDER_INTAKE_ROLES)
-    .input(z.object({ photo: base64FileSchema, comment: optionalText(200) }))
+    .input(
+      z.object({
+        photo: base64FileSchema,
+        amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
+        comment: optionalText(200),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const stored = await getStorage().upload({
         key: buildStorageKey(['terminal-checks', ctx.user.id.toString()], input.photo.mimeType),
@@ -101,6 +115,7 @@ export const terminalChecksRouter = router({
             userId: ctx.user.id,
             branchId: ctx.user.primaryBranchId ?? null,
             photoKey: stored.key,
+            amount: moneyToDecimalString(parseMoney(input.amount)),
             comment: input.comment ?? null,
           })
           .returning({ id: terminalChecks.id });
@@ -135,6 +150,20 @@ export const terminalChecksRouter = router({
       rows,
     };
   }),
+
+  /** Архив за период — руководству: таблица и выгрузка в Excel. */
+  list: managementProcedure
+    .input(
+      z
+        .object({ from: z.string().date(), to: z.string().date() })
+        .refine((value) => value.to >= value.from, { message: 'Конец периода раньше начала', path: ['to'] }),
+    )
+    .query(({ ctx, input }) =>
+      listChecks(
+        ctx.db,
+        sql`${localDay(terminalChecks.createdAt)} between ${input.from}::date and ${input.to}::date`,
+      ),
+    ),
 
   /** Чеки за день — руководству. */
   byDay: managementProcedure.input(z.object({ day: z.string().date() })).query(async ({ ctx, input }) => {

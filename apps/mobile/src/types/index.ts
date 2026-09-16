@@ -39,6 +39,7 @@ export type RootStackParamList = {
   PayrollApprovals: undefined;
   TaskAssign: undefined;
   ReadyMadeStock: undefined;
+  TerminalChecks: undefined;
 };
 
 export type RootStackScreenProps<TRoute extends keyof RootStackParamList> =

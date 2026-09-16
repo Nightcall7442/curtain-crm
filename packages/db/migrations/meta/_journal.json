@@ -295,6 +295,20 @@
       "when": 1789574407738,
       "tag": "0041_terminal_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789584945737,
+      "tag": "0042_order_number_stock_prefix",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789584996294,
+      "tag": "0043_terminal_check_amount",
+      "breakpoints": true
     }
   ]
 }
