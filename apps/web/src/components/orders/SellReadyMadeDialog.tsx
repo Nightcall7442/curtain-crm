@@ -3,6 +3,7 @@
 import {
   CatalogKind,
   formatMoney,
+  ORDER_ITEM_KIND_LABELS_RU,
   parseMoney,
   PAYMENT_METHOD_LABELS_RU,
   PAYMENT_METHODS,
@@ -57,6 +58,12 @@ export function SellReadyMadeDialog({
    * чего на полке не оказалось, и так продавали до появления остатков.
    */
   const [stockItemId, setStockItemId] = useState<number | null>(null);
+  /**
+   * Остальные шторы того же комплекта (дверь к окну), которые идут в продажу
+   * вместе с выбранной. Комплект продаётся целиком по умолчанию; снятая
+   * галочка расторгает его — штора остаётся на полке.
+   */
+  const [setMates, setSetMates] = useState<readonly number[]>([]);
 
   const utils = trpc.useUtils();
 
@@ -113,6 +120,10 @@ export function SellReadyMadeDialog({
       /* Одна позиция: несколько строк в продаже набирают в мобильном
          приложении, за кассой. Здесь форма осталась прежней. */
       items: [
+        ...setMates.map((mateId) => {
+          const mate = (stock.data ?? []).find((row) => row.id === mateId);
+          return { quantity: 1, readyMadeItemId: mateId, ...(mate === undefined ? {} : { model: mate.model }) };
+        }),
         {
           quantity: Math.max(1, Number.parseInt(quantity, 10) || 1),
           ...(stockItemId === null ? {} : { readyMadeItemId: stockItemId }),
@@ -298,13 +309,19 @@ export function SellReadyMadeDialog({
                           type="button"
                           onClick={() => {
                             setStockItemId(chosen ? null : row.id);
+                            const mates =
+                              chosen || row.setId === null
+                                ? []
+                                : (stock.data ?? []).filter((other) => other.setId === row.setId && other.id !== row.id);
+                            setSetMates(mates.map((mate) => mate.id));
                             if (!chosen) {
                               setModel(row.model);
                               if (workPrice.trim().length === 0) {
                                 setWorkPrice(
                                   (
                                     Number.parseFloat(row.price) *
-                                    Math.max(1, Number.parseInt(quantity, 10) || 1)
+                                      Math.max(1, Number.parseInt(quantity, 10) || 1) +
+                                    mates.reduce((sum, mate) => sum + Number.parseFloat(mate.price), 0)
                                   ).toString(),
                                 );
                               }
@@ -318,12 +335,12 @@ export function SellReadyMadeDialog({
                         >
                           <span className="block flex-1">
                             <span className="block text-footnote text-primary">
-                              {`${row.model} · ${Number.parseFloat(row.widthCm).toString()}×${Number.parseFloat(
+                              {`${row.model} · ${ORDER_ITEM_KIND_LABELS_RU[row.kind]} · ${Number.parseFloat(row.widthCm).toString()}×${Number.parseFloat(
                                 row.heightCm,
                               ).toString()} см`}
                             </span>
                             <span className="block text-overline text-muted">
-                              {row.branchName}
+                              {row.setLabel === null ? row.branchName : `${row.branchName} · комплект ${row.setLabel}`}
                             </span>
                           </span>
                           <span className="shrink-0 text-right">
@@ -341,6 +358,39 @@ export function SellReadyMadeDialog({
                 );
               })()}
             </div>
+
+            {stockItemId !== null &&
+              (() => {
+                const chosenRow = (stock.data ?? []).find((row) => row.id === stockItemId);
+                const mates =
+                  chosenRow === undefined || chosenRow.setId === null
+                    ? []
+                    : (stock.data ?? []).filter((row) => row.setId === chosenRow.setId && row.id !== chosenRow.id);
+                if (mates.length === 0) return null;
+                return (
+                  <Field
+                    label={`Комплект ${chosenRow?.setLabel ?? ''}`}
+                    hint="Продаётся вместе. Снимите галочку — штора останется на полке"
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      {mates.map((mate) => (
+                        <label key={mate.id} className="flex items-center gap-2 text-caption text-primary">
+                          <input
+                            type="checkbox"
+                            checked={setMates.includes(mate.id)}
+                            onChange={(event) => {
+                              setSetMates((current) =>
+                                event.target.checked ? [...current, mate.id] : current.filter((id) => id !== mate.id),
+                              );
+                            }}
+                          />
+                          {`${ORDER_ITEM_KIND_LABELS_RU[mate.kind]} · ${mate.model} · ${Number.parseFloat(mate.widthCm).toString()}×${Number.parseFloat(mate.heightCm).toString()} см · ${formatMoney(parseMoney(mate.price))}`}
+                        </label>
+                      ))}
+                    </div>
+                  </Field>
+                );
+              })()}
 
             <Field label="Цена, сум" error={errors['workPrice']}>
               <MoneyInput

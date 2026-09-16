@@ -431,8 +431,33 @@ export function ReadyMadeStockScreen(): ReactElement {
               hint={m('stock.noneHint')}
             />
           ) : (
-            items.data.map((item) => (
+            items.data.map((item, index) => (
               <View key={item.id} style={styles.item}>
+                {/*
+                  Комплект: шторы из одного пошива (окно + дверь) лежат и
+                  продаются вместе. Заголовок — над первой позицией комплекта,
+                  с суммой по всем; сами позиции — как обычно, каждая со своим
+                  остатком: продали одну — вторая остаётся на полке.
+                */}
+                {item.setId !== null && items.data[index - 1]?.setId !== item.setId && (
+                  <View style={styles.setHead}>
+                    <Text style={styles.setTitle}>
+                      {m('stock.set', { n: item.setLabel ?? '' })}
+                      {' · '}
+                      {items.data
+                        .filter((entry) => entry.setId === item.setId)
+                        .map((entry) => t(ORDER_ITEM_KIND_LABELS, entry.kind).toLowerCase())
+                        .join(' + ')}
+                    </Text>
+                    <Text style={styles.setTotal}>
+                      {formatMoney(
+                        items.data
+                          .filter((entry) => entry.setId === item.setId)
+                          .reduce((sum, entry) => sum + parseMoney(entry.price), 0),
+                      )}
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.itemHead}>
                   {item.photoUrl === null ? (
                     <View style={[styles.thumb, styles.thumbEmpty]}>
@@ -554,6 +579,27 @@ function toMoney(value: string): number {
 }
 
 const styles = StyleSheet.create({
+  setHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+  },
+  setTitle: {
+    ...typography.footnote,
+    fontWeight: '600',
+    color: colors.accent,
+    flex: 1,
+  },
+  setTotal: {
+    ...typography.footnote,
+    fontWeight: '700',
+    color: colors.accent,
+  },
   actionsRow: { flexDirection: 'row', gap: spacing.lg },
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },

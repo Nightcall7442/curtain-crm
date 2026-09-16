@@ -305,7 +305,12 @@ export default function ReadyMadePage(): ReactElement {
                     <span className={row.isActive ? 'text-primary' : 'text-muted line-through'}>
                       {row.code === null ? row.model : `${row.model} · ${row.code}`}
                     </span>
-                    <span className="block text-footnote text-secondary">{ORDER_ITEM_KIND_LABELS_RU[row.kind]}</span>
+                    <span className="block text-footnote text-secondary">
+                      {ORDER_ITEM_KIND_LABELS_RU[row.kind]}
+                      {row.setLabel !== null && (
+                        <span className="ml-2 text-accent">{`комплект ${row.setLabel}`}</span>
+                      )}
+                    </span>
                     {row.comment !== null && (
                       <span className="block text-footnote text-muted">{row.comment}</span>
                     )}

@@ -394,6 +394,31 @@ export function SellReadyMadeScreen(): ReactElement {
                               readyMadeItemId: chosen ? null : entry.id,
                               model: entry.model,
                             });
+                            /*
+                              Комплект: остальные шторы того же пошива (дверь к
+                              окну) добавляются позициями сами — продаются они
+                              вместе. Лишнюю позицию продавец убирает крестиком,
+                              и комплект расторгается: неснятое остаётся на полке.
+                            */
+                            const mates = chosen || entry.setId === null
+                              ? []
+                              : (stock.data ?? []).filter(
+                                  (other) =>
+                                    other.setId === entry.setId &&
+                                    other.id !== entry.id &&
+                                    !items.some((draft) => draft.readyMadeItemId === other.id),
+                                );
+                            if (mates.length > 0) {
+                              setItems((current) => [
+                                ...current,
+                                ...mates.map((mate, offset) => ({
+                                  ...emptyItem(Math.max(0, ...current.map((draft) => draft.id)) + offset + 1),
+                                  model: mate.model,
+                                  readyMadeItemId: mate.id,
+                                })),
+                              ]);
+                              Alert.alert(m('stock.set', { n: entry.setLabel ?? '' }), m('sell.setAdded', { n: entry.setLabel ?? '' }));
+                            }
                             // Цену подставляем, пока продавец её не трогал:
                             // переписать её он всегда успеет, а вот забыть
                             // ценник со склада — обычное дело.
@@ -401,7 +426,8 @@ export function SellReadyMadeScreen(): ReactElement {
                               setWorkPrice(
                                 (
                                   Number.parseFloat(entry.price) *
-                                  Math.max(1, Number.parseInt(item.quantity, 10) || 1)
+                                    Math.max(1, Number.parseInt(item.quantity, 10) || 1) +
+                                  mates.reduce((sum, mate) => sum + Number.parseFloat(mate.price), 0)
                                 ).toString(),
                               );
                             }
