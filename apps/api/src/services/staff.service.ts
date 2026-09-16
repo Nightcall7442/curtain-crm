@@ -14,7 +14,7 @@ import {
   type PresenceStatus as PresenceStatusName,
   type TenureBucketKey,
 } from '@curtain-crm/shared';
-import { and, count, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, count, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 
 /**
  * Кадровая аналитика для раздела «Ведомость рабочих».
@@ -30,24 +30,42 @@ import { and, count, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 /* -------------------------------------------------------------------------- */
 
 /** Границы текущих суток в UTC. */
+const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+/** Сутки по Ташкенту: в 00:40 местного «сегодня» уже новый день, а не UTC-вчера. */
 function todayBounds(now: Date): { start: Date; end: Date } {
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const local = new Date(now.getTime() + TASHKENT_OFFSET_MS);
+  const start = new Date(
+    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - TASHKENT_OFFSET_MS,
+  );
   return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+export interface PresenceEntry {
+  readonly status: PresenceStatusName;
+  /** Пришёл — начало открытой смены или первой за сегодня. */
+  readonly startedAt: Date | null;
+  /** Ушёл — конец последней смены за сегодня; `null`, пока смена открыта. */
+  readonly endedAt: Date | null;
+}
+
 /**
- * Статус присутствия сотрудников на сегодня.
+ * Статус присутствия сотрудников на сегодня — с временем прихода и ухода.
  *
  * Открытая смена — «на работе», закрытая — «смена закрыта», нет смены —
  * «отсутствует». Открытая смена с незакрытой личной отлучкой — «на отлучке»:
  * статус не различает, уложился сотрудник в заявленный срок или нет —
  * это вопрос точного времени, а не одной из четырёх фиксированных меток,
  * и его показывают места, где секунды под рукой (`shifts.activeBreaks`).
+ *
+ * Открытая смена считается независимо от даты начала: продавец пришёл в
+ * 18:12, а в 00:40 всё ещё на месте — он «на работе», а не «отсутствует».
+ * Владелец увидел именно это и сказал: «пришёл/ушёл не показывает».
  */
 export async function presenceToday(
   executor: DbExecutor,
   now: Date = new Date(),
-): Promise<Map<number, PresenceStatusName>> {
+): Promise<Map<number, PresenceEntry>> {
   const bounds = todayBounds(now);
 
   const [rows, onBreakRows] = await Promise.all([
@@ -55,9 +73,19 @@ export async function presenceToday(
       .select({
         userId: shifts.userId,
         hasOpen: sql<boolean>`bool_or(${shifts.endedAt} is null)`,
+        // Драйвер отдаёт timestamptz строкой; `Date` из неё — как в `shifts.service`.
+        startedAt: sql<Date>`min(${shifts.startedAt})`.mapWith((value: string) => new Date(value)),
+        endedAt: sql<Date | null>`max(${shifts.endedAt})`.mapWith((value: string | null) =>
+          value === null ? null : new Date(value),
+        ),
       })
       .from(shifts)
-      .where(and(gte(shifts.startedAt, bounds.start), lt(shifts.startedAt, bounds.end)))
+      .where(
+        or(
+          isNull(shifts.endedAt),
+          and(gte(shifts.startedAt, bounds.start), lt(shifts.startedAt, bounds.end)),
+        ),
+      )
       .groupBy(shifts.userId),
 
     executor
@@ -72,11 +100,15 @@ export async function presenceToday(
   return new Map(
     rows.map((row) => [
       row.userId,
-      row.hasOpen
-        ? onBreak.has(row.userId)
-          ? PresenceStatus.ON_BREAK
-          : PresenceStatus.AT_WORK
-        : PresenceStatus.FINISHED,
+      {
+        status: row.hasOpen
+          ? onBreak.has(row.userId)
+            ? PresenceStatus.ON_BREAK
+            : PresenceStatus.AT_WORK
+          : PresenceStatus.FINISHED,
+        startedAt: row.startedAt,
+        endedAt: row.hasOpen ? null : row.endedAt,
+      },
     ]),
   );
 }

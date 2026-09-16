@@ -558,6 +558,32 @@ export const shiftsRouter = router({
     return rows;
   }),
 
+  /**
+   * Кто сейчас на смене — имена и время прихода.
+   *
+   * Владелец увидел «На смене 2 чел.» и спросил «кто они?». Цифра без имён
+   * — не ответ: руководителю нужно знать, кто пришёл и во сколько, а не
+   * сколько. Открытые смены — любые, в том числе начатые вчера: смена,
+   * перевалившая за полночь, всё ещё смена.
+   */
+  openNow: managementProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db
+      .select({
+        userId: shifts.userId,
+        fullName: users.fullName,
+        startedAt: shifts.startedAt,
+        branchName: branches.name,
+        onBreak: sql<boolean>`exists (select 1 from personal_breaks b where b.shift_id = ${shifts.id} and b.returned_at is null)`,
+        onTrip: sql<boolean>`exists (select 1 from installation_trips t where t.shift_id = ${shifts.id} and t.returned_at is null)`,
+      })
+      .from(shifts)
+      .innerJoin(users, eq(users.id, shifts.userId))
+      .innerJoin(branches, eq(branches.id, shifts.branchId))
+      .where(isNull(shifts.endedAt))
+      .orderBy(shifts.startedAt);
+    return rows;
+  }),
+
   /** История собственных смен. */
   my: protectedProcedure
     .input(

@@ -63,7 +63,7 @@ export default function TimesheetPage(): ReactElement {
       const inDepartment = employees.filter((employee) => employee.department === department);
 
       const atWork = inDepartment.filter(
-        (employee) => presenceMap[employee.id.toString()] === PresenceStatus.AT_WORK,
+        (employee) => presenceMap[employee.id.toString()]?.status === PresenceStatus.AT_WORK,
       ).length;
 
       return {

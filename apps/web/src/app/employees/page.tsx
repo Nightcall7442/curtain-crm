@@ -51,6 +51,10 @@ import { formatDate, formatPercent } from '@/lib/utils';
  * показателя «эффективность 87 %» показана дисциплина — она считается
  * из фактических смен.
  */
+function formatTimeOfDay(value: Date | string): string {
+  return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function EmployeesPage(): ReactElement {
   return (
     // `useSearchParams()` выключает статическую отрисовку страницы целиком,
@@ -116,8 +120,15 @@ function EmployeesInner({
   );
 
   const presenceOf = (userId: number): PresenceStatusName =>
-    (presence.data?.[userId.toString()]) ??
-    PresenceStatus.ABSENT;
+    presence.data?.[userId.toString()]?.status ?? PresenceStatus.ABSENT;
+
+  /** «Пришёл 18:12» / «18:12 – 22:40»: владелец просил видеть, не только метку. */
+  const presenceTime = (userId: number): string | null => {
+    const entry = presence.data?.[userId.toString()];
+    if (entry === undefined || entry.startedAt === null) return null;
+    const from = formatTimeOfDay(entry.startedAt);
+    return entry.endedAt === null ? `с ${from}` : `${from} – ${formatTimeOfDay(entry.endedAt)}`;
+  };
 
   if (stats.isError) {
     return (
@@ -433,7 +444,14 @@ function EmployeesInner({
               key: 'presence',
               header: 'Сегодня',
               align: 'center',
-              render: (row) => <PresenceBadge status={presenceOf(row.id)} />,
+              render: (row) => (
+                <span className="flex flex-col items-center gap-0.5">
+                  <PresenceBadge status={presenceOf(row.id)} />
+                  {presenceTime(row.id) !== null && (
+                    <span className="text-footnote tabular-nums text-muted">{presenceTime(row.id)}</span>
+                  )}
+                </span>
+              ),
             },
             {
               key: 'actions',

@@ -480,6 +480,8 @@ function StatTile({
 function WorkshopSummary(): ReactElement {
   const { m } = useLocale();
   const dashboard = trpc.reports.dashboard.useQuery({});
+  /* Кто именно на смене: цифра «2 чел.» без имён не отвечала на вопрос владельца «кто они?». */
+  const onShift = trpc.shifts.openNow.useQuery();
 
   if (dashboard.data === undefined) {
     return (
@@ -498,6 +500,19 @@ function WorkshopSummary(): ReactElement {
 
       <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
+      {(onShift.data ?? []).map((row) => (
+        <View key={row.userId} style={styles.onShiftRow}>
+          <Text style={styles.onShiftName} numberOfLines={1}>
+            {row.fullName}
+            {row.onTrip ? ` · ${m('home.onTrip')}` : row.onBreak ? ` · ${m('home.onBreak')}` : ''}
+          </Text>
+          <Text style={styles.onShiftTime}>
+            {m('home.since', {
+              time: new Date(row.startedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            })}
+          </Text>
+        </View>
+      ))}
       <Row label={m('home.inProduction')} value={attention.toString()} />
     </Card>
   );
@@ -668,6 +683,22 @@ function MonthCard(): ReactElement | null {
 }
 
 const styles = StyleSheet.create({
+  onShiftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingVertical: 2,
+  },
+  onShiftName: {
+    ...typography.footnote,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  onShiftTime: {
+    ...typography.footnote,
+    color: colors.textMuted,
+  },
   terminalRow: {
     flexDirection: 'row',
     alignItems: 'center',

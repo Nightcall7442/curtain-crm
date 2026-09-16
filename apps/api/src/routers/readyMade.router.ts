@@ -1,4 +1,4 @@
-import { branches, readyMadeItems, type DbExecutor } from '@curtain-crm/db';
+import { branches, orders, readyMadeItems, type DbExecutor } from '@curtain-crm/db';
 import {
   isManagement,
   moneyToDecimalString,
@@ -112,9 +112,18 @@ export const readyMadeRouter = router({
           photoKey: readyMadeItems.photoKey,
           comment: readyMadeItems.comment,
           isActive: readyMadeItems.isActive,
+          /*
+            Комплект: шторы из одного заказа на пошив (окно + дверь) продаются
+            вместе и на полке показываются одной группой. Ключ группы — заказ,
+            подпись — его номер. Штора, заведённая руками, ни в какой
+            комплект не входит.
+          */
+          setId: readyMadeItems.sourceOrderId,
+          setLabel: orders.orderNumber,
         })
         .from(readyMadeItems)
         .innerJoin(branches, eq(branches.id, readyMadeItems.branchId))
+        .leftJoin(orders, eq(orders.id, readyMadeItems.sourceOrderId))
         .where(
           and(
             ...(input.includeInactive ? [] : [eq(readyMadeItems.isActive, true)]),
@@ -137,7 +146,8 @@ export const readyMadeRouter = router({
                 ]),
           ),
         )
-        .orderBy(asc(readyMadeItems.model), asc(readyMadeItems.widthCm))
+        // Комплекты — рядом: сначала по заказу-источнику, внутри — окно перед дверью.
+        .orderBy(asc(readyMadeItems.sourceOrderId), asc(readyMadeItems.model), asc(readyMadeItems.kind), asc(readyMadeItems.widthCm))
         .limit(200);
 
       return withPhotoUrl(rows);
