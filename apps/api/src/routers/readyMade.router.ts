@@ -1,5 +1,11 @@
 import { branches, readyMadeItems, type DbExecutor } from '@curtain-crm/db';
-import { isManagement, moneyToDecimalString, parseMoney } from '@curtain-crm/shared';
+import {
+  isManagement,
+  moneyToDecimalString,
+  OrderItemKind,
+  orderItemKindSchema,
+  parseMoney,
+} from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, gt, ilike, or } from 'drizzle-orm';
 import { z } from 'zod';
@@ -97,6 +103,7 @@ export const readyMadeRouter = router({
           branchId: readyMadeItems.branchId,
           branchName: branches.name,
           model: readyMadeItems.model,
+          kind: readyMadeItems.kind,
           code: readyMadeItems.code,
           widthCm: readyMadeItems.widthCm,
           heightCm: readyMadeItems.heightCm,
@@ -142,6 +149,7 @@ export const readyMadeRouter = router({
       z.object({
         branchId: idSchema.optional(),
         model: nonEmptyString(200, 'Укажите модель'),
+        kind: orderItemKindSchema.default(OrderItemKind.WINDOW),
         code: optionalText(100),
         widthCm: dimensionSchema,
         heightCm: dimensionSchema,
@@ -182,6 +190,7 @@ export const readyMadeRouter = router({
             .values({
               branchId,
               model: input.model,
+              kind: input.kind,
               code: input.code ?? null,
               widthCm: input.widthCm.toFixed(1),
               heightCm: input.heightCm.toFixed(1),
@@ -235,6 +244,7 @@ export const readyMadeRouter = router({
       z.object({
         id: idSchema,
         model: nonEmptyString(200, 'Укажите модель').optional(),
+        kind: orderItemKindSchema.optional(),
         code: optionalText(100),
         widthCm: dimensionSchema.optional(),
         heightCm: dimensionSchema.optional(),
@@ -267,6 +277,7 @@ export const readyMadeRouter = router({
         const updated = await ctx.db.transaction(async (tx) => {
           const patch = {
             ...(input.model === undefined ? {} : { model: input.model }),
+            ...(input.kind === undefined ? {} : { kind: input.kind }),
             ...(input.code === undefined ? {} : { code: input.code }),
             ...(input.comment === undefined ? {} : { comment: input.comment }),
             ...(input.widthCm === undefined ? {} : { widthCm: input.widthCm.toFixed(1) }),

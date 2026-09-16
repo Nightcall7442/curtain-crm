@@ -1,6 +1,14 @@
 'use client';
 
-import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
+import {
+  CatalogKind,
+  formatMoney,
+  ORDER_ITEM_KIND_LABELS_RU,
+  ORDER_ITEM_KINDS,
+  OrderItemKind,
+  parseMoney,
+  type OrderItemKind as OrderItemKindName,
+} from '@curtain-crm/shared';
 import { Plus, ShoppingBag } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
@@ -46,6 +54,7 @@ export default function ReadyMadePage(): ReactElement {
   /** Строка поиска по списку — по модели, коду и описанию. */
   const [search, setSearch] = useState('');
   const [model, setModel] = useState('');
+  const [kind, setKind] = useState<OrderItemKindName>(OrderItemKind.WINDOW);
   const [branchId, setBranchId] = useState('');
   const [code, setCode] = useState('');
   const [comment, setComment] = useState('');
@@ -88,6 +97,7 @@ export default function ReadyMadePage(): ReactElement {
     setAdding(false);
     setEditingId(null);
     setModel('');
+    setKind(OrderItemKind.WINDOW);
     setBranchId('');
     setCode('');
     setComment('');
@@ -295,6 +305,7 @@ export default function ReadyMadePage(): ReactElement {
                     <span className={row.isActive ? 'text-primary' : 'text-muted line-through'}>
                       {row.code === null ? row.model : `${row.model} · ${row.code}`}
                     </span>
+                    <span className="block text-footnote text-secondary">{ORDER_ITEM_KIND_LABELS_RU[row.kind]}</span>
                     {row.comment !== null && (
                       <span className="block text-footnote text-muted">{row.comment}</span>
                     )}
@@ -349,6 +360,7 @@ export default function ReadyMadePage(): ReactElement {
                       create.reset();
                       setEditingId(row.id);
                       setModel(row.model);
+                      setKind(row.kind);
                       setCode(row.code ?? '');
                       setComment(row.comment ?? '');
                       setWidthCm(Number.parseFloat(row.widthCm).toString());
@@ -406,6 +418,7 @@ export default function ReadyMadePage(): ReactElement {
                 /* Общие поля карточки — их спрашивают и при заведении, и при правке. */
                 const card = {
                   model: model.trim(),
+                  kind,
                   code: code.trim() === '' ? null : code.trim(),
                   comment: comment.trim() === '' ? null : comment.trim(),
                   widthCm: Number.parseFloat(widthCm.replace(',', '.')) || 0,
@@ -446,6 +459,17 @@ export default function ReadyMadePage(): ReactElement {
                 : null
             }
           />
+
+          {/* Окно или дверь — иначе дверную штору на полку было не завести. */}
+          <Field label="Что это" error={errors['kind']}>
+            <Select
+              value={kind}
+              onChange={(event) => {
+                setKind(event.target.value as OrderItemKindName);
+              }}
+              options={ORDER_ITEM_KINDS.map((value) => ({ value, label: ORDER_ITEM_KIND_LABELS_RU[value] }))}
+            />
+          </Field>
 
           <Field label="Модель" required error={errors['model']}>
             <Select

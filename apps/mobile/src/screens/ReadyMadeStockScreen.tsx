@@ -1,4 +1,12 @@
-import { CatalogKind, formatMoney, parseMoney } from '@curtain-crm/shared';
+import {
+  CatalogKind,
+  formatMoney,
+  ORDER_ITEM_KIND_LABELS,
+  ORDER_ITEM_KINDS,
+  OrderItemKind,
+  parseMoney,
+  type OrderItemKind as OrderItemKindName,
+} from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState, type ReactElement } from 'react';
@@ -16,7 +24,7 @@ import {
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
-import { Field, Input, MoneyInput } from '../components/Field';
+import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -37,6 +45,7 @@ import { useLocale } from '../hooks/useLocale';
 
 interface FormState {
   readonly model: string;
+  readonly kind: OrderItemKindName;
   readonly code: string;
   readonly widthCm: string;
   readonly heightCm: string;
@@ -48,6 +57,7 @@ interface FormState {
 
 const emptyForm = (): FormState => ({
   model: '',
+  kind: OrderItemKind.WINDOW,
   code: '',
   widthCm: '',
   heightCm: '',
@@ -61,7 +71,7 @@ const toNumber = (raw: string): number => Number.parseFloat(raw.replace(',', '.'
 
 export function ReadyMadeStockScreen(): ReactElement {
   const navigation = useNavigation();
-  const { m } = useLocale();
+  const { m, t } = useLocale();
   const utils = trpc.useUtils();
 
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -164,6 +174,7 @@ export function ReadyMadeStockScreen(): ReactElement {
 
     create.mutate({
       model: form.model.trim(),
+      kind: form.kind,
       widthCm: toNumber(form.widthCm),
       heightCm: toNumber(form.heightCm),
       price: toNumber(form.price),
@@ -241,6 +252,17 @@ export function ReadyMadeStockScreen(): ReactElement {
         {adding && (
           <Card>
             <CardTitle title={m('stock.new')} icon="window" />
+
+            {/* Окно или дверь — иначе дверную штору на полку было не завести. */}
+            <Field label={m('create.kind')}>
+              <ChipSelect
+                value={form.kind}
+                onChange={(kind) => {
+                  patch({ kind });
+                }}
+                options={ORDER_ITEM_KINDS.map((value) => ({ value, label: t(ORDER_ITEM_KIND_LABELS, value) }))}
+              />
+            </Field>
 
             <Field label={m('create.model')} required>
               <CatalogPicker
@@ -403,6 +425,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                     <Text style={styles.itemTitle}>
                       {item.code === null ? item.model : `${item.model} · ${item.code}`}
                     </Text>
+                    <Text style={styles.itemMeta}>{t(ORDER_ITEM_KIND_LABELS, item.kind)}</Text>
                     <Text style={styles.itemMeta}>
                       {m('sell.cm', {
                         w: Number.parseFloat(item.widthCm),

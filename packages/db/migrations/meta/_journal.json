@@ -309,6 +309,13 @@
       "when": 1789584996294,
       "tag": "0043_terminal_check_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789585802552,
+      "tag": "0044_ready_made_kind",
+      "breakpoints": true
     }
   ]
 }

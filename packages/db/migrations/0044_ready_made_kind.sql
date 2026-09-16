@@ -1,0 +1,3 @@
+ALTER TABLE "ready_made_items" ADD COLUMN "kind" "order_item_kind" DEFAULT 'window' NOT NULL;--> statement-breakpoint
+ALTER TABLE "ready_made_items" ADD COLUMN "source_order_id" integer;--> statement-breakpoint
+ALTER TABLE "ready_made_items" ADD CONSTRAINT "ready_made_items_source_order_id_orders_id_fk" FOREIGN KEY ("source_order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action;

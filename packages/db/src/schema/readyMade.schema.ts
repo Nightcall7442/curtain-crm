@@ -13,6 +13,8 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { branches } from './branches.schema';
+import { orderItemKindEnum } from './enums';
+import { orders } from './orders.schema';
 import { users } from './users.schema';
 
 /**
@@ -49,6 +51,18 @@ export const readyMadeItems = pgTable(
 
     /** Модель — из справочника `catalog_items` (вид `curtain_model`). */
     model: varchar('model', { length: 200 }).notNull(),
+
+    /**
+     * Окно или дверь — то же различие, что у позиции заказа.
+     *
+     * Без него на полку ложились только «окна»: дверную штору было не
+     * завести, а из пошива для склада она приходила безликой. Владелец
+     * показал на это как на утечку.
+     */
+    kind: orderItemKindEnum('kind').notNull().default('window'),
+
+    /** Заказ на пошив для склада, из которого штора легла на полку. */
+    sourceOrderId: integer('source_order_id').references(() => orders.id, { onDelete: 'set null' }),
 
     /**
      * Код готовой шторы — свой, складской, а не код ткани с этикетки рулона.
