@@ -78,6 +78,9 @@ export function ReadyMadeStockScreen(): ReactElement {
   const [adding, setAdding] = useState(false);
   const [counting, setCounting] = useState<number | null>(null);
   const [countValue, setCountValue] = useState('');
+  /** Штора, которой сейчас ставят ценник; `null` — никому. */
+  const [pricing, setPricing] = useState<number | null>(null);
+  const [priceValue, setPriceValue] = useState('');
 
   const items = trpc.readyMade.list.useQuery({ includeEmpty: true, includeInactive: false });
   const catalog = trpc.catalog.list.useQuery({});
@@ -118,6 +121,24 @@ export function ReadyMadeStockScreen(): ReactElement {
     onError(error) {
       notifyError();
       Alert.alert(m('stock.countError'), error.message);
+    },
+  });
+
+  /*
+    Ценник — отдельной правкой, как пересчёт остатка. Штора из пошива для
+    склада приходит на полку без цены: цену ставит руководство, и раньше
+    сделать это с телефона было нечем — владелец показал нули на складе.
+  */
+  const setPrice = trpc.readyMade.update.useMutation({
+    async onSuccess() {
+      notifySuccess();
+      setPricing(null);
+      setPriceValue('');
+      await utils.readyMade.list.invalidate();
+    },
+    onError(error) {
+      notifyError();
+      Alert.alert(m('common.saveError'), error.message);
     },
   });
 
@@ -470,21 +491,53 @@ export function ReadyMadeStockScreen(): ReactElement {
                       <Text style={styles.countSaveText}>{m('emp.save')}</Text>
                     </Pressable>
                   </View>
+                ) : pricing === item.id ? (
+                  <View style={styles.countRow}>
+                    <View style={styles.countInput}>
+                      <MoneyInput value={priceValue} onChangeText={setPriceValue} placeholder="0" />
+                    </View>
+                    <Pressable
+                      disabled={setPrice.isPending || toMoney(priceValue) <= 0}
+                      onPress={() => {
+                        setPrice.mutate({ id: item.id, price: toMoney(priceValue) });
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.countSave, pressed ? styles.pressed : null]}
+                    >
+                      <Text style={styles.countSaveText}>{m('emp.save')}</Text>
+                    </Pressable>
+                  </View>
                 ) : (
-                  <Pressable
-                    onPress={() => {
-                      setCounting(item.id);
-                      setCountValue(item.quantity.toString());
-                    }}
-                    accessibilityRole="button"
-                    hitSlop={8}
-                  >
-                    {({ pressed }) => (
-                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                        {m('stock.recount')}
-                      </Text>
-                    )}
-                  </Pressable>
+                  <View style={styles.actionsRow}>
+                    <Pressable
+                      onPress={() => {
+                        setCounting(item.id);
+                        setCountValue(item.quantity.toString());
+                      }}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                    >
+                      {({ pressed }) => (
+                        <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
+                          {m('stock.recount')}
+                        </Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setPricing(item.id);
+                        setPriceValue(parseMoney(item.price) > 0 ? (parseMoney(item.price) / 100).toString() : '');
+                      }}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                    >
+                      {({ pressed }) => (
+                        <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
+                          {parseMoney(item.price) > 0 ? m('stock.changePrice') : m('stock.setPrice')}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
                 )}
               </View>
             ))
@@ -495,7 +548,13 @@ export function ReadyMadeStockScreen(): ReactElement {
   );
 }
 
+function toMoney(value: string): number {
+  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 const styles = StyleSheet.create({
+  actionsRow: { flexDirection: 'row', gap: spacing.lg },
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   content: {

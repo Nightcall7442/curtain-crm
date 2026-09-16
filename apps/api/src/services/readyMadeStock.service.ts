@@ -1,5 +1,5 @@
 import { orderItems, readyMadeItems, type DbExecutor, type Order } from '@curtain-crm/db';
-import { OrderType } from '@curtain-crm/shared';
+import { moneyToDecimalString, OrderType } from '@curtain-crm/shared';
 import { asc, eq } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
@@ -12,11 +12,16 @@ import { recordAudit } from './audit.service';
  * статусов — владелец назвал это утечкой. Теперь каждая позиция заказа
  * становится карточкой на складе: модель, окно/дверь, размер, код, штук.
  *
- * Цены у пошива для склада нет — ценник ставит руководство на полке, а
- * продавец при продаже всё равно вводит сумму сам. Поэтому цена 0 и
- * пометка в описании: «из пошива TDH-…».
+ * Цена приходит с переходом «Готово — на склад»: так задал владелец —
+ * после контроля админ ставит цену, и только потом штора на полке. В
+ * описании — пометка «из пошива TDH-…».
  */
-export async function shelveStockOrder(executor: DbExecutor, order: Order, actorId: number): Promise<void> {
+export async function shelveStockOrder(
+  executor: DbExecutor,
+  order: Order,
+  actorId: number,
+  prices: ReadonlyMap<number, number>,
+): Promise<void> {
   if (order.orderType !== OrderType.STOCK) return;
 
   const items = await executor
@@ -36,7 +41,7 @@ export async function shelveStockOrder(executor: DbExecutor, order: Order, actor
         code: item.readyMadeCode,
         widthCm: item.widthCm ?? '0.0',
         heightCm: item.heightCm ?? '0.0',
-        price: '0.00',
+        price: moneyToDecimalString(prices.get(item.id) ?? 0),
         quantity: item.quantity,
         comment: `Из пошива ${order.orderNumber ?? `#${order.id.toString()}`}`,
         sourceOrderId: order.id,

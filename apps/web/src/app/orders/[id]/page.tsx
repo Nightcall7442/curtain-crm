@@ -13,6 +13,8 @@ import {
   ORDER_ITEM_KIND_LABELS_RU,
   ORDER_STAGE_FEE_LABELS_RU,
   ORDER_STATUS_LABELS_RU,
+  OrderStatus as OrderStatusValue,
+  OrderType,
   parseMoney,
   Role,
   ROLE_LABELS_RU,
@@ -38,7 +40,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/components/providers/ToastProvider';
 import { OrderStatusBadge, OrderTypeBadge, PriorityBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
-import { controlClass } from '@/components/ui/Form';
+import { controlClass, Field, MoneyInput } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 import { cn, formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
 
@@ -60,6 +62,8 @@ export default function OrderDetailPage(): ReactElement {
   const [comment, setComment] = useState('');
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [reason, setReason] = useState('');
+  /** Ценники позиций для «Готово — на склад»: `null` — форма закрыта. */
+  const [pricing, setPricing] = useState<Record<number, string> | null>(null);
 
   const order = trpc.orders.byId.useQuery({ id: orderId }, { enabled: Number.isInteger(orderId) });
   const transitions = trpc.orders.availableTransitions.useQuery(
@@ -89,6 +93,7 @@ export default function OrderDetailPage(): ReactElement {
     async onSuccess(_result, variables) {
       setPendingStatus(null);
       setReason('');
+      setPricing(null);
       await refetchAll();
       // Называем новый статус: сотрудник нажимает кнопку перехода десятки раз
       // за смену, и подтверждение «заказ передан на пошив» отличается от
@@ -268,6 +273,12 @@ export default function OrderDetailPage(): ReactElement {
                       setReason('');
                       return;
                     }
+                    // Пошив на склад закрывается с ценниками: после контроля
+                    // админ ставит цену, и только с ней штора ложится на полку.
+                    if (data.orderType === OrderType.STOCK && transition.to === OrderStatusValue.COMPLETED) {
+                      setPricing(Object.fromEntries(data.items.map((item) => [item.id, ''])));
+                      return;
+                    }
                     changeStatus.mutate({ id: orderId, toStatus: transition.to });
                   }}
                   className={
@@ -318,6 +329,60 @@ export default function OrderDetailPage(): ReactElement {
                   type="button"
                   onClick={() => {
                     setPendingStatus(null);
+                  }}
+                  className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+
+          {pricing !== null && (
+            <div className="mt-4 rounded-xl border border-positive/30 bg-positive/5 p-3">
+              <p className="text-caption text-primary">Ценник на каждую штору — с ним она ляжет на склад</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {data.items.map((item, index) => (
+                  <Field
+                    key={item.id}
+                    label={`${(index + 1).toString()}. ${item.model ?? 'Без модели'} · ${ORDER_ITEM_KIND_LABELS_RU[item.kind]} · ${item.widthCm ?? '?'}×${item.heightCm ?? '?'} см`}
+                    required
+                  >
+                    <MoneyInput
+                      value={pricing[item.id] ?? ''}
+                      onChange={(value) => {
+                        setPricing({ ...pricing, [item.id]: value });
+                      }}
+                      placeholder="0"
+                    />
+                  </Field>
+                ))}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  disabled={
+                    changeStatus.isPending ||
+                    data.items.some((item) => !(Number.parseFloat((pricing[item.id] ?? '').replace(',', '.')) > 0))
+                  }
+                  onClick={() => {
+                    changeStatus.mutate({
+                      id: orderId,
+                      toStatus: OrderStatusValue.COMPLETED,
+                      stockPrices: data.items.map((item) => ({
+                        itemId: item.id,
+                        price: Number.parseFloat((pricing[item.id] ?? '').replace(',', '.')),
+                      })),
+                    });
+                  }}
+                  className="pressable rounded-tile bg-accent px-3.5 py-2 text-caption font-medium text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Готово — на склад
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPricing(null);
                   }}
                   className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
                 >

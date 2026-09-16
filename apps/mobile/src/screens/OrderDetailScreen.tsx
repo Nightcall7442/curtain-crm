@@ -5,6 +5,7 @@ import {
   formatMaterial,
   formatMoney,
   formatPhone,
+  ORDER_ITEM_KIND_LABELS,
   ORDER_STAGE_FEE_LABELS,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_PHASE,
@@ -15,6 +16,7 @@ import {
   ROLE_LABELS,
   stageFeesOfOrderType,
   TransitionKind,
+  OrderStatus as OrderStatusValue,
   type OrderStatus,
 } from '@curtain-crm/shared';
 import { BlurView } from 'expo-blur';
@@ -36,6 +38,7 @@ import { ItemMeters } from '../components/ItemMeters';
 import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { OrderManagement } from '../components/OrderManagement';
 import { OrderPackList } from '../components/OrderPackList';
+import { Field, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { Stepper } from '../components/Stepper';
@@ -63,6 +66,8 @@ export function OrderDetailScreen({
   const utils = trpc.useUtils();
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [reason, setReason] = useState('');
+  /** Ценники позиций для «Готово — на склад»; `null` — форма закрыта. */
+  const [pricing, setPricing] = useState<Record<number, string> | null>(null);
   const [comment, setComment] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   /*
@@ -97,6 +102,7 @@ export function OrderDetailScreen({
       notifySuccess();
       setPendingStatus(null);
       setReason('');
+      setPricing(null);
       await refresh();
     },
     onError: () => {
@@ -134,7 +140,17 @@ export function OrderDetailScreen({
       setReason('');
       return;
     }
+    // Пошив на склад закрывается с ценниками: после контроля админ ставит
+    // цену, и только с ней штора ложится на полку.
+    if (order.data?.orderType === OrderType.STOCK && toStatus === OrderStatusValue.COMPLETED) {
+      setPricing(Object.fromEntries(order.data.items.map((item) => [item.id, ''])));
+      return;
+    }
     changeStatus.mutate({ id: orderId, toStatus });
+  };
+  const priceOf = (value: string | undefined): number => {
+    const parsed = Number.parseFloat((value ?? '').replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   };
 
   const addComment = trpc.orderComments.add.useMutation({
@@ -437,6 +453,54 @@ export function OrderDetailScreen({
               <Pressable
                 onPress={() => {
                   setPendingStatus(null);
+                }}
+                style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.cancelText}>{m('common.cancel')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {pricing !== null && (
+          <View style={styles.reasonBlock}>
+            <Text style={styles.reasonTitle}>{m('order.stockPrices')}</Text>
+            {data.items.map((item, index) => (
+              <Field
+                key={item.id}
+                label={`${(index + 1).toString()}. ${item.model ?? m('order.noModel')} · ${t(ORDER_ITEM_KIND_LABELS, item.kind)} · ${item.widthCm ?? '?'}×${item.heightCm ?? '?'}`}
+                required
+              >
+                <MoneyInput
+                  value={pricing[item.id] ?? ''}
+                  onChangeText={(value) => {
+                    setPricing({ ...pricing, [item.id]: value });
+                  }}
+                  placeholder="0"
+                />
+              </Field>
+            ))}
+            <View style={styles.reasonButtons}>
+              <Pressable
+                disabled={changeStatus.isPending || data.items.some((item) => priceOf(pricing[item.id]) <= 0)}
+                onPress={() => {
+                  changeStatus.mutate({
+                    id: orderId,
+                    toStatus: OrderStatusValue.COMPLETED,
+                    stockPrices: data.items.map((item) => ({ itemId: item.id, price: priceOf(pricing[item.id]) })),
+                  });
+                }}
+                style={({ pressed }) => [
+                  styles.confirmButton,
+                  data.items.some((item) => priceOf(pricing[item.id]) <= 0) ? styles.disabled : null,
+                  pressed ? styles.pressed : null,
+                ]}
+              >
+                <Text style={styles.confirmText}>{m('common.confirm')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setPricing(null);
                 }}
                 style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
               >

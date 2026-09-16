@@ -1344,6 +1344,11 @@ export const ordersRouter = router({
          * Роль задаёт целевой статус, поэтому здесь только человек.
          */
         assigneeId: idSchema.optional(),
+        /** Ценники позиций — только для «Готово — на склад» у пошива на склад. */
+        stockPrices: z
+          .array(z.object({ itemId: idSchema, price: moneySchema.refine((value) => value > 0, 'Укажите цену') }))
+          .max(50)
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) =>
@@ -1354,6 +1359,7 @@ export const ordersRouter = router({
           actor: ctx.user,
           comment: input.comment ?? null,
           assigneeId: input.assigneeId ?? null,
+          stockPrices: input.stockPrices?.map((entry) => ({ itemId: entry.itemId, price: parseMoney(entry.price) })) ?? null,
           ipAddress: ctx.ipAddress,
         });
 

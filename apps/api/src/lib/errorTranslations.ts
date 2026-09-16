@@ -76,6 +76,10 @@ const EXACT: Readonly<Record<string, string>> = {
   'Сотрудник не найден или уволен': "Xodim topilmadi yoki ishdan bo'shatilgan",
   'Не удалось сохранить запись': "Yozuvni saqlab bo'lmadi",
 
+  // orders: пошив на склад
+  'Укажите цену каждой шторы — с ней она ляжет на склад': 'Har bir pardaga narx qo‘ying — u bilan omborga tushadi',
+  'Укажите цену': 'Narxni ko‘rsating',
+
   // terminalChecks
   'Конец периода раньше начала': 'Davr oxiri boshidan oldin',
 

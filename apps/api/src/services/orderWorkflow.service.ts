@@ -245,6 +245,15 @@ export interface ChangeOrderStatusParams {
    */
   readonly systemInitiated?: boolean;
   /**
+   * Ценники для полки — только для пошива на склад при закрытии.
+   *
+   * Владелец задал порядок: пошив → контроль → админ ставит цену → штора
+   * на складе. Цена каждой позиции приходит вместе с переходом «Готово —
+   * на склад», и без неё заказ не закрывается: полка с нулями — та же
+   * утечка, только с другого конца.
+   */
+  readonly stockPrices?: readonly { readonly itemId: number; readonly price: number }[] | null;
+  /**
    * Исполнитель, назначаемый ВМЕСТЕ с переходом, одной транзакцией.
    *
    * Три статуса (`measurement_assigned`, `sewing_in_progress`,
@@ -279,6 +288,24 @@ export interface ChangeOrderStatusResult {
  * запись истории, автоназначение исполнителя, аудит и уведомления либо
  * происходят вместе, либо не происходят вовсе.
  */
+/** Цена на каждую позицию пошива — иначе переход не пускаем. */
+async function requireStockPrices(
+  executor: DbExecutor,
+  orderId: number,
+  given: readonly { readonly itemId: number; readonly price: number }[] | null,
+): Promise<Map<number, number>> {
+  const items = await executor.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.orderId, orderId));
+  const prices = new Map((given ?? []).map((entry) => [entry.itemId, entry.price]));
+  const missing = items.filter((item) => !((prices.get(item.id) ?? 0) > 0));
+  if (missing.length > 0) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Укажите цену каждой шторы — с ней она ляжет на склад',
+    });
+  }
+  return prices;
+}
+
 export async function changeOrderStatus(
   executor: DbExecutor,
   params: ChangeOrderStatusParams,
@@ -343,6 +370,12 @@ export async function changeOrderStatus(
       message: `Укажите причину: действие «${transition.label}» требует комментария`,
     });
   }
+
+  /* 4a. Пошив на склад закрывается с ценниками на каждую позицию. */
+  const stockPrices =
+    order.orderType === OrderType.STOCK && toStatus === OrderStatus.COMPLETED
+      ? await requireStockPrices(executor, order.id, params.stockPrices ?? null)
+      : null;
 
   /* 5. Исполнитель, без которого статус бессмыслен. */
   const requiredAssignee = ORDER_STATUS_REQUIRED_ASSIGNEE[toStatus];
@@ -475,7 +508,7 @@ export async function changeOrderStatus(
   if (toStatus === OrderStatus.COMPLETED) {
     await accrueForClosedOrder(executor, updated);
     // Пошив для склада: сшитое ложится на полку в тот же момент.
-    await shelveStockOrder(executor, updated, actor.id);
+    await shelveStockOrder(executor, updated, actor.id, stockPrices ?? new Map());
   } else if (STAGE_ACCRUAL_STATUSES.has(toStatus) && !wasRollback) {
     // Сданный этап — тоже: сдельная за него идёт в месяц сдачи, а не в
     // месяц закрытия заказа.
