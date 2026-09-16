@@ -4,6 +4,7 @@ import {
   LOCALE_INFO,
   LOCALES,
   ORDER_STATUS_LABELS,
+  Role,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import Constants from 'expo-constants';
@@ -19,6 +20,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ListCard, ListRow, SectionHeader } from '../components/Card';
+import { CashCollectionCard } from '../components/CashCollectionCard';
 import { DisciplineCard } from '../components/DisciplineCard';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
@@ -46,6 +48,7 @@ export function ProfileScreen(): ReactElement {
   const { user, signOut } = useAuth();
   const isCeo = useIsCeo();
   const isManagement = useIsManagement();
+  const isSeller = (user?.roles ?? []).includes(Role.SELLER);
   const myRating = trpc.rating.me.useQuery({});
 
   const now = new Date();
@@ -229,6 +232,17 @@ export function ProfileScreen(): ReactElement {
           </View>
         )}
       </Card>
+
+      {/*
+        Сдать наличные — здесь, у себя в профиле.
+
+        Инкассация живёт в «Кассе», но «Касса» открыта только продавцам:
+        установщик, принявший остаток у клиента, до кнопки «сдал» не
+        добирался вовсе — деньги висели на нём без выхода. Продавцу карточка
+        здесь не дублируется: у него она в «Кассе». Остальным она рисуется
+        только при ненулевом остатке.
+      */}
+      {!isSeller && <CashCollectionCard />}
 
       {/* Баллы дисциплины — после заказов, до переходов: про себя, но не про деньги. */}
       <DisciplineCard period={period} />
