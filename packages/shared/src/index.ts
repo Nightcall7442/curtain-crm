@@ -25,6 +25,7 @@ export * from './enums/staff.enum';
 export * from './enums/task.enum';
 export * from './enums/personalWork.enum';
 export * from './enums/dayOff.enum';
+export * from './enums/discipline.enum';
 
 /* Константы */
 export * from './constants/calendar';
@@ -33,6 +34,7 @@ export * from './constants/rating';
 export * from './constants/personalBreak';
 export * from './constants/packList';
 export * from './constants/stageFee';
+export * from './constants/discipline';
 
 /* Типы */
 export * from './types/orderItemAccessory';

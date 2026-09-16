@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 
 import { Card, CardTitle, Empty, ListCard, ListRow, SectionHeader } from '../components/Card';
+import { DisciplineCard } from '../components/DisciplineCard';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
@@ -228,6 +229,9 @@ export function ProfileScreen(): ReactElement {
           </View>
         )}
       </Card>
+
+      {/* Баллы дисциплины — после заказов, до переходов: про себя, но не про деньги. */}
+      <DisciplineCard period={period} />
       </>
       )}
 

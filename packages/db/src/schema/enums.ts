@@ -4,6 +4,7 @@ import {
   CORNICE_STATUSES,
   DAY_OFF_STATUSES,
   DEPARTMENTS,
+  DISCIPLINE_KINDS,
   EMPLOYMENT_TYPES,
   NOTIFICATION_TYPES,
   ORDER_ITEM_KINDS,
@@ -56,3 +57,4 @@ export const orderItemKindEnum = pgEnum('order_item_kind', ORDER_ITEM_KINDS);
 export const corniceRotationEnum = pgEnum('cornice_rotation', CORNICE_ROTATIONS);
 export const paymentMethodEnum = pgEnum('payment_method', PAYMENT_METHODS);
 export const paymentKindEnum = pgEnum('payment_kind', PAYMENT_KINDS);
+export const disciplineKindEnum = pgEnum('discipline_kind', DISCIPLINE_KINDS);

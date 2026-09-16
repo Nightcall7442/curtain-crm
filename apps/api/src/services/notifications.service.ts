@@ -1,10 +1,14 @@
 import { notifications, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
+  DISCIPLINE_KIND_LABELS_RU,
+  formatDisciplinePoints,
+  formatIsoDateShort,
   NotificationType,
   ORDER_STATUS_LABELS_RU,
   OrderStatus,
   ROLE_LABELS_RU,
   WEEKDAY_NAMES_RU,
+  type DisciplineKind,
   type IsoWeekday,
   type NotificationType as NotificationTypeName,
   type Role,
@@ -513,5 +517,31 @@ export async function notifyDayOffRejected(
     type: NotificationType.DAY_OFF_REJECTED,
     title: 'Выходные отклонены',
     body: `${formatPeriod(params.startDate, params.endDate)} — ${params.reason}`,
+  });
+}
+
+/**
+ * Запись о дисциплине — узнаёт сотрудник.
+ *
+ * И нарушение, и поощрение: правило «фиксируем факт, а не спорим» работает
+ * только если сотрудник видит запись сразу и может объяснить ситуацию до
+ * того, как о ней пойдёт разговор.
+ */
+export async function notifyDisciplineRecorded(
+  executor: DbExecutor,
+  userId: number,
+  params: {
+    readonly kind: DisciplineKind;
+    readonly points: number;
+    readonly occurredOn: string;
+    readonly recordedByName: string;
+  },
+): Promise<void> {
+  const penalty = params.points < 0;
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.DISCIPLINE_RECORDED,
+    title: penalty ? 'Зафиксировано нарушение' : 'Зафиксировано поощрение',
+    body: `${DISCIPLINE_KIND_LABELS_RU[params.kind]} (${formatDisciplinePoints(params.points)}) за ${formatIsoDateShort(params.occurredOn)} — ${params.recordedByName}`,
   });
 }

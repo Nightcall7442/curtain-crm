@@ -27,6 +27,7 @@ export * from './purchases.schema';
 export * from './tasks.schema';
 export * from './taskMessages.schema';
 export * from './dayOffRequests.schema';
+export * from './disciplineEvents.schema';
 export * from './payroll.schema';
 export * from './notifications.schema';
 export * from './auditLog.schema';

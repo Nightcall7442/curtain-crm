@@ -206,6 +206,10 @@ export const AUDIT_ACTIONS = [
   'dayoff.assigned',
   'dayoff.withdrawn',
   'dayoff.weekly_set',
+
+  'discipline.recorded',
+  'discipline.explained',
+  'discipline.removed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -1,5 +1,6 @@
 import {
   CORNICE_STATUS_LABELS,
+  DISCIPLINE_KIND_LABELS,
   MATERIAL_SLOT_LABELS,
   MONTH_NAMES_RU,
   MONTH_NAMES_UZ,
@@ -53,6 +54,7 @@ const LABEL_RU_TO_UZ: ReadonlyMap<string, string> = (() => {
   add(PAYROLL_SCHEME_TYPE_LABELS);
   add(ORDER_STAGE_FEE_LABELS);
   add(MATERIAL_SLOT_LABELS);
+  add(DISCIPLINE_KIND_LABELS);
   // Подписи кнопок переходов («Отдать на пошив») — в тексте про права.
   for (const transition of ORDER_TRANSITIONS) {
     map.set(transition.label, transitionLabel(transition, 'uz'));
