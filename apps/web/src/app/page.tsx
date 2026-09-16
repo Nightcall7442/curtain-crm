@@ -486,8 +486,22 @@ function Hero({ copy }: { readonly copy: LandingCopy }): ReactElement {
  * Лента дублируется дважды и уезжает ровно на ширину одного прохода: второй
  * проход — копия первого, поэтому момент возврата в начало не виден.
  */
-function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
-  const trackRef = useRef<HTMLDivElement | null>(null);
+/**
+ * Лента, медленно едущая мимо, — общий двигатель витрины стилей и команды.
+ *
+ * Скорость постоянная — 22 пикселя в секунду, независимо от ширины экрана и
+ * числа карточек: считается от измеренной ширины ленты, а не задаётся на
+ * глаз одним числом секунд, которое на широком мониторе превратилось бы в
+ * галоп. Движение ведёт `animejs`, а не CSS: на нём же держатся пауза при
+ * наведении и остановка на фокусе с клавиатуры.
+ *
+ * Лента дублируется дважды и уезжает ровно на ширину одного прохода: второй
+ * проход — копия первого, поэтому момент возврата в начало не виден.
+ */
+function useDrift(trackRef: RefObject<HTMLDivElement | null>): {
+  readonly hold: () => void;
+  readonly release: () => void;
+} {
   const driftRef = useRef<ReturnType<typeof animate> | null>(null);
 
   useEffect(() => {
@@ -533,14 +547,21 @@ function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
       observer.disconnect();
       driftRef.current?.pause();
     };
-  }, []);
+  }, [trackRef]);
 
-  const hold = (): void => {
-    driftRef.current?.pause();
+  return {
+    hold: () => {
+      driftRef.current?.pause();
+    },
+    release: () => {
+      driftRef.current?.play();
+    },
   };
-  const release = (): void => {
-    driftRef.current?.play();
-  };
+}
+
+function StyleStrip({ copy }: { readonly copy: LandingCopy }): ReactElement {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const { hold, release } = useDrift(trackRef);
 
   return (
     <section
@@ -772,41 +793,79 @@ function Eyebrow({
 /* -------------------------------------------------------------------------- */
 
 /**
- * Разворот-заявление. Без фотографии.
+ * Разворот-заявление — с кадром из собственного ролика.
  *
- * Здесь стоял стоковый снимок ниток и ножниц — единственный кадр на
- * странице, который не про шторы, а про швейный набор из фотобанка: рядом
- * с обложкой он читался как чужой. Заменить его нечем — все проверенные
- * снимки уже заняты витриной стилей этажом выше, и повтор через экран
- * выглядел бы затычкой. Раздел стал типографским: короткое заявление
- * засечным — оно и есть то, что владелец говорит клиенту первым.
+ * Стоковый снимок ниток и ножниц владелец назвал чужим, а раздел без
+ * фотографии рядом с обложкой выглядел пустым. Кадр мастерской из ролика
+ * «Путь заказа» — не сток: это тот же цех, что этажом ниже листает
+ * прокрутка. Зелёная дымка по краю кадра — та же, что на обложке: одна
+ * деталь, повторённая, держит страницу вместе.
+ *
+ * Заявление набрано тем же капсом, что заголовок обложки, а не засечным:
+ * два шрифта для одного голоса читались как две страницы, склеенные вместе.
  */
 function About({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const ref = useScrollReveal({ stagger: 120 });
 
   return (
-    <section id="about" ref={ref} className="px-6 py-24" style={{ backgroundColor: CREAM }}>
-      <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20">
-        <div className="reveal-item">
-          <Eyebrow tone="onCream">{copy.aboutEyebrow}</Eyebrow>
+    <section id="about" ref={ref} style={{ backgroundColor: CREAM }}>
+      <div className="mx-auto grid max-w-6xl gap-10 px-6 py-20 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:py-28">
+        <div className="reveal-item relative aspect-[4/5] overflow-hidden rounded-[18px] lg:aspect-auto lg:min-h-[560px]">
+          <img
+            src={FILM_STILLS.cutting}
+            alt={copy.aboutImageAlt}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                'linear-gradient(200deg, transparent 55%, rgb(8 32 26 / 0.55) 100%)',
+            }}
+          />
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-[18px]"
+            style={{ boxShadow: `inset 0 0 0 1px ${GOLD}40` }}
+          />
         </div>
 
-        <div className="reveal-item flex flex-col gap-8">
-          <p
-            className="font-editorial text-[clamp(28px,3.6vw,44px)] leading-[1.18] tracking-[-0.015em]"
+        <div className="flex flex-col justify-center gap-8">
+          <div className="reveal-item">
+            <Eyebrow tone="onCream">{copy.aboutEyebrow}</Eyebrow>
+          </div>
+
+          <h2
+            className="reveal-item font-hero text-[clamp(26px,3.2vw,42px)] font-extrabold uppercase leading-[1.04] tracking-[-0.02em]"
             style={{ color: GREEN_DEEP }}
           >
             {copy.aboutStatement}
-          </p>
+          </h2>
 
-          <span aria-hidden className="h-px w-24" style={{ backgroundColor: `${GOLD}66` }} />
+          <span aria-hidden className="reveal-item h-px w-16" style={{ backgroundColor: `${GOLD}80` }} />
 
           <p
-            className="max-w-2xl text-body leading-[1.75]"
+            className="reveal-item max-w-xl text-body leading-[1.75]"
             style={{ color: 'rgb(31 45 39 / 0.72)' }}
           >
             {copy.aboutParagraph}
           </p>
+
+          {/* Четыре обещания с обложки — здесь они раскрыты одной строкой каждое. */}
+          <ul className="reveal-item grid gap-x-8 gap-y-4 sm:grid-cols-2">
+            {copy.aboutPoints.map((point) => (
+              <li key={point.title} className="flex flex-col gap-1 border-l pl-4" style={{ borderColor: `${GOLD}66` }}>
+                <span className="text-caption font-semibold" style={{ color: GREEN_DEEP }}>
+                  {point.title}
+                </span>
+                <span className="text-footnote leading-snug" style={{ color: 'rgb(31 45 39 / 0.6)' }}>
+                  {point.text}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </section>
@@ -877,8 +936,11 @@ function Process({ copy }: { readonly copy: LandingCopy }): ReactElement {
 
 /**
  * Единственный раздел с настоящими фотографиями, не стоковыми: люди,
- * которые действительно шьют заказы. Круги разного размера и вразнобой по
- * высоте — витрина сильной команды, а не ряд документов на пропуск.
+ * которые действительно шьют заказы.
+ *
+ * Карточки едут лентой — той же, что витрина стилей на обложке: фото во
+ * всю плитку, зелёная дымка снизу, имя и должность на ней. Шестнадцать
+ * кругов сеткой читались доской пропусков; лента — витрина мастеров.
  */
 function Team({
   copy,
@@ -888,17 +950,19 @@ function Team({
   readonly locale: 'ru' | 'uz';
 }): ReactElement | null {
   const team = trpc.users.publicTeam.useQuery();
-  const ref = useScrollReveal({ stagger: 60, ease: 'outBack', ready: team.data !== undefined });
+  const ref = useScrollReveal({ stagger: 60, ready: team.data !== undefined });
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const { hold, release } = useDrift(trackRef);
 
   // Пока грузится или пусто — молчим. У совсем новой мастерской без единой
   // загруженной фотографии сотрудника раздел просто не появится: пустая
   // витрина с подписью «наша команда» смотрелась бы хуже, чем её отсутствие.
   if (team.isLoading) {
     return (
-      <section id="team" className="px-6 py-24" style={{ backgroundColor: CREAM }}>
-        <div className="flex justify-center gap-6">
+      <section id="team" className="px-6 py-24" style={{ backgroundColor: GREEN }}>
+        <div className="flex justify-center gap-4">
           {[0, 1, 2, 3, 4].map((key) => (
-            <Skeleton key={key} className="h-28 w-28 rounded-full" />
+            <Skeleton key={key} className="h-56 w-44 rounded-[14px]" />
           ))}
         </div>
       </section>
@@ -911,46 +975,45 @@ function Team({
     <section
       id="team"
       ref={ref}
-      className="px-6 py-24"
-      style={{ backgroundColor: CREAM }}
+      className="overflow-hidden py-20 lg:py-24"
+      style={{ backgroundColor: GREEN }}
+      onMouseEnter={hold}
+      onMouseLeave={release}
+      onFocus={hold}
+      onBlur={release}
     >
-      <div className="mx-auto max-w-6xl">
-        <div className="reveal-item mb-16 flex flex-col items-center gap-4 text-center">
-          <Eyebrow tone="onCream">{copy.teamEyebrow}</Eyebrow>
-          <h2
-            className="font-editorial text-[clamp(28px,3.4vw,40px)] leading-tight"
-            style={{ color: GREEN_DEEP }}
-          >
+      <div className="mx-auto mb-12 flex max-w-6xl flex-col gap-4 px-6">
+        <div className="reveal-item">
+          <Eyebrow tone="onGreen">{copy.teamEyebrow}</Eyebrow>
+        </div>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <h2 className="reveal-item font-hero text-[clamp(28px,3.4vw,42px)] font-extrabold uppercase leading-[1.04] tracking-[-0.02em] text-white">
             {copy.teamTitle}
           </h2>
-          <p className="max-w-xl text-body" style={{ color: 'rgb(31 45 39 / 0.65)' }}>
-            {copy.teamSubtitle}
-          </p>
+          <p className="reveal-item max-w-md text-body leading-relaxed text-white/65">{copy.teamSubtitle}</p>
         </div>
+      </div>
 
-        <div className="flex flex-wrap justify-center gap-x-8 gap-y-10 sm:gap-x-10">
-          {team.data.map((member) => (
-            <TeamCard key={member.id} member={member} locale={locale} />
-          ))}
-        </div>
+      <div ref={trackRef} className="flex w-max gap-4 px-4">
+        {[0, 1].map((pass) =>
+          team.data.map((member) => (
+            <TeamCard
+              key={`${pass.toString()}-${member.id.toString()}`}
+              member={member}
+              locale={locale}
+              hidden={pass === 1}
+            />
+          )),
+        )}
       </div>
     </section>
   );
 }
 
-/**
- * Диаметр круга — один на всех.
- *
- * Здесь была «волна»: четыре размера вперемешку и сдвиг по вертикали, чтобы
- * ряд не выглядел строем. Читалось это не витриной, а небрежностью — будто
- * фотографии вставляли на глаз. Одинаковый круг и общая сетка честнее: люди
- * в мастерской равны, и размер круга ничего о них не сообщает.
- */
-const TEAM_AVATAR_SIZE = 116;
-
 function TeamCard({
   member,
   locale,
+  hidden,
 }: {
   readonly member: {
     readonly id: number;
@@ -960,53 +1023,61 @@ function TeamCard({
     readonly avatarUrl: string;
   };
   readonly locale: 'ru' | 'uz';
+  /** Второй проход ленты — копия первого; читалке его озвучивать незачем. */
+  readonly hidden: boolean;
 }): ReactElement {
   const role = member.jobTitle ?? DEPARTMENT_LABELS[locale][member.department];
 
   return (
     <div
-      className="reveal-item flex flex-col items-center gap-3 transition-transform duration-200 hover:-translate-y-1"
-      style={{ width: TEAM_AVATAR_SIZE }}
+      {...(hidden ? { 'aria-hidden': true } : {})}
+      className="group relative aspect-[3/4] w-[clamp(168px,15vw,220px)] shrink-0 overflow-hidden rounded-[14px]"
+      style={{ backgroundColor: GREEN_DEEP }}
     >
       {/*
         Обычный `<img>`, а не `next/image`: адрес фото зависит от того, где
-        крутится API (`localhost` в разработке, боевой домен в проде — и он
-        может смениться), а оптимизатор требует объявить хост заранее в
-        `next.config.ts`. Кругу такого размера адаптивные размеры всё равно
-        не нужны, так что разница того не стоит.
+        крутится API, а оптимизатор требует объявить хост заранее. Кадр от
+        ВЕРХНЕГО края снимка — корпоративная съёмка портретная, и `cover` от
+        середины срезал бы макушку; так же кадрирует приложение.
       */}
-      <div
-        className="relative overflow-hidden rounded-full"
-        style={{
-          width: TEAM_AVATAR_SIZE,
-          height: TEAM_AVATAR_SIZE,
-          boxShadow: `0 0 0 2px ${CREAM}, 0 0 0 3px ${GOLD}55`,
-        }}
+      {/* Снимок не открылся — вместо сломанной картинки инициалы на зелёном. */}
+      <span
+        aria-hidden
+        className="absolute inset-0 flex items-center justify-center font-hero text-[40px] font-extrabold"
+        style={{ color: `${GOLD_LIGHT}80` }}
       >
-        {/*
-          Кадр берётся от ВЕРХНЕГО края снимка, а не от середины.
-
-          Корпоративная съёмка портретная, а круг квадратный, и обычный
-          `cover` срезает сверху и снизу поровну — у всех оказывалась
-          отрезана макушка. Голова у портрета сверху, поэтому лишнее должно
-          уходить снизу. Ровно так же кадрирует мобильное приложение
-          (`components/Avatar.tsx`), чтобы одно и то же лицо выглядело
-          одинаково и там, и здесь.
-        */}
-        <img
-          src={member.avatarUrl}
-          alt={member.fullName}
-          loading="lazy"
-          className="h-full w-full object-cover object-top"
-        />
-      </div>
-      <div className="text-center">
-        <p className="text-caption font-semibold leading-tight" style={{ color: GREEN_DEEP }}>
-          {member.fullName}
-        </p>
-        <p className="text-footnote" style={{ color: 'rgb(31 45 39 / 0.55)' }}>
+        {member.fullName
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => part.charAt(0).toUpperCase())
+          .join('')}
+      </span>
+      <img
+        src={member.avatarUrl}
+        alt={hidden ? '' : member.fullName}
+        loading="lazy"
+        onError={(event) => {
+          event.currentTarget.style.display = 'none';
+        }}
+        className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-[1200ms] ease-out group-hover:scale-[1.06]"
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{
+          backgroundImage: 'linear-gradient(180deg, rgb(8 32 26 / 0.05) 40%, rgb(8 32 26 / 0.88) 100%)',
+        }}
+      />
+      <span
+        aria-hidden
+        className="absolute inset-0 rounded-[14px] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+        style={{ boxShadow: `inset 0 0 0 1px ${GOLD_LIGHT}` }}
+      />
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4">
+        <span className="text-caption font-semibold leading-tight text-white">{member.fullName}</span>
+        <span className="text-footnote leading-snug" style={{ color: GOLD_LIGHT }}>
           {role}
-        </p>
+        </span>
       </div>
     </div>
   );
@@ -1019,45 +1090,67 @@ function TeamCard({
 /**
  * Последний экран — один призыв: позвонить.
  *
- * Телефон был набран засечным в тёмной коробке и ничем не отличался от
- * заголовка: главное действие всей страницы выглядело подписью. Теперь это
- * кнопка — золотая, во всю ширину пальца, с номером внутри. Номер остаётся
- * и текстом рядом: его переписывают в записную книжку, а из кнопки текст
- * выделять неудобно.
+ * Собран как обложка: кадр из ролика во всю ширину, зелёная дымка слева,
+ * текст в её плотной части. Телефон — золотая кнопка, во всю ширину пальца,
+ * с номером внутри: главное действие всей страницы не должно выглядеть
+ * подписью. Город — надзаголовком: мастерская одна, и она в Ургенче.
  */
 function Contact({ copy }: { readonly copy: LandingCopy }): ReactElement {
   const ref = useScrollReveal({ stagger: 100 });
   const telHref = toTelHref(CONTACT_PHONE) ?? `tel:${CONTACT_PHONE}`;
 
   return (
-    <section
-      id="contact"
-      ref={ref}
-      className="px-6 py-28"
-      style={{ backgroundColor: GREEN_DEEP }}
-    >
-      <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 text-center">
-        <div className="reveal-item">
-          <Eyebrow tone="onGreen">{copy.contactCity}</Eyebrow>
+    <section id="contact" ref={ref} style={{ backgroundColor: GREEN_DEEP }}>
+      <div className="relative isolate min-h-[520px] overflow-hidden">
+        <img
+          src={FILM_STILLS.installed}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `linear-gradient(100deg, ${GREEN_DEEP} 0%, ${GREEN} 30%, rgb(15 58 44 / 0.86) 46%, rgb(15 58 44 / 0.35) 64%, transparent 80%),
+              linear-gradient(0deg, rgb(8 32 26 / 0.7) 0%, transparent 40%)`,
+          }}
+        />
+
+        <div className="relative flex min-h-[520px] flex-col justify-center gap-7 px-6 py-20 text-white sm:px-10 lg:px-16">
+          <div className="reveal-item">
+            <Eyebrow tone="onGreen">{copy.contactCity}</Eyebrow>
+          </div>
+
+          <h2 className="reveal-item max-w-[14ch] font-hero text-[clamp(32px,4.6vw,56px)] font-extrabold uppercase leading-[1.0] tracking-[-0.02em]">
+            {copy.contactTitle}
+          </h2>
+
+          <p className="reveal-item max-w-[34ch] text-body leading-relaxed text-white/70">
+            {copy.contactSubtitle}
+          </p>
+
+          <div className="reveal-item flex flex-wrap items-center gap-5">
+            <a
+              href={telHref}
+              className="pressable inline-flex items-center gap-3 rounded-full px-9 py-4 font-hero text-[clamp(20px,2.2vw,26px)] font-extrabold tracking-[-0.01em]"
+              style={{ backgroundColor: GOLD_LIGHT, color: GREEN_DEEP }}
+            >
+              {formatPhone(CONTACT_PHONE)}
+            </a>
+            <span className="text-caption text-white/55">{copy.contactHint}</span>
+          </div>
+
+          <p
+            aria-hidden
+            className="reveal-item pointer-events-none absolute bottom-10 right-6 text-right font-script text-[clamp(24px,3.2vw,42px)] leading-[1.15] sm:right-10 lg:right-16"
+            style={{ color: GOLD_LIGHT }}
+          >
+            Your Style
+            <br />
+            Our Inspiration
+          </p>
         </div>
-
-        <h2 className="reveal-item font-hero text-[clamp(30px,4.4vw,52px)] font-extrabold uppercase leading-[1.03] tracking-[-0.02em] text-white">
-          {copy.contactTitle}
-        </h2>
-
-        <p className="reveal-item max-w-xl text-body leading-relaxed text-white/65">
-          {copy.contactSubtitle}
-        </p>
-
-        <a
-          href={telHref}
-          className="reveal-item pressable inline-flex items-center gap-3 rounded-full px-9 py-4 font-hero text-[clamp(20px,2.4vw,26px)] font-extrabold tracking-[-0.01em]"
-          style={{ backgroundColor: GOLD_LIGHT, color: GREEN_DEEP }}
-        >
-          {formatPhone(CONTACT_PHONE)}
-        </a>
-
-
       </div>
     </section>
   );
@@ -1067,23 +1160,66 @@ function Contact({ copy }: { readonly copy: LandingCopy }): ReactElement {
 /*                                   Подвал                                   */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Подвал повторяет шапку: знак, навигация, телефон. Одна золотая нить сверху
+ * — та же, что под обложкой.
+ */
 function SiteFooter({ copy }: { readonly copy: LandingCopy }): ReactElement {
+  const telHref = toTelHref(CONTACT_PHONE) ?? `tel:${CONTACT_PHONE}`;
+
   return (
-    <footer
-      className="border-t px-6 py-8"
-      style={{ backgroundColor: GREEN_DEEP, borderColor: `${GOLD}26` }}
-    >
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 text-center sm:flex-row sm:justify-between sm:text-left">
-        <p className="text-caption text-white/45">
-          © {new Date().getFullYear()} Parda Bozor · Design House
-        </p>
-        <Link
-          href="/login"
-          className="text-caption text-white/45 underline-offset-4 transition-colors hover:text-white/80 hover:underline"
-        >
-          {copy.staffLogin}
-        </Link>
+    <footer className="border-t px-6 py-12" style={{ backgroundColor: GREEN_DEEP, borderColor: `${GOLD}33` }}>
+      <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[1.2fr_1fr_1fr]">
+        <div className="flex flex-col gap-4">
+          <span
+            aria-hidden
+            className="block h-[56px] w-[92px] bg-current"
+            style={{
+              color: GOLD_LIGHT,
+              WebkitMaskImage: 'url(/logo.png)',
+              maskImage: 'url(/logo.png)',
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              WebkitMaskPosition: 'left',
+              maskPosition: 'left',
+            }}
+          />
+          <p className="max-w-[30ch] text-caption leading-relaxed text-white/55">{copy.footerTagline}</p>
+        </div>
+
+        <nav aria-label={copy.footerNavLabel} className="flex flex-col gap-2">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="w-fit text-caption text-white/65 transition-colors hover:text-white"
+            >
+              {copy.nav[link.key]}
+            </a>
+          ))}
+        </nav>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-overline uppercase tracking-[0.28em]" style={{ color: GOLD_LIGHT }}>
+            {copy.contactCity}
+          </span>
+          <a href={telHref} className="w-fit font-hero text-[20px] font-extrabold text-white transition-colors hover:text-[#E4C77A]">
+            {formatPhone(CONTACT_PHONE)}
+          </a>
+          <Link
+            href="/login"
+            className="mt-4 w-fit text-caption text-white/45 underline-offset-4 transition-colors hover:text-white/80 hover:underline"
+          >
+            {copy.staffLogin}
+          </Link>
+        </div>
       </div>
+
+      <p className="mx-auto mt-10 max-w-6xl border-t pt-6 text-footnote text-white/35" style={{ borderColor: `${GOLD}1f` }}>
+        © {new Date().getFullYear()} Parda Bozor · Design House
+      </p>
     </footer>
   );
 }
@@ -1124,6 +1260,15 @@ const PHOTOS = {
     hiTech: '1617617495640-153230cf3408',
     premium: '1659282386282-d7145e593bad',
   },
+} as const;
+
+/**
+ * Кадры из собственного ролика «Путь заказа» — для разделов «О мастерской»
+ * и «Контакты». Это не сток: тот же цех, что листает прокрутка.
+ */
+const FILM_STILLS = {
+  cutting: '/process/frames/f_060.webp',
+  installed: '/process/frames/f_282.webp',
 } as const;
 
 function unsplash(id: string, width: number): string {
@@ -1180,6 +1325,8 @@ interface LandingCopy {
   readonly aboutEyebrow: string;
   readonly aboutStatement: string;
   readonly aboutParagraph: string;
+  readonly aboutImageAlt: string;
+  readonly aboutPoints: readonly { readonly title: string; readonly text: string }[];
   readonly processEyebrow: string;
   readonly processTitle: string;
   readonly processSteps: readonly ProcessStep[];
@@ -1189,6 +1336,9 @@ interface LandingCopy {
   readonly contactTitle: string;
   readonly contactSubtitle: string;
   readonly contactCity: string;
+  readonly contactHint: string;
+  readonly footerTagline: string;
+  readonly footerNavLabel: string;
 }
 
 const COPY: Record<'ru' | 'uz', LandingCopy> = {
@@ -1223,6 +1373,13 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     aboutStatement: 'Мы не подгоняем шторы под окно — мы шьём их заново, под конкретное окно.',
     aboutParagraph:
       'Design House Parda Bozor шьёт шторы под заказ: от классических портьер до лёгкого тюля. Каждое изделие проходит через одну и ту же мастерскую — замерщика, швею и контролёра, — а не собирается из чужих полуфабрикатов. Это дольше, чем купить готовое, и ровно поэтому держится дольше.',
+    aboutImageAlt: 'Раскрой ткани в мастерской Design House',
+    aboutPoints: [
+      { title: 'Премиальные ткани', text: 'Портьеры, тюль и защита — из коллекций, которые мы сами видели и трогали.' },
+      { title: 'Индивидуальный пошив', text: 'Под размер вашего окна: замер, раскрой и пошив в одной мастерской.' },
+      { title: 'Профессиональная установка', text: 'Карниз и штору вешают наши установщики — заказ закрыт, когда всё висит как надо.' },
+      { title: 'Комплексные решения', text: 'Ткань, карниз, установка и сервис — одним заказом, одной командой.' },
+    ],
     processEyebrow: 'Процесс',
     processTitle: 'Путь заказа — от окна до окна',
     processSteps: [
@@ -1238,6 +1395,9 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     contactTitle: 'Расскажите о своём окне',
     contactSubtitle: 'Подскажем модель и приедем на замер — обычно в течение нескольких дней.',
     contactCity: 'Ургенч',
+    contactHint: 'Звонок или сообщение — ответим и договоримся о замере',
+    footerTagline: 'Шторы под заказ: замер, пошив и установка одной мастерской.',
+    footerNavLabel: 'Разделы страницы',
   },
   uz: {
     nav: { styles: 'Uslublar', about: 'Biz haqimizda', process: 'Ish jarayoni', team: 'Jamoa', contact: 'Aloqa' },
@@ -1270,6 +1430,13 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     aboutStatement: "Biz pardani derazaga moslamaymiz — uni aynan shu deraza uchun qaytadan tikamiz.",
     aboutParagraph:
       "Design House Parda Bozor pardalarni buyurtma asosida tikadi: klassik pardalardan yengil tyulgacha. Har bir buyurtma bitta ustaxonadan — o'lchovchi, tikuvchi va nazoratchidan — o'tadi, boshqa joydan tayyor qismlar yig'ilmaydi. Bu tayyorini sotib olishdan sekinroq, va aynan shu sababli uzoqroq xizmat qiladi.",
+    aboutImageAlt: "Design House ustaxonasida mato bichish",
+    aboutPoints: [
+      { title: 'Premium matolar', text: "Pardalar, tyul va himoya — o'zimiz ko'rgan va ushlab ko'rgan kolleksiyalardan." },
+      { title: 'Individual tikuv', text: "Derazangiz o'lchamiga: o'lchov, bichish va tikuv bitta ustaxonada." },
+      { title: "Professional o'rnatish", text: "Karniz va pardani o'rnatuvchilarimiz osadi — hammasi kerakli joyda turganda buyurtma yopiladi." },
+      { title: 'Kompleks yechimlar', text: "Mato, karniz, o'rnatish va xizmat — bitta buyurtma, bitta jamoa." },
+    ],
     processEyebrow: 'Jarayon',
     processTitle: "Buyurtma yo'li — derazadan derazagacha",
     processSteps: [
@@ -1285,5 +1452,8 @@ const COPY: Record<'ru' | 'uz', LandingCopy> = {
     contactTitle: 'Derazangiz haqida gapirib bering',
     contactSubtitle: "Model tavsiya qilamiz va o'lchovga kelamiz — odatda bir necha kun ichida.",
     contactCity: 'Urganch',
+    contactHint: "Qo'ng'iroq yoki xabar — javob beramiz va o'lchovga kelishamiz",
+    footerTagline: "Buyurtma asosida pardalar: o'lchov, tikuv va o'rnatish bitta ustaxonada.",
+    footerNavLabel: "Sahifa bo'limlari",
   },
 };
