@@ -1,5 +1,5 @@
 import { branches, installationTrips, orders, personalBreaks, shifts, users } from '@curtain-crm/db';
-import { MAX_PERSONAL_BREAK_MINUTES } from '@curtain-crm/shared';
+import { MAX_PERSONAL_BREAK_MINUTES, SHIFT_FORGOTTEN_AFTER_HOURS } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -579,7 +579,13 @@ export const shiftsRouter = router({
       .from(shifts)
       .innerJoin(users, eq(users.id, shifts.userId))
       .innerJoin(branches, eq(branches.id, shifts.branchId))
-      .where(isNull(shifts.endedAt))
+      .where(
+        and(
+          isNull(shifts.endedAt),
+          // Забытые смены (старше 16 ч) — не «на смене»: их закроет сервер.
+          gte(shifts.startedAt, new Date(Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000)),
+        ),
+      )
       .orderBy(shifts.startedAt);
     return rows;
   }),

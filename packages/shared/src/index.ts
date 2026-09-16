@@ -36,6 +36,7 @@ export * from './constants/packList';
 export * from './constants/stageFee';
 export * from './constants/discipline';
 export * from './constants/terminalCheck';
+export * from './constants/shift';
 
 /* Типы */
 export * from './types/orderItemAccessory';

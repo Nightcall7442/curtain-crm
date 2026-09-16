@@ -1,3 +1,4 @@
+import { SHIFT_FORGOTTEN_AFTER_HOURS } from '@curtain-crm/shared';
 import { useMemo, type ReactElement } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -28,8 +29,11 @@ export function AttendanceScreen(): ReactElement {
   /* Границы суток берутся на каждый рендер, а не запоминаются: экран живёт
      открытым и после полуночи должен показывать уже новый день. */
   const { from, to } = todayBounds();
+  /* Смена, открытая вчера вечером и ещё идущая, — тоже «сейчас в цеху»:
+     запрашиваем на 16 часов назад, а закрытые вчерашние отбрасываем ниже. */
+  const since = new Date(Math.min(from.getTime(), Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000));
 
-  const shifts = trpc.shifts.list.useQuery({ page: 1, pageSize: 100, from, to });
+  const shifts = trpc.shifts.list.useQuery({ page: 1, pageSize: 100, from: since, to });
   const breaks = trpc.shifts.activeBreaks.useQuery();
   const trips = trpc.shifts.activeTrips.useQuery();
   const current = trpc.shifts.current.useQuery();
@@ -62,7 +66,7 @@ export function AttendanceScreen(): ReactElement {
 
   const rows = shifts.data?.items ?? [];
   const working = rows.filter((row) => row.endedAt === null);
-  const finished = rows.filter((row) => row.endedAt !== null);
+  const finished = rows.filter((row) => row.endedAt !== null && new Date(row.startedAt) >= from);
 
   return (
     <ScrollView

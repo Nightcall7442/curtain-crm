@@ -1,9 +1,16 @@
-import { type DbExecutor } from '@curtain-crm/db';
-import { TERMINAL_CHECKS_DAILY_TARGET } from '@curtain-crm/shared';
+import { shifts, type DbExecutor } from '@curtain-crm/db';
+import {
+  SHIFT_AUTO_CLOSE_AFTER_HOURS,
+  SHIFT_AUTO_CLOSE_REASON,
+  SHIFT_FORGOTTEN_AFTER_HOURS,
+  TERMINAL_CHECKS_DAILY_TARGET,
+} from '@curtain-crm/shared';
+import { and, isNull, lt, sql } from 'drizzle-orm';
 
 import { sellerUserIds, terminalChecksToday } from '../routers/terminalChecks.router';
 
-import { notifyTerminalCheckDue } from './notifications.service';
+import { recordAudit } from './audit.service';
+import { notifyShiftAdjusted, notifyTerminalCheckDue } from './notifications.service';
 
 /** Часы по Ташкенту, в которые продавцам напоминают о терминальных чеках. */
 const REMINDER_HOURS = [10, 15] as const;
@@ -28,6 +35,7 @@ export function startCollectionReminders(executor: DbExecutor): () => void {
   let lastSlot = '';
 
   const tick = async (): Promise<void> => {
+    await closeForgottenShifts(executor);
     const local = new Date(Date.now() + TASHKENT_OFFSET_MS);
     const hour = local.getUTCHours();
     if (!(REMINDER_HOURS as readonly number[]).includes(hour) || local.getUTCMinutes() !== 0) return;
@@ -54,4 +62,43 @@ export function startCollectionReminders(executor: DbExecutor): () => void {
   return () => {
     clearInterval(timer);
   };
+}
+
+/**
+ * Забытые смены закрываются сами.
+ *
+ * Открытая дольше `SHIFT_FORGOTTEN_AFTER_HOURS` смена закрывается на
+ * `SHIFT_AUTO_CLOSE_AFTER_HOURS` часах от начала — с пометкой «закрыта
+ * автоматически» и уведомлением сотруднику. Точное время руководство
+ * поправит в табеле; открытая три дня смена не поправляется никем и ломает
+ * и явку, и часы, и «на смене сейчас».
+ */
+async function closeForgottenShifts(executor: DbExecutor): Promise<void> {
+  const threshold = new Date(Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000);
+  const closed = await executor
+    .update(shifts)
+    .set({
+      endedAt: sql`${shifts.startedAt} + make_interval(hours => ${SHIFT_AUTO_CLOSE_AFTER_HOURS})`,
+      // Не «правка руководителя»: у той обязателен автор, а здесь его нет.
+      // Причина и время остаются — по ним в табеле видно, что закрыла система.
+      adjustedAt: new Date(),
+      adjustmentReason: SHIFT_AUTO_CLOSE_REASON,
+    })
+    .where(and(isNull(shifts.endedAt), lt(shifts.startedAt, threshold)))
+    .returning({ id: shifts.id, userId: shifts.userId, startedAt: shifts.startedAt });
+
+  for (const shift of closed) {
+    await recordAudit(executor, {
+      actorId: shift.userId,
+      action: 'shift.adjusted',
+      entityType: 'shift',
+      entityId: shift.id,
+      details: { auto: true, reason: SHIFT_AUTO_CLOSE_REASON },
+    });
+    await notifyShiftAdjusted(executor, shift.userId, {
+      actorName: 'Система',
+      reason: SHIFT_AUTO_CLOSE_REASON,
+      shiftDate: shift.startedAt.toISOString().slice(0, 10),
+    });
+  }
 }

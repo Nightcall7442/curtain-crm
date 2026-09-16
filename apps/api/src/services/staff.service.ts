@@ -13,6 +13,7 @@ import {
   type EmploymentType,
   type PresenceStatus as PresenceStatusName,
   type TenureBucketKey,
+  SHIFT_FORGOTTEN_AFTER_HOURS,
 } from '@curtain-crm/shared';
 import { and, count, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 
@@ -82,7 +83,11 @@ export async function presenceToday(
       .from(shifts)
       .where(
         or(
-          isNull(shifts.endedAt),
+          and(
+            isNull(shifts.endedAt),
+            // Забытая смена (старше 16 ч) — не присутствие.
+            gte(shifts.startedAt, new Date(now.getTime() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000)),
+          ),
           and(gte(shifts.startedAt, bounds.start), lt(shifts.startedAt, bounds.end)),
         ),
       )

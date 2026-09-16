@@ -16,6 +16,7 @@ import {
   OrderStatus,
   parseMoney,
   PRODUCTION_STAGES,
+  SHIFT_FORGOTTEN_AFTER_HOURS,
 } from '@curtain-crm/shared';
 import {
   and,
@@ -138,7 +139,7 @@ export const reportsRouter = router({
           .where(
             and(
               isNull(shifts.endedAt),
-              gte(shifts.startedAt, new Date(now.getTime() - day)),
+              gte(shifts.startedAt, new Date(now.getTime() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000)),
               ...(input.branchId === undefined ? [] : [eq(shifts.branchId, input.branchId)]),
             ),
           ),
