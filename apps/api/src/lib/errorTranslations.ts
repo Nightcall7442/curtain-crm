@@ -291,6 +291,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Голосовое сообщение не длиннее {n} секунд', "Ovozli xabar ko'pi bilan {n} soniya"],
   ['Фото стадии «{stage}» загружает другой исполнитель', '«{stage}» bosqichi suratini boshqa ijrochi yuklaydi'],
   ['«{model}» лежит в другом филиале', '«{model}» boshqa filialda turibdi'],
+  ['«{model}» лежит на складе в нескольких вариантах — выберите, какую штору списать', '«{model}» omborda bir necha variantda turibdi — qaysi pardani hisobdan chiqarishni tanlang'],
   ['«{model}»: на складе {have} шт, продать {want} нельзя', "«{model}»: omborda {have} dona, {want} dona sotib bo'lmaydi"],
   ['Для схемы «{type}» это поле обязательно', "«{type}» sxemasi uchun bu maydon majburiy"],
   ['У сотрудника нет роли «{role}» — условия по ней не нужны', "Xodimda «{role}» roli yo'q — u bo'yicha shartlar kerak emas"],

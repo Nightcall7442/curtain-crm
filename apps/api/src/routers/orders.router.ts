@@ -45,7 +45,7 @@ import {
   type OrderStageFee,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -902,7 +902,42 @@ export const ordersRouter = router({
         */
         const soldFromStock = new Map<number, typeof readyMadeItems.$inferSelect>();
 
-        for (const item of input.items) {
+        /*
+          Штора со склада списывается и тогда, когда продавец назвал модель,
+          но не ткнул в строку остатка: если на полке этого филиала лежит
+          ровно одна штора такой модели — берём её. Раньше такая продажа
+          проходила мимо склада, и владелец видел «покупка не минусуется».
+          Несколько вариантов (окно и дверь) — просим выбрать: списать не ту
+          хуже, чем спросить.
+        */
+        const items = await Promise.all(
+          input.items.map(async (item) => {
+            const model = item.model?.trim() ?? '';
+            if (item.readyMadeItemId !== undefined || model === '') return item;
+            const candidates = await tx
+              .select({ id: readyMadeItems.id })
+              .from(readyMadeItems)
+              .where(
+                and(
+                  eq(readyMadeItems.branchId, branchId),
+                  eq(readyMadeItems.isActive, true),
+                  gt(readyMadeItems.quantity, 0),
+                  sql`lower(${readyMadeItems.model}) = lower(${model})`,
+                ),
+              )
+              .limit(2);
+            if (candidates.length === 1) return { ...item, readyMadeItemId: candidates[0]?.id };
+            if (candidates.length > 1) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `«${model}» лежит на складе в нескольких вариантах — выберите, какую штору списать`,
+              });
+            }
+            return item;
+          }),
+        );
+
+        for (const item of items) {
           if (item.readyMadeItemId === undefined) continue;
 
           const [stock] = await tx
@@ -953,7 +988,7 @@ export const ordersRouter = router({
         }
 
         await tx.insert(orderItems).values(
-          input.items.map((item, index) => {
+          items.map((item, index) => {
             const stock =
               item.readyMadeItemId === undefined
                 ? undefined
