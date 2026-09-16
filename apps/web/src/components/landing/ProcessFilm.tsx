@@ -18,7 +18,8 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
  *
  * Ролик сгенерирован в Higgsfield (Kling 3.0) по сценарию цеха: 10 секунд
  * мастерской (замер, раскрой, пошив, контроль) и 5 секунд установки,
- * склеены через затемнение; кадры — `ffmpeg`, 8 к/с. Файлы лежат в
+ * склеены через затемнение; кадры — `ffmpeg`, 20 к/с: при 8 к/с соседние
+ * кадры отличались слишком сильно, и листание дёргалось. Файлы лежат в
  * `public/process/`.
  */
 
@@ -27,12 +28,22 @@ export interface FilmStep {
   readonly description: string;
 }
 
-const FRAME_COUNT = 115;
+const FRAME_COUNT = 288;
 const FRAME_URL = (index: number): string => `/process/frames/f_${index.toString().padStart(3, '0')}.webp`;
 const VIDEO_URL = '/process/process.mp4';
 const POSTER_URL = FRAME_URL(1);
-/** Высота прокрутки в экранах: чем больше, тем медленнее листается ролик. */
-const SCROLL_SCREENS = 5;
+/**
+ * Высота прокрутки в экранах: чем больше, тем медленнее листается ролик.
+ * Пять экранов владелец назвал «очень коротко» — ролик пролетал за два
+ * движения колёсика; десять — как у Apple, этап на пару экранов.
+ */
+const SCROLL_SCREENS = 10;
+/**
+ * Доля пути до цели за кадр: показанный прогресс догоняет прокрутку не
+ * рывком, а плавно, — иначе быстрый жест колёсика перескакивал по десять
+ * кадров, и движение рвалось.
+ */
+const EASE = 0.12;
 /**
  * Границы этапов в долях ролика — по тому, где что снято: первые четыре
  * момента занимают 9,4 с из 14,4, установка — остальное.
@@ -118,58 +129,76 @@ export function ProcessFilm({
     };
   }, [reduced]);
 
-  /* Фаза 2: прокрутка ведёт кадры. Ролик уступает место кадрам, как только
-     зритель повёл страницу дальше, либо когда сам доиграл до конца. */
+  /*
+    Фаза 2: прокрутка ведёт кадры. Ролик уступает место кадрам, как только
+    зритель повёл страницу дальше, либо когда сам доиграл до конца.
+
+    Цель — положение прокрутки; показанный прогресс догоняет её в цикле
+    `requestAnimationFrame` с затуханием. Кадр рисуется прямо из цикла,
+    без React-состояния: состояние здесь только для подписей и шкалы, и
+    обновляется, когда меняется видимая цифра.
+  */
+  const targetRef = useRef(0);
+  const shownRef = useRef(0);
+  const drawnRef = useRef(0);
   useEffect(() => {
     const wrapper = wrapperRef.current;
-    if (wrapper === null || reduced) return;
-    let raf = 0;
-    const measure = (): void => {
-      raf = 0;
-      const rect = wrapper.getBoundingClientRect();
-      const total = rect.height - window.innerHeight;
-      const next = total <= 0 ? 0 : Math.min(1, Math.max(0, -rect.top / total));
-      setProgress(next);
-      if (next > 0.03) setPhase('frames');
-    };
-    const onScroll = (): void => {
-      if (raf === 0) raf = window.requestAnimationFrame(measure);
-    };
-    measure();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      if (raf !== 0) window.cancelAnimationFrame(raf);
-    };
-  }, [reduced]);
-
-  /* Рисуем текущий кадр: «cover», как у видео под ним. */
-  useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas === null || phase !== 'frames') return;
-    const index = Math.min(FRAME_COUNT, Math.max(1, Math.round(progress * (FRAME_COUNT - 1)) + 1));
-    const image = framesRef.current[index];
-    if (image === null || image === undefined) return;
-    const draw = (): void => {
+    if (wrapper === null || canvas === null || reduced) return;
+    let raf = 0;
+    let running = true;
+
+    const draw = (index: number): void => {
+      const image = framesRef.current[index];
+      if (image === null || image === undefined || !image.complete || image.naturalWidth === 0) return;
       const context = canvas.getContext('2d');
       if (context === null) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
-      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
+      if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
       }
-      const scale = Math.max((width * dpr) / image.naturalWidth, (height * dpr) / image.naturalHeight);
+      const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
       const drawWidth = image.naturalWidth * scale;
       const drawHeight = image.naturalHeight * scale;
-      context.drawImage(image, (width * dpr - drawWidth) / 2, (height * dpr - drawHeight) / 2, drawWidth, drawHeight);
+      context.drawImage(image, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
+      drawnRef.current = index;
     };
-    if (image.complete) draw();
-    else image.addEventListener('load', draw, { once: true });
-  }, [phase, progress]);
+
+    const measure = (): void => {
+      const rect = wrapper.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      targetRef.current = total <= 0 ? 0 : Math.min(1, Math.max(0, -rect.top / total));
+      if (targetRef.current > 0.02) setPhase('frames');
+    };
+
+    const tick = (): void => {
+      if (!running) return;
+      const target = targetRef.current;
+      const shown = shownRef.current;
+      const next = Math.abs(target - shown) < 0.0005 ? target : shown + (target - shown) * EASE;
+      if (next !== shown) {
+        shownRef.current = next;
+        setProgress(next);
+      }
+      const index = Math.min(FRAME_COUNT, Math.max(1, Math.round(next * (FRAME_COUNT - 1)) + 1));
+      if (index !== drawnRef.current || canvas.width === 0) draw(index);
+      raf = window.requestAnimationFrame(tick);
+    };
+
+    measure();
+    window.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    raf = window.requestAnimationFrame(tick);
+    return () => {
+      running = false;
+      window.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+      window.cancelAnimationFrame(raf);
+    };
+  }, [reduced]);
 
   const activeStep = Math.max(
     0,
