@@ -77,6 +77,14 @@ export interface RatingEntry {
   readonly byRole: readonly RatingRoleEntry[];
   /** Закрытых заказов за период суммарно по всем ролям. */
   readonly ordersCount: number;
+  /**
+   * Баллы дисциплины за период: штрафные минус, поощрения плюс.
+   *
+   * Владелец попросил связать дисциплину с рейтингом: опоздание отнимает
+   * от того же балла, который даёт закрытая задача, «помог команде» —
+   * прибавляет. Отдельным полем, чтобы в разбивке было видно, откуда цифра.
+   */
+  readonly disciplinePoints: number;
   /** Общий балл; `null` — сотрудник вне конкурса. */
   readonly score: number | null;
   /** Место в сводной таблице; `null` — вне конкурса. */
@@ -351,13 +359,27 @@ export interface RatedEmployee {
  * таблицы, и «меня нет в рейтинге» читалось бы как ошибка системы. Он
  * присутствует с нулём и честной подписью.
  */
+/** Сумма баллов дисциплины по сотрудникам за период — по дате события. */
+async function disciplineByUser(db: Database, bounds: PeriodBounds): Promise<Map<number, number>> {
+  const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
+  const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
+  const result = await db.execute(sql`
+    select user_id, coalesce(sum(points), 0) as points
+    from discipline_events
+    where occurred_on >= (${from} at time zone 'Asia/Tashkent')::date
+      and occurred_on < (${to} at time zone 'Asia/Tashkent')::date
+    group by user_id
+  `);
+  return new Map(result.map((row) => [asInt(row['user_id']), asFloat(row['points'])]));
+}
+
 export async function employeeRating(
   db: Database,
   employees: readonly RatedEmployee[],
   bounds: PeriodBounds,
   branchId?: number,
 ): Promise<RatingEntry[]> {
-  const byRole = await collectRoleRows(db, bounds, branchId);
+  const [byRole, discipline] = await Promise.all([collectRoleRows(db, bounds, branchId), disciplineByUser(db, bounds)]);
 
   // Лучший объём в каждой роли — знаменатель нормировки.
   const bestVolume = new Map<RatedRole, number>(
@@ -395,6 +417,7 @@ export async function employeeRating(
     // остаются, но в конкурсе такой сотрудник уже не участвует.
     const roleEntries = reason === null ? (rowsByUser.get(employee.id) ?? []) : [];
     const ordersCount = roleEntries.reduce((sum, entry) => sum + entry.ordersCount, 0);
+    const disciplinePoints = reason === null ? (discipline.get(employee.id) ?? 0) : 0;
 
     return {
       userId: employee.id,
@@ -403,7 +426,8 @@ export async function employeeRating(
       roles: employee.roles,
       byRole: roleEntries,
       ordersCount,
-      score: reason === null ? combineRoleScores(roleEntries) : null,
+      disciplinePoints,
+      score: reason === null ? combineRoleScores(roleEntries) + disciplinePoints : null,
       place: null,
       unratedReason: reason,
     } satisfies RatingEntry;

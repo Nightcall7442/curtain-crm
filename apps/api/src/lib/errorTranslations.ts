@@ -76,6 +76,9 @@ const EXACT: Readonly<Record<string, string>> = {
   'Сотрудник не найден или уволен': "Xodim topilmadi yoki ishdan bo'shatilgan",
   'Не удалось сохранить запись': "Yozuvni saqlab bo'lmadi",
 
+  // terminalChecks
+  'Конец периода раньше начала': 'Davr oxiri boshidan oldin',
+
   // dayOff
   'Не удалось создать запрос': "So'rov yaratib bo'lmadi",
   'Запрос не найден': "So'rov topilmadi",

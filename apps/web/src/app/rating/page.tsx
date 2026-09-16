@@ -5,6 +5,7 @@ import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
 
 import {
   formatDayRange,
+  formatDisciplinePoints,
   MONTH_NAMES_RU,
   RATING_SCOPE_LABELS_RU,
   RATING_SCOPES,
@@ -250,7 +251,7 @@ export default function RatingPage(): ReactElement {
               render: (row) =>
                 row.unratedReason !== null ? (
                   <span className="text-footnote text-muted">{row.unratedReason}</span>
-                ) : row.byRole.length === 0 ? (
+                ) : row.byRole.length === 0 && row.disciplinePoints === 0 ? (
                   <span className="text-footnote text-muted">
                     За период нет выполненных задач
                   </span>
@@ -264,6 +265,14 @@ export default function RatingPage(): ReactElement {
                         <ScoreComponent component="punctuality" value={entry.punctualityPercent} />
                       </div>
                     ))}
+                    {row.disciplinePoints !== 0 && (
+                      <div className="flex flex-wrap items-baseline gap-x-3">
+                        <Badge tone={row.disciplinePoints < 0 ? 'danger' : 'positive'}>Дисциплина</Badge>
+                        <span className="font-mono text-footnote tabular-nums">
+                          {formatDisciplinePoints(row.disciplinePoints)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ),
             },

@@ -257,6 +257,7 @@ export const ratingRouter = router({
                 place: mine.place,
                 score: mine.score,
                 ordersCount: mine.ordersCount,
+                disciplinePoints: mine.disciplinePoints,
                 placeDelta: placeDelta(mine.place, previousPlaces.get(mine.userId) ?? null),
                 unratedReason: mine.unratedReason,
                 byRole: mine.byRole.map((role) => ({

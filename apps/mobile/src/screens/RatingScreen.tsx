@@ -1,5 +1,6 @@
 import {
   formatDayRange,
+  formatDisciplinePoints,
   monthName,
   RATING_COMPONENT_LABELS,
   RATING_SCOPE_LABELS,
@@ -186,6 +187,14 @@ function MyPlaceCard({
         сотрудник, который видит одну итоговую цифру, не знает, что именно
         подтягивать — объём, качество или сроки.
       */}
+      {me.disciplinePoints !== 0 && (
+        <View style={styles.breakdown}>
+          <Text style={styles.breakdownRole}>{m('discipline.title')}</Text>
+          <Text style={[styles.disciplinePoints, me.disciplinePoints < 0 ? styles.disciplineNegative : null]}>
+            {formatDisciplinePoints(me.disciplinePoints)}
+          </Text>
+        </View>
+      )}
       {me.byRole.map((entry) => (
         <View key={entry.role} style={styles.breakdown}>
           <Text style={styles.breakdownRole}>{t(ROLE_LABELS, entry.role)}</Text>
@@ -278,6 +287,13 @@ function Component({
 /* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
+  disciplinePoints: {
+    ...typography.value,
+    color: colors.positive,
+  },
+  disciplineNegative: {
+    color: colors.danger,
+  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
