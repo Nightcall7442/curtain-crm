@@ -24,6 +24,7 @@ import {
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
+import { BottomSheet } from '../components/BottomSheet';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
@@ -492,48 +493,8 @@ export function ReadyMadeStockScreen(): ReactElement {
                   </View>
                 </View>
 
-                {counting === item.id ? (
-                  <View style={styles.countRow}>
-                    <View style={styles.countInput}>
-                      <Input
-                        value={countValue}
-                        onChangeText={setCountValue}
-                        keyboardType="number-pad"
-                        placeholder={item.quantity.toString()}
-                      />
-                    </View>
-                    <Pressable
-                      disabled={setQuantity.isPending}
-                      onPress={() => {
-                        setQuantity.mutate({
-                          id: item.id,
-                          quantity: Math.max(0, Number.parseInt(countValue, 10) || 0),
-                        });
-                      }}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [styles.countSave, pressed ? styles.pressed : null]}
-                    >
-                      <Text style={styles.countSaveText}>{m('emp.save')}</Text>
-                    </Pressable>
-                  </View>
-                ) : pricing === item.id ? (
-                  <View style={styles.countRow}>
-                    <View style={styles.countInput}>
-                      <MoneyInput value={priceValue} onChangeText={setPriceValue} placeholder="0" />
-                    </View>
-                    <Pressable
-                      disabled={setPrice.isPending || toMoney(priceValue) <= 0}
-                      onPress={() => {
-                        setPrice.mutate({ id: item.id, price: toMoney(priceValue) });
-                      }}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [styles.countSave, pressed ? styles.pressed : null]}
-                    >
-                      <Text style={styles.countSaveText}>{m('emp.save')}</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={styles.actionsRow}>
+                {/* Остаток и ценник правятся в шторке: строка внизу списка уезжала под клавиатуру. */}
+                <View style={styles.actionsRow}>
                     <Pressable
                       onPress={() => {
                         setCounting(item.id);
@@ -562,12 +523,61 @@ export function ReadyMadeStockScreen(): ReactElement {
                         </Text>
                       )}
                     </Pressable>
-                  </View>
-                )}
+                </View>
               </View>
             ))
           )}
         </Card>
+
+        <BottomSheet
+          visible={counting !== null}
+          title={m('stock.recount')}
+          onClose={() => {
+            setCounting(null);
+          }}
+        >
+          <Field label={m('stock.quantity')}>
+            <Input value={countValue} onChangeText={setCountValue} keyboardType="number-pad" placeholder="0" autoFocus />
+          </Field>
+          <Pressable
+            disabled={setQuantity.isPending || counting === null}
+            onPress={() => {
+              if (counting === null) return;
+              setQuantity.mutate({ id: counting, quantity: Math.max(0, Number.parseInt(countValue, 10) || 0) });
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.sheetSave, pressed ? styles.pressed : null]}
+          >
+            <Text style={styles.sheetSaveText}>{m('emp.save')}</Text>
+          </Pressable>
+        </BottomSheet>
+
+        <BottomSheet
+          visible={pricing !== null}
+          title={m('stock.changePrice')}
+          onClose={() => {
+            setPricing(null);
+          }}
+        >
+          <Field label={m('sell.price')}>
+            <MoneyInput value={priceValue} onChangeText={setPriceValue} placeholder="0" autoFocus />
+          </Field>
+          <Pressable
+            disabled={setPrice.isPending || pricing === null || toMoney(priceValue) <= 0}
+            onPress={() => {
+              if (pricing === null) return;
+              setPrice.mutate({ id: pricing, price: toMoney(priceValue) });
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.sheetSave,
+              pressed ? styles.pressed : null,
+              toMoney(priceValue) <= 0 ? styles.disabled : null,
+            ]}
+          >
+            <Text style={styles.sheetSaveText}>{m('emp.save')}</Text>
+          </Pressable>
+        </BottomSheet>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -579,6 +589,19 @@ function toMoney(value: string): number {
 }
 
 const styles = StyleSheet.create({
+  sheetSave: {
+    minHeight: 48,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  sheetSaveText: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.onAccent,
+  },
   setHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -729,25 +752,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   countOpen: {
-    ...typography.caption,
-    color: colors.accentStrong,
-    fontWeight: '700',
-  },
-  countRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  countInput: { width: 96 },
-  countSave: {
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countSaveText: {
     ...typography.caption,
     color: colors.accentStrong,
     fontWeight: '700',
