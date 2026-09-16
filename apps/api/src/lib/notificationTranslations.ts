@@ -30,6 +30,8 @@ const EXACT: Readonly<Record<string, string>> = {
   'Вам назначен выходной по графику': "Sizga jadval bo'yicha dam olish kuni tayinlandi",
   'Выходные отклонены': 'Dam olish kunlari rad etildi',
   'Время инкассации': 'Inkassatsiya vaqti',
+  'Терминальный чек пробит': 'Terminal cheki urildi',
+  'Пробейте терминальный чек': 'Terminal chekini uring',
   'Зафиксировано нарушение': 'Qoidabuzarlik qayd etildi',
   'Зафиксировано поощрение': "Rag'batlantirish qayd etildi",
 };
@@ -59,6 +61,9 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['{by}: выходные теперь только по запросу', "{by}: dam olish kunlari endi faqat so'rov bo'yicha"],
   ['{by}: каждую неделю — {weekday}', '{by}: har hafta — {weekday}'],
   ['{kind} ({points}) за {date} — {by}', '{kind} ({points}) {date} uchun — {by}'],
+  ['{by}: сегодня {n} из {target} — цель выполнена', '{by}: bugun {target} dan {n} — maqsad bajarildi'],
+  ['{by}: сегодня {n} из {target}, осталось {left}', '{by}: bugun {target} dan {n}, {left} ta qoldi'],
+  ['Сегодня {n} из {target} — осталось {left}', 'Bugun {target} dan {n} — {left} ta qoldi'],
 ];
 
 const translate = compileTranslator({ exact: EXACT, patterns: PATTERNS } satisfies TranslationTable);

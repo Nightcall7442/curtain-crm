@@ -56,8 +56,17 @@ export const NOTIFICATION_TYPES = [
   'day_off_approved',
   /** Запрос на выходные отклонён. */
   'day_off_rejected',
-  /** Время сдать наличные в кассу — тем, у кого они на руках. */
+  /**
+   * Время сдать наличные — тем, у кого они на руках.
+   *
+   * Больше не рассылается: владелец заменил напоминание об инкассации на
+   * терминальные чеки. Значение остаётся ради старых записей в ленте.
+   */
   'cash_collection_due',
+  /** Продавец пробил терминальный чек — узнают остальные продавцы. */
+  'terminal_check_created',
+  /** Напоминание: до цели дня по терминальным чекам ещё далеко. */
+  'terminal_check_due',
   /** Руководство зафиксировало нарушение или поощрение — узнаёт сотрудник. */
   'discipline_recorded',
 ] as const;
@@ -87,6 +96,8 @@ export const NotificationType = {
   DAY_OFF_REJECTED: 'day_off_rejected',
   CASH_COLLECTION_DUE: 'cash_collection_due',
   DISCIPLINE_RECORDED: 'discipline_recorded',
+  TERMINAL_CHECK_CREATED: 'terminal_check_created',
+  TERMINAL_CHECK_DUE: 'terminal_check_due',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -135,6 +146,9 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   cash_collection_due: 'accent',
   // Запись о дисциплине — повод объясниться, а не просто новость.
   discipline_recorded: 'warning',
+  terminal_check_created: 'info',
+  // Цель дня не закрыта — продавцу надо действовать, а не принять к сведению.
+  terminal_check_due: 'warning',
 };
 
 /**

@@ -125,6 +125,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'discipline.recorded': 'Дисциплина: запись',
   'discipline.explained': 'Дисциплина: объяснение',
   'discipline.removed': 'Дисциплина: запись удалена',
+  'terminal_check.created': 'Терминальный чек пробит',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 

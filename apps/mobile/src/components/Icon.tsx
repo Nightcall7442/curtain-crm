@@ -179,4 +179,6 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   day_off_rejected: 'dayOffRejected',
   cash_collection_due: 'collection',
   discipline_recorded: 'badge',
+  terminal_check_created: 'paid',
+  terminal_check_due: 'camera',
 };

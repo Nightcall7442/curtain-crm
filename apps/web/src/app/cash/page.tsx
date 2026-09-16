@@ -37,6 +37,7 @@ export default function CashPage(): ReactElement {
   const list = trpc.payments.list.useQuery({ day });
   const collections = trpc.payments.collections.useQuery({ day });
   const onHands = trpc.payments.onHands.useQuery();
+  const checks = trpc.terminalChecks.byDay.useQuery({ day });
 
   if (summary.isError) return <ErrorState message={summary.error.message} />;
 
@@ -148,25 +149,6 @@ export default function CashPage(): ReactElement {
                 align: 'right',
                 render: (row) => <Money value={parseMoney(row.amount)} strong />,
               },
-              {
-                key: 'receipt',
-                header: 'Чек',
-                // Снимок чека онлайн-кассы — для налоговой. У сдач до этого
-                // правила чека нет, и прочерк честнее пустой ячейки.
-                render: (row) =>
-                  row.receiptUrl === null ? (
-                    <span className="text-muted">—</span>
-                  ) : (
-                    <a
-                      href={row.receiptUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent underline-offset-2 hover:underline"
-                    >
-                      Открыть
-                    </a>
-                  ),
-              },
             ]}
           />
           {collections.data !== undefined && (
@@ -198,6 +180,64 @@ export default function CashPage(): ReactElement {
           />
         </Card>
       </div>
+
+      {/*
+        Терминальные чеки — рядом с кассой, но не её часть: владелец задал их
+        отдельной обязанностью продавцов (три в день на всех, с фото), и к
+        приходам они не привязаны. Здесь — контроль: сколько пробили и фото.
+      */}
+      <Card>
+        <CardHeader
+          title="Терминальные чеки"
+          action={
+            checks.data === undefined ? undefined : (
+              <span
+                className={
+                  checks.data.count >= checks.data.target
+                    ? 'text-caption font-semibold text-positive'
+                    : 'text-caption font-semibold text-warning'
+                }
+              >
+                {`${checks.data.count.toString()} из ${checks.data.target.toString()}`}
+              </span>
+            )
+          }
+        />
+        <DataTable
+          isLoading={checks.isLoading}
+          rows={checks.data?.rows ?? []}
+          rowKey={(row) => row.id}
+          emptyMessage="Чеков за этот день нет"
+          columns={[
+            { key: 'who', header: 'Кто', render: (row) => row.fullName },
+            {
+              key: 'when',
+              header: 'Когда',
+              render: (row) =>
+                new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            },
+            {
+              key: 'comment',
+              header: 'Комментарий',
+              render: (row) => row.comment ?? <span className="text-muted">—</span>,
+            },
+            {
+              key: 'photo',
+              header: 'Фото',
+              render: (row) => (
+                <a
+                  href={row.photoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline-offset-2 hover:underline"
+                >
+                  Открыть
+                </a>
+              ),
+            },
+          ]}
+        />
+      </Card>
 
       <Card>
         <CardHeader title="Все приходы за день" />

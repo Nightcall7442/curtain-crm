@@ -5,6 +5,7 @@ import { branchesRouter } from './branches.router';
 import { catalogRouter } from './catalog.router';
 import { dayOffRouter } from './dayOff.router';
 import { disciplineRouter } from './discipline.router';
+import { terminalChecksRouter } from './terminalChecks.router';
 import { notificationsRouter } from './notifications.router';
 import { orderCommentsRouter } from './orderComments.router';
 import { orderPhotosRouter } from './orderPhotos.router';
@@ -58,6 +59,7 @@ export const appRouter = router({
   retail: retailRouter,
   dayOff: dayOffRouter,
   discipline: disciplineRouter,
+  terminalChecks: terminalChecksRouter,
 });
 
 export type AppRouter = typeof appRouter;

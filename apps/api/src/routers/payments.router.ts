@@ -13,13 +13,11 @@ import { TRPCError } from '@trpc/server';
 import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
-import { base64FileSchema, idSchema, moneySchema, optionalText } from '../lib/schemas';
+import { idSchema, moneySchema, optionalText } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import { loadOrderForUpdate } from '../services/orderWorkflow.service';
-import { buildStorageKey, decodeBase64Payload, getStorage } from '../services/storage.service';
 import {
   cashOnHands,
   cashOnHandsByUser,
@@ -161,18 +159,12 @@ export const paymentsRouter = router({
    *
    * Сумму пишет сам — сдаёт то, что в кармане. Больше, чем на руках,
    * сдать нельзя: иначе «на руках» ушло бы в минус и отчёт врал бы.
-   *
-   * Без снимка фискального чека сдача не принимается: так решил владелец —
-   * инкассация должна идти с чеком для налоговой, а не просто перекладывать
-   * деньги из кармана в ящик. Чек пробивает онлайн-касса, сюда попадает его
-   * фотография и хранится при записи — руководство видит её в кассе дня.
    */
   collect: protectedProcedure
     .input(
       z.object({
         amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
         comment: optionalText(500),
-        receipt: base64FileSchema,
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -181,16 +173,6 @@ export const paymentsRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите филиал: у вас не задан основной филиал' });
       }
       const amount = parseMoney(input.amount);
-      // Файл кладём до транзакции — как у фото заказа: осиротевший объект в
-      // хранилище дешевле, чем строка в базе со ссылкой в никуда.
-      const stored = await getStorage().upload({
-        key: buildStorageKey(['collections', branchId.toString()], input.receipt.mimeType),
-        body: decodeBase64Payload(input.receipt, {
-          allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
-          maxBytes: getEnv().MAX_UPLOAD_SIZE_MB * 1024 * 1024,
-        }),
-        mimeType: input.receipt.mimeType,
-      });
       return ctx.db.transaction(async (tx) => {
         const { onHands } = await cashOnHands(tx, ctx.user.id);
         if (amount > onHands) {
@@ -203,7 +185,6 @@ export const paymentsRouter = router({
             userId: ctx.user.id,
             amount: moneyToDecimalString(amount),
             comment: input.comment ?? null,
-            receiptKey: stored.key,
           })
           .returning();
         await recordAudit(tx, {
@@ -227,15 +208,7 @@ export const paymentsRouter = router({
         dayRange(input.day),
         isManagement(ctx.user.roles) ? undefined : ctx.user.id,
       );
-      // Ключ хранилища наружу не уходит — только подписанная ссылка на снимок.
-      const storage = getStorage();
-      const rows = await Promise.all(
-        result.rows.map(async ({ receiptKey, ...row }) => ({
-          ...row,
-          receiptUrl: receiptKey === null ? null : await storage.getUrl(receiptKey),
-        })),
-      );
-      return { rows, total: moneyToDecimalString(result.total) };
+      return { rows: result.rows, total: moneyToDecimalString(result.total) };
     }),
 
   /** Платежи по заказу — что и чем клиент уже отдал; видят те, кто видит деньги заказа. */

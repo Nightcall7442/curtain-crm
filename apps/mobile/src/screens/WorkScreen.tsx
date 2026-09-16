@@ -15,6 +15,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
+import { TerminalCheckCard } from '../components/TerminalCheckCard';
 import { OrderCard } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
 import { useAuth, useIsManagement } from '../hooks/useAuth';
@@ -77,6 +78,7 @@ export function WorkScreen(): ReactElement {
      баннер говорит об этом до того, как кнопка ответит отказом. */
   const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
   const isCorniceInstaller = (user?.roles ?? []).includes(Role.CORNICE_INSTALLER);
+  const isSeller = (user?.roles ?? []).includes(Role.SELLER);
   const filters = isCorniceInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
   const query = trpc.orders.list.useQuery(
@@ -400,6 +402,11 @@ export function WorkScreen(): ReactElement {
         onRefresh={() => {
           void query.refetch();
         }}
+        /*
+          Терминальные чеки — задание продавцов на день, поэтому в «Работе»,
+          над заказами: это обязанность, а не касса. Остальным ролям — нет.
+        */
+        ListHeaderComponent={filter === 'active' && isSeller ? <TerminalCheckCard /> : null}
         ListEmptyComponent={
           query.isLoading ? (
             <Skeleton />

@@ -288,6 +288,13 @@
       "when": 1789558121707,
       "tag": "0040_discipline_events",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789574407738,
+      "tag": "0041_terminal_checks",
+      "breakpoints": true
     }
   ]
 }

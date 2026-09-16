@@ -7,11 +7,11 @@ import {
   todayIso,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, spacing, typography } from '../theme';
+import { colors, hairline, spacing, typography } from '../theme';
 import { Card, CardTitle, Empty, Skeleton } from './Card';
 import { DateField } from './DateField';
 import { Field } from './Field';
@@ -106,21 +106,6 @@ export function CashDayReport(): ReactElement {
                 minute: '2-digit',
               })}
               value={formatMoney(parseMoney(row.amount))}
-              /* Чек для налоговой: у старых сдач его нет, у новых — обязателен. */
-              action={
-                row.receiptUrl === null ? undefined : (
-                  <Pressable
-                    onPress={() => {
-                      void Linking.openURL(row.receiptUrl as string);
-                    }}
-                    accessibilityRole="link"
-                    hitSlop={8}
-                    style={({ pressed }) => [styles.receipt, pressed ? { opacity: opacity.pressed } : null]}
-                  >
-                    <Text style={styles.receiptText}>{m('collection.openReceipt')}</Text>
-                  </Pressable>
-                )
-              }
             />
           ))
         )}
@@ -175,14 +160,12 @@ function Line({
   label,
   hint,
   value,
-  action,
   strong = false,
   muted = false,
 }: {
   readonly label: string;
   readonly hint?: string;
   readonly value: string;
-  readonly action?: ReactElement;
   readonly strong?: boolean;
   readonly muted?: boolean;
 }): ReactElement {
@@ -192,7 +175,6 @@ function Line({
         <Text style={[styles.lineLabel, muted ? styles.lineMuted : null]}>{label}</Text>
         {hint !== undefined && <Text style={styles.lineHint}>{hint}</Text>}
       </View>
-      {action}
       <Text style={[styles.lineValue, strong ? styles.lineStrong : null, muted ? styles.lineMuted : null]}>
         {value}
       </Text>
@@ -253,16 +235,5 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: spacing.xs,
-  },
-  receipt: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: colors.accentSoft,
-  },
-  receiptText: {
-    ...typography.footnote,
-    fontWeight: '600',
-    color: colors.accent,
   },
 });

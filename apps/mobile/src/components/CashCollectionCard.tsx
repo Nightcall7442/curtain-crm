@@ -1,7 +1,6 @@
 import { formatMoney, parseMoney, Role, todayIso } from '@curtain-crm/shared';
-import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
@@ -20,10 +19,6 @@ import { Icon } from './Icon';
  * сданы, они «на руках» и в кассе не считаются. Сумму сотрудник пишет
  * сам — сдаёт то, что в кармане, а не то, что насчитала система. Ниже —
  * сколько уже сдано сегодня, чтобы не сдавать дважды.
- *
- * Сдать можно только с фото фискального чека: так решил владелец — инкассация
- * идёт с чеком для налоговой. Чек пробивает онлайн-касса, сюда попадает его
- * снимок, и без него кнопка «сдал» не срабатывает — проверяет и сервер.
  *
  * Сдаёт продавец: ему карточка показывается всегда (живёт в «Кассе», рядом с
  * продажей), «на руках 0» тоже ответ. Руководству сдавать некому — принятые
@@ -44,42 +39,12 @@ export function CashCollectionCard(): ReactElement | null {
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
-  const [receipt, setReceipt] = useState<{ uri: string; base64: string; mimeType: string } | null>(
-    null,
-  );
-
-  const pickReceipt = async (fromCamera: boolean): Promise<void> => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(m('photo.noAccess'), fromCamera ? m('photo.allowCamera') : m('photo.allowGallery'));
-      return;
-    }
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      base64: true,
-      exif: false,
-    };
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync(options)
-      : await ImagePicker.launchImageLibraryAsync(options);
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    if (asset?.base64 == null) {
-      Alert.alert(m('photo.readError'), m('common.tryAgain'));
-      return;
-    }
-    setReceipt({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType ?? 'image/jpeg' });
-  };
 
   const collect = trpc.payments.collect.useMutation({
     async onSuccess() {
       notifySuccess();
       setOpen(false);
       setAmount('');
-      setReceipt(null);
       await Promise.all([utils.payments.onHands.invalidate(), utils.payments.collections.invalidate()]);
     },
     onError(error) {
@@ -127,53 +92,13 @@ export function CashCollectionCard(): ReactElement | null {
         <Field label={m('payment.amount')} hint={m('collection.onHandsHint', { sum: formatMoney(onHandsValue) })}>
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
-
-        {/* Чек с онлайн-кассы — обязателен: без снимка кнопка не активна. */}
-        <Field label={m('collection.receipt')} required hint={m('collection.receiptHint')}>
-          <View style={styles.photoRow}>
-            {receipt === null ? (
-              <Text style={styles.photoHint}>{m('collection.noReceipt')}</Text>
-            ) : (
-              <Image source={{ uri: receipt.uri }} style={styles.photoPreview} />
-            )}
-            <Pressable
-              onPress={() => {
-                void pickReceipt(true);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={m('photo.camera')}
-              style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
-            >
-              <Icon name="camera" size={18} color={colors.accentStrong} />
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                void pickReceipt(false);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={m('photo.gallery')}
-              style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
-            >
-              <Icon name="photo" size={18} color={colors.accentStrong} />
-            </Pressable>
-          </View>
-        </Field>
-
         <Pressable
           onPress={() => {
-            if (receipt === null) return;
-            collect.mutate({
-              amount: toMajor(amount),
-              receipt: { mimeType: receipt.mimeType, content: receipt.base64 },
-            });
+            collect.mutate({ amount: toMajor(amount) });
           }}
-          disabled={collect.isPending || toMajor(amount) <= 0 || receipt === null}
+          disabled={collect.isPending || toMajor(amount) <= 0}
           accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            pressed ? styles.pressed : null,
-            receipt === null || toMajor(amount) <= 0 ? styles.submitDisabled : null,
-          ]}
+          style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
         >
           {collect.isPending ? (
             <ActivityIndicator color={colors.onAccent} />
@@ -234,36 +159,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: spacing.sm,
   },
-  submitDisabled: {
-    opacity: opacity.disabled,
-  },
   submitText: {
     ...typography.body,
     fontWeight: '700',
     color: colors.onAccent,
-  },
-  photoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  photoHint: {
-    ...typography.caption,
-    color: colors.textMuted,
-    flex: 1,
-  },
-  photoPreview: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.sm,
-    marginRight: 'auto',
-  },
-  photoButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceMuted,
   },
 });

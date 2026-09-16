@@ -486,22 +486,44 @@ export async function notifyWeeklyDayOffChanged(
 }
 
 /**
- * Время инкассации — всем, у кого есть наличные на руках.
+ * Терминальный чек пробит — узнают остальные продавцы.
  *
- * Тем, у кого ноль, писать незачем: напоминание должно означать «у тебя
- * деньги», а не «сейчас десять часов».
+ * Цель дня общая: кто-то пробил — у всех стало на один меньше. Тому, кто
+ * пробил, писать незачем: он и так знает.
  */
-export async function notifyCashCollectionDue(
+export async function notifyTerminalCheckCreated(
   executor: DbExecutor,
-  holders: readonly { readonly userId: number; readonly onHands: string }[],
+  recipients: readonly number[],
+  params: { readonly byName: string; readonly count: number; readonly target: number },
+): Promise<void> {
+  const remaining = Math.max(0, params.target - params.count);
+  await createNotifications(
+    executor,
+    recipients.map((userId) => ({
+      userId,
+      type: NotificationType.TERMINAL_CHECK_CREATED,
+      title: 'Терминальный чек пробит',
+      body:
+        remaining === 0
+          ? `${params.byName}: сегодня ${params.count.toString()} из ${params.target.toString()} — цель выполнена`
+          : `${params.byName}: сегодня ${params.count.toString()} из ${params.target.toString()}, осталось ${remaining.toString()}`,
+    })),
+  );
+}
+
+/** Напоминание продавцам: до цели дня по чекам ещё далеко. */
+export async function notifyTerminalCheckDue(
+  executor: DbExecutor,
+  recipients: readonly number[],
+  params: { readonly count: number; readonly target: number },
 ): Promise<void> {
   await createNotifications(
     executor,
-    holders.map((holder) => ({
-      userId: holder.userId,
-      type: NotificationType.CASH_COLLECTION_DUE,
-      title: 'Время инкассации',
-      body: `На руках ${holder.onHands} — сдайте в кассу`,
+    recipients.map((userId) => ({
+      userId,
+      type: NotificationType.TERMINAL_CHECK_DUE,
+      title: 'Пробейте терминальный чек',
+      body: `Сегодня ${params.count.toString()} из ${params.target.toString()} — осталось ${(params.target - params.count).toString()}`,
     })),
   );
 }

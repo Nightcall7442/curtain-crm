@@ -35,6 +35,7 @@ export * from './constants/personalBreak';
 export * from './constants/packList';
 export * from './constants/stageFee';
 export * from './constants/discipline';
+export * from './constants/terminalCheck';
 
 /* Типы */
 export * from './types/orderItemAccessory';
