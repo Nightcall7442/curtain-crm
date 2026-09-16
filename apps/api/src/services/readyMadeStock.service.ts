@@ -45,6 +45,7 @@ export async function shelveStockOrder(
         quantity: item.quantity,
         comment: `Из пошива ${order.orderNumber ?? `#${order.id.toString()}`}`,
         sourceOrderId: order.id,
+        setKey: `order:${order.id.toString()}`,
         createdBy: actorId,
       })),
     )

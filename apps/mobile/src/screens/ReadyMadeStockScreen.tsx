@@ -54,6 +54,17 @@ interface FormState {
   readonly quantity: string;
   readonly comment: string;
   readonly photo: { readonly uri: string; readonly base64: string; readonly mimeType: string } | null;
+  /** Остальные шторы комплекта — дверь к окну: свой вид, размер, цена, штук. */
+  readonly mates: readonly MateDraft[];
+}
+
+interface MateDraft {
+  readonly id: number;
+  readonly kind: OrderItemKindName;
+  readonly widthCm: string;
+  readonly heightCm: string;
+  readonly price: string;
+  readonly quantity: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -65,6 +76,7 @@ const emptyForm = (): FormState => ({
   price: '',
   quantity: '1',
   comment: '',
+  mates: [],
   photo: null,
 });
 
@@ -189,7 +201,11 @@ export function ReadyMadeStockScreen(): ReactElement {
       Alert.alert(m('stock.modelRequired'), m('stock.modelRequiredBody'));
       return;
     }
-    if (toNumber(form.widthCm) <= 0 || toNumber(form.heightCm) <= 0) {
+    if (
+      toNumber(form.widthCm) <= 0 ||
+      toNumber(form.heightCm) <= 0 ||
+      form.mates.some((mate) => toNumber(mate.widthCm) <= 0 || toNumber(mate.heightCm) <= 0)
+    ) {
       Alert.alert(m('stock.sizeRequired'), m('stock.sizeRequiredBody'));
       return;
     }
@@ -201,6 +217,13 @@ export function ReadyMadeStockScreen(): ReactElement {
       heightCm: toNumber(form.heightCm),
       price: toNumber(form.price),
       quantity: Math.max(0, Number.parseInt(form.quantity, 10) || 0),
+      mates: form.mates.map((mate) => ({
+        kind: mate.kind,
+        widthCm: toNumber(mate.widthCm),
+        heightCm: toNumber(mate.heightCm),
+        price: toNumber(mate.price),
+        quantity: Math.max(0, Number.parseInt(mate.quantity, 10) || 0),
+      })),
       ...(form.code.trim() === '' ? {} : { code: form.code.trim() }),
       ...(form.comment.trim() === '' ? {} : { comment: form.comment.trim() }),
       ...(form.photo === null
@@ -379,6 +402,112 @@ export function ReadyMadeStockScreen(): ReactElement {
               </View>
             </View>
 
+            {/*
+              Комплект руками: окно + дверь одной карточкой. Модель, код и
+              описание общие, у каждой шторы свой размер, цена и остаток —
+              на полке они лягут группой, как из пошива.
+            */}
+            {form.mates.map((mate, index) => (
+              <View key={mate.id} style={styles.mate}>
+                <View style={styles.mateHead}>
+                  <Text style={styles.mateTitle}>{m('stock.mate', { n: index + 2 })}</Text>
+                  <Pressable
+                    onPress={() => {
+                      patch({ mates: form.mates.filter((entry) => entry.id !== mate.id) });
+                    }}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                  >
+                    {({ pressed }) => (
+                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>{m('create.remove')}</Text>
+                    )}
+                  </Pressable>
+                </View>
+                <Field label={m('create.kind')}>
+                  <ChipSelect
+                    value={mate.kind}
+                    onChange={(kind) => {
+                      patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, kind } : entry)) });
+                    }}
+                    options={ORDER_ITEM_KINDS.map((value) => ({ value, label: t(ORDER_ITEM_KIND_LABELS, value) }))}
+                  />
+                </Field>
+                <View style={styles.row}>
+                  <View style={styles.half}>
+                    <Field label={m('create.width')} required>
+                      <Input
+                        value={mate.widthCm}
+                        onChangeText={(widthCm) => {
+                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, widthCm } : entry)) });
+                        }}
+                        keyboardType="decimal-pad"
+                        placeholder="150"
+                      />
+                    </Field>
+                  </View>
+                  <View style={styles.half}>
+                    <Field label={m('create.height')} required>
+                      <Input
+                        value={mate.heightCm}
+                        onChangeText={(heightCm) => {
+                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, heightCm } : entry)) });
+                        }}
+                        keyboardType="decimal-pad"
+                        placeholder="200"
+                      />
+                    </Field>
+                  </View>
+                </View>
+                <View style={styles.row}>
+                  <View style={styles.half}>
+                    <Field label={m('stock.priceSum')} required>
+                      <MoneyInput
+                        value={mate.price}
+                        onChangeText={(price) => {
+                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, price } : entry)) });
+                        }}
+                        placeholder="300 000"
+                      />
+                    </Field>
+                  </View>
+                  <View style={styles.half}>
+                    <Field label={m('stock.quantity')}>
+                      <Input
+                        value={mate.quantity}
+                        onChangeText={(quantity) => {
+                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, quantity } : entry)) });
+                        }}
+                        keyboardType="number-pad"
+                        placeholder="1"
+                      />
+                    </Field>
+                  </View>
+                </View>
+              </View>
+            ))}
+            <Pressable
+              onPress={() => {
+                patch({
+                  mates: [
+                    ...form.mates,
+                    {
+                      id: form.mates.reduce((max, entry) => Math.max(max, entry.id), 0) + 1,
+                      kind: form.kind === OrderItemKind.DOOR ? OrderItemKind.WINDOW : OrderItemKind.DOOR,
+                      widthCm: '',
+                      heightCm: '',
+                      price: '',
+                      quantity: '1',
+                    },
+                  ],
+                });
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.addMate, pressed ? styles.pressed : null]}
+            >
+              <Icon name="assigned" size={18} color={colors.accent} />
+              <Text style={styles.addMateText}>{m('stock.addMate')}</Text>
+            </Pressable>
+
             <View style={styles.photoRow}>
               {form.photo === null ? (
                 <Text style={styles.photoHint}>{m('stock.photoHint')}</Text>
@@ -495,6 +624,19 @@ export function ReadyMadeStockScreen(): ReactElement {
 
                 {/* Остаток и ценник правятся в шторке: строка внизу списка уезжала под клавиатуру. */}
                 <View style={styles.actionsRow}>
+                    {item.quantity > 0 && (
+                      <Pressable
+                        onPress={() => {
+                          navigation.navigate('SellReadyMade', { readyMadeItemId: item.id });
+                        }}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                      >
+                        {({ pressed }) => (
+                          <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>{m('stock.sell')}</Text>
+                        )}
+                      </Pressable>
+                    )}
                     <Pressable
                       onPress={() => {
                         setCounting(item.id);
@@ -589,6 +731,38 @@ function toMoney(value: string): number {
 }
 
 const styles = StyleSheet.create({
+  mate: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
+  },
+  mateHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  mateTitle: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  addMate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    marginVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+  },
+  addMateText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.accent,
+  },
   sheetSave: {
     minHeight: 48,
     borderRadius: radius.pill,

@@ -211,10 +211,15 @@ export function SellReadyMadeDialog({
               <Input
                 value={model}
                 onChange={(event) => {
-                  setModel(event.target.value);
+                  const nextModel = event.target.value;
+                  setModel(nextModel);
                   // Набранное руками расходится с выбранной вещью — снимаем
-                  // выбор, чтобы со склада не списалось не то.
-                  setStockItemId(null);
+                  // выбор, чтобы со склада не списалось не то. Но если на полке
+                  // ровно одна штора этой модели — берём её сразу: штора должна
+                  // списаться, даже если карточку остатка не нажали.
+                  const matching = (stock.data ?? []).filter((row) => row.model === nextModel && row.quantity > 0);
+                  setStockItemId(matching.length === 1 ? (matching[0]?.id ?? null) : null);
+                  setSetMates([]);
                 }}
                 placeholder="Готовый комплект, бежевый"
               />

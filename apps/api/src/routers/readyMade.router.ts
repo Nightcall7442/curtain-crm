@@ -7,7 +7,7 @@ import {
   parseMoney,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq, gt, ilike, or } from 'drizzle-orm';
+import { and, asc, eq, gt, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { base64FileSchema, idSchema, moneySchema, nonEmptyString, optionalText } from '../lib/schemas';
@@ -118,8 +118,9 @@ export const readyMadeRouter = router({
             подпись — его номер. Штора, заведённая руками, ни в какой
             комплект не входит.
           */
-          setId: readyMadeItems.sourceOrderId,
-          setLabel: orders.orderNumber,
+          setId: readyMadeItems.setKey,
+          /* Подпись комплекта: номер пошива, а у заведённого руками — модель. */
+          setLabel: sql<string | null>`case when ${readyMadeItems.setKey} is null then null else coalesce(${orders.orderNumber}, ${readyMadeItems.model}) end`,
         })
         .from(readyMadeItems)
         .innerJoin(branches, eq(branches.id, readyMadeItems.branchId))
@@ -147,7 +148,7 @@ export const readyMadeRouter = router({
           ),
         )
         // Комплекты — рядом: сначала по заказу-источнику, внутри — окно перед дверью.
-        .orderBy(asc(readyMadeItems.sourceOrderId), asc(readyMadeItems.model), asc(readyMadeItems.kind), asc(readyMadeItems.widthCm))
+        .orderBy(asc(readyMadeItems.setKey), asc(readyMadeItems.model), asc(readyMadeItems.kind), asc(readyMadeItems.widthCm))
         .limit(200);
 
       return withPhotoUrl(rows);
@@ -167,6 +168,23 @@ export const readyMadeRouter = router({
         quantity: z.number().int().min(0).max(10000).default(1),
         comment: optionalText(500),
         photo: base64FileSchema.optional(),
+        /**
+         * Остальные шторы комплекта — дверь к окну. Модель, код, описание
+         * общие; у каждой свой вид, размер, цена и остаток. Снимок — только
+         * у первой: он один на карточку.
+         */
+        mates: z
+          .array(
+            z.object({
+              kind: orderItemKindSchema,
+              widthCm: dimensionSchema,
+              heightCm: dimensionSchema,
+              price: moneySchema,
+              quantity: z.number().int().min(0).max(10000).default(1),
+            }),
+          )
+          .max(10)
+          .default([]),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -227,6 +245,39 @@ export const readyMadeRouter = router({
             details: { model: created.model, quantity: created.quantity, price: created.price },
             ipAddress: ctx.ipAddress,
           });
+
+          if (input.mates.length > 0) {
+            const setKey = `manual:${created.id.toString()}`;
+            await tx.update(readyMadeItems).set({ setKey }).where(eq(readyMadeItems.id, created.id));
+            const mates = await tx
+              .insert(readyMadeItems)
+              .values(
+                input.mates.map((mate) => ({
+                  branchId,
+                  model: input.model,
+                  kind: mate.kind,
+                  code: input.code ?? null,
+                  widthCm: mate.widthCm.toFixed(1),
+                  heightCm: mate.heightCm.toFixed(1),
+                  price: moneyToDecimalString(parseMoney(mate.price)),
+                  quantity: mate.quantity,
+                  comment: input.comment ?? null,
+                  setKey,
+                  createdBy: ctx.user.id,
+                })),
+              )
+              .returning({ id: readyMadeItems.id, model: readyMadeItems.model, quantity: readyMadeItems.quantity, price: readyMadeItems.price });
+            for (const mate of mates) {
+              await recordAudit(tx, {
+                actorId: ctx.user.id,
+                action: 'ready_made_item.created',
+                entityType: 'ready_made_item',
+                entityId: mate.id,
+                details: { model: mate.model, quantity: mate.quantity, price: mate.price, setKey },
+                ipAddress: ctx.ipAddress,
+              });
+            }
+          }
 
           return created;
         });

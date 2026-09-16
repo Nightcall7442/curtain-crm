@@ -1,5 +1,5 @@
-import { useNavigation } from '@react-navigation/native';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +30,7 @@ import { CatalogPicker } from '../components/CatalogPicker';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { trpc } from '../lib/trpc';
+import type { RootStackParamList } from '../types';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
@@ -58,6 +59,7 @@ import { useLocale, type Translate } from '../hooks/useLocale';
 export function SellReadyMadeScreen(): ReactElement {
   const { t, m } = useLocale();
   const navigation = useNavigation();
+  const route = useRoute<RouteProp<RootStackParamList, 'SellReadyMade'>>();
   const utils = trpc.useUtils();
 
   const [clientName, setClientName] = useState('');
@@ -116,6 +118,28 @@ export function SellReadyMadeScreen(): ReactElement {
     );
     return entry?.description ?? null;
   };
+
+  /*
+    Пришли со склада с уже выбранной шторой — она и есть первая позиция, а
+    остальные шторы её комплекта добавляются следом. Раньше продажа со
+    склада начиналась с пустой формы, и если продавец не нажимал на строку
+    остатка, штора с полки не списывалась — владелец увидел это как «покупка
+    не минусуется».
+  */
+  const presetId = route.params?.readyMadeItemId;
+  const presetApplied = useRef(false);
+  useEffect(() => {
+    if (presetId === undefined || presetApplied.current || stock.data === undefined) return;
+    const chosen = stock.data.find((entry) => entry.id === presetId);
+    if (chosen === undefined) return;
+    presetApplied.current = true;
+    const mates = chosen.setId === null ? [] : stock.data.filter((entry) => entry.setId === chosen.setId && entry.id !== chosen.id);
+    setItems([
+      { ...emptyItem(1), model: chosen.model, readyMadeItemId: chosen.id },
+      ...mates.map((mate, index) => ({ ...emptyItem(index + 2), model: mate.model, readyMadeItemId: mate.id })),
+    ]);
+    setWorkPrice([chosen, ...mates].reduce((sum, entry) => sum + Number.parseFloat(entry.price), 0).toString());
+  }, [presetId, stock.data]);
 
   const updateItem = (id: number, patch: Partial<DraftItem>): void => {
     setItems((current) =>
@@ -291,7 +315,11 @@ export function SellReadyMadeScreen(): ReactElement {
                     options={modelOptions}
                     sheetTitle={m('sell.modelRange')}
                     onChange={(model) => {
-                      updateItem(item.id, { model });
+                      /* Модель есть на полке ровно в одном варианте — берём его
+                         сразу, чтобы штора списалась, даже если строку остатка
+                         никто не нажмёт. Несколько вариантов — выбор ниже. */
+                      const matching = (stock.data ?? []).filter((entry) => entry.model === model && entry.quantity > 0);
+                      updateItem(item.id, { model, readyMadeItemId: matching.length === 1 ? (matching[0]?.id ?? null) : null });
                     }}
                   />
                 </Field>

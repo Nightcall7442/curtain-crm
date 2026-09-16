@@ -19,7 +19,8 @@ export type RootStackParamList = {
    * открывает именно этот режим — продажа с полки переехала на экран склада.
    */
   OrderCreate: { mode?: 'custom' | 'stock' } | undefined;
-  SellReadyMade: undefined;
+  /** Продажа со склада: штора уже выбрана на полке — подставляется первой позицией. */
+  SellReadyMade: { readyMadeItemId?: number } | undefined;
   DayOff: undefined;
   PersonalWorkCreate: undefined;
   CashDesk: undefined;

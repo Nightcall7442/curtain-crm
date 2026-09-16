@@ -33,6 +33,15 @@ import { trpc } from '@/lib/trpc';
  * Остаток вводится числом «сколько стало», а не «сколько прибавить»: полку
  * пересчитывают глазами, и вычитание в уме — лишний способ ошибиться.
  */
+interface MateDraft {
+  readonly id: number;
+  readonly kind: OrderItemKindName;
+  readonly widthCm: string;
+  readonly heightCm: string;
+  readonly price: string;
+  readonly quantity: string;
+}
+
 export default function ReadyMadePage(): ReactElement {
   const toast = useToast();
   const utils = trpc.useUtils();
@@ -62,6 +71,8 @@ export default function ReadyMadePage(): ReactElement {
   const [heightCm, setHeightCm] = useState('');
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('1');
+  /** Остальные шторы комплекта (дверь к окну) — только при заведении. */
+  const [mates, setMates] = useState<readonly MateDraft[]>([]);
 
   /*
     Снимок — то, ради чего продавец вообще открывает склад: штору выбирают
@@ -98,6 +109,7 @@ export default function ReadyMadePage(): ReactElement {
     setEditingId(null);
     setModel('');
     setKind(OrderItemKind.WINDOW);
+    setMates([]);
     setBranchId('');
     setCode('');
     setComment('');
@@ -445,6 +457,13 @@ export default function ReadyMadePage(): ReactElement {
                     ...card,
                     ...(branchId === '' ? {} : { branchId: Number.parseInt(branchId, 10) }),
                     quantity: Math.max(0, Number.parseInt(quantity, 10) || 0),
+                    mates: mates.map((mate) => ({
+                      kind: mate.kind,
+                      widthCm: Number.parseFloat(mate.widthCm.replace(',', '.')) || 0,
+                      heightCm: Number.parseFloat(mate.heightCm.replace(',', '.')) || 0,
+                      price: Number.parseFloat(mate.price.replace(',', '.')) || 0,
+                      quantity: Math.max(0, Number.parseInt(mate.quantity, 10) || 0),
+                    })),
                   });
                 } else {
                   update.mutate({ id: editingId, ...card });
@@ -646,7 +665,102 @@ export default function ReadyMadePage(): ReactElement {
             )}
           </div>
 
-
+          {/*
+            Комплект руками: окно + дверь одной карточкой. Модель, код и
+            описание общие; у каждой шторы свой размер, цена и остаток — на
+            полке лягут группой, как из пошива. Только при заведении: у лежащей
+            шторы комплект уже сложился.
+          */}
+          {editingId === null && (
+            <div className="space-y-3">
+              {mates.map((mate, index) => (
+                <div key={mate.id} className="rounded-xl border border-subtle p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-caption font-medium text-primary">{`Позиция ${(index + 2).toString()} комплекта`}</span>
+                    <button
+                      type="button"
+                      className="text-footnote text-secondary hover:text-danger"
+                      onClick={() => {
+                        setMates((current) => current.filter((entry) => entry.id !== mate.id));
+                      }}
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Что это">
+                      <Select
+                        value={mate.kind}
+                        onChange={(event) => {
+                          const kindValue = event.target.value as OrderItemKindName;
+                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, kind: kindValue } : entry)));
+                        }}
+                        options={ORDER_ITEM_KINDS.map((value) => ({ value, label: ORDER_ITEM_KIND_LABELS_RU[value] }))}
+                      />
+                    </Field>
+                    <Field label="Количество">
+                      <Input
+                        value={mate.quantity}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, quantity: value } : entry)));
+                        }}
+                        placeholder="1"
+                      />
+                    </Field>
+                    <Field label="Ширина, см" required>
+                      <Input
+                        value={mate.widthCm}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, widthCm: value } : entry)));
+                        }}
+                        placeholder="150"
+                      />
+                    </Field>
+                    <Field label="Высота, см" required>
+                      <Input
+                        value={mate.heightCm}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, heightCm: value } : entry)));
+                        }}
+                        placeholder="200"
+                      />
+                    </Field>
+                    <Field label="Цена, сум" required>
+                      <MoneyInput
+                        value={mate.price}
+                        onChange={(value) => {
+                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, price: value } : entry)));
+                        }}
+                        placeholder="300 000"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ))}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setMates((current) => [
+                    ...current,
+                    {
+                      id: current.reduce((max, entry) => Math.max(max, entry.id), 0) + 1,
+                      kind: kind === OrderItemKind.DOOR ? OrderItemKind.WINDOW : OrderItemKind.DOOR,
+                      widthCm: '',
+                      heightCm: '',
+                      price: '',
+                      quantity: '1',
+                    },
+                  ]);
+                }}
+              >
+                Добавить в комплект (окно + дверь)
+              </Button>
+            </div>
+          )}
         </div>
       </Modal>
 
