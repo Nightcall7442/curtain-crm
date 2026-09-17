@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: tabBarSpace,
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   codeRow: {
     flexDirection: 'row',

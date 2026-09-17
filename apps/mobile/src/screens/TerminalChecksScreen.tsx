@@ -69,8 +69,8 @@ export function TerminalChecksScreen(): ReactElement {
 
 const styles = StyleSheet.create({
   content: {
-    padding: spacing.md,
-    gap: spacing.md,
+    padding: spacing.lg,
+    gap: spacing.lg,
     paddingBottom: tabBarSpace,
   },
   total: {

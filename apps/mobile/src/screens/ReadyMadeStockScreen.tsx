@@ -801,9 +801,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   content: {
-    padding: spacing.md,
+    padding: spacing.lg,
     paddingBottom: tabBarSpace,
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   actions: {
     flexDirection: 'row',
