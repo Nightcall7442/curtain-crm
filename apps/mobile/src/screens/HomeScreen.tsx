@@ -182,9 +182,22 @@ export function HomeScreen(): ReactElement {
           <WorkshopSummary />
         </View>
       )}
-      {isManager && <CashTodayCard />}
-      {isManager && <TerminalTodayCard />}
-      {isManager && <MonthCard />}
+      {/* Те же боковые поля, что у «Цеха сегодня»: карточки стоят одной колонкой. */}
+      {isManager && (
+        <View style={styles.section}>
+          <CashTodayCard />
+        </View>
+      )}
+      {isManager && (
+        <View style={styles.section}>
+          <TerminalTodayCard />
+        </View>
+      )}
+      {isManager && (
+        <View style={styles.section}>
+          <MonthCard />
+        </View>
+      )}
 
       {/*
         Карточка смены заезжает на подложку — но только когда она первая.
