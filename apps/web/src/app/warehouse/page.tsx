@@ -27,6 +27,7 @@ import {
   Select,
 } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
+import { qrToPng } from '@/lib/qrImage';
 import { exportToXlsx, readXlsx } from '@/lib/spreadsheet';
 import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
@@ -266,12 +267,18 @@ export default function WarehousePage(): ReactElement {
   const runExport = (): void => {
     setBusy('export');
 
-    void exportToXlsx({
-      fileName: `sklad-${today()}.xlsx`,
-      sheetName: 'Склад',
-      headers: HEADERS,
-      rows: sheetRows,
-    })
+    // QR каждого кода — в файл: владелец просил, чтобы бирки были и в Excel,
+    // а не только на печатном листе.
+    void Promise.all(visible.map((row) => qrToPng(row.name)))
+      .then((qrs) =>
+        exportToXlsx({
+          fileName: `sklad-${today()}.xlsx`,
+          sheetName: 'Склад',
+          headers: HEADERS,
+          rows: sheetRows,
+          images: { header: 'QR', values: qrs },
+        }),
+      )
       .then(() => {
         toast.success('Файл сохранён', `Строк: ${String(sheetRows.length)}`);
       })

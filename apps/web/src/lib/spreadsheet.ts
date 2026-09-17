@@ -85,24 +85,52 @@ export async function exportToXlsx(params: {
   readonly sheetName: string;
   readonly headers: readonly string[];
   readonly rows: readonly (readonly string[])[];
+  /**
+   * Картинки последней колонкой — по одной на строку, PNG как data URL;
+   * `null` — у строки картинки нет. Так в выгрузку склада попадают QR-коды:
+   * владелец печатает бирки из того же файла, что отдаёт поставщику.
+   */
+  readonly images?: {
+    readonly header: string;
+    readonly values: readonly (string | null)[];
+    readonly size?: number;
+  };
 }): Promise<void> {
   const excel = await loadExcel();
   const workbook = new excel.Workbook();
   const sheet = workbook.addWorksheet(params.sheetName);
 
-  sheet.addRow([...params.headers]);
+  const images = params.images;
+  sheet.addRow([...params.headers, ...(images === undefined ? [] : [images.header])]);
   for (const row of params.rows) sheet.addRow([...row]);
+
+  if (images !== undefined) {
+    const px = images.size ?? 56;
+    images.values.forEach((dataUrl, index) => {
+      if (dataUrl === null) return;
+      const imageId = workbook.addImage({ base64: dataUrl, extension: 'png' });
+      // Высота строки в пунктах (3/4 пикселя), картинка — в пикселях.
+      sheet.getRow(index + 2).height = (px + 8) * 0.75;
+      sheet.addImage(imageId, {
+        tl: { col: params.headers.length + 0.1, row: index + 1 + 0.05 },
+        ext: { width: px, height: px },
+      });
+    });
+  }
 
   sheet.getRow(1).font = { bold: true };
   // Шапка остаётся на месте при прокрутке — в длинном списке иначе не понять,
   // какая колонка какая.
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
-  sheet.columns = params.headers.map((header, index) => ({
-    width: Math.min(
-      60,
-      Math.max(12, header.length + 2, ...params.rows.map((row) => (row[index] ?? '').length + 2)),
-    ),
-  }));
+  sheet.columns = [
+    ...params.headers.map((header, index) => ({
+      width: Math.min(
+        60,
+        Math.max(12, header.length + 2, ...params.rows.map((row) => (row[index] ?? '').length + 2)),
+      ),
+    })),
+    ...(images === undefined ? [] : [{ width: Math.ceil((images.size ?? 56) / 6) + 2 }]),
+  ];
 
   const buffer = await workbook.xlsx.writeBuffer();
   download(new Blob([buffer], { type: MIME }), params.fileName);
