@@ -89,7 +89,6 @@ export const NAVIGATION: readonly NavItem[] = [
       { href: '/employees/tasks', label: 'Доп работы', roles: MANAGEMENT_ROLES },
       { href: '/employees/personal-works', label: 'Личные работы', roles: MANAGEMENT_ROLES },
       { href: '/employees/day-off', label: 'Выходные', roles: MANAGEMENT_ROLES },
-      { href: '/employees/discipline', label: 'Дисциплина', roles: MANAGEMENT_ROLES },
       { href: '/employees/timesheet', label: 'Табель', roles: MANAGEMENT_ROLES },
     ],
   },
@@ -107,7 +106,21 @@ export const NAVIGATION: readonly NavItem[] = [
   */
   { href: '/warehouse', label: 'Склад', icon: Boxes, roles: MANAGEMENT_ROLES },
   { href: '/payroll', label: 'Зарплаты', icon: Wallet, roles: MANAGEMENT_ROLES },
-  { href: '/rating', label: 'Рейтинг', icon: Trophy, roles: MANAGEMENT_ROLES },
+  /*
+    Дисциплина — под рейтингом, а не под сотрудниками: баллы за опоздания
+    и поощрения входят в тот же общий балл, и владелец попросил держать их
+    рядом с таблицей, а не в кадровом разделе.
+  */
+  {
+    href: '/rating',
+    label: 'Рейтинг',
+    icon: Trophy,
+    roles: MANAGEMENT_ROLES,
+    children: [
+      { href: '/rating', label: 'Рейтинг', roles: MANAGEMENT_ROLES },
+      { href: '/rating/discipline', label: 'Дисциплина', roles: MANAGEMENT_ROLES },
+    ],
+  },
   { href: '/reports', label: 'Отчёты', icon: BarChart3, roles: MANAGEMENT_ROLES },
   {
     href: '/audit',

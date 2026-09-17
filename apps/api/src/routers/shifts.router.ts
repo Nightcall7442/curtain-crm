@@ -14,6 +14,7 @@ import {
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { recordLatenessIfAny } from '../services/lateness.service';
 import {
   measureDistanceToBranch,
   resolveCheckInBranch,
@@ -178,6 +179,9 @@ export const shiftsRouter = router({
             message: 'Не удалось открыть смену',
           });
         }
+
+        // Смена по графику назначена — опоздание записывается само.
+        await recordLatenessIfAny(tx, ctx.user.id, created.startedAt, ctx.ipAddress);
 
         return { ...created, branchName: matched.branchName };
       }),

@@ -12,6 +12,7 @@ import {
   serial,
   text,
   timestamp,
+  varchar,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
@@ -56,6 +57,18 @@ export const payrollSchemes = pgTable(
     kpiTarget: numeric('kpi_target', { precision: 14, scale: 4 }),
     /** Процент от суммы закрытых заказов (`commission`). */
     commissionPercent: numeric('commission_percent', { precision: 6, scale: 3 }),
+
+    /**
+     * Смена по графику — «с» и «до» по местному времени (`hourly`).
+     *
+     * Почасовику руководитель назначает смену: от неё считается опоздание.
+     * Отметился позже начала — система сама записывает опоздание в
+     * дисциплину (до 15 мин, 15–30, больше 30), и оно идёт в рейтинг.
+     * Текстом `HH:MM`, а не `time`: драйвер отдаёт время строкой всё равно,
+     * а сравнивать здесь нужно минуты от полуночи по Ташкенту.
+     */
+    shiftStart: varchar('shift_start', { length: 5 }),
+    shiftEnd: varchar('shift_end', { length: 5 }),
 
     isActive: boolean('is_active').notNull().default(true),
     /** Дата, с которой схема действует. Нужна для расчёта прошлых периодов. */

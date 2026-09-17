@@ -13,6 +13,7 @@ import { useState, type ReactElement } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, Progress } from '../components/Card';
+import { DisciplineCard } from '../components/DisciplineCard';
 import { useLocale } from '../hooks/useLocale';
 import { trpc, type RouterOutputs } from '../lib/trpc';
 import { colors, radius, spacing, typography } from '../theme';
@@ -85,6 +86,12 @@ export function RatingScreen(): ReactElement {
 
       {/* Своя строка ------------------------------------------------------- */}
       <MyPlaceCard data={data} isLoading={rating.isLoading} />
+
+      {/*
+        Дисциплина — рядом с рейтингом, а не в профиле: опоздания и
+        поощрения входят в тот же балл, и владелец попросил держать их здесь.
+      */}
+      <DisciplineCard period={{ year: new Date().getFullYear(), month: new Date().getMonth() + 1 }} />
 
       {/* Пьедестал --------------------------------------------------------- */}
       <Card>

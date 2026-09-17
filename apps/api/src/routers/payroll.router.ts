@@ -76,6 +76,8 @@ const schemesRouter = router({
           rate: payrollSchemes.rate,
           kpiTarget: payrollSchemes.kpiTarget,
           commissionPercent: payrollSchemes.commissionPercent,
+          shiftStart: payrollSchemes.shiftStart,
+          shiftEnd: payrollSchemes.shiftEnd,
           isActive: payrollSchemes.isActive,
           effectiveFrom: payrollSchemes.effectiveFrom,
         })
@@ -112,11 +114,17 @@ const schemesRouter = router({
           rate: moneySchema.optional(),
           kpiTarget: z.number().positive().max(100_000).optional(),
           commissionPercent: z.number().min(0).max(100).optional(),
+          /** Смена по графику для почасовика: `HH:MM`. Оба или ни одного. */
+          shiftStart: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),
+          shiftEnd: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),
           effectiveFrom: z.string().date(),
         })
         .superRefine((value, ctx) => {
           // Проверяем ровно те поля, которых требует выбранный тип, —
           // тот же список, что и в check-констрейнте таблицы.
+          if ((value.shiftStart === undefined) !== (value.shiftEnd === undefined)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['shiftEnd'], message: 'Укажите и начало, и конец смены' });
+          }
           for (const field of PAYROLL_SCHEME_REQUIRED_FIELDS[value.type]) {
             if (value[field] === undefined) {
               ctx.addIssue({
@@ -175,6 +183,8 @@ const schemesRouter = router({
             kpiTarget: input.kpiTarget === undefined ? null : input.kpiTarget.toFixed(4),
             commissionPercent:
               input.commissionPercent === undefined ? null : input.commissionPercent.toFixed(3),
+            shiftStart: input.shiftStart ?? null,
+            shiftEnd: input.shiftEnd ?? null,
             effectiveFrom: input.effectiveFrom,
             createdBy: ctx.user.id,
           })

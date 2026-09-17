@@ -60,6 +60,9 @@ export function SchemeDialog({
   const [type, setType] = useState<PayrollSchemeTypeName>(PayrollSchemeType.HOURLY);
   const [values, setValues] = useState<Record<string, string>>({});
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
+  /** Смена по графику — только почасовику: от неё считается опоздание. */
+  const [shiftStart, setShiftStart] = useState('');
+  const [shiftEnd, setShiftEnd] = useState('');
 
   const utils = trpc.useUtils();
 
@@ -117,6 +120,9 @@ export function SchemeDialog({
                 role: role as (typeof availableRoles)[number],
                 type,
                 effectiveFrom,
+                ...(type === PayrollSchemeType.HOURLY && shiftStart !== '' && shiftEnd !== ''
+                  ? { shiftStart, shiftEnd }
+                  : {}),
                 ...(numberOf('baseAmount') === undefined ? {} : { baseAmount: numberOf('baseAmount') }),
                 ...(numberOf('rate') === undefined ? {} : { rate: numberOf('rate') }),
                 ...(numberOf('kpiTarget') === undefined ? {} : { kpiTarget: numberOf('kpiTarget') }),
@@ -237,6 +243,29 @@ export function SchemeDialog({
             </Field>
           );
         })}
+
+        {type === PayrollSchemeType.HOURLY && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Смена с" hint="Отметка позже — опоздание запишется в дисциплину само" error={errors['shiftStart']}>
+              <Input
+                type="time"
+                value={shiftStart}
+                onChange={(event) => {
+                  setShiftStart(event.target.value);
+                }}
+              />
+            </Field>
+            <Field label="Смена до" error={errors['shiftEnd']}>
+              <Input
+                type="time"
+                value={shiftEnd}
+                onChange={(event) => {
+                  setShiftEnd(event.target.value);
+                }}
+              />
+            </Field>
+          </div>
+        )}
 
         <Field label="Действует с" required error={errors['effectiveFrom']}>
           <Input

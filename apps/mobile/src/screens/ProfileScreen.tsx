@@ -21,7 +21,6 @@ import {
 
 import { Card, CardTitle, Empty, ListCard, ListRow, SectionHeader } from '../components/Card';
 import { CashCollectionCard } from '../components/CashCollectionCard';
-import { DisciplineCard } from '../components/DisciplineCard';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
@@ -244,8 +243,6 @@ export function ProfileScreen(): ReactElement {
       */}
       {!isSeller && <CashCollectionCard />}
 
-      {/* Баллы дисциплины — после заказов, до переходов: про себя, но не про деньги. */}
-      <DisciplineCard period={period} />
       </>
       )}
 

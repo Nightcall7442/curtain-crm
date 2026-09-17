@@ -80,6 +80,10 @@ const EXACT: Readonly<Record<string, string>> = {
   'Укажите цену каждой шторы — с ней она ляжет на склад': 'Har bir pardaga narx qo‘ying — u bilan omborga tushadi',
   'Укажите цену': 'Narxni ko‘rsating',
 
+  // payroll: смена по графику
+  'Время в формате ЧЧ:ММ': 'Vaqt SS:DD formatida',
+  'Укажите и начало, и конец смены': 'Smenaning boshi va oxirini ko‘rsating',
+
   // terminalChecks
   'Конец периода раньше начала': 'Davr oxiri boshidan oldin',
 
