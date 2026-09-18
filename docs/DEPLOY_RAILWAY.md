@@ -20,7 +20,7 @@
 
 ```
                   ┌──────────────────────────────┐
-   Браузер ─────► │  web    crm.pardabozor.uz        │
+   Браузер ─────► │  web    pardabozor.uz        │
    Телефон ─────► │  Next 15                      │
                   │    /trpc/*  ──┐               │
                   │    /files/* ──┤ rewrites      │
@@ -74,10 +74,10 @@ JWT_SECRET             = <48 случайных байт, см. ниже>
 NODE_ENV               = production
 HOST                   = ::
 TRUST_PROXY_HEADERS    = true
-CORS_ORIGINS           = https://crm.pardabozor.uz
+CORS_ORIGINS           = https://pardabozor.uz,https://www.pardabozor.uz,https://crm.pardabozor.uz
 STORAGE_DRIVER         = disk
 STORAGE_DISK_PATH      = /app/storage
-STORAGE_PUBLIC_BASE_URL= https://crm.pardabozor.uz/files
+STORAGE_PUBLIC_BASE_URL= https://pardabozor.uz/files
 MAX_UPLOAD_SIZE_MB     = 15
 ACCESS_TOKEN_TTL_MINUTES = 15
 REFRESH_TOKEN_TTL_DAYS   = 30
@@ -194,9 +194,17 @@ SEED_PAYROLL_EFFECTIVE_FROM = 2026-01-01
 домена быть не должно вовсе: он доступен только по приватной сети, и это
 не настройка, а свойство топологии.
 
-1. `web → Settings → Networking → Custom Domain`, ввести `crm.pardabozor.uz`.
-2. Railway покажет цель для CNAME. Прописать её у регистратора.
+1. `web → Settings → Networking → Custom Domain`, ввести `pardabozor.uz`;
+   вторым доменом добавить `www.pardabozor.uz`.
+2. Railway покажет цель для записи. Прописать её у регистратора: для
+   корневого домена — A-запись (или ALIAS/ANAME, если регистратор умеет)
+   на адрес, который показал Railway; для `www` — CNAME.
 3. Дождаться выдачи сертификата — обычно минуты, иногда до часа.
+4. Старый `crm.pardabozor.uz` **не удалять сразу**: уже установленные
+   приложения на телефонах ходят на него, пока не обновятся. Оставить
+   оба домена на сервисе `web` и в `CORS_ORIGINS` через запятую:
+   `https://pardabozor.uz,https://www.pardabozor.uz,https://crm.pardabozor.uz`.
+   Убрать `crm` можно, когда у всех сотрудников новая сборка.
 
 ### Почему поддомен, а не `pardabozor.uz`
 
@@ -228,14 +236,14 @@ Cloudflare (бесплатно) и там поставить CNAME на апек
 
 ```bash
 # API жив и отвечает через панель
-curl -s https://crm.pardabozor.uz/health
+curl -s https://pardabozor.uz/health
 
 # tRPC отвечает (401 — это правильный ответ без токена)
 curl -s -o /dev/null -w "%{http_code}\n" \
-  "https://crm.pardabozor.uz/trpc/auth.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D"
+  "https://pardabozor.uz/trpc/auth.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D"
 
 # Панель отдаёт экран входа
-curl -s -o /dev/null -w "%{http_code}\n" https://crm.pardabozor.uz/login
+curl -s -o /dev/null -w "%{http_code}\n" https://pardabozor.uz/login
 ```
 
 Ожидается `{"ok":true,...}`, затем `401`, затем `200`. Если `/health` отдаёт
@@ -248,7 +256,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://crm.pardabozor.uz/login
 
 ## 7. Мобильное приложение
 
-В `apps/mobile/app.json` в `extra.apiUrl` укажите `https://crm.pardabozor.uz/trpc`
+В `apps/mobile/app.json` в `extra.apiUrl` укажите `https://pardabozor.uz/trpc`
 и соберите приложение заново. В разработке адрес по-прежнему выводится из
 хоста Metro-сервера, боевое значение читается только из собранного конфига.
 
