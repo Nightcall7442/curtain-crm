@@ -10,6 +10,6 @@ const { spawnSync } = require('node:child_process');
 const result = spawnSync('npx', ['expo', 'start', '--web', '--port', process.env.PORT ?? '8083'], {
   stdio: 'inherit',
   shell: true,
-  env: { ...process.env, EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4123/trpc', CI: '1' },
+  env: { ...process.env, EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4123/trpc' },
 });
 process.exit(result.status ?? 1);

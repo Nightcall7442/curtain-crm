@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  formatIsoDateShort,
   formatMoney,
   parseMoney,
   PAYMENT_KIND_LABELS_RU,
@@ -71,7 +72,13 @@ export default function CashPage(): ReactElement {
         <StatCard
           label="В кассе"
           value={formatMoney(data?.inKassa ?? 0)}
-          caption="Наличные: сдано и принято руководством, минус выдано"
+          caption={
+            data === undefined
+              ? 'Наличные: сдано и принято руководством, минус выдано'
+              : data.inKassaParts.since === null
+                ? 'Наличные через систему ещё не сдавали'
+                : `с ${formatIsoDateShort(data.inKassaParts.since)}: сдано ${formatMoney(data.inKassaParts.collected)} + руководство ${formatMoney(data.inKassaParts.byManagement)} − зарплата ${formatMoney(data.inKassaParts.payroll)} − закупки ${formatMoney(data.inKassaParts.purchases)}`
+          }
         />
         <StatCard
           label="На руках"

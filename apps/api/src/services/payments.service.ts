@@ -180,6 +180,20 @@ export interface CashSummary {
    * про это.
    */
   readonly inKassa: MoneyMinor;
+  /**
+   * Из чего сложилось «В кассе»: владелец увидел 13 386 055 и спросил,
+   * откуда. Цифра без слагаемых — не ответ; слагаемые показываются рядом.
+   */
+  readonly inKassaParts: CashBalanceParts;
+}
+
+export interface CashBalanceParts {
+  /** День первого прихода наличных через систему (`YYYY-MM-DD`) — с него отсчёт; `null` — приходов не было. */
+  readonly since: string | null;
+  readonly collected: MoneyMinor;
+  readonly byManagement: MoneyMinor;
+  readonly payroll: MoneyMinor;
+  readonly purchases: MoneyMinor;
 }
 
 /** Значение сырого запроса — строкой: `numeric` приходит текстом, `count` — числом. */
@@ -267,6 +281,8 @@ export async function cashSummary(
             and p.received_at >= ${from} and p.received_at < ${to} ${branch}`);
   const cashByManagement = parseMoney(toText(byManagement?.['amount']));
 
+  const inKassaParts = await cashBalanceAt(executor, range.to, branchId, managementIds);
+
   return {
     rows,
     byMethod,
@@ -274,17 +290,18 @@ export async function cashSummary(
     cashOut,
     collected,
     cashByManagement,
-    inKassa: await cashBalanceAt(executor, range.to, branchId, managementIds),
+    inKassa: inKassaParts.collected + inKassaParts.byManagement - inKassaParts.payroll - inKassaParts.purchases,
+    inKassaParts,
   };
 }
 
-/** Остаток наличных в кассе на момент `at`: сдано + принято руководством − зарплата − закупки, за всё время. */
+/** Слагаемые остатка наличных на момент `at`: сдано + принято руководством − зарплата − закупки, за всё время. */
 async function cashBalanceAt(
   executor: DbExecutor,
   at: Date,
   branchId: number | undefined,
   managementIds: readonly number[],
-): Promise<MoneyMinor> {
+): Promise<CashBalanceParts> {
   const to = sql`${sqlTimestamp(at)}::timestamptz`;
   const branch = branchId === undefined ? sql`` : sql`and p.branch_id = ${branchId}`;
   const purchaseBranch = branchId === undefined ? sql`` : sql`and o.branch_id = ${branchId}`;
@@ -304,8 +321,11 @@ async function cashBalanceAt(
         where p.method = ${PaymentMethod.CASH} and p.received_by in (${managers}))
     ) as since`);
   const sinceRaw = first?.['since'];
-  if (typeof sinceRaw !== 'string' && !(sinceRaw instanceof Date)) return 0;
-  const since = sql`${sqlTimestamp(new Date(sinceRaw))}::timestamptz`;
+  if (typeof sinceRaw !== 'string' && !(sinceRaw instanceof Date)) {
+    return { since: null, collected: 0, byManagement: 0, payroll: 0, purchases: 0 };
+  }
+  const sinceAt = new Date(sinceRaw);
+  const since = sql`${sqlTimestamp(sinceAt)}::timestamptz`;
 
   const [collected] = await executor.execute(sql`
     select coalesce(sum(amount), 0) as amount from ${cashCollections} where created_at < ${to}`);
@@ -322,10 +342,11 @@ async function cashBalanceAt(
       and p.received_by in (${managers})
       and p.received_at < ${to} ${branch}`);
 
-  return (
-    parseMoney(toText(collected?.['amount'])) +
-    parseMoney(toText(byManagement?.['amount'])) -
-    parseMoney(toText(payroll?.['amount'])) -
-    parseMoney(toText(bought?.['amount']))
-  );
+  return {
+    since: new Date(sinceAt.getTime() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    collected: parseMoney(toText(collected?.['amount'])),
+    byManagement: parseMoney(toText(byManagement?.['amount'])),
+    payroll: parseMoney(toText(payroll?.['amount'])),
+    purchases: parseMoney(toText(bought?.['amount'])),
+  };
 }

@@ -710,7 +710,7 @@ const styles = StyleSheet.create({
   heroLogo: {
     width: 44,
     height: 28,
-    tintColor: colors.brass,
+    // Без перекраски — файл и так белый, как на входе; латунный владелец попросил убрать.
     marginBottom: spacing.sm,
   },
   onShiftRow: {

@@ -1,4 +1,5 @@
 import {
+  formatIsoDateShort,
   formatMoney,
   parseMoney,
   PAYMENT_KIND_LABELS,
@@ -9,8 +10,8 @@ import {
 import { useState, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { useLocale } from '../hooks/useLocale';
-import { trpc } from '../lib/trpc';
+import { useLocale, type Translate } from '../hooks/useLocale';
+import { trpc, type RouterOutputs } from '../lib/trpc';
 import { colors, hairline, spacing, typography } from '../theme';
 import { Card, CardTitle, Empty, Skeleton } from './Card';
 import { DateField } from './DateField';
@@ -54,7 +55,11 @@ export function CashDayReport(): ReactElement {
         ) : (
           <>
             <Stat label={m('cashDay.received')} value={formatMoney(data?.total ?? 0)} />
-            <Stat label={m('cashDay.inKassa')} value={formatMoney(data?.inKassa ?? 0)} />
+            <Stat
+              label={m('cashDay.inKassa')}
+              value={formatMoney(data?.inKassa ?? 0)}
+              hint={data === undefined ? undefined : kassaParts(data.inKassaParts, m)}
+            />
             <Stat
               label={m('cashDay.onHands')}
               value={formatMoney(onHandsTotal)}
@@ -135,6 +140,24 @@ export function CashDayReport(): ReactElement {
 }
 
 /** Крупная цифра с подписью — три таких в шапке отчёта. */
+/**
+ * Из чего сложилось «В кассе» — одной строкой под цифрой. Владелец увидел
+ * 13 386 055 и спросил «а это что»: остаток за всё время без слагаемых
+ * читается как случайное число.
+ */
+function kassaParts(parts: CashSummaryParts, m: Translate): string {
+  if (parts.since === null) return m('cashDay.inKassaNone');
+  return m('cashDay.inKassaParts', {
+    date: formatIsoDateShort(parts.since),
+    collected: formatMoney(parts.collected),
+    management: formatMoney(parts.byManagement),
+    payroll: formatMoney(parts.payroll),
+    purchases: formatMoney(parts.purchases),
+  });
+}
+
+type CashSummaryParts = RouterOutputs['payments']['summary']['inKassaParts'];
+
 function Stat({
   label,
   value,
