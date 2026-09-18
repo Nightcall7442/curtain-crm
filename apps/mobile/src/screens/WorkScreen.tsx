@@ -319,6 +319,28 @@ export function WorkScreen(): ReactElement {
             <Icon name="assigned" size={18} color={colors.onAccent} />
             <Text style={styles.createText}>{m('work.newOrder')}</Text>
           </Pressable>
+
+          {/*
+            Одна кнопка на всё про готовые шторы. Раньше их было две —
+            «Готовые шторы» (пошив для склада) и «Продать» (с полки), — с
+            одним значком и одной интонацией: владелец увидел в них одно и то
+            же. Теперь кнопка ведёт на склад, а там уже — продать или заказать
+            цеху ещё.
+          */}
+          <Pressable
+            onPress={() => {
+              navigation.navigate('ReadyMadeStock');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.createSecondary,
+              styles.createFlex,
+              pressed ? styles.createPressed : null,
+            ]}
+          >
+            <Icon name="orders" size={18} color={colors.accentStrong} />
+            <Text style={styles.createSecondaryText}>{m('work.readyMade')}</Text>
+          </Pressable>
         </View>
       )}
 
@@ -334,33 +356,8 @@ export function WorkScreen(): ReactElement {
         панель одна на всех, и пятая вкладка, видимая двоим из восемнадцати,
         сделала бы её разной у разных людей.
       */}
-      {/*
-        Ряд переходов — одинаковыми плитками под главной кнопкой: «Новый
-        заказ» — действие, всё остальное — соседние разделы, и они равны
-        между собой. Раньше «Готовые шторы» стояли рядом с «Новым заказом»,
-        а «Касса» — отдельной строкой во всю ширину: три кнопки трёх разных
-        размеров читались беспорядком.
-      */}
       {(canCreate || isManager) && (
         <View style={styles.createRow}>
-          {canCreate && (
-            <Pressable
-              onPress={() => {
-                navigation.navigate('ReadyMadeStock');
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.createSecondary,
-                styles.createFlex,
-                pressed ? styles.createPressed : null,
-              ]}
-            >
-              <Icon name="orders" size={18} color={colors.accentStrong} />
-              <Text style={styles.createSecondaryText} numberOfLines={1}>
-                {m('work.readyMade')}
-              </Text>
-            </Pressable>
-          )}
           {canCreate && (
             <Pressable
               onPress={() => {
@@ -528,11 +525,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    paddingHorizontal: spacing.sm,
+    gap: spacing.sm,
+    minHeight: 48,
     borderRadius: radius.lg,
-    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accentSoft,
+    backgroundColor: colors.surface,
   },
   // Кнопка внутри списка: нижний отступ отделяет её от первой карточки.
   personalCreate: {

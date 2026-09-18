@@ -170,7 +170,15 @@ export interface CashSummary {
   readonly collected: MoneyMinor;
   /** Наличные, принятые самим руководством за период, — они в кассе сразу. */
   readonly cashByManagement: MoneyMinor;
-  /** Наличные, дошедшие до кассы (инкассация + принятое руководством), минус ушедшие. */
+  /**
+   * Остаток в кассе на конец периода — НАКОПЛЕННЫЙ: всё сданное и принятое
+   * руководством за всё время минус всё выданное, до конца `to`.
+   *
+   * Раньше это была разница за один день, и в день без прихода, но с
+   * закупкой на 75 000 касса показывала «−75 000». Ящик с деньгами не
+   * обнуляется в полночь — остаток в нём копится, и владелец спросил именно
+   * про это.
+   */
   readonly inKassa: MoneyMinor;
 }
 
@@ -266,6 +274,58 @@ export async function cashSummary(
     cashOut,
     collected,
     cashByManagement,
-    inKassa: collected + cashByManagement - cashOut.payroll - cashOut.purchases,
+    inKassa: await cashBalanceAt(executor, range.to, branchId, managementIds),
   };
+}
+
+/** Остаток наличных в кассе на момент `at`: сдано + принято руководством − зарплата − закупки, за всё время. */
+async function cashBalanceAt(
+  executor: DbExecutor,
+  at: Date,
+  branchId: number | undefined,
+  managementIds: readonly number[],
+): Promise<MoneyMinor> {
+  const to = sql`${sqlTimestamp(at)}::timestamptz`;
+  const branch = branchId === undefined ? sql`` : sql`and p.branch_id = ${branchId}`;
+  const purchaseBranch = branchId === undefined ? sql`` : sql`and o.branch_id = ${branchId}`;
+  const managers =
+    managementIds.length === 0 ? sql`null` : sql.join(managementIds.map((id) => sql`${id}`), sql`, `);
+
+  /*
+    Отсчёт — с первого прихода наличных в кассу через систему. Закупки и
+    зарплата велись и до того, как касса переехала сюда, и без этой
+    границы остаток начинался бы с минуса в миллионы — долгом, которого
+    нет. Пока ни одного прихода не было, касса — ноль.
+  */
+  const [first] = await executor.execute(sql`
+    select least(
+      (select min(created_at) from ${cashCollections}),
+      (select min(p.received_at) from ${payments} p
+        where p.method = ${PaymentMethod.CASH} and p.received_by in (${managers}))
+    ) as since`);
+  const sinceRaw = first?.['since'];
+  if (typeof sinceRaw !== 'string' && !(sinceRaw instanceof Date)) return 0;
+  const since = sql`${sqlTimestamp(new Date(sinceRaw))}::timestamptz`;
+
+  const [collected] = await executor.execute(sql`
+    select coalesce(sum(amount), 0) as amount from ${cashCollections} where created_at < ${to}`);
+  const [payroll] = await executor.execute(sql`
+    select coalesce(sum(paid_amount), 0) as amount from ${payrollRecords}
+    where paid_at >= ${since} and paid_at < ${to}`);
+  const [bought] = await executor.execute(sql`
+    select coalesce(sum(pu.total_price), 0) as amount
+    from ${purchases} pu join orders o on o.id = pu.order_id
+    where pu.created_at >= ${since} and pu.created_at < ${to} ${purchaseBranch}`);
+  const [byManagement] = await executor.execute(sql`
+    select coalesce(sum(p.amount), 0) as amount from ${payments} p
+    where p.method = ${PaymentMethod.CASH}
+      and p.received_by in (${managers})
+      and p.received_at < ${to} ${branch}`);
+
+  return (
+    parseMoney(toText(collected?.['amount'])) +
+    parseMoney(toText(byManagement?.['amount'])) -
+    parseMoney(toText(payroll?.['amount'])) -
+    parseMoney(toText(bought?.['amount']))
+  );
 }
