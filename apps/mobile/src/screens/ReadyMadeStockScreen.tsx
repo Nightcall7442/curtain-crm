@@ -591,7 +591,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                 <View style={styles.itemHead}>
                   {item.photoUrl === null ? (
                     <View style={[styles.thumb, styles.thumbEmpty]}>
-                      <Icon name="window" size={18} color={colors.textMuted} />
+                      <Text style={styles.thumbLetter}>{item.model.trim().charAt(0).toUpperCase()}</Text>
                     </View>
                   ) : (
                     <Image source={{ uri: item.photoUrl }} style={styles.thumb} />
@@ -900,10 +900,16 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: radius.sm,
   },
+  /* Без снимка — первая буква модели на светло-зелёном: серый квадрат с
+     иконкой окна на каждой строке выглядел заглушкой. */
   thumbEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.accentSoft,
+  },
+  thumbLetter: {
+    ...typography.title,
+    color: colors.accentStrong,
   },
   itemBody: { flex: 1 },
   itemTitle: {

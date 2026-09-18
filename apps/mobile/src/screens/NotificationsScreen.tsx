@@ -308,21 +308,18 @@ const styles = StyleSheet.create({
     color: colors.headerText,
     fontWeight: '600',
   },
+  /* Текстовая ссылка, а не ещё одна карточка: белая плашка с зелёной
+     подписью читалась третьей кнопкой над списком. */
   markAll: {
-    minHeight: 44,
+    minHeight: 40,
     marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   markAllText: {
     ...typography.caption,
     color: colors.accent,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   pressed: {
     opacity: opacity.pressed,
