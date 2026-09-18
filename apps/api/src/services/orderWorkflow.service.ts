@@ -30,7 +30,7 @@ import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { recordAudit } from './audit.service';
 import { assertOrderPacked } from './packList.service';
 import { accrueForClosedOrder, accrueForStage, STAGE_ACCRUAL_STATUSES } from './payroll.service';
-import { shelveStockOrder } from './readyMadeStock.service';
+import { restockCancelledSale, shelveStockOrder } from './readyMadeStock.service';
 import {
   notifyOrderAssigned,
   notifyOrderStatusChanged,
@@ -509,6 +509,9 @@ export async function changeOrderStatus(
     await accrueForClosedOrder(executor, updated);
     // Пошив для склада: сшитое ложится на полку в тот же момент.
     await shelveStockOrder(executor, updated, actor.id, stockPrices ?? new Map());
+  } else if (toStatus === OrderStatus.CANCELLED) {
+    // Отменённая продажа с полки: штора возвращается на склад.
+    await restockCancelledSale(executor, updated, actor.id);
   } else if (STAGE_ACCRUAL_STATUSES.has(toStatus) && !wasRollback) {
     // Сданный этап — тоже: сдельная за него идёт в месяц сдачи, а не в
     // месяц закрытия заказа.

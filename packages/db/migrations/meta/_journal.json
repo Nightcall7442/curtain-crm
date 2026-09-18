@@ -330,6 +330,13 @@
       "when": 1789650364598,
       "tag": "0046_payroll_shift_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789759756683,
+      "tag": "0047_order_item_ready_made",
+      "breakpoints": true
     }
   ]
 }

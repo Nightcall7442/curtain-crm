@@ -36,7 +36,8 @@ export function ScoreMeter({
   readonly best: number;
   readonly className?: string;
 }): ReactElement {
-  const percent = best <= 0 ? 0 : Math.min(score / best, 1) * 100;
+  // Балл может уйти в минус из-за дисциплины — полоса при этом пустая, а не отрицательной ширины.
+  const percent = best <= 0 ? 0 : Math.min(Math.max(score, 0) / best, 1) * 100;
 
   return (
     <div className={cn('flex items-center gap-2', className)}>

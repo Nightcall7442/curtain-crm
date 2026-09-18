@@ -1,6 +1,6 @@
 import { orderItems, readyMadeItems, type DbExecutor, type Order } from '@curtain-crm/db';
 import { moneyToDecimalString, OrderType } from '@curtain-crm/shared';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
 
@@ -58,6 +58,40 @@ export async function shelveStockOrder(
       entityType: 'ready_made_item',
       entityId: row.id,
       details: { model: row.model, quantity: row.quantity, sourceOrderId: order.id },
+    });
+  }
+}
+
+/**
+ * Отмена продажи с полки возвращает штору на склад.
+ *
+ * Продажа списывает остаток сразу, в момент оформления; отмена без
+ * возврата оставляла полку пустой, хотя штора никуда не делась, — и
+ * продавец «терял» её при следующей продаже. Возвращаем столько, сколько
+ * списали, по той же строке склада.
+ */
+export async function restockCancelledSale(executor: DbExecutor, order: Order, actorId: number): Promise<void> {
+  if (order.orderType !== OrderType.READY_MADE) return;
+
+  const sold = await executor
+    .select({ readyMadeItemId: orderItems.readyMadeItemId, quantity: orderItems.quantity })
+    .from(orderItems)
+    .where(and(eq(orderItems.orderId, order.id), isNotNull(orderItems.readyMadeItemId)));
+
+  for (const item of sold) {
+    if (item.readyMadeItemId === null) continue;
+    const [restored] = await executor
+      .update(readyMadeItems)
+      .set({ quantity: sql`${readyMadeItems.quantity} + ${item.quantity}`, updatedAt: new Date() })
+      .where(eq(readyMadeItems.id, item.readyMadeItemId))
+      .returning({ id: readyMadeItems.id, model: readyMadeItems.model, quantity: readyMadeItems.quantity });
+    if (restored === undefined) continue;
+    await recordAudit(executor, {
+      actorId,
+      action: 'ready_made_item.stock_changed',
+      entityType: 'ready_made_item',
+      entityId: restored.id,
+      details: { model: restored.model, quantity: restored.quantity, restoredFromOrderId: order.id, restored: item.quantity },
     });
   }
 }

@@ -1030,6 +1030,7 @@ export const ordersRouter = router({
               index,
               ),
               readyMadeCode: stock?.code ?? null,
+              readyMadeItemId: stock?.id ?? null,
             };
           }),
         );

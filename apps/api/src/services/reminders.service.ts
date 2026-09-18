@@ -5,7 +5,7 @@ import {
   SHIFT_FORGOTTEN_AFTER_HOURS,
   TERMINAL_CHECKS_DAILY_TARGET,
 } from '@curtain-crm/shared';
-import { and, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 
 import { sellerUserIds, terminalChecksToday } from '../routers/terminalChecks.router';
 
@@ -75,25 +75,38 @@ export function startCollectionReminders(executor: DbExecutor): () => void {
  */
 async function closeForgottenShifts(executor: DbExecutor): Promise<void> {
   const threshold = new Date(Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000);
-  const closed = await executor
-    .update(shifts)
-    .set({
-      endedAt: sql`${shifts.startedAt} + make_interval(hours => ${SHIFT_AUTO_CLOSE_AFTER_HOURS})`,
-      // Не «правка руководителя»: у той обязателен автор, а здесь его нет.
-      // Причина и время остаются — по ним в табеле видно, что закрыла система.
-      adjustedAt: new Date(),
-      adjustmentReason: SHIFT_AUTO_CLOSE_REASON,
+  const forgotten = await executor
+    .select({
+      id: shifts.id,
+      userId: shifts.userId,
+      startedAt: shifts.startedAt,
+      // Конец смены по графику из условий оплаты — если он назначен.
+      shiftEnd: sql<string | null>`(
+        select s.shift_end from payroll_schemes s
+        where s.user_id = ${shifts.userId} and s.is_active = true and s.shift_end is not null
+        order by s.effective_from desc limit 1
+      )`,
     })
-    .where(and(isNull(shifts.endedAt), lt(shifts.startedAt, threshold)))
-    .returning({ id: shifts.id, userId: shifts.userId, startedAt: shifts.startedAt });
+    .from(shifts)
+    .where(and(isNull(shifts.endedAt), lt(shifts.startedAt, threshold)));
 
-  for (const shift of closed) {
+  for (const shift of forgotten) {
+    /*
+      Конец — по графику, если он есть и позже начала: смена «с 09:00 до
+      18:00», забытая в 09:10, закрывается в 18:00, а не в 21:10. Графика
+      нет — двенадцать часов от начала.
+    */
+    const endedAt = plannedEnd(shift.startedAt, shift.shiftEnd) ?? new Date(shift.startedAt.getTime() + SHIFT_AUTO_CLOSE_AFTER_HOURS * 60 * 60 * 1000);
+    await executor
+      .update(shifts)
+      .set({ endedAt, adjustedAt: new Date(), adjustmentReason: SHIFT_AUTO_CLOSE_REASON })
+      .where(and(eq(shifts.id, shift.id), isNull(shifts.endedAt)));
     await recordAudit(executor, {
       actorId: shift.userId,
       action: 'shift.adjusted',
       entityType: 'shift',
       entityId: shift.id,
-      details: { auto: true, reason: SHIFT_AUTO_CLOSE_REASON },
+      details: { auto: true, reason: SHIFT_AUTO_CLOSE_REASON, endedAt: endedAt.toISOString() },
     });
     await notifyShiftAdjusted(executor, shift.userId, {
       actorName: 'Система',
@@ -101,4 +114,13 @@ async function closeForgottenShifts(executor: DbExecutor): Promise<void> {
       shiftDate: shift.startedAt.toISOString().slice(0, 10),
     });
   }
+}
+
+/** Момент «конца смены по графику» в тот же местный день, что и начало; `null`, если графика нет или он раньше начала. */
+function plannedEnd(startedAt: Date, shiftEnd: string | null): Date | null {
+  if (shiftEnd === null) return null;
+  const [hours, minutes] = shiftEnd.split(':').map((part: string) => Number.parseInt(part, 10));
+  const local = new Date(startedAt.getTime() + TASHKENT_OFFSET_MS);
+  const end = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hours ?? 0, minutes ?? 0) - TASHKENT_OFFSET_MS);
+  return end.getTime() > startedAt.getTime() ? end : null;
 }

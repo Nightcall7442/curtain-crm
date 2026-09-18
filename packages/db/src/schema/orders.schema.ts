@@ -264,6 +264,16 @@ export const orderItems = pgTable(
      * остаться то, что клиент назвал по телефону.
      */
     readyMadeCode: text('ready_made_code'),
+    /**
+     * Штора со склада, которую списала эта позиция.
+     *
+     * Нужна, чтобы отмена продажи вернула ту же штору на полку: по коду и
+     * модели не найти — код необязателен, а модель повторяется. Без
+     * внешнего ключа намеренно: `ready_made_items` сама ссылается на заказ
+     * (`source_order_id`), и вторая ссылка навстречу замкнула бы импорты
+     * схем; целостность держит логика продажи, а не база.
+     */
+    readyMadeItemId: integer('ready_made_item_id'),
     /** Материалы — множественный выбор, поэтому массив, а не одно поле. */
     materials: text('materials').array().notNull().default(sql`'{}'::text[]`),
     materialOptions: text('material_options').array().notNull().default(sql`'{}'::text[]`),

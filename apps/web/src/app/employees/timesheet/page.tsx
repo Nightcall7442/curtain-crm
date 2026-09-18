@@ -328,9 +328,10 @@ export default function TimesheetPage(): ReactElement {
               key: 'adjusted',
               header: 'Корректировка',
               render: (row) =>
-                row.isManuallyAdjusted ? (
+                row.isManuallyAdjusted || row.adjustmentReason !== null ? (
                   <span className="block">
-                    <Badge tone="warning">Изменена вручную</Badge>
+                    {/* Забытую смену закрыла система — это не правка руководителя, и подпись честная. */}
+                    <Badge tone="warning">{row.isManuallyAdjusted ? 'Изменена вручную' : 'Закрыта автоматически'}</Badge>
                     {row.adjustmentReason !== null && (
                       <span className="mt-1 block text-overline text-muted">
                         {row.adjustmentReason}
