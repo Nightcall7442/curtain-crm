@@ -1147,9 +1147,14 @@ async function run(db: Database): Promise<void> {
     installerCash.onHands === parseMoney('100000') && sellerCash.onHands === parseMoney('300000'),
     `установщик ${moneyToDecimalString(installerCash.onHands)}, продавец ${moneyToDecimalString(sellerCash.onHands)}`,
   );
+  // «В кассе» — накопленный остаток на конец дня, а не разница за день: на
+  // базе с историей в нём и чужие дни, поэтому сверяются слагаемые, а не число.
+  const parts = cash.inKassaParts;
   check(
-    'касса: в кассе — только сданное инкассацией и принятое руководством',
-    cash.collected === parseMoney('400000') && cash.inKassa === parseMoney('400000') - cash.cashOut.payroll - cash.cashOut.purchases,
+    'касса: в кассе — сданное и принятое руководством минус выданное, накопленным итогом',
+    cash.collected === parseMoney('400000') &&
+      parts.collected >= parseMoney('400000') &&
+      cash.inKassa === parts.collected + parts.byManagement - parts.payroll - parts.purchases,
     `сдано ${moneyToDecimalString(cash.collected)}, в кассе ${moneyToDecimalString(cash.inKassa)}`,
   );
 
