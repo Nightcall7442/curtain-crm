@@ -1,138 +1,103 @@
-import { SHIFT_FORGOTTEN_AFTER_HOURS } from '@curtain-crm/shared';
-import { useMemo, type ReactElement } from 'react';
+import { SHIFT_ACTIVITY_LABELS, formatIsoDateShort } from '@curtain-crm/shared';
+import type { ReactElement } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { InstallationTripCard } from '../components/InstallationTripCard';
 import { ShiftControl } from '../components/ShiftControl';
+import { useIsCeo } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
- * Явка цеха: кто пришёл, во сколько, кто сейчас на месте, кто на перерыве и
- * кто уехал на установку. Плюс собственная отметка сверху.
+ * Явка цеха глазами руководителя: кто сейчас в цеху и чем занят, кто уже
+ * ушёл, и что ждёт установки.
  *
- * Это то, что видит руководство — директор и админ — вместо экрана одной
- * своей смены. Раньше экран показывал только чужую явку, и отметиться сам
- * руководитель из приложения не мог вовсе: его часов в табеле просто не
- * было. Теперь отмечаются все и все по GPS — тем же жестом и с той же
- * проверкой филиала, что у остальных.
+ * Список — тот же `shifts.openNow`, что и на главной: одна выдача, одна
+ * цифра «на смене» везде. У каждого — во сколько пришёл и дело: «шьёт
+ * DH-0012», «на установке DH-0013». Дело выводится из заказов, а не
+ * спрашивается у человека: заказ «в пошиве» на швее — значит, шьёт.
  *
- * Считается по сменам сегодняшнего дня, а не по «списку сотрудников со
- * статусом»: смена — это факт с временем начала, и вопрос «во сколько
- * пришёл» отвечается ею напрямую. Кого сегодня нет, того в списке нет —
- * отсутствие видно по короткому списку, а не по строке «не пришёл».
+ * Своя смена директору здесь не нужна — он её не открывает, и карточка
+ * «Проведите, чтобы начать смену» первой строкой была ему помехой: владелец
+ * её зачеркнул. Админ — сотрудник и отмечается, ему карточка остаётся.
  */
 export function AttendanceScreen(): ReactElement {
-  const { m } = useLocale();
-  /* Границы суток берутся на каждый рендер, а не запоминаются: экран живёт
-     открытым и после полуночи должен показывать уже новый день. */
-  const { from, to } = todayBounds();
-  /* Смена, открытая вчера вечером и ещё идущая, — тоже «сейчас в цеху»:
-     запрашиваем на 16 часов назад, а закрытые вчерашние отбрасываем ниже. */
-  const since = new Date(Math.min(from.getTime(), Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000));
+  const { m, t } = useLocale();
+  const isCeo = useIsCeo();
 
-  const shifts = trpc.shifts.list.useQuery({ page: 1, pageSize: 100, from: since, to });
-  const breaks = trpc.shifts.activeBreaks.useQuery();
-  const trips = trpc.shifts.activeTrips.useQuery();
-  const current = trpc.shifts.current.useQuery();
+  const roster = trpc.shifts.openNow.useQuery();
+  const queue = trpc.orders.installationQueue.useQuery();
+  const current = trpc.shifts.current.useQuery(undefined, { enabled: !isCeo });
 
   const refresh = (): void => {
-    void shifts.refetch();
-    void breaks.refetch();
-    void trips.refetch();
+    void roster.refetch();
+    void queue.refetch();
   };
 
-  /** Кто сейчас на перерыве — по id, чтобы пометить строку в общем списке. */
-  const onBreak = useMemo(
-    () => new Map((breaks.data ?? []).map((item) => [item.userId, item])),
-    [breaks.data],
-  );
-
-  /** Кто сейчас на установке — так же пометкой, а не отдельным списком. */
-  const onTrip = useMemo(
-    () => new Map((trips.data ?? []).map((item) => [item.userId, item])),
-    [trips.data],
-  );
-
-  if (shifts.isError) {
+  if (roster.isError) {
     return (
       <View style={styles.center}>
-        <ErrorState message={shifts.error.message} />
+        <ErrorState message={roster.error.message} />
       </View>
     );
   }
 
-  const rows = shifts.data?.items ?? [];
+  const rows = roster.data ?? [];
   const working = rows.filter((row) => row.endedAt === null);
-  const finished = rows.filter((row) => row.endedAt !== null && new Date(row.startedAt) >= from);
+  const finished = rows.filter((row) => row.endedAt !== null);
 
   return (
     <ScrollView
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl
-          refreshing={shifts.isFetching && !shifts.isLoading}
+          refreshing={roster.isFetching && !roster.isLoading}
           onRefresh={refresh}
           tintColor={colors.accent}
         />
       }
     >
-      {/*
-        Своя смена — первым делом: руководитель тоже отмечается, и по тем же
-        правилам. Кольцо таймера здесь выключено — под ним список явки, и
-        два крупных блока подряд разводят внимание.
-      */}
-      <ShiftControl showTimer={false}>
-        <InstallationTripCard shiftOpen={(current.data ?? null) !== null} />
-      </ShiftControl>
+      {!isCeo && (
+        <ShiftControl showTimer={false}>
+          <InstallationTripCard shiftOpen={(current.data ?? null) !== null} />
+        </ShiftControl>
+      )}
 
       <Card>
         <CardTitle title={m('attendance.now')} icon="people" />
 
-        {shifts.data === undefined ? (
+        {roster.data === undefined ? (
           <Skeleton />
         ) : working.length === 0 ? (
           <Empty message={m('attendance.nobodyOpened')} hint={m('attendance.nobodyOpenedHint')} />
         ) : (
           working.map((row) => {
-            const rest = onBreak.get(row.userId);
-            const trip = onTrip.get(row.userId);
-
             /*
-              Выезд важнее перерыва, если вдруг открыты оба: «на установке»
-              отвечает на вопрос «где человек», а перерыв — только на «чем
-              занят». Одновременно они не открываются, но состояние из двух
-              источников обязано иметь однозначный порядок.
+              Дело важнее перерыва: «на установке DH-0013» отвечает, где
+              человек, перерыв — только чем занят. Без заказа на руках —
+              сколько уже в цеху.
             */
-            const meta =
-              trip !== undefined
-                ? `${m('attendance.sinceTrip', { start: clock(row.startedAt), trip: clock(trip.startedAt) })}${
-                    trip.orderNumber === null ? '' : ` · ${trip.orderNumber}`
-                  }`
-                : rest !== undefined
-                  ? m('attendance.sinceBreak', { start: clock(row.startedAt), rest: clock(rest.startedAt) })
-                  : m('attendance.since', { start: clock(row.startedAt), elapsed: elapsed(row.startedAt, m) });
+            const doing =
+              row.activity !== null
+                ? `${t(SHIFT_ACTIVITY_LABELS, row.activity)}${row.activityOrder === null ? '' : ` ${row.activityOrder}`}`
+                : row.onBreak
+                  ? m('attendance.break')
+                  : elapsed(row.startedAt, m);
 
             return (
               <View key={`${row.userId.toString()}-${row.startedAt.toISOString()}`} style={styles.row}>
                 <View style={styles.text}>
                   <Text style={styles.name} numberOfLines={1}>
-                    {row.userFullName}
+                    {row.fullName}
                   </Text>
-                  <Text style={styles.meta}>{meta}</Text>
+                  <Text style={styles.meta}>{m('attendance.sinceDoing', { start: clock(row.startedAt), doing })}</Text>
                 </View>
 
-                {/*
-                  Перерыв и выезд — пометки, а не отдельные списки. Человек
-                  и на перерыве, и на объекте всё равно на смене, и вынести
-                  его в другую карточку значило бы дважды отвечать на вопрос
-                  «кто сегодня работает».
-                */}
                 <Pill
-                  text={trip !== undefined ? m('attendance.trip') : rest !== undefined ? m('attendance.break') : m('attendance.working')}
-                  tone={trip !== undefined ? 'info' : rest !== undefined ? 'warning' : 'positive'}
+                  text={row.onTrip ? m('attendance.trip') : row.onBreak ? m('attendance.break') : m('attendance.working')}
+                  tone={row.onTrip ? 'info' : row.onBreak ? 'warning' : 'positive'}
                 />
               </View>
             );
@@ -141,9 +106,38 @@ export function AttendanceScreen(): ReactElement {
       </Card>
 
       <Card>
+        <CardTitle title={m('attendance.queue')} icon="orders" />
+
+        {queue.data === undefined ? (
+          <Skeleton rows={2} />
+        ) : queue.data.length === 0 ? (
+          <Empty message={m('attendance.queueEmpty')} />
+        ) : (
+          queue.data.map((order) => (
+            <View key={order.id} style={styles.row}>
+              <View style={styles.text}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {order.orderNumber}
+                  <Text style={styles.metaInline}>
+                    {` · ${order.deadline === null ? m('attendance.noDeadline') : formatIsoDateShort(order.deadline)}`}
+                  </Text>
+                </Text>
+                <Text style={styles.meta} numberOfLines={2}>
+                  {order.installAddress ?? m('attendance.noAddress')}
+                </Text>
+              </View>
+              <Text style={order.installerName === null ? styles.unassigned : styles.installer} numberOfLines={2}>
+                {order.installerName ?? m('attendance.noInstaller')}
+              </Text>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card>
         <CardTitle title={m('attendance.left')} icon="shift" />
 
-        {shifts.data === undefined ? (
+        {roster.data === undefined ? (
           <Skeleton rows={2} />
         ) : finished.length === 0 ? (
           <Empty message={m('attendance.nobodyClosed')} />
@@ -152,14 +146,14 @@ export function AttendanceScreen(): ReactElement {
             <View key={`${row.userId.toString()}-${row.startedAt.toISOString()}`} style={styles.row}>
               <View style={styles.text}>
                 <Text style={styles.name} numberOfLines={1}>
-                  {row.userFullName}
+                  {row.fullName}
                 </Text>
                 <Text style={styles.meta}>
                   {`${clock(row.startedAt)} — ${
                     row.endedAt === null ? '' : clock(row.endedAt)
                   } · ${worked(row.startedAt, row.endedAt, m)}`}
                   {/* Закрыл сервер, не человек: уход не отмечен, время условное. */}
-                  {!row.isManuallyAdjusted && row.adjustmentReason !== null ? ` · ${m('home.autoClosed')}` : ''}
+                  {row.autoClosed ? ` · ${m('home.autoClosed')}` : ''}
                 </Text>
               </View>
             </View>
@@ -167,20 +161,12 @@ export function AttendanceScreen(): ReactElement {
         )}
       </Card>
 
+      {/* Людей, не смен: кто отлучался и вернулся — открыл вторую, но он один. */}
       <Text style={styles.note}>
-        {m('attendance.note', { n: rows.length })}
+        {m('attendance.note', { n: new Set(rows.map((row) => row.userId)).size })}
       </Text>
     </ScrollView>
   );
-}
-
-/** Полночь сегодняшняя и завтрашняя — окно, за которое берутся смены. */
-function todayBounds(): { readonly from: Date; readonly to: Date } {
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-
-  const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
-  return { from, to };
 }
 
 const clock = (value: Date): string =>
@@ -236,6 +222,22 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: 1,
+  },
+  metaInline: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  installer: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    maxWidth: '40%',
+    textAlign: 'right',
+  },
+  unassigned: {
+    ...typography.caption,
+    color: colors.textMuted,
+    maxWidth: '40%',
+    textAlign: 'right',
   },
   note: {
     ...typography.caption,

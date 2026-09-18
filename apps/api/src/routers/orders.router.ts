@@ -1683,6 +1683,42 @@ export const ordersRouter = router({
   /* ------------------------------- Карниз -------------------------------- */
 
   /**
+   * Очередь на установку — для явки руководителя.
+   *
+   * Что сшито и ждёт объекта: номер, срок, адрес, кто поедет. Отдельная
+   * выдача, а не фильтр списка: список отдаёт сырые строки без имени
+   * установщика, а здесь имя — половина смысла. Порядок — по сроку: что
+   * горит, то сверху; без срока — в конец.
+   */
+  installationQueue: managementProcedure.query(async ({ ctx }) => {
+    return ctx.db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        status: orders.status,
+        deadline: orders.deadline,
+        installAddress: orders.installAddress,
+        clientName: orders.clientName,
+        installerName: users.fullName,
+      })
+      .from(orders)
+      .leftJoin(users, eq(users.id, orders.installerId))
+      .where(
+        or(
+          inArray(orders.status, [
+            OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+            OrderStatus.INSTALLATION_ASSIGNED,
+            OrderStatus.INSTALLATION_IN_PROGRESS,
+          ]),
+          // Контроль пройден, адрес есть — значит, поедет на объект, а не на полку.
+          and(eq(orders.status, OrderStatus.QC_PASSED), sql`${orders.installAddress} is not null`),
+        ),
+      )
+      .orderBy(sql`${orders.deadline} asc nulls last`, asc(orders.createdAt))
+      .limit(100);
+  }),
+
+  /**
    * Очередь карнизчиков.
    *
    * Отдельная выдача, а не фильтр общего списка: карниз идёт мимо цепочки

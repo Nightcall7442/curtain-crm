@@ -1,5 +1,5 @@
 import { branches, installationTrips, orders, personalBreaks, shifts, users } from '@curtain-crm/db';
-import { MAX_PERSONAL_BREAK_MINUTES, SHIFT_FORGOTTEN_AFTER_HOURS } from '@curtain-crm/shared';
+import { MAX_PERSONAL_BREAK_MINUTES, SHIFT_FORGOTTEN_AFTER_HOURS, type ShiftActivity } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -579,6 +579,18 @@ export const shiftsRouter = router({
       Пустой список читался как «никто не пришёл», хотя цех работал.
     */
     const dayStart = sql`(now() at time zone 'Asia/Tashkent')::date`;
+    const openTrip = sql`exists (select 1 from installation_trips t where t.shift_id = ${shifts.id} and t.returned_at is null)`;
+    /*
+      Чем занят: заказ, который сейчас на этом человеке, — по статусу заказа
+      и роли в нём. Свежий сверху, если таких несколько. Открытый выезд
+      важнее: он говорит, где человек физически.
+    */
+    const busy = sql`select o.status, o.order_number from orders o
+      where (o.status = 'sewing_in_progress' and o.sewer_id = ${shifts.userId})
+         or (o.status = 'installation_in_progress' and o.installer_id = ${shifts.userId})
+         or (o.status = 'measurement_assigned' and o.master_id = ${shifts.userId})
+         or (o.status = 'pending_qc' and o.qc_id = ${shifts.userId})
+      order by o.updated_at desc limit 1`;
     const rows = await ctx.db
       .select({
         userId: shifts.userId,
@@ -588,7 +600,20 @@ export const shiftsRouter = router({
         autoClosed: sql<boolean>`${shifts.endedAt} is not null and ${shifts.adjustmentReason} is not null and ${shifts.isManuallyAdjusted} = false`,
         branchName: branches.name,
         onBreak: sql<boolean>`${shifts.endedAt} is null and exists (select 1 from personal_breaks b where b.shift_id = ${shifts.id} and b.returned_at is null)`,
-        onTrip: sql<boolean>`${shifts.endedAt} is null and exists (select 1 from installation_trips t where t.shift_id = ${shifts.id} and t.returned_at is null)`,
+        onTrip: sql<boolean>`${shifts.endedAt} is null and ${openTrip}`,
+        activity: sql<ShiftActivity | null>`case
+          when ${shifts.endedAt} is not null then null
+          when ${openTrip} then 'installation'
+          else (select case s.status
+                  when 'sewing_in_progress' then 'sewing'
+                  when 'installation_in_progress' then 'installation'
+                  when 'measurement_assigned' then 'measurement'
+                  else 'qc' end from (${busy}) s)
+          end`,
+        activityOrder: sql<string | null>`case when ${shifts.endedAt} is not null then null else coalesce(
+          (select o.order_number from installation_trips t join orders o on o.id = t.order_id
+            where t.shift_id = ${shifts.id} and t.returned_at is null limit 1),
+          (select s.order_number from (${busy}) s)) end`,
       })
       .from(shifts)
       .innerJoin(users, eq(users.id, shifts.userId))

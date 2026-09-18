@@ -4,20 +4,47 @@
     {
       "name": "api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@curtain-crm/api", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@curtain-crm/api",
+        "dev"
+      ],
       "port": 3000
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@curtain-crm/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@curtain-crm/web",
+        "dev"
+      ],
       "port": 3001
     },
     {
       "name": "mobile-web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@curtain-crm/mobile", "exec", "expo", "start", "--web", "--port", "8081"],
+      "runtimeArgs": [
+        "--filter",
+        "@curtain-crm/mobile",
+        "exec",
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8081"
+      ],
       "port": 8081
+    },
+    {
+      "name": "mobile-web-local",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@curtain-crm/mobile",
+        "web:local"
+      ],
+      "port": 8083
     }
   ]
 }
