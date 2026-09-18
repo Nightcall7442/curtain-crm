@@ -1,7 +1,7 @@
 import { branches, installationTrips, orders, personalBreaks, shifts, users } from '@curtain-crm/db';
 import { MAX_PERSONAL_BREAK_MINUTES, SHIFT_FORGOTTEN_AFTER_HOURS } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, count, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -571,26 +571,39 @@ export const shiftsRouter = router({
    * перевалившая за полночь, всё ещё смена.
    */
   openNow: managementProcedure.query(async ({ ctx }) => {
+    /*
+      Список — все, кто отметился СЕГОДНЯ (по Ташкенту), плюс ещё идущие
+      смены за последние 16 часов. Закрытые за сегодня тоже в списке, с
+      временем ухода: владелец открыл «кто на смене» и увидел пустоту —
+      смены, открытые накануне, закрыл сервер, а заново люди не отмечались.
+      Пустой список читался как «никто не пришёл», хотя цех работал.
+    */
+    const dayStart = sql`(now() at time zone 'Asia/Tashkent')::date`;
     const rows = await ctx.db
       .select({
         userId: shifts.userId,
         fullName: users.fullName,
         startedAt: shifts.startedAt,
+        endedAt: shifts.endedAt,
+        autoClosed: sql<boolean>`${shifts.endedAt} is not null and ${shifts.adjustmentReason} is not null and ${shifts.isManuallyAdjusted} = false`,
         branchName: branches.name,
-        onBreak: sql<boolean>`exists (select 1 from personal_breaks b where b.shift_id = ${shifts.id} and b.returned_at is null)`,
-        onTrip: sql<boolean>`exists (select 1 from installation_trips t where t.shift_id = ${shifts.id} and t.returned_at is null)`,
+        onBreak: sql<boolean>`${shifts.endedAt} is null and exists (select 1 from personal_breaks b where b.shift_id = ${shifts.id} and b.returned_at is null)`,
+        onTrip: sql<boolean>`${shifts.endedAt} is null and exists (select 1 from installation_trips t where t.shift_id = ${shifts.id} and t.returned_at is null)`,
       })
       .from(shifts)
       .innerJoin(users, eq(users.id, shifts.userId))
       .innerJoin(branches, eq(branches.id, shifts.branchId))
       .where(
-        and(
-          isNull(shifts.endedAt),
-          // Забытые смены (старше 16 ч) — не «на смене»: их закроет сервер.
-          gte(shifts.startedAt, new Date(Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000)),
+        or(
+          and(
+            isNull(shifts.endedAt),
+            gte(shifts.startedAt, new Date(Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000)),
+          ),
+          sql`(${shifts.startedAt} at time zone 'Asia/Tashkent')::date = ${dayStart}`,
         ),
       )
-      .orderBy(shifts.startedAt);
+      // Кто ещё работает — сверху, ушедшие — ниже, по времени прихода.
+      .orderBy(sql`${shifts.endedAt} is not null`, shifts.startedAt);
     return rows;
   }),
 

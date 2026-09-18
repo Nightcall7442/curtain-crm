@@ -515,19 +515,25 @@ function WorkshopSummary(): ReactElement {
 
       <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
-      {(onShift.data ?? []).map((row) => (
-        <View key={row.userId} style={styles.onShiftRow}>
-          <Text style={styles.onShiftName} numberOfLines={1}>
-            {row.fullName}
-            {row.onTrip ? ` · ${m('home.onTrip')}` : row.onBreak ? ` · ${m('home.onBreak')}` : ''}
-          </Text>
-          <Text style={styles.onShiftTime}>
-            {m('home.since', {
-              time: new Date(row.startedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-            })}
-          </Text>
-        </View>
-      ))}
+      {(onShift.data ?? []).map((row) => {
+        const clock = (value: Date | string): string =>
+          new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const left = row.endedAt !== null;
+        return (
+          <View key={`${row.userId.toString()}-${String(row.startedAt)}`} style={styles.onShiftRow}>
+            <Text style={[styles.onShiftName, left ? styles.onShiftLeft : null]} numberOfLines={1}>
+              {row.fullName}
+              {row.onTrip ? ` · ${m('home.onTrip')}` : row.onBreak ? ` · ${m('home.onBreak')}` : ''}
+              {row.autoClosed ? ` · ${m('home.autoClosed')}` : ''}
+            </Text>
+            <Text style={[styles.onShiftTime, left ? styles.onShiftLeft : null]}>
+              {left
+                ? `${clock(row.startedAt)} – ${clock(row.endedAt as Date)}`
+                : m('home.since', { time: clock(row.startedAt) })}
+            </Text>
+          </View>
+        );
+      })}
       <Row label={m('home.inProduction')} value={attention.toString()} />
     </Card>
   );
@@ -722,6 +728,9 @@ const styles = StyleSheet.create({
   onShiftTime: {
     ...typography.footnote,
     color: colors.textMuted,
+  },
+  onShiftLeft: {
+    opacity: opacity.disabled,
   },
   terminalRow: {
     flexDirection: 'row',

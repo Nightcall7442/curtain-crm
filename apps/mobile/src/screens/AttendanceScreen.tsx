@@ -158,6 +158,8 @@ export function AttendanceScreen(): ReactElement {
                   {`${clock(row.startedAt)} — ${
                     row.endedAt === null ? '' : clock(row.endedAt)
                   } · ${worked(row.startedAt, row.endedAt, m)}`}
+                  {/* Закрыл сервер, не человек: уход не отмечен, время условное. */}
+                  {!row.isManuallyAdjusted && row.adjustmentReason !== null ? ` · ${m('home.autoClosed')}` : ''}
                 </Text>
               </View>
             </View>
