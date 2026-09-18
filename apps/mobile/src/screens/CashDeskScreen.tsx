@@ -31,7 +31,7 @@ import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography, fonts } from '../theme';
 
 /**
  * Касса: продажа по кодам склада.
@@ -497,6 +497,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   totalValue: {
+    fontFamily: fonts.bold,
     fontSize: 22,
     fontWeight: '700',
     color: colors.textPrimary,

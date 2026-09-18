@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Pill, Row } from './Card';
 import { useLocale } from '../hooks/useLocale';
@@ -111,6 +111,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   footerValue: {
+    fontFamily: fonts.bold,
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,

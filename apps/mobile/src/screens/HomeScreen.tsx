@@ -12,7 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, type ReactElement } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components/Avatar';
 import { BirthdayBoard } from '../components/BirthdayBoard';
@@ -24,7 +24,7 @@ import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
+import { colors, hairline, radius, spacing, tabBarSpace, typography, opacity, fonts } from '../theme';
 
 /**
  * Главный экран: что нужно сотруднику в первые пять секунд после запуска.
@@ -134,6 +134,8 @@ export function HomeScreen(): ReactElement {
       <View style={[styles.hero, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.heroRow}>
           <View style={styles.heroText}>
+            {/* Знак мастерской латунью — как на обложке сайта: приложение и лендинг узнаются как одна вещь. */}
+            <Image source={LOGO} style={styles.heroLogo} resizeMode="contain" accessibilityIgnoresInvertColors />
             <Text style={styles.heroGreeting}>{m(greeting())}</Text>
             <Text style={styles.heroName} numberOfLines={1}>
               {`${firstName(user?.fullName ?? '') ?? m('home.colleague')}!`}
@@ -695,7 +697,16 @@ function MonthCard(): ReactElement | null {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const LOGO = require('../../assets/logo.png') as number;
+
 const styles = StyleSheet.create({
+  heroLogo: {
+    width: 44,
+    height: 28,
+    tintColor: colors.brass,
+    marginBottom: spacing.sm,
+  },
   onShiftRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -771,6 +782,7 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   heroName: {
+    fontFamily: fonts.extrabold,
     fontSize: 27,
     fontWeight: '800',
     letterSpacing: -0.4,
@@ -799,6 +811,7 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   avatarText: {
+    fontFamily: fonts.extrabold,
     color: colors.headerText,
     fontSize: 14,
     fontWeight: '800',

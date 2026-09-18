@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import type { ReactElement, ReactNode } from 'react';
 
-import { cardShadow, colors, hairline, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, hairline, radius, spacing, typography, fonts } from '../theme';
 
 import { Icon, type IconName } from './Icon';
 import { useLocale } from '../hooks/useLocale';
@@ -402,6 +402,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   pillText: {
+    fontFamily: fonts.semibold,
     fontSize: 12,
     fontWeight: '600',
     flexShrink: 1,

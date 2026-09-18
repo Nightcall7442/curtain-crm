@@ -14,7 +14,7 @@ import {
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 import { useLocale } from '../hooks/useLocale';
-import { cardShadow, colors, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, radius, spacing, typography, fonts } from '../theme';
 
 import { Pill } from './Card';
 import { PressableScale } from './PressableScale';
@@ -203,6 +203,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   number: {
+    fontFamily: fonts.extrabold,
     fontSize: 15,
     fontWeight: '800',
     color: colors.textPrimary,
@@ -234,16 +235,19 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   unpaid: {
+    fontFamily: fonts.semibold,
     fontSize: 11,
     fontWeight: '600',
     color: colors.warning,
   },
   paid: {
+    fontFamily: fonts.semibold,
     fontSize: 11,
     fontWeight: '600',
     color: colors.positive,
   },
   price: {
+    fontFamily: fonts.extrabold,
     fontSize: 15,
     fontWeight: '800',
     color: colors.textPrimary,

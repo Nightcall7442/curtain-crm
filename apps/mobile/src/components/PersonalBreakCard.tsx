@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
 import { useLocale } from '../hooks/useLocale';
@@ -181,6 +181,7 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   timer: {
+    fontFamily: fonts.bold,
     fontSize: 34,
     fontWeight: '700',
     color: colors.textPrimary,

@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity } from '../theme';
+import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
 
 import { Card, CardTitle, Empty, Pill } from './Card';
 
@@ -302,11 +302,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   actionPrimaryText: {
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
     fontSize: 14,
     fontWeight: '600',
   },
   actionSecondaryText: {
+    fontFamily: fonts.medium,
     color: colors.textSecondary,
     fontSize: 14,
   },

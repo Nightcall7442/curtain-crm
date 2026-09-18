@@ -14,7 +14,7 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { WorkScreen } from '../screens/WorkScreen';
 import { useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { colors, radius } from '../theme';
+import { colors, fonts, radius } from '../theme';
 import type { TabParamList } from '../types';
 import { useLocale } from '../hooks/useLocale';
 
@@ -58,7 +58,7 @@ export function TabNavigator(): ReactElement {
       screenOptions={{
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
-        headerTitleStyle: { fontSize: 17, fontWeight: '600' },
+        headerTitleStyle: { fontFamily: fonts.bold, fontSize: 17, fontWeight: '700' },
         /**
          * Панель тёмная (хвоя), поэтому активная вкладка — белым, неактивные —
          * приглушённым светло-зелёным. Точка непрочитанного остаётся терракотой.
@@ -278,6 +278,7 @@ const styles = StyleSheet.create({
       показывала «Уведомле…». Сокращать слово до «Уведомл.» значило бы
       написать в интерфейсе то, что человек не говорит вслух.
     */
+    fontFamily: fonts.semibold,
     fontSize: 9,
     paddingHorizontal: 0,
     marginHorizontal: 0,

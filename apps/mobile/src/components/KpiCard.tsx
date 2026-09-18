@@ -2,7 +2,7 @@ import { formatMoney, parseMoney } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Empty, Progress } from './Card';
 import { Icon } from './Icon';
@@ -154,6 +154,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   amountMuted: {
+    fontFamily: fonts.semibold,
     fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
@@ -163,6 +164,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   percent: {
+    fontFamily: fonts.bold,
     fontSize: 20,
     fontWeight: '700',
     marginTop: 2,
@@ -175,6 +177,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   amount: {
+    fontFamily: fonts.bold,
     fontSize: 18,
     fontWeight: '700',
     color: colors.accent,

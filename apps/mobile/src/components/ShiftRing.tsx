@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, fonts } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -182,6 +182,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   time: {
+    fontFamily: fonts.bold,
     fontSize: 30,
     fontWeight: '700',
     marginVertical: spacing.xs,

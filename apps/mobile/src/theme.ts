@@ -294,6 +294,23 @@ export const radius = {
 } as const;
 
 /**
+ * Шрифт — Manrope, тот же, что в заголовках лендинга.
+ *
+ * На системном шрифте приложение выглядело как любое другое на телефоне:
+ * владелец назвал его «дешёвым». Своя гарнитура — самый дешёвый способ
+ * сделать интерфейс узнаваемым: одна и та же на обложке сайта и в цехе.
+ * Каждая насыщенность — отдельный файл: Android не подбирает начертание по
+ * `fontWeight` у кастомного семейства, поэтому семейство названо по весу,
+ * а `fontWeight` рядом оставлен для iOS и вложенных `Text`.
+ */
+export const fonts = {
+  medium: 'Manrope_500Medium',
+  semibold: 'Manrope_600SemiBold',
+  bold: 'Manrope_700Bold',
+  extrabold: 'Manrope_800ExtraBold',
+} as const;
+
+/**
  * Типографическая шкала.
  *
  * Собрана по образцу системных приложений Apple: крупный кегль, редкие и
@@ -315,22 +332,22 @@ export const radius = {
  */
 export const typography = {
   /** Приветствие на главной, крупные числа-акценты. */
-  largeTitle: { fontSize: 30, fontWeight: '700' as const, letterSpacing: -0.5 },
+  largeTitle: { fontFamily: fonts.extrabold, fontSize: 30, fontWeight: '800' as const, letterSpacing: -0.6 },
   /** Заголовок экрана, место в рейтинге. */
-  title: { fontSize: 22, fontWeight: '700' as const, letterSpacing: -0.3 },
+  title: { fontFamily: fonts.extrabold, fontSize: 22, fontWeight: '800' as const, letterSpacing: -0.4 },
   /** Заголовок карточки. Отрывается от текста и размером, и весом. */
-  sectionTitle: { fontSize: 17, fontWeight: '600' as const, letterSpacing: -0.2 },
+  sectionTitle: { fontFamily: fonts.bold, fontSize: 17, fontWeight: '700' as const, letterSpacing: -0.2 },
   /** Выделенная строка внутри карточки. */
-  headline: { fontSize: 15, fontWeight: '600' as const },
+  headline: { fontFamily: fonts.semibold, fontSize: 15, fontWeight: '600' as const },
   /** Основной текст. */
-  body: { fontSize: 15, lineHeight: 20 },
+  body: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 21 },
   /** Значение в паре «подпись — значение». */
-  value: { fontSize: 15, fontWeight: '500' as const, color: colors.textPrimary },
+  value: { fontFamily: fonts.bold, fontSize: 15, fontWeight: '700' as const, color: colors.textPrimary },
   /** Подписи, вторичный текст. */
-  caption: { fontSize: 13, lineHeight: 18 },
+  caption: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18 },
   /** Служебные метки: время в ленте, сноски, единицы. */
-  footnote: { fontSize: 11.5, lineHeight: 15 },
-  label: { fontSize: 13, color: colors.textMuted },
+  footnote: { fontFamily: fonts.medium, fontSize: 11.5, lineHeight: 15 },
+  label: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
 } as const;
 
 /**

@@ -24,7 +24,7 @@ import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { TerminalChecksScreen } from '../screens/TerminalChecksScreen';
-import { colors, opacity } from '../theme';
+import { colors, fonts, opacity } from '../theme';
 import type { RootStackParamList } from '../types';
 
 import { TabNavigator } from './TabNavigator';
@@ -60,7 +60,7 @@ export function RootNavigator(): ReactElement {
       screenOptions={{
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
-        headerTitleStyle: { fontSize: 17, fontWeight: '600' },
+        headerTitleStyle: { fontFamily: fonts.bold, fontSize: 17, fontWeight: '700' },
         contentStyle: { backgroundColor: colors.background },
       }}
     >

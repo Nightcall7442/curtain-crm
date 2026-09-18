@@ -2,7 +2,7 @@ import { formatIsoDateShort } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { cardShadow, colors, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, radius, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Skeleton } from './Card';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -159,6 +159,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   initials: {
+    fontFamily: fonts.bold,
     fontSize: 20,
     fontWeight: '700',
     color: colors.accentStrong,
@@ -171,6 +172,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   jobTitle: {
+    fontFamily: fonts.medium,
     fontSize: 10,
     color: colors.textMuted,
     textAlign: 'center',
@@ -186,6 +188,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   date: {
+    fontFamily: fonts.medium,
     fontSize: 10,
     color: colors.textMuted,
   },

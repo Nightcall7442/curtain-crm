@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, fonts } from '../theme';
 
 import { Card } from './Card';
 import { useLocale } from '../hooks/useLocale';
@@ -107,6 +107,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   date: {
+    fontFamily: fonts.semibold,
     fontSize: 17,
     fontWeight: '600',
     color: colors.textPrimary,
@@ -141,12 +142,14 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   markGlyph: {
+    fontFamily: fonts.bold,
     color: colors.onAccent,
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 16,
   },
   caption: {
+    fontFamily: fonts.medium,
     fontSize: 9.5,
     color: colors.textMuted,
     textAlign: 'center',

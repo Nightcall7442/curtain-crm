@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import type { ReactElement } from 'react';
 import { useLocale } from '../hooks/useLocale';
 
-import { colors, radius, spacing, typography, opacity } from '../theme';
+import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
 
 import { Card } from './Card';
 import { Icon, type IconName } from './Icon';
@@ -243,6 +243,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   initials: {
+    fontFamily: fonts.semibold,
     fontSize: 30,
     fontWeight: '600',
     color: colors.header,

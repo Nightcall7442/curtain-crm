@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
-import { colors, radius, spacing, typography, opacity } from '../theme';
+import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -172,6 +172,7 @@ const styles = StyleSheet.create({
     height: 98,
   },
   brandName: {
+    fontFamily: fonts.semibold,
     color: colors.headerText,
     fontSize: 15,
     fontWeight: '600',
@@ -181,6 +182,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   brandTagline: {
+    fontFamily: fonts.medium,
     color: 'rgba(255,255,255,0.55)',
     fontSize: 11.5,
     marginTop: spacing.xs,
@@ -204,6 +206,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   input: {
+    fontFamily: fonts.medium,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
@@ -220,6 +223,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: {
+    fontFamily: fonts.medium,
     color: colors.danger,
     fontSize: 13,
   },
@@ -239,6 +243,7 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   buttonText: {
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
     fontSize: 15,
     fontWeight: '600',

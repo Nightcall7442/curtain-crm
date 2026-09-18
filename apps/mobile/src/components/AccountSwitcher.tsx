@@ -15,7 +15,7 @@ import { useAuth, useIsCeo } from '../hooks/useAuth';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { accountStorage, tokenStorage, type SavedAccount } from '../lib/storage';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, fonts } from '../theme';
 
 import { Avatar } from './Avatar';
 import { useLocale } from '../hooks/useLocale';
@@ -383,6 +383,7 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   plus: {
+    fontFamily: fonts.medium,
     fontSize: 26,
     lineHeight: 30,
     color: colors.textSecondary,

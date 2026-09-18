@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity } from '../theme';
+import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -368,6 +368,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   playerGlyph: {
+    fontFamily: fonts.medium,
     fontSize: 14,
     color: colors.accent,
   },

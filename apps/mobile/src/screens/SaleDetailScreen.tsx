@@ -5,7 +5,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card, CardTitle, ErrorState, Row, Skeleton } from '../components/Card';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, spacing, typography } from '../theme';
+import { colors, hairline, spacing, typography, fonts } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -136,6 +136,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   totalValue: {
+    fontFamily: fonts.bold,
     fontSize: 20,
     fontWeight: '700',
     color: colors.textPrimary,

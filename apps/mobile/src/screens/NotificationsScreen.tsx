@@ -12,7 +12,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View }
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon, NOTIFICATION_ICONS } from '../components/Icon';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, radius, spacing, tabBarSpace, typography, opacity } from '../theme';
+import { cardShadow, colors, radius, spacing, tabBarSpace, typography, opacity, fonts } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 
@@ -362,6 +362,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   time: {
+    fontFamily: fonts.medium,
     fontSize: 11,
     color: colors.textMuted,
   },

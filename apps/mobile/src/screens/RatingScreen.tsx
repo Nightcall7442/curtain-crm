@@ -16,7 +16,7 @@ import { Card, CardTitle, Empty, Progress } from '../components/Card';
 import { DisciplineCard } from '../components/DisciplineCard';
 import { useLocale } from '../hooks/useLocale';
 import { trpc, type RouterOutputs } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, fonts } from '../theme';
 
 /**
  * Рейтинг сотрудников — соревнование.
@@ -355,6 +355,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   myPlace: {
+    fontFamily: fonts.bold,
     fontSize: 34,
     fontWeight: '700',
     color: colors.textPrimary,
@@ -367,6 +368,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   myScore: {
+    fontFamily: fonts.bold,
     fontSize: 26,
     fontWeight: '700',
     color: colors.accent,
@@ -408,6 +410,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   componentLabel: {
+    fontFamily: fonts.medium,
     fontSize: 11,
     color: colors.textMuted,
   },
@@ -453,6 +456,7 @@ const styles = StyleSheet.create({
     color: colors.accentStrong,
   },
   footnote: {
+    fontFamily: fonts.medium,
     fontSize: 11,
     lineHeight: 16,
     color: colors.textMuted,

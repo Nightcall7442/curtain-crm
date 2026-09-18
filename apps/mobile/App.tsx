@@ -1,3 +1,10 @@
+import {
+  Manrope_500Medium,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
+  Manrope_800ExtraBold,
+  useFonts,
+} from '@expo-google-fonts/manrope';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
@@ -20,7 +27,19 @@ import { RootNavigator } from './src/navigation/RootNavigator';
  * Восстановление сессии выполняется до первого рендера навигатора, иначе
  * при запуске на секунду мелькал бы экран входа, хотя сотрудник уже вошёл.
  */
-export default function App(): ReactElement {
+export default function App(): ReactElement | null {
+  /*
+    Шрифт грузится до первого кадра: иначе экран мигнул бы системной
+    гарнитурой и перерисовался. Не загрузился (сбой, нет файла) — едем на
+    системном: приложение важнее шрифта.
+  */
+  const [fontsReady, fontsError] = useFonts({
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+  });
+
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -51,6 +70,8 @@ export default function App(): ReactElement {
       ],
     }),
   );
+
+  if (!fontsReady && fontsError === null) return null;
 
   return (
     /*

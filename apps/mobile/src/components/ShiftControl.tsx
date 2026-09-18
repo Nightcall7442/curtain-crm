@@ -4,7 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocation } from '../hooks/useLocation';
 import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Pill, Row } from './Card';
 import { ShiftRing } from './ShiftRing';
@@ -205,6 +205,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   errorText: {
+    fontFamily: fonts.medium,
     color: colors.danger,
     fontSize: 13,
     lineHeight: 19,

@@ -47,7 +47,7 @@ import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity } from '../theme';
+import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -847,6 +847,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   orderNumber: {
+    fontFamily: fonts.extrabold,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.2,
@@ -990,6 +991,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   reasonInput: {
+    fontFamily: fonts.medium,
     marginTop: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1015,6 +1017,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmText: {
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
     fontWeight: '600',
     fontSize: 14,
@@ -1030,6 +1033,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: {
+    fontFamily: fonts.medium,
     color: colors.textSecondary,
     fontSize: 14,
   },
@@ -1043,6 +1047,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: {
+    fontFamily: fonts.medium,
     color: colors.danger,
     fontSize: 13,
     lineHeight: 19,
@@ -1072,6 +1077,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   commentInput: {
+    fontFamily: fonts.medium,
     flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1092,6 +1098,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   sendText: {
+    fontFamily: fonts.medium,
     color: colors.onAccent,
     fontSize: 17,
   },
@@ -1111,6 +1118,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   commentTime: {
+    fontFamily: fonts.medium,
     fontSize: 11,
     color: colors.textMuted,
   },
