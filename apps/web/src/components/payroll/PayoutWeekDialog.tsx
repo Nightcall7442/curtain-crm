@@ -1,13 +1,14 @@
 'use client';
 
 import {
+  formatIsoDate,
   formatMoney,
   groupDigits,
+  type IsoWeekday,
   parseMoney,
+  type Role as RoleName,
   todayIso,
   WEEKDAY_NAMES_RU,
-  type IsoWeekday,
-  type Role as RoleName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
@@ -30,8 +31,6 @@ function addDays(day: string, count: number): string {
   date.setUTCDate(date.getUTCDate() + count);
   return date.toISOString().slice(0, 10);
 }
-
-const dayLabel = (day: string): string => day.slice(8, 10) + '.' + day.slice(5, 7) + '.' + day.slice(0, 4);
 
 /**
  * Выплата по дням недели.
@@ -78,7 +77,10 @@ export function PayoutWeekDialog({
 
   const days = week.data?.days ?? [];
   const earned = days.reduce((sum, day) => sum + parseMoney(day.total), 0);
-  const received = days.reduce((sum, day) => sum + (day.paid === null ? 0 : parseMoney(day.paid)), 0);
+  const received = days.reduce(
+    (sum, day) => sum + (day.paid === null ? 0 : parseMoney(day.paid)),
+    0,
+  );
   const chosen = days.filter((day) => selected.has(day.day));
   const toPay = chosen.reduce((sum, day) => sum + parseMoney(day.total), 0);
   const manualValue = Number.parseFloat(manual.replace(',', '.'));
@@ -153,7 +155,7 @@ export function PayoutWeekDialog({
               ‹ Неделя
             </Button>
             <span className="text-caption text-secondary">
-              {dayLabel(weekStart)} — {dayLabel(addDays(weekStart, 6))}
+              {formatIsoDate(weekStart)} — {formatIsoDate(addDays(weekStart, 6))}
             </span>
             <Button
               size="sm"
@@ -170,16 +172,23 @@ export function PayoutWeekDialog({
           {week.isLoading ? (
             <Skeleton className="h-40" />
           ) : week.data === undefined ? null : !week.data.hasScheme ? (
-            <p className="text-caption text-muted">Условий оплаты в этой роли нет — выплата только своей суммой.</p>
+            <p className="text-caption text-muted">
+              Условий оплаты в этой роли нет — выплата только своей суммой.
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-caption tabular-nums">
                 <thead>
                   <tr>
                     {days.map((day, index) => (
-                      <th key={day.day} className="px-2 pb-2 text-center font-medium text-secondary">
+                      <th
+                        key={day.day}
+                        className="px-2 pb-2 text-center font-medium text-secondary"
+                      >
                         {WEEKDAY_NAMES_RU[(index + 1) as IsoWeekday]}
-                        <div className="text-footnote font-normal text-muted">{dayLabel(day.day)}</div>
+                        <div className="text-footnote font-normal text-muted">
+                          {formatIsoDate(day.day)}
+                        </div>
                       </th>
                     ))}
                   </tr>
@@ -198,7 +207,9 @@ export function PayoutWeekDialog({
                               day.paid !== null ? 'text-muted line-through' : 'text-primary',
                             )}
                           >
-                            {line === undefined ? '' : formatMoney(parseMoney(line.amount), { withCurrency: false })}
+                            {line === undefined
+                              ? ''
+                              : formatMoney(parseMoney(line.amount), { withCurrency: false })}
                           </td>
                         );
                       })}
@@ -219,13 +230,14 @@ export function PayoutWeekDialog({
                   </tr>
                   <tr>
                     {days.map((day) => {
-                      const payable = day.paid === null && day.recordId !== null && parseMoney(day.total) > 0;
+                      const payable =
+                        day.paid === null && day.recordId !== null && parseMoney(day.total) > 0;
                       return (
                         <td key={day.day} className="px-2 pt-2 text-center">
                           <input
                             type="checkbox"
                             className="h-5 w-5 accent-accent disabled:opacity-40"
-                            aria-label={`Выплатить за ${dayLabel(day.day)}`}
+                            aria-label={`Выплатить за ${formatIsoDate(day.day)}`}
                             title={
                               day.paid !== null
                                 ? `Выплачено ${formatMoney(parseMoney(day.paid))}`
@@ -259,11 +271,15 @@ export function PayoutWeekDialog({
           <dl className="grid grid-cols-3 gap-3 text-caption">
             <div>
               <dt className="text-muted">Итого заработано</dt>
-              <dd className="font-semibold text-subhead tabular-nums text-primary">{formatMoney(earned)}</dd>
+              <dd className="font-semibold text-subhead tabular-nums text-primary">
+                {formatMoney(earned)}
+              </dd>
             </div>
             <div>
               <dt className="text-muted">Получено</dt>
-              <dd className="font-semibold text-subhead tabular-nums text-primary">{formatMoney(received)}</dd>
+              <dd className="font-semibold text-subhead tabular-nums text-primary">
+                {formatMoney(received)}
+              </dd>
             </div>
             <div>
               <dt className="text-muted">Выплатить</dt>

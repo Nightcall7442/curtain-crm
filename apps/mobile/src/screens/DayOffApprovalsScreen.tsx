@@ -1,10 +1,14 @@
-import {
-  DAY_OFF_STATUS_LABELS,
-  formatIsoDate,
-  type DayOffStatus,
-} from '@curtain-crm/shared';
+import { DAY_OFF_STATUS_LABELS, formatIsoDate, type DayOffStatus } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { TeamDaysOff } from '../components/TeamDaysOff';
@@ -105,7 +109,9 @@ export function DayOffApprovalsScreen(): ReactElement {
             <CardTitle
               title={item.requester.fullName}
               icon="person"
-              action={<Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={toneOf(item.status)} />}
+              action={
+                <Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={toneOf(item.status)} />
+              }
             />
 
             <Text style={styles.dates}>
@@ -237,11 +243,6 @@ const styles = StyleSheet.create({
   dates: {
     ...typography.value,
     color: colors.textPrimary,
-  },
-  type: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 1,
   },
   reason: {
     ...typography.body,

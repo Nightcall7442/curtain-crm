@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMoneyShort, groupDigits, parseMoney, ungroupDigits } from './money';
+import { formatMoneyShort, groupDigits, inputToMajor, parseMoney, ungroupDigits } from './money';
 
 /**
  * Компактный формат сумм — только он: остальная денежная арифметика
@@ -37,9 +37,7 @@ describe('formatMoneyShort', () => {
   });
 
   it('узбекская локаль — свои единицы и валюта', () => {
-    expect(formatMoneyShort(parseMoney('13800000'), { locale: 'uz' })).toBe(
-      "13,8 mln so'm",
-    );
+    expect(formatMoneyShort(parseMoney('13800000'), { locale: 'uz' })).toBe("13,8 mln so'm");
   });
 });
 
@@ -71,5 +69,18 @@ describe('ввод суммы руками', () => {
   it('сумма с разрядами разбирается целиком, а не до первого пробела', () => {
     expect(parseMoney('1\u00A0000\u00A0000')).toBe(parseMoney('1000000'));
     expect(parseMoney('1 250 000')).toBe(parseMoney('1250000'));
+  });
+});
+
+describe('inputToMajor', () => {
+  it('разбирает ввод с разрядами и запятой', () => {
+    expect(inputToMajor('1 000 000')).toBe(1000000);
+    expect(inputToMajor('1 500,50')).toBe(1500.5);
+  });
+
+  it('пусто, мусор и минус — ноль', () => {
+    expect(inputToMajor('')).toBe(0);
+    expect(inputToMajor('abc')).toBe(0);
+    expect(inputToMajor('-5')).toBe(0);
   });
 });

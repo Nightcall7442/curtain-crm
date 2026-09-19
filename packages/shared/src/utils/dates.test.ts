@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatDate,
+  formatDateTime,
   formatIsoDate,
   formatIsoDateShort,
+  formatTime,
   isDueToday,
   isOverdueDate,
   todayIso,
+  workshopToday,
   yesterdayIso,
 } from './dates';
 
@@ -85,5 +89,35 @@ describe('yesterdayIso', () => {
   it('переходит через границу месяца и года', () => {
     expect(yesterdayIso(new Date('2026-09-01T10:00:00+05:00'))).toBe('2026-08-31');
     expect(yesterdayIso(new Date('2026-01-01T10:00:00+05:00'))).toBe('2025-12-31');
+  });
+});
+
+describe('workshopToday', () => {
+  it('считает день по Ташкенту, а не по UTC', () => {
+    // 22:30 UTC 19-го — это уже 03:30 20-го в мастерской.
+    expect(workshopToday(new Date('2026-09-19T22:30:00Z'))).toEqual({
+      year: 2026,
+      month: 9,
+      day: 20,
+    });
+    expect(workshopToday(new Date('2026-09-19T18:00:00Z'))).toEqual({
+      year: 2026,
+      month: 9,
+      day: 19,
+    });
+  });
+});
+
+describe('formatTime / formatDateTime', () => {
+  const at = new Date(2026, 8, 20, 14, 5);
+
+  it('время двумя парами цифр', () => {
+    expect(formatTime(at)).toBe('14:05');
+  });
+
+  it('дата с годом и без', () => {
+    expect(formatDate(at)).toBe('20.09.2026');
+    expect(formatDateTime(at)).toBe('20.09.2026, 14:05');
+    expect(formatDateTime(at, false)).toBe('20.09, 14:05');
   });
 });

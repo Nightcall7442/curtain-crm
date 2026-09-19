@@ -1,4 +1,10 @@
-import { formatMoney, ORDER_INTAKE_ROLES, parseMoney } from '@curtain-crm/shared';
+import {
+  formatMoney,
+  formatTime,
+  inputToMajor,
+  ORDER_INTAKE_ROLES,
+  parseMoney,
+} from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -9,6 +15,7 @@ import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle } from './Card';
 import { Field, Input, MoneyInput } from './Field';
 import { Icon } from './Icon';
@@ -34,7 +41,9 @@ export function TerminalCheckCard(): ReactElement {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
-  const [photo, setPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
+  const [photo, setPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(
+    null,
+  );
   /** Приход по карте, к которому прикрепляем фото; `null` — чек без прихода. */
   const [attachTo, setAttachTo] = useState<{ id: number; amount: string } | null>(null);
 
@@ -43,7 +52,10 @@ export function TerminalCheckCard(): ReactElement {
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(m('photo.noAccess'), fromCamera ? m('photo.allowCamera') : m('photo.allowGallery'));
+      Alert.alert(
+        m('photo.noAccess'),
+        fromCamera ? m('photo.allowCamera') : m('photo.allowGallery'),
+      );
       return;
     }
     const options: ImagePicker.ImagePickerOptions = {
@@ -99,7 +111,10 @@ export function TerminalCheckCard(): ReactElement {
           </View>
           <View style={styles.dots}>
             {Array.from({ length: data.target }, (_, index) => (
-              <View key={index} style={[styles.dot, index < data.count ? styles.dotFilled : null]} />
+              <View
+                key={index}
+                style={[styles.dot, index < data.count ? styles.dotFilled : null]}
+              />
             ))}
           </View>
 
@@ -115,9 +130,7 @@ export function TerminalCheckCard(): ReactElement {
                 {row.orderNumber === null ? '' : ` · ${row.orderNumber}`}
               </Text>
               <Text style={styles.rowAmount}>{formatMoney(parseMoney(row.amount))}</Text>
-              <Text style={styles.rowTime}>
-                {new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-              </Text>
+              <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
               {row.photoUrl === null && row.userId === user?.id ? (
                 <Pressable
                   onPress={() => {
@@ -132,7 +145,11 @@ export function TerminalCheckCard(): ReactElement {
                   <Icon name="camera" size={18} color={colors.accent} />
                 </Pressable>
               ) : (
-                <Icon name={row.photoUrl === null ? 'eyeOff' : 'completed'} size={16} color={colors.textMuted} />
+                <Icon
+                  name={row.photoUrl === null ? 'eyeOff' : 'completed'}
+                  size={16}
+                  color={colors.textMuted}
+                />
               )}
             </View>
           ))}
@@ -190,44 +207,42 @@ export function TerminalCheckCard(): ReactElement {
             </Pressable>
           </View>
         </Field>
-        <Field label={m('terminal.amount')} required hint={attachTo === null ? undefined : m('terminal.attachHint')}>
-          <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" editable={attachTo === null} />
+        <Field
+          label={m('terminal.amount')}
+          required
+          hint={attachTo === null ? undefined : m('terminal.attachHint')}
+        >
+          <MoneyInput
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="0"
+            editable={attachTo === null}
+          />
         </Field>
         <Field label={m('terminal.comment')}>
-          <Input value={comment} onChangeText={setComment} placeholder={m('terminal.commentPlaceholder')} />
+          <Input
+            value={comment}
+            onChangeText={setComment}
+            placeholder={m('terminal.commentPlaceholder')}
+          />
         </Field>
-        <Pressable
+        <SubmitButton
+          label={m('terminal.submit')}
           onPress={() => {
             if (photo === null) return;
             create.mutate({
               photo: { mimeType: photo.mimeType, content: photo.base64 },
-              amount: toMajor(amount),
+              amount: inputToMajor(amount),
               comment: comment.trim() === '' ? null : comment.trim(),
               ...(attachTo === null ? {} : { paymentId: attachTo.id }),
             });
           }}
-          disabled={create.isPending || photo === null || toMajor(amount) <= 0}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            pressed ? styles.pressed : null,
-            photo === null || toMajor(amount) <= 0 ? styles.submitDisabled : null,
-          ]}
-        >
-          {create.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>{m('terminal.submit')}</Text>
-          )}
-        </Pressable>
+          disabled={photo === null || inputToMajor(amount) <= 0}
+          pending={create.isPending}
+        />
       </BottomSheet>
     </Card>
   );
-}
-
-function toMajor(value: string): number {
-  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 const styles = StyleSheet.create({
@@ -327,21 +342,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceMuted,
-  },
-  submit: {
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  submitDisabled: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
   },
 });

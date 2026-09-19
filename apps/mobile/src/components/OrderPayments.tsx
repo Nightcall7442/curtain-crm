@@ -1,21 +1,24 @@
 import {
+  formatDate,
   formatMoney,
+  inputToMajor,
   parseMoney,
   PAYMENT_KIND_LABELS,
-  PaymentKind,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
+  PaymentKind,
   PaymentMethod,
   type PaymentMethod as PaymentMethodName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { SubmitButton } from './SubmitButton';
 import { ChipSelect, Field, MoneyInput } from './Field';
 import { Icon } from './Icon';
 
@@ -77,10 +80,12 @@ export function OrderPayments({
               {t(PAYMENT_KIND_LABELS, row.kind)} · {t(PAYMENT_METHOD_LABELS, row.method)}
             </Text>
             <Text style={styles.rowMeta}>
-              {new Date(row.receivedAt).toLocaleDateString('ru-RU')} · {row.receivedByName}
+              {formatDate(row.receivedAt)} · {row.receivedByName}
             </Text>
           </View>
-          <Text style={[styles.rowAmount, row.kind === PaymentKind.REFUND ? styles.rowRefund : null]}>
+          <Text
+            style={[styles.rowAmount, row.kind === PaymentKind.REFUND ? styles.rowRefund : null]}
+          >
             {row.kind === PaymentKind.REFUND ? '−' : ''}
             {formatMoney(parseMoney(row.amount))}
           </Text>
@@ -108,7 +113,10 @@ export function OrderPayments({
           setOpen(false);
         }}
       >
-        <Field label={m('payment.amount')} hint={m('payment.remainingHint', { sum: formatMoney(remainingValue) })}>
+        <Field
+          label={m('payment.amount')}
+          hint={m('payment.remainingHint', { sum: formatMoney(remainingValue) })}
+        >
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
         <Field label={m('cash.method')}>
@@ -121,29 +129,17 @@ export function OrderPayments({
             }))}
           />
         </Field>
-        <Pressable
+        <SubmitButton
+          label={m('payment.confirm')}
           onPress={() => {
-            accept.mutate({ id: orderId, amount: toMajor(amount), method });
+            accept.mutate({ id: orderId, amount: inputToMajor(amount), method });
           }}
-          disabled={accept.isPending || toMajor(amount) <= 0}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
-        >
-          {accept.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>{m('payment.confirm')}</Text>
-          )}
-        </Pressable>
+          disabled={inputToMajor(amount) <= 0}
+          pending={accept.isPending}
+        />
       </BottomSheet>
     </View>
   );
-}
-
-/** Сумма из поля в основных единицах — сервер принимает число, не строку. */
-function toMajor(value: string): number {
-  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 const styles = StyleSheet.create({
@@ -194,18 +190,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: opacity.pressed,
-  },
-  submit: {
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
   },
 });

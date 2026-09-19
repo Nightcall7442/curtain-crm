@@ -1,3 +1,4 @@
+import { formatTime } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -86,7 +87,9 @@ export function InstallationTripCard({
 
   const busy = isRequesting || startTrip.isPending || endTrip.isPending;
 
-  const withPosition = (send: (position: { latitude: number; longitude: number }) => void): void => {
+  const withPosition = (
+    send: (position: { latitude: number; longitude: number }) => void,
+  ): void => {
     void (async () => {
       const position = await requestPosition();
       // Без координат не отправляем вовсе: выезд — событие «где именно»,
@@ -143,7 +146,7 @@ export function InstallationTripCard({
       <View style={styles.status}>
         <Text style={styles.away}>{away}</Text>
         <Text style={styles.hint}>
-          {m('trip.since', { time: startedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) })}
+          {m('trip.since', { time: formatTime(startedAt) })}
           {active.orderNumber === null ? '' : m('trip.order', { n: active.orderNumber })}
         </Text>
       </View>

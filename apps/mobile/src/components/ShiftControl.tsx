@@ -1,3 +1,4 @@
+import { formatTime } from '@curtain-crm/shared';
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
@@ -128,14 +129,7 @@ export function ShiftControl({
             <Row label={m('shift.branch')} value={shift.branchName} />
             <Row
               label={m('shift.start')}
-              value={
-                startedAt === null
-                  ? '—'
-                  : startedAt.toLocaleTimeString('ru-RU', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-              }
+              value={startedAt === null ? '—' : formatTime(startedAt)}
             />
             {shift.startDistanceMeters !== null && (
               <Row
@@ -152,9 +146,7 @@ export function ShiftControl({
           <ShiftRing
             startedAt={startedAt}
             pausedSeconds={shift?.pausedSeconds ?? 0}
-            pausedSince={
-              shift?.pausedSince == null ? null : new Date(shift.pausedSince)
-            }
+            pausedSince={shift?.pausedSince == null ? null : new Date(shift.pausedSince)}
             pausedReason={shift?.pausedReason ?? null}
           />
         </Card>
@@ -181,11 +173,7 @@ export function ShiftControl({
         busy={isBusy}
       />
 
-      <Text style={styles.footnote}>
-        {isRequesting
-          ? m('shift.locating')
-          : m('shift.geoNote')}
-      </Text>
+      <Text style={styles.footnote}>{isRequesting ? m('shift.locating') : m('shift.geoNote')}</Text>
     </>
   );
 }

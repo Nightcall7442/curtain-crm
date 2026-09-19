@@ -1,4 +1,4 @@
-import { formatMonthPeriod, WORKSHOP_TIME_ZONE } from '@curtain-crm/shared';
+import { formatMonthPeriod, workshopToday } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -97,18 +97,6 @@ export function TeamDaysOff(): ReactElement {
       )}
     </Card>
   );
-}
-
-function workshopToday(): { year: number; month: number; day: number } {
-  const parts = new Intl.DateTimeFormat('ru-RU', {
-    timeZone: WORKSHOP_TIME_ZONE,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  }).formatToParts(new Date());
-  const value = (type: string): number =>
-    Number.parseInt(parts.find((part) => part.type === type)?.value ?? '0', 10);
-  return { year: value('year'), month: value('month'), day: value('day') };
 }
 
 const styles = StyleSheet.create({

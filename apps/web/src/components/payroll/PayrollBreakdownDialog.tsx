@@ -14,6 +14,7 @@ import type { ReactElement } from 'react';
 import { Button, Modal } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
+import { formatDate } from '@/lib/utils';
 
 /**
  * Из чего сложилось начисление.
@@ -69,10 +70,7 @@ export function PayrollBreakdownDialog({
                 label="Период"
                 value={`${data.period.month.toString().padStart(2, '0')}.${data.period.year.toString()}`}
               />
-              <Detail
-                label="Статус"
-                value={PAYROLL_RECORD_STATUS_LABELS_RU[data.record.status]}
-              />
+              <Detail label="Статус" value={PAYROLL_RECORD_STATUS_LABELS_RU[data.record.status]} />
               <Detail
                 label="Начислено"
                 value={formatMoney(parseMoney(data.record.calculatedAmount))}
@@ -127,14 +125,8 @@ export function PayrollBreakdownDialog({
                 label="Часы по сменам"
                 value={`${snapshot.inputs.workedHours.toFixed(1)} ч`}
               />
-              <Detail
-                label="Часы сейчас"
-                value={`${data.workedHours.toFixed(1)} ч`}
-              />
-              <Detail
-                label="Закрытых заказов"
-                value={snapshot.inputs.completedOrders.toString()}
-              />
+              <Detail label="Часы сейчас" value={`${data.workedHours.toFixed(1)} ч`} />
+              <Detail label="Закрытых заказов" value={snapshot.inputs.completedOrders.toString()} />
               <Detail
                 label="Сумма заказов"
                 value={formatMoney(parseMoney(snapshot.inputs.completedOrdersAmount))}
@@ -162,10 +154,7 @@ export function PayrollBreakdownDialog({
                 {
                   key: 'closed',
                   header: 'Закрыт',
-                  render: (row) =>
-                    row.completedAt === null
-                      ? '—'
-                      : new Date(row.completedAt).toLocaleDateString('ru-RU'),
+                  render: (row) => (row.completedAt === null ? '—' : formatDate(row.completedAt)),
                 },
                 {
                   key: 'price',
@@ -178,9 +167,7 @@ export function PayrollBreakdownDialog({
                   header: 'Сдельно',
                   align: 'right',
                   render: (row) => (
-                    <span
-                      className={parseMoney(row.stageFee) > 0 ? 'text-primary' : 'text-muted'}
-                    >
+                    <span className={parseMoney(row.stageFee) > 0 ? 'text-primary' : 'text-muted'}>
                       {formatMoney(parseMoney(row.stageFee))}
                     </span>
                   ),
@@ -188,9 +175,9 @@ export function PayrollBreakdownDialog({
               ]}
             />
             <p className="mt-2 text-overline text-muted">
-              Состав восстановлен по заказам, закрытым за период с участием сотрудника в этой
-              роли. Заказ, переназначенный после расчёта, сюда не попадёт — сумма в ведомости от
-              этого не меняется.
+              Состав восстановлен по заказам, закрытым за период с участием сотрудника в этой роли.
+              Заказ, переназначенный после расчёта, сюда не попадёт — сумма в ведомости от этого не
+              меняется.
             </p>
           </section>
         </div>

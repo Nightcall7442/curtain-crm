@@ -14,9 +14,10 @@ import {
 
 import {
   CatalogKind,
-  curtainMountKindOf,
   CurtainMountKind,
+  curtainMountKindOf,
   formatMoney,
+  inputToMajor,
   MATERIAL_CODE_KINDS,
   parseMoney,
   PAYMENT_METHOD_LABELS,
@@ -133,25 +134,34 @@ export function SellReadyMadeScreen(): ReactElement {
     const chosen = stock.data.find((entry) => entry.id === presetId);
     if (chosen === undefined) return;
     presetApplied.current = true;
-    const mates = chosen.setId === null ? [] : stock.data.filter((entry) => entry.setId === chosen.setId && entry.id !== chosen.id);
+    const mates =
+      chosen.setId === null
+        ? []
+        : stock.data.filter((entry) => entry.setId === chosen.setId && entry.id !== chosen.id);
     setItems([
       { ...emptyItem(1), model: chosen.model, readyMadeItemId: chosen.id },
-      ...mates.map((mate, index) => ({ ...emptyItem(index + 2), model: mate.model, readyMadeItemId: mate.id })),
+      ...mates.map((mate, index) => ({
+        ...emptyItem(index + 2),
+        model: mate.model,
+        readyMadeItemId: mate.id,
+      })),
     ]);
-    setWorkPrice([chosen, ...mates].reduce((sum, entry) => sum + Number.parseFloat(entry.price), 0).toString());
+    setWorkPrice(
+      [chosen, ...mates].reduce((sum, entry) => sum + Number.parseFloat(entry.price), 0).toString(),
+    );
   }, [presetId, stock.data]);
 
   const updateItem = (id: number, patch: Partial<DraftItem>): void => {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
   const sell = trpc.orders.sellReadyMade.useMutation({
     async onSuccess(order) {
       await utils.orders.list.invalidate();
       Alert.alert(
-        needsRework === 'yes' || needsInstallation === 'yes' ? m('sell.sold') : m('sell.soldClosed'),
+        needsRework === 'yes' || needsInstallation === 'yes'
+          ? m('sell.sold')
+          : m('sell.soldClosed'),
         needsRework === 'yes'
           ? m('sell.soldBodyRework')
           : needsInstallation === 'yes'
@@ -175,8 +185,8 @@ export function SellReadyMadeScreen(): ReactElement {
     sell.mutate({
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
-      workPrice: toMoney(workPrice),
-      deposit: toMoney(deposit),
+      workPrice: inputToMajor(workPrice),
+      deposit: inputToMajor(deposit),
       depositMethod,
       needsInstallation: needsInstallation === 'yes',
       needsRework: needsRework === 'yes',
@@ -215,7 +225,11 @@ export function SellReadyMadeScreen(): ReactElement {
         <Card>
           <CardTitle title={m('create.client')} icon="person" />
 
-          <Field label={m('create.name')} required error={showErrors ? errors.clientName : undefined}>
+          <Field
+            label={m('create.name')}
+            required
+            error={showErrors ? errors.clientName : undefined}
+          >
             <Input
               value={clientName}
               onChangeText={setClientName}
@@ -253,20 +267,12 @@ export function SellReadyMadeScreen(): ReactElement {
           <View style={styles.money}>
             <View style={styles.moneyItem}>
               <Field label={m('sell.price')}>
-                <MoneyInput
-                  value={workPrice}
-                  onChangeText={setWorkPrice}
-                  placeholder="0"
-                />
+                <MoneyInput value={workPrice} onChangeText={setWorkPrice} placeholder="0" />
               </Field>
             </View>
             <View style={styles.moneyItem}>
               <Field label={m('create.deposit')}>
-                <MoneyInput
-                  value={deposit}
-                  onChangeText={setDeposit}
-                  placeholder="0"
-                />
+                <MoneyInput value={deposit} onChangeText={setDeposit} placeholder="0" />
               </Field>
             </View>
           </View>
@@ -299,7 +305,9 @@ export function SellReadyMadeScreen(): ReactElement {
                     hitSlop={8}
                   >
                     {({ pressed }) => (
-                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>{m('create.remove')}</Text>
+                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>
+                        {m('create.remove')}
+                      </Text>
                     )}
                   </Pressable>
                 ) : undefined
@@ -318,8 +326,13 @@ export function SellReadyMadeScreen(): ReactElement {
                       /* Модель есть на полке ровно в одном варианте — берём его
                          сразу, чтобы штора списалась, даже если строку остатка
                          никто не нажмёт. Несколько вариантов — выбор ниже. */
-                      const matching = (stock.data ?? []).filter((entry) => entry.model === model && entry.quantity > 0);
-                      updateItem(item.id, { model, readyMadeItemId: matching.length === 1 ? (matching[0]?.id ?? null) : null });
+                      const matching = (stock.data ?? []).filter(
+                        (entry) => entry.model === model && entry.quantity > 0,
+                      );
+                      updateItem(item.id, {
+                        model,
+                        readyMadeItemId: matching.length === 1 ? (matching[0]?.id ?? null) : null,
+                      });
                     }}
                   />
                 </Field>
@@ -406,9 +419,7 @@ export function SellReadyMadeScreen(): ReactElement {
                     );
 
                     if (matching.length === 0) {
-                      return (
-                        <Text style={styles.stockHint}>{m('sell.noStock')}</Text>
-                      );
+                      return <Text style={styles.stockHint}>{m('sell.noStock')}</Text>;
                     }
 
                     return matching.map((entry) => {
@@ -428,24 +439,30 @@ export function SellReadyMadeScreen(): ReactElement {
                               вместе. Лишнюю позицию продавец убирает крестиком,
                               и комплект расторгается: неснятое остаётся на полке.
                             */
-                            const mates = chosen || entry.setId === null
-                              ? []
-                              : (stock.data ?? []).filter(
-                                  (other) =>
-                                    other.setId === entry.setId &&
-                                    other.id !== entry.id &&
-                                    !items.some((draft) => draft.readyMadeItemId === other.id),
-                                );
+                            const mates =
+                              chosen || entry.setId === null
+                                ? []
+                                : (stock.data ?? []).filter(
+                                    (other) =>
+                                      other.setId === entry.setId &&
+                                      other.id !== entry.id &&
+                                      !items.some((draft) => draft.readyMadeItemId === other.id),
+                                  );
                             if (mates.length > 0) {
                               setItems((current) => [
                                 ...current,
                                 ...mates.map((mate, offset) => ({
-                                  ...emptyItem(Math.max(0, ...current.map((draft) => draft.id)) + offset + 1),
+                                  ...emptyItem(
+                                    Math.max(0, ...current.map((draft) => draft.id)) + offset + 1,
+                                  ),
                                   model: mate.model,
                                   readyMadeItemId: mate.id,
                                 })),
                               ]);
-                              Alert.alert(m('stock.set', { n: entry.setLabel ?? '' }), m('sell.setAdded', { n: entry.setLabel ?? '' }));
+                              Alert.alert(
+                                m('stock.set', { n: entry.setLabel ?? '' }),
+                                m('sell.setAdded', { n: entry.setLabel ?? '' }),
+                              );
                             }
                             // Цену подставляем, пока продавец её не трогал:
                             // переписать её он всегда успеет, а вот забыть
@@ -455,7 +472,10 @@ export function SellReadyMadeScreen(): ReactElement {
                                 (
                                   Number.parseFloat(entry.price) *
                                     Math.max(1, Number.parseInt(item.quantity, 10) || 1) +
-                                  mates.reduce((sum, mate) => sum + Number.parseFloat(mate.price), 0)
+                                  mates.reduce(
+                                    (sum, mate) => sum + Number.parseFloat(mate.price),
+                                    0,
+                                  )
                                 ).toString(),
                               );
                             }
@@ -630,12 +650,15 @@ const emptyItem = (id: number): DraftItem => ({
   readyMadeItemId: null,
 });
 
-function validate(values: {
-  readonly clientName: string;
-  readonly clientPhone: string;
-  readonly needsInstallation: 'no' | 'yes';
-  readonly installAddress: string;
-}, m: Translate): Partial<Record<'clientName' | 'clientPhone' | 'installAddress', string>> {
+function validate(
+  values: {
+    readonly clientName: string;
+    readonly clientPhone: string;
+    readonly needsInstallation: 'no' | 'yes';
+    readonly installAddress: string;
+  },
+  m: Translate,
+): Partial<Record<'clientName' | 'clientPhone' | 'installAddress', string>> {
   const errors: Record<string, string> = {};
 
   if (values.clientName.trim() === '') {
@@ -654,14 +677,12 @@ function validate(values: {
   return errors;
 }
 
-function toMoney(value: string): number {
-  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
-
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
 /** Строка под кодом: что это за материал по справочнику, если код там есть. */
-function CodeDescription({ description }: { readonly description: string | null }): ReactElement | null {
+function CodeDescription({
+  description,
+}: {
+  readonly description: string | null;
+}): ReactElement | null {
   if (description === null) return null;
   return <Text style={styles.codeDescription}>{description}</Text>;
 }

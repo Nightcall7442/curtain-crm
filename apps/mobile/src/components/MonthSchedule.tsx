@@ -1,4 +1,4 @@
-import { formatMonthPeriod, WORKSHOP_TIME_ZONE } from '@curtain-crm/shared';
+import { formatMonthPeriod, workshopToday } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -20,25 +20,18 @@ import { useLocale } from '../hooks/useLocale';
  * уже прошли, а отдых ещё предстоит.
  */
 
-const WEEKDAYS = ['week.mon', 'week.tue', 'week.wed', 'week.thu', 'week.fri', 'week.sat', 'week.sun'] as const;
+const WEEKDAYS = [
+  'week.mon',
+  'week.tue',
+  'week.wed',
+  'week.thu',
+  'week.fri',
+  'week.sat',
+  'week.sun',
+] as const;
 
 /** Седьмая часть ширины — литералом: вычисленную строку типы RN не принимают. */
 const COLUMN_WIDTH = '14.2857%';
-
-/** Сегодняшний день по времени мастерской: `{year, month, day}`. */
-function workshopToday(): { year: number; month: number; day: number } {
-  const parts = new Intl.DateTimeFormat('ru-RU', {
-    timeZone: WORKSHOP_TIME_ZONE,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  }).formatToParts(new Date());
-
-  const value = (type: string): number =>
-    Number.parseInt(parts.find((part) => part.type === type)?.value ?? '0', 10);
-
-  return { year: value('year'), month: value('month'), day: value('day') };
-}
 
 /** Часы в клетке: «7,5», «8». */
 const cellHours = (hours: number): string =>
@@ -135,8 +128,7 @@ export function MonthSchedule(): ReactElement {
 
               const hours = hoursByDay.get(day);
               const isOff = daysOff.has(day);
-              const isToday =
-                day === today.day && month === today.month && year === today.year;
+              const isToday = day === today.day && month === today.month && year === today.year;
 
               return (
                 <View
@@ -163,7 +155,10 @@ export function MonthSchedule(): ReactElement {
           </View>
 
           <Text style={styles.total}>
-            {m('schedule.total', { shifts: row?.shiftsCount ?? 0, hours: cellHours(row?.totalHours ?? 0) })}
+            {m('schedule.total', {
+              shifts: row?.shiftsCount ?? 0,
+              hours: cellHours(row?.totalHours ?? 0),
+            })}
           </Text>
         </>
       )}

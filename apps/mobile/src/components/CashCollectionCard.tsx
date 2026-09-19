@@ -1,6 +1,6 @@
-import { formatMoney, parseMoney, Role, todayIso } from '@curtain-crm/shared';
+import { formatMoney, inputToMajor, parseMoney, Role, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
@@ -8,6 +8,7 @@ import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle } from './Card';
 import { Field, MoneyInput } from './Field';
 import { Icon } from './Icon';
@@ -45,7 +46,10 @@ export function CashCollectionCard(): ReactElement | null {
       notifySuccess();
       setOpen(false);
       setAmount('');
-      await Promise.all([utils.payments.onHands.invalidate(), utils.payments.collections.invalidate()]);
+      await Promise.all([
+        utils.payments.onHands.invalidate(),
+        utils.payments.collections.invalidate(),
+      ]);
     },
     onError(error) {
       Alert.alert(m('common.saveError'), error.message);
@@ -89,31 +93,23 @@ export function CashCollectionCard(): ReactElement | null {
           setOpen(false);
         }}
       >
-        <Field label={m('payment.amount')} hint={m('collection.onHandsHint', { sum: formatMoney(onHandsValue) })}>
+        <Field
+          label={m('payment.amount')}
+          hint={m('collection.onHandsHint', { sum: formatMoney(onHandsValue) })}
+        >
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
-        <Pressable
+        <SubmitButton
+          label={m('collection.confirm')}
           onPress={() => {
-            collect.mutate({ amount: toMajor(amount) });
+            collect.mutate({ amount: inputToMajor(amount) });
           }}
-          disabled={collect.isPending || toMajor(amount) <= 0}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
-        >
-          {collect.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>{m('collection.confirm')}</Text>
-          )}
-        </Pressable>
+          disabled={inputToMajor(amount) <= 0}
+          pending={collect.isPending}
+        />
       </BottomSheet>
     </Card>
   );
-}
-
-function toMajor(value: string): number {
-  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 const styles = StyleSheet.create({
@@ -150,18 +146,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: opacity.pressed,
-  },
-  submit: {
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
   },
 });

@@ -202,7 +202,10 @@ export default function OrderDetailPage(): ReactElement {
 
             <p className="mt-1 text-caption text-secondary">
               {data.clientName}
-              <a href={`tel:${data.clientPhone}`} className="ml-3 inline-flex items-center gap-1 hover:text-accent">
+              <a
+                href={`tel:${data.clientPhone}`}
+                className="ml-3 inline-flex items-center gap-1 hover:text-accent"
+              >
                 <Phone className="h-3.5 w-3.5" aria-hidden />
                 {formatPhone(data.clientPhone)}
               </a>
@@ -239,320 +242,334 @@ export default function OrderDetailPage(): ReactElement {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
-      {/*
+        {/*
         Правая колонка — управление. `sticky` держит действия под рукой,
         пока левая колонка прокручивается; в один столбец (до `lg`) порядок
         в разметке ставит её ПЕРВОЙ — действия важнее длинных списков.
       */}
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
-      {/* --- Действия ------------------------------------------------------- */}
-      <Card>
-        <CardHeader title="Действия по заказу" />
-        <CardBody>
-          {transitions.isLoading ? (
-            <Skeleton className="h-10" />
-          ) : transitions.data === undefined || transitions.data.length === 0 ? (
-            <EmptyState
-              message="Доступных действий нет"
-              hint={
-                isCorniceInstaller && data.corniceStatus !== CorniceStatus.NOT_REQUIRED
-                  ? 'Карниз — в карточке ниже: взять в работу и отметить готовым'
-                  : 'Либо заказ закрыт, либо этот этап ведёт другой сотрудник'
-              }
-            />
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {transitions.data.map((transition) => (
-                <button
-                  key={transition.to}
-                  type="button"
-                  disabled={changeStatus.isPending}
-                  onClick={() => {
-                    if (transition.requiresComment) {
-                      setPendingStatus(transition.to);
-                      setReason('');
-                      return;
-                    }
-                    // Пошив на склад закрывается с ценниками: после контроля
-                    // админ ставит цену, и только с ней штора ложится на полку.
-                    if (data.orderType === OrderType.STOCK && transition.to === OrderStatusValue.COMPLETED) {
-                      setPricing(Object.fromEntries(data.items.map((item) => [item.id, ''])));
-                      return;
-                    }
-                    changeStatus.mutate({ id: orderId, toStatus: transition.to });
-                  }}
-                  className={
-                    transition.kind === TransitionKind.FORWARD
-                      ? 'pressable rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50'
-                      : transition.kind === TransitionKind.CANCEL
-                        ? 'pressable rounded-full border border-danger/40 bg-danger/15 px-3.5 py-1.5 text-caption font-medium text-danger transition-colors hover:bg-danger/25 disabled:opacity-50'
-                        : 'pressable rounded-full border border-warning/40 bg-warning/15 px-3.5 py-1.5 text-caption font-medium text-warning transition-colors hover:bg-warning/25 disabled:opacity-50'
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
+          {/* --- Действия ------------------------------------------------------- */}
+          <Card>
+            <CardHeader title="Действия по заказу" />
+            <CardBody>
+              {transitions.isLoading ? (
+                <Skeleton className="h-10" />
+              ) : transitions.data === undefined || transitions.data.length === 0 ? (
+                <EmptyState
+                  message="Доступных действий нет"
+                  hint={
+                    isCorniceInstaller && data.corniceStatus !== CorniceStatus.NOT_REQUIRED
+                      ? 'Карниз — в карточке ниже: взять в работу и отметить готовым'
+                      : 'Либо заказ закрыт, либо этот этап ведёт другой сотрудник'
                   }
-                >
-                  {transition.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Форма причины — появляется только для действий, где она обязательна */}
-          {pendingStatus !== null && (
-            <div className="mt-4 rounded-xl border border-warning/30 bg-warning/5 p-3">
-              <p className="text-caption text-primary">
-                {`Переход в «${ORDER_STATUS_LABELS_RU[pendingStatus]}» требует причины`}
-              </p>
-              <textarea
-                value={reason}
-                onChange={(event) => {
-                  setReason(event.target.value);
-                }}
-                rows={2}
-                placeholder="Опишите причину — она попадёт в историю заказа и в уведомление участникам"
-                className={controlClass('md', 'mt-2')}
-              />
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  disabled={reason.trim().length < 3 || changeStatus.isPending}
-                  onClick={() => {
-                    changeStatus.mutate({
-                      id: orderId,
-                      toStatus: pendingStatus,
-                      comment: reason.trim(),
-                    });
-                  }}
-                  className="pressable rounded-tile bg-accent px-3.5 py-2 text-caption font-medium text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Подтвердить
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingStatus(null);
-                  }}
-                  className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
-                >
-                  Отмена
-                </button>
-              </div>
-            </div>
-          )}
-
-          {pricing !== null && (
-            <div className="mt-4 rounded-xl border border-positive/30 bg-positive/5 p-3">
-              <p className="text-caption text-primary">Ценник на каждую штору — с ним она ляжет на склад</p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {data.items.map((item, index) => (
-                  <Field
-                    key={item.id}
-                    label={`${(index + 1).toString()}. ${item.model ?? 'Без модели'} · ${ORDER_ITEM_KIND_LABELS_RU[item.kind]} · ${item.widthCm ?? '?'}×${item.heightCm ?? '?'} см`}
-                    required
-                  >
-                    <MoneyInput
-                      value={pricing[item.id] ?? ''}
-                      onChange={(value) => {
-                        setPricing({ ...pricing, [item.id]: value });
+                />
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {transitions.data.map((transition) => (
+                    <button
+                      key={transition.to}
+                      type="button"
+                      disabled={changeStatus.isPending}
+                      onClick={() => {
+                        if (transition.requiresComment) {
+                          setPendingStatus(transition.to);
+                          setReason('');
+                          return;
+                        }
+                        // Пошив на склад закрывается с ценниками: после контроля
+                        // админ ставит цену, и только с ней штора ложится на полку.
+                        if (
+                          data.orderType === OrderType.STOCK &&
+                          transition.to === OrderStatusValue.COMPLETED
+                        ) {
+                          setPricing(Object.fromEntries(data.items.map((item) => [item.id, ''])));
+                          return;
+                        }
+                        changeStatus.mutate({ id: orderId, toStatus: transition.to });
                       }}
-                      placeholder="0"
-                    />
-                  </Field>
-                ))}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  disabled={
-                    changeStatus.isPending ||
-                    data.items.some((item) => !(Number.parseFloat((pricing[item.id] ?? '').replace(',', '.')) > 0))
-                  }
-                  onClick={() => {
-                    changeStatus.mutate({
-                      id: orderId,
-                      toStatus: OrderStatusValue.COMPLETED,
-                      stockPrices: data.items.map((item) => ({
-                        itemId: item.id,
-                        price: Number.parseFloat((pricing[item.id] ?? '').replace(',', '.')),
-                      })),
-                    });
-                  }}
-                  className="pressable rounded-tile bg-accent px-3.5 py-2 text-caption font-medium text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                      className={
+                        transition.kind === TransitionKind.FORWARD
+                          ? 'pressable rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50'
+                          : transition.kind === TransitionKind.CANCEL
+                            ? 'pressable rounded-full border border-danger/40 bg-danger/15 px-3.5 py-1.5 text-caption font-medium text-danger transition-colors hover:bg-danger/25 disabled:opacity-50'
+                            : 'pressable rounded-full border border-warning/40 bg-warning/15 px-3.5 py-1.5 text-caption font-medium text-warning transition-colors hover:bg-warning/25 disabled:opacity-50'
+                      }
+                    >
+                      {transition.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Форма причины — появляется только для действий, где она обязательна */}
+              {pendingStatus !== null && (
+                <div className="mt-4 rounded-xl border border-warning/30 bg-warning/5 p-3">
+                  <p className="text-caption text-primary">
+                    {`Переход в «${ORDER_STATUS_LABELS_RU[pendingStatus]}» требует причины`}
+                  </p>
+                  <textarea
+                    value={reason}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                    }}
+                    rows={2}
+                    placeholder="Опишите причину — она попадёт в историю заказа и в уведомление участникам"
+                    className={controlClass('md', 'mt-2')}
+                  />
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={reason.trim().length < 3 || changeStatus.isPending}
+                      onClick={() => {
+                        changeStatus.mutate({
+                          id: orderId,
+                          toStatus: pendingStatus,
+                          comment: reason.trim(),
+                        });
+                      }}
+                      className="pressable rounded-tile bg-accent px-3.5 py-2 text-caption font-medium text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Подтвердить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingStatus(null);
+                      }}
+                      className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {pricing !== null && (
+                <div className="mt-4 rounded-xl border border-positive/30 bg-positive/5 p-3">
+                  <p className="text-caption text-primary">
+                    Ценник на каждую штору — с ним она ляжет на склад
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {data.items.map((item, index) => (
+                      <Field
+                        key={item.id}
+                        label={`${(index + 1).toString()}. ${item.model ?? 'Без модели'} · ${ORDER_ITEM_KIND_LABELS_RU[item.kind]} · ${item.widthCm ?? '?'}×${item.heightCm ?? '?'} см`}
+                        required
+                      >
+                        <MoneyInput
+                          value={pricing[item.id] ?? ''}
+                          onChange={(value) => {
+                            setPricing({ ...pricing, [item.id]: value });
+                          }}
+                          placeholder="0"
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        changeStatus.isPending ||
+                        data.items.some(
+                          (item) =>
+                            !(Number.parseFloat((pricing[item.id] ?? '').replace(',', '.')) > 0),
+                        )
+                      }
+                      onClick={() => {
+                        changeStatus.mutate({
+                          id: orderId,
+                          toStatus: OrderStatusValue.COMPLETED,
+                          stockPrices: data.items.map((item) => ({
+                            itemId: item.id,
+                            price: Number.parseFloat((pricing[item.id] ?? '').replace(',', '.')),
+                          })),
+                        });
+                      }}
+                      className="pressable rounded-tile bg-accent px-3.5 py-2 text-caption font-medium text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Готово — на склад
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPricing(null);
+                      }}
+                      className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {changeStatus.error !== null && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger"
                 >
-                  Готово — на склад
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPricing(null);
-                  }}
-                  className="pressable rounded-xl border border-ink/10 px-3.5 py-2 text-caption text-secondary hover:bg-ink/[0.08] hover:text-primary"
-                >
-                  Отмена
-                </button>
-              </div>
-            </div>
+                  {changeStatus.error.message}
+                </p>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* --- Управление (только руководство) -------------------------------- */}
+          {isManagement && (
+            <OrderManagePanel
+              orderId={orderId}
+              current={{
+                master: data.masterId,
+                sewer: data.sewerId,
+                qc: data.qcId,
+                installer: data.installerId,
+              }}
+              workPrice={data.workPrice ?? '0'}
+              paidAmount={data.paidAmount ?? '0'}
+              stageFees={stageFeesFromOrder(data)}
+              orderType={data.orderType}
+              isClosed={isTerminalStatus(data.status)}
+            />
           )}
 
-          {changeStatus.error !== null && (
-            <p role="alert" className="mt-3 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-footnote text-danger">
-              {changeStatus.error.message}
-            </p>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* --- Управление (только руководство) -------------------------------- */}
-      {isManagement && (
-        <OrderManagePanel
-          orderId={orderId}
-          current={{
-            master: data.masterId,
-            sewer: data.sewerId,
-            qc: data.qcId,
-            installer: data.installerId,
-          }}
-          workPrice={data.workPrice ?? '0'}
-          paidAmount={data.paidAmount ?? '0'}
-          stageFees={stageFeesFromOrder(data)}
-          orderType={data.orderType}
-          isClosed={isTerminalStatus(data.status)}
-        />
-      )}
-
-      {/*
+          {/*
         Расценки по этапам: исполнитель увидит одну строку — свою, продавец и
         руководство все. Что кому видно, решено сервером (см. выше).
       */}
-      {visibleStageFees.length > 0 && (
-        <Card>
-          <CardHeader title="Расценки по этапам" />
-          <CardBody>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
-              {visibleStageFees.map(([stage, value]) => (
-                <MoneyItem key={stage} label={ORDER_STAGE_FEE_LABELS_RU[stage]} value={value} />
-              ))}
-            </dl>
-            <p className="mt-3 text-overline text-muted">
-              Начисляется в зарплату за месяц, в котором заказ закрыт.
-            </p>
-          </CardBody>
-        </Card>
-      )}
+          {visibleStageFees.length > 0 && (
+            <Card>
+              <CardHeader title="Расценки по этапам" />
+              <CardBody>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
+                  {visibleStageFees.map(([stage, value]) => (
+                    <MoneyItem key={stage} label={ORDER_STAGE_FEE_LABELS_RU[stage]} value={value} />
+                  ))}
+                </dl>
+                <p className="mt-3 text-overline text-muted">
+                  Начисляется в зарплату за месяц, в котором заказ закрыт.
+                </p>
+              </CardBody>
+            </Card>
+          )}
 
-      {/*
+          {/*
         Карниз — работа мимо цепочки статусов, поэтому у неё своя карточка.
 
         Показывается только там, где карниз есть: у заказа без карниза,
         пластика и трубы вешать нечего, и пустая строка «карниз не нужен»
         сообщала бы ровно ничего.
       */}
-      {data.corniceStatus !== CorniceStatus.NOT_REQUIRED && (
-        <Card>
-          <CardHeader title="Карниз" />
-          <CardBody>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
-              <Detail label="Состояние" value={CORNICE_STATUS_LABELS_RU[data.corniceStatus]} />
-              <Detail
-                label="Ставит"
-                value={data.corniceInstaller?.fullName ?? 'ещё никто не взял'}
-              />
-              {data.corniceDoneAt !== null && (
-                <Detail
-                  label="Готов"
-                  value={new Date(data.corniceDoneAt).toLocaleString('ru-RU')}
-                  className="col-span-2"
-                />
-              )}
-            </dl>
-            {isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
-              <button
-                type="button"
-                disabled={takeCornice.isPending}
-                onClick={() => {
-                  takeCornice.mutate({ id: orderId });
-                }}
-                className="pressable mt-3 rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50"
-              >
-                Взять карниз
-              </button>
-            )}
-
-            {data.corniceStatus === CorniceStatus.IN_PROGRESS &&
-              (isManagement || data.corniceInstaller?.id === user?.id) && (
-                <div className="mt-3">
+          {data.corniceStatus !== CorniceStatus.NOT_REQUIRED && (
+            <Card>
+              <CardHeader title="Карниз" />
+              <CardBody>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
+                  <Detail label="Состояние" value={CORNICE_STATUS_LABELS_RU[data.corniceStatus]} />
+                  <Detail
+                    label="Ставит"
+                    value={data.corniceInstaller?.fullName ?? 'ещё никто не взял'}
+                  />
+                  {data.corniceDoneAt !== null && (
+                    <Detail
+                      label="Готов"
+                      value={formatDateTime(data.corniceDoneAt)}
+                      className="col-span-2"
+                    />
+                  )}
+                </dl>
+                {isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
                   <button
                     type="button"
-                    disabled={finishCornice.isPending}
+                    disabled={takeCornice.isPending}
                     onClick={() => {
-                      finishCornice.mutate({ id: orderId });
+                      takeCornice.mutate({ id: orderId });
                     }}
-                    className="pressable rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50"
+                    className="pressable mt-3 rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50"
                   >
-                    Карниз готов
+                    Взять карниз
                   </button>
-                  <p className="mt-2 text-overline text-muted">
-                    Сначала загрузите фото стадии «Карниз» — без снимка работа не принимается.
+                )}
+
+                {data.corniceStatus === CorniceStatus.IN_PROGRESS &&
+                  (isManagement || data.corniceInstaller?.id === user?.id) && (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        disabled={finishCornice.isPending}
+                        onClick={() => {
+                          finishCornice.mutate({ id: orderId });
+                        }}
+                        className="pressable rounded-full border border-positive/40 bg-positive/15 px-3.5 py-1.5 text-caption font-medium text-positive transition-colors hover:bg-positive/25 disabled:opacity-50"
+                      >
+                        Карниз готов
+                      </button>
+                      <p className="mt-2 text-overline text-muted">
+                        Сначала загрузите фото стадии «Карниз» — без снимка работа не принимается.
+                      </p>
+                    </div>
+                  )}
+
+                {!isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
+                  <p className="mt-3 text-overline text-muted">
+                    Карнизчик берёт работу сам и закрывает её фотографией стадии «Карниз».
                   </p>
-                </div>
-              )}
+                )}
+              </CardBody>
+            </Card>
+          )}
 
-            {!isCorniceInstaller && data.corniceStatus === CorniceStatus.PENDING && (
-              <p className="mt-3 text-overline text-muted">
-                Карнизчик берёт работу сам и закрывает её фотографией стадии «Карниз».
-              </p>
-            )}
-          </CardBody>
-        </Card>
-      )}
-
-      {/*
+          {/*
         Руководителю карточка «Исполнители» не показывается: те же четыре роли
         стоят в «Управлении заказом», уже выпадающими списками. Читать их
         дважды незачем.
       */}
-      {!isManagement && (
-        <Card>
-          <CardHeader title="Исполнители" />
-          <CardBody>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
-              <Assignee role="master" person={data.master} />
-              <Assignee role="sewer" person={data.sewer} />
-              <Assignee role="qc" person={data.qc} />
-              <Assignee role="installer" person={data.installer} />
-            </dl>
-          </CardBody>
-        </Card>
-      )}
-      </div>
+          {!isManagement && (
+            <Card>
+              <CardHeader title="Исполнители" />
+              <CardBody>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-footnote">
+                  <Assignee role="master" person={data.master} />
+                  <Assignee role="sewer" person={data.sewer} />
+                  <Assignee role="qc" person={data.qc} />
+                  <Assignee role="installer" person={data.installer} />
+                </dl>
+              </CardBody>
+            </Card>
+          )}
+        </div>
 
-      {/* --- Левая колонка: жизнь заказа ------------------------------------ */}
-      <div className="min-w-0 space-y-4 lg:col-span-2 lg:order-1">
-      <section className="grid gap-3">
-        {/* --- Позиции ------------------------------------------------------ */}
-        <Card>
-          <CardHeader title="Позиции заказа" />
-          <CardBody>
-            {data.items.length === 0 ? (
-              <EmptyState message="В заказе нет позиций" />
-            ) : (
-              <ul className="space-y-4">
-                {data.items.map((item, index) => (
-                  <li key={item.id} className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-3">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-caption font-medium text-primary">
-                        {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
-                        {item.readyMadeCode !== null && (
-                          <span className="ml-2 font-mono text-footnote text-secondary">
-                            {item.readyMadeCode}
+        {/* --- Левая колонка: жизнь заказа ------------------------------------ */}
+        <div className="min-w-0 space-y-4 lg:col-span-2 lg:order-1">
+          <section className="grid gap-3">
+            {/* --- Позиции ------------------------------------------------------ */}
+            <Card>
+              <CardHeader title="Позиции заказа" />
+              <CardBody>
+                {data.items.length === 0 ? (
+                  <EmptyState message="В заказе нет позиций" />
+                ) : (
+                  <ul className="space-y-4">
+                    {data.items.map((item, index) => (
+                      <li
+                        key={item.id}
+                        className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-3"
+                      >
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-caption font-medium text-primary">
+                            {`${(index + 1).toString()}. ${item.model ?? 'Без модели'}`}
+                            {item.readyMadeCode !== null && (
+                              <span className="ml-2 font-mono text-footnote text-secondary">
+                                {item.readyMadeCode}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                      <span className="text-footnote text-muted">
-                        {ORDER_ITEM_KIND_LABELS_RU[item.kind]}
-                        {item.quantity > 1 ? ` · ${item.quantity.toString()} шт` : ''}
-                      </span>
-                    </div>
+                          <span className="text-footnote text-muted">
+                            {ORDER_ITEM_KIND_LABELS_RU[item.kind]}
+                            {item.quantity > 1 ? ` · ${item.quantity.toString()} шт` : ''}
+                          </span>
+                        </div>
 
-                    {/*
+                        {/*
                       `auto-fit`, а не брейкпоинты: ширина карточки зависит
                       от роли, а не от экрана — руководителю позиции показаны
                       во всю ширину, сотруднику в половину. Медиазапросы Tailwind
@@ -560,258 +577,278 @@ export default function OrderDetailPage(): ReactElement {
                       либо две колонки на всю ширину с провалом посередине,
                       либо четыре — с переносом в узкой.
                     */}
-                    <dl className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-5 gap-y-1.5 text-footnote">
-                      {item.widthCm !== null && item.heightCm !== null && (
-                        <Detail
-                          label="Размеры"
-                          value={formatDimensions({
-                            widthCm: Number.parseFloat(item.widthCm),
-                            heightCm: Number.parseFloat(item.heightCm),
-                            areaM2: item.areaM2 === null ? 0 : Number.parseFloat(item.areaM2),
-                            normalized: '',
-                          })}
-                        />
-                      )}
-                      {item.areaM2 !== null && (
-                        <Detail label="Площадь" value={`${formatQuantity(Number.parseFloat(item.areaM2), 2)} м²`} />
-                      )}
-                      {item.materials.length > 0 && (
-                        <Detail label="Материалы" value={item.materials.join(', ')} />
-                      )}
-                      {item.materialOptions.length > 0 && (
-                        <Detail label="Опции материала" value={item.materialOptions.join(', ')} />
-                      )}
-                      {item.color !== null && <Detail label="Цвет" value={item.color} />}
-                      {item.portieres.map((portiere, index) => (
-                        <Detail
-                          key={`${portiere.code}-${index.toString()}`}
-                          label={
-                            item.portieres.length > 1
-                              ? `Портьера ${(index + 1).toString()}`
-                              : 'Портьера'
-                          }
-                          value={formatMaterial(portiere)}
-                          className="col-span-2"
-                        />
-                      ))}
-                      {item.tulle !== null && (
-                        <Detail label="Тюль" value={formatMaterial(item.tulle)} className="col-span-2" />
-                      )}
-                      {item.protection !== null && (
-                        <Detail
-                          label="Защита"
-                          value={formatMaterial(item.protection)}
-                          className="col-span-2"
-                        />
-                      )}
-                      {item.cornice !== null && (
-                        <Detail
-                          label="Карниз"
-                          value={formatMaterial(item.cornice)}
-                          className="col-span-2"
-                        />
-                      )}
-                      {item.corniceRotation !== null && (
-                        <Detail
-                          label="Поворот карниза"
-                          value={CORNICE_ROTATION_LABELS_RU[item.corniceRotation]}
-                        />
-                      )}
-                      {item.plastic !== null && (
-                        <Detail
-                          label="Пластик"
-                          value={formatMaterial(item.plastic)}
-                          className="col-span-2"
-                        />
-                      )}
-                      {item.pipe !== null && (
-                        <Detail label="Труба" value={formatMaterial(item.pipe)} className="col-span-2" />
-                      )}
-                      {item.accessories.length > 0 && (
-                        <Detail
-                          label="Аксессуары"
-                          value={item.accessories
-                            .map(
-                              (accessory) =>
-                                `${accessory.name} × ${accessory.quantity.toString()}` +
-                                (accessory.code === null ? '' : ` (${accessory.code})`),
-                            )
-                            .join(', ')}
-                          className="col-span-2"
-                        />
-                      )}
-                      {item.characteristics !== null && (
-                        <Detail
-                          label="Характеристики"
-                          value={item.characteristics}
-                          className="col-span-2"
-                        />
-                      )}
-                    </dl>
+                        <dl className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-5 gap-y-1.5 text-footnote">
+                          {item.widthCm !== null && item.heightCm !== null && (
+                            <Detail
+                              label="Размеры"
+                              value={formatDimensions({
+                                widthCm: Number.parseFloat(item.widthCm),
+                                heightCm: Number.parseFloat(item.heightCm),
+                                areaM2: item.areaM2 === null ? 0 : Number.parseFloat(item.areaM2),
+                                normalized: '',
+                              })}
+                            />
+                          )}
+                          {item.areaM2 !== null && (
+                            <Detail
+                              label="Площадь"
+                              value={`${formatQuantity(Number.parseFloat(item.areaM2), 2)} м²`}
+                            />
+                          )}
+                          {item.materials.length > 0 && (
+                            <Detail label="Материалы" value={item.materials.join(', ')} />
+                          )}
+                          {item.materialOptions.length > 0 && (
+                            <Detail
+                              label="Опции материала"
+                              value={item.materialOptions.join(', ')}
+                            />
+                          )}
+                          {item.color !== null && <Detail label="Цвет" value={item.color} />}
+                          {item.portieres.map((portiere, index) => (
+                            <Detail
+                              key={`${portiere.code}-${index.toString()}`}
+                              label={
+                                item.portieres.length > 1
+                                  ? `Портьера ${(index + 1).toString()}`
+                                  : 'Портьера'
+                              }
+                              value={formatMaterial(portiere)}
+                              className="col-span-2"
+                            />
+                          ))}
+                          {item.tulle !== null && (
+                            <Detail
+                              label="Тюль"
+                              value={formatMaterial(item.tulle)}
+                              className="col-span-2"
+                            />
+                          )}
+                          {item.protection !== null && (
+                            <Detail
+                              label="Защита"
+                              value={formatMaterial(item.protection)}
+                              className="col-span-2"
+                            />
+                          )}
+                          {item.cornice !== null && (
+                            <Detail
+                              label="Карниз"
+                              value={formatMaterial(item.cornice)}
+                              className="col-span-2"
+                            />
+                          )}
+                          {item.corniceRotation !== null && (
+                            <Detail
+                              label="Поворот карниза"
+                              value={CORNICE_ROTATION_LABELS_RU[item.corniceRotation]}
+                            />
+                          )}
+                          {item.plastic !== null && (
+                            <Detail
+                              label="Пластик"
+                              value={formatMaterial(item.plastic)}
+                              className="col-span-2"
+                            />
+                          )}
+                          {item.pipe !== null && (
+                            <Detail
+                              label="Труба"
+                              value={formatMaterial(item.pipe)}
+                              className="col-span-2"
+                            />
+                          )}
+                          {item.accessories.length > 0 && (
+                            <Detail
+                              label="Аксессуары"
+                              value={item.accessories
+                                .map(
+                                  (accessory) =>
+                                    `${accessory.name} × ${accessory.quantity.toString()}` +
+                                    (accessory.code === null ? '' : ` (${accessory.code})`),
+                                )
+                                .join(', ')}
+                              className="col-span-2"
+                            />
+                          )}
+                          {item.characteristics !== null && (
+                            <Detail
+                              label="Характеристики"
+                              value={item.characteristics}
+                              className="col-span-2"
+                            />
+                          )}
+                        </dl>
 
-                    {item.comment !== null && (
-                      <p className="mt-2 text-footnote text-muted">{item.comment}</p>
-                    )}
+                        {item.comment !== null && (
+                          <p className="mt-2 text-footnote text-muted">{item.comment}</p>
+                        )}
 
-                    {/*
+                        {/*
                       Метраж проставляет руководство: продавец у клиента дома
                       его не считает, а «на глазок» всплывает потом в раскрое.
                     */}
-                    {isManagement && <ItemMeters orderId={orderId} item={item} />}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardBody>
-        </Card>
+                        {isManagement && <ItemMeters orderId={orderId} item={item} />}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
+          </section>
 
-      </section>
-
-      {/*
+          {/*
         --- Сбор на выезд ---------------------------------------------------
 
         Только на этапе установки: до него собирать нечего — шторы ещё шьют,
         а карточка со списком стояла бы неделю немым укором.
       */}
-      {ORDER_STATUS_PHASE[data.status] === 'installation' && <OrderPackList orderId={orderId} />}
+          {ORDER_STATUS_PHASE[data.status] === 'installation' && (
+            <OrderPackList orderId={orderId} />
+          )}
 
-      {/* --- Закупки и фото ------------------------------------------------- */}
-      {data.workPrice !== null && (
-        <OrderPayments
-          orderId={orderId}
-          paid={data.paidAmount}
-          remaining={data.remainingPayment}
-          canAccept={isManagement || data.creator.id === user?.id || data.installer?.id === user?.id}
-          canRefund={isManagement}
-        />
-      )}
-      <OrderPurchases orderId={orderId} />
-      <OrderPhotos orderId={orderId} orderStatus={data.status} />
+          {/* --- Закупки и фото ------------------------------------------------- */}
+          {data.workPrice !== null && (
+            <OrderPayments
+              orderId={orderId}
+              paid={data.paidAmount}
+              remaining={data.remainingPayment}
+              canAccept={
+                isManagement || data.creator.id === user?.id || data.installer?.id === user?.id
+              }
+              canRefund={isManagement}
+            />
+          )}
+          <OrderPurchases orderId={orderId} />
+          <OrderPhotos orderId={orderId} orderStatus={data.status} />
 
-      {/* --- История и комментарии ------------------------------------------ */}
-      <section className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader title="История статусов" />
-          <CardBody>
-            {history.isLoading ? (
-              <Skeleton className="h-32" />
-            ) : history.data === undefined || history.data.length === 0 ? (
-              <EmptyState message="История пуста" />
-            ) : (
-              // Лента: линия слева и точка на каждом переходе, последний —
-              // неоновой. Список без линии читался как заметки, а не как путь.
-              <ol className="relative ml-1.5 space-y-4 border-l border-ink/15 pl-5">
-                {history.data.map((entry, index) => (
-                  <li key={entry.id} className="relative">
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-panel',
-                        index === history.data.length - 1
-                          ? 'bg-accent shadow-[0_0_10px] shadow-accent/70'
-                          : 'bg-ink/30',
-                      )}
-                    />
-                    <div className="flex flex-wrap items-center gap-2 text-footnote">
-                      {entry.fromStatus !== null && (
-                        <>
-                          <span className="text-muted">
-                            {ORDER_STATUS_LABELS_RU[entry.fromStatus]}
+          {/* --- История и комментарии ------------------------------------------ */}
+          <section className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader title="История статусов" />
+              <CardBody>
+                {history.isLoading ? (
+                  <Skeleton className="h-32" />
+                ) : history.data === undefined || history.data.length === 0 ? (
+                  <EmptyState message="История пуста" />
+                ) : (
+                  // Лента: линия слева и точка на каждом переходе, последний —
+                  // неоновой. Список без линии читался как заметки, а не как путь.
+                  <ol className="relative ml-1.5 space-y-4 border-l border-ink/15 pl-5">
+                    {history.data.map((entry, index) => (
+                      <li key={entry.id} className="relative">
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-panel',
+                            index === history.data.length - 1
+                              ? 'bg-accent shadow-[0_0_10px] shadow-accent/70'
+                              : 'bg-ink/30',
+                          )}
+                        />
+                        <div className="flex flex-wrap items-center gap-2 text-footnote">
+                          {entry.fromStatus !== null && (
+                            <>
+                              <span className="text-muted">
+                                {ORDER_STATUS_LABELS_RU[entry.fromStatus]}
+                              </span>
+                              <span aria-hidden className="text-muted">
+                                →
+                              </span>
+                            </>
+                          )}
+                          <span className="font-medium text-primary">
+                            {ORDER_STATUS_LABELS_RU[entry.toStatus]}
                           </span>
-                          <span aria-hidden className="text-muted">
-                            →
-                          </span>
-                        </>
-                      )}
-                      <span className="font-medium text-primary">
-                        {ORDER_STATUS_LABELS_RU[entry.toStatus]}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-overline text-muted">
-                      {`${entry.changedByName} · ${formatDateTime(entry.createdAt)}`}
-                    </p>
-                    {entry.comment !== null && (
-                      <p className="mt-1 text-footnote text-secondary">{entry.comment}</p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader title="Комментарии" />
-          <CardBody>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (comment.trim().length === 0) return;
-                addComment.mutate({ orderId, body: comment.trim() });
-              }}
-              className="mb-3 flex gap-2"
-            >
-              <input
-                value={comment}
-                onChange={(event) => {
-                  setComment(event.target.value);
-                }}
-                placeholder="Написать комментарий участникам заказа"
-                className={controlClass('md', 'min-w-0 flex-1')}
-              />
-              <button
-                type="submit"
-                disabled={addComment.isPending || comment.trim().length === 0}
-                aria-label="Отправить"
-                className="pressable grid h-9 w-9 shrink-0 place-items-center rounded-tile bg-accent text-on-accent hover:bg-accent-strong disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
-
-            <VoiceRecorder orderId={orderId} />
-
-            {comments.isLoading ? (
-              <Skeleton className="h-24" />
-            ) : comments.data === undefined || comments.data.length === 0 ? (
-              <EmptyState message="Комментариев пока нет" />
-            ) : (
-              <ul className="space-y-2.5">
-                {comments.data.map((entry) => (
-                  <li key={entry.id} className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-2.5">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-footnote text-primary">{entry.authorName}</span>
-                      <span className="text-overline text-muted">
-                        {formatDateTime(entry.createdAt)}
-                      </span>
-                    </div>
-
-                    {entry.isVoice ? (
-                      <div className="mt-1.5">
-                        {entry.voiceUrl === null ? (
-                          <span className="text-footnote text-muted">
-                            Голосовое сообщение недоступно
-                          </span>
-                        ) : (
-                          <audio controls src={entry.voiceUrl} className="h-8 w-full">
-                            <track kind="captions" />
-                          </audio>
+                        </div>
+                        <p className="mt-0.5 text-overline text-muted">
+                          {`${entry.changedByName} · ${formatDateTime(entry.createdAt)}`}
+                        </p>
+                        {entry.comment !== null && (
+                          <p className="mt-1 text-footnote text-secondary">{entry.comment}</p>
                         )}
-                        {entry.body !== null && (
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Комментарии" />
+              <CardBody>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (comment.trim().length === 0) return;
+                    addComment.mutate({ orderId, body: comment.trim() });
+                  }}
+                  className="mb-3 flex gap-2"
+                >
+                  <input
+                    value={comment}
+                    onChange={(event) => {
+                      setComment(event.target.value);
+                    }}
+                    placeholder="Написать комментарий участникам заказа"
+                    className={controlClass('md', 'min-w-0 flex-1')}
+                  />
+                  <button
+                    type="submit"
+                    disabled={addComment.isPending || comment.trim().length === 0}
+                    aria-label="Отправить"
+                    className="pressable grid h-9 w-9 shrink-0 place-items-center rounded-tile bg-accent text-on-accent hover:bg-accent-strong disabled:opacity-50"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </form>
+
+                <VoiceRecorder orderId={orderId} />
+
+                {comments.isLoading ? (
+                  <Skeleton className="h-24" />
+                ) : comments.data === undefined || comments.data.length === 0 ? (
+                  <EmptyState message="Комментариев пока нет" />
+                ) : (
+                  <ul className="space-y-2.5">
+                    {comments.data.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="rounded-2xl border border-ink/[0.06] bg-ink/[0.04] p-2.5"
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-footnote text-primary">{entry.authorName}</span>
+                          <span className="text-overline text-muted">
+                            {formatDateTime(entry.createdAt)}
+                          </span>
+                        </div>
+
+                        {entry.isVoice ? (
+                          <div className="mt-1.5">
+                            {entry.voiceUrl === null ? (
+                              <span className="text-footnote text-muted">
+                                Голосовое сообщение недоступно
+                              </span>
+                            ) : (
+                              <audio controls src={entry.voiceUrl} className="h-8 w-full">
+                                <track kind="captions" />
+                              </audio>
+                            )}
+                            {entry.body !== null && (
+                              <p className="mt-1 text-footnote text-secondary">{entry.body}</p>
+                            )}
+                          </div>
+                        ) : (
                           <p className="mt-1 text-footnote text-secondary">{entry.body}</p>
                         )}
-                      </div>
-                    ) : (
-                      <p className="mt-1 text-footnote text-secondary">{entry.body}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardBody>
-        </Card>
-      </section>
-      </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
+          </section>
+        </div>
       </div>
     </div>
   );

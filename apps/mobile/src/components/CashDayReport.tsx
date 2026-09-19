@@ -1,6 +1,7 @@
 import {
   formatIsoDateShort,
   formatMoney,
+  formatTime,
   parseMoney,
   PAYMENT_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -92,7 +93,11 @@ export function CashDayReport(): ReactElement {
         ) : (
           <>
             {data.rows.map((row) => (
-              <Line key={row.kind} label={t(PAYMENT_KIND_LABELS, row.kind)} value={formatMoney(row.total)} />
+              <Line
+                key={row.kind}
+                label={t(PAYMENT_KIND_LABELS, row.kind)}
+                value={formatMoney(row.total)}
+              />
             ))}
             <View style={styles.divider} />
             {PAYMENT_METHODS.map((method) => (
@@ -119,10 +124,7 @@ export function CashDayReport(): ReactElement {
             <Line
               key={row.id}
               label={row.fullName}
-              hint={new Date(row.createdAt).toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              hint={formatTime(row.createdAt)}
               value={formatMoney(parseMoney(row.amount))}
             />
           ))
@@ -144,7 +146,12 @@ export function CashDayReport(): ReactElement {
           <Empty message={m('cashDay.allHanded')} />
         ) : (
           byUser.map((row) => (
-            <Line key={row.userId} label={row.fullName} value={formatMoney(parseMoney(row.onHands))} strong />
+            <Line
+              key={row.userId}
+              label={row.fullName}
+              value={formatMoney(parseMoney(row.onHands))}
+              strong
+            />
           ))
         )}
       </Card>
@@ -186,7 +193,9 @@ function Stat({
   return (
     <View style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, tone === 'warning' ? styles.statWarning : null]}>{value}</Text>
+      <Text style={[styles.statValue, tone === 'warning' ? styles.statWarning : null]}>
+        {value}
+      </Text>
       {hint !== undefined && <Text style={styles.statHint}>{hint}</Text>}
     </View>
   );
@@ -212,7 +221,13 @@ function Line({
         <Text style={[styles.lineLabel, muted ? styles.lineMuted : null]}>{label}</Text>
         {hint !== undefined && <Text style={styles.lineHint}>{hint}</Text>}
       </View>
-      <Text style={[styles.lineValue, strong ? styles.lineStrong : null, muted ? styles.lineMuted : null]}>
+      <Text
+        style={[
+          styles.lineValue,
+          strong ? styles.lineStrong : null,
+          muted ? styles.lineMuted : null,
+        ]}
+      >
         {value}
       </Text>
     </View>
