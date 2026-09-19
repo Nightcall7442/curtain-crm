@@ -218,7 +218,7 @@ export default function OrderDetailPage(): ReactElement {
             {data.workPrice !== null && (
               <>
                 <MoneyItem label="Стоимость работ" value={data.workPrice} />
-                <MoneyItem label="Предоплата" value={data.deposit} />
+                <MoneyItem label="Оплачено" value={data.paidAmount} />
                 <MoneyItem label="Остаток" value={data.remainingPayment} />
               </>
             )}
@@ -411,7 +411,7 @@ export default function OrderDetailPage(): ReactElement {
             installer: data.installerId,
           }}
           workPrice={data.workPrice ?? '0'}
-          deposit={data.deposit ?? '0'}
+          paidAmount={data.paidAmount ?? '0'}
           stageFees={stageFeesFromOrder(data)}
           orderType={data.orderType}
           isClosed={isTerminalStatus(data.status)}
@@ -679,8 +679,10 @@ export default function OrderDetailPage(): ReactElement {
       {data.workPrice !== null && (
         <OrderPayments
           orderId={orderId}
+          paid={data.paidAmount}
           remaining={data.remainingPayment}
           canAccept={isManagement || data.creator.id === user?.id || data.installer?.id === user?.id}
+          canRefund={isManagement}
         />
       )}
       <OrderPurchases orderId={orderId} />
