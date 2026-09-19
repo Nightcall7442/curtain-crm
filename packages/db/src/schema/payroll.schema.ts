@@ -252,35 +252,3 @@ export type PayrollScheme = typeof payrollSchemes.$inferSelect;
 export type NewPayrollScheme = typeof payrollSchemes.$inferInsert;
 export type PayrollRecord = typeof payrollRecords.$inferSelect;
 export type NewPayrollRecord = typeof payrollRecords.$inferInsert;
-
-/**
- * Выплаты по дням.
- *
- * Директор рассчитывается с людьми каждый день: отмечает в неделе дни и
- * выдаёт за них. Сумма прибавляется к `paid_amount` месячного расчёта,
- * а здесь остаётся, за какие именно дни заплачено — иначе назавтра
- * не отличить оплаченный понедельник от неоплаченного.
- *
- * День — календарный по Ташкенту, один раз: заплатили — закрыт.
- */
-export const payrollPayouts = pgTable(
-  'payroll_payouts',
-  {
-    id: serial('id').primaryKey(),
-    recordId: integer('record_id')
-      .notNull()
-      .references(() => payrollRecords.id, { onDelete: 'cascade' }),
-    day: date('day').notNull(),
-    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
-    paidBy: integer('paid_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    paidAt: timestamp('paid_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex('payroll_payouts_record_day_unique').on(table.recordId, table.day),
-    check('payroll_payouts_amount_positive', sql`${table.amount} > 0`),
-  ],
-);
-
-export type PayrollPayout = typeof payrollPayouts.$inferSelect;

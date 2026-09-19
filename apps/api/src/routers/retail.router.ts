@@ -32,7 +32,7 @@ import {
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure, orderIntakeProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
-import { recordPayment } from '../services/payments.service';
+import { post } from '../services/ledger.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
 
@@ -417,13 +417,13 @@ export const retailRouter = router({
         });
 
         const loaded = await loadSale(tx, sale.id);
-        await recordPayment(tx, {
+        await post(tx, {
           branchId,
           kind: PaymentKind.OTHER,
           method: input.method,
           amount: parseMoney(loaded.total),
           retailSaleId: sale.id,
-          receivedBy: ctx.user.id,
+          actorId: ctx.user.id,
         });
 
         return loaded;
@@ -525,13 +525,13 @@ export const retailRouter = router({
         });
 
         const loaded = await loadSale(tx, sale.id);
-        await recordPayment(tx, {
+        await post(tx, {
           branchId,
           kind: PaymentKind.OTHER,
           method: input.method,
           amount: parseMoney(loaded.total),
           retailSaleId: sale.id,
-          receivedBy: ctx.user.id,
+          actorId: ctx.user.id,
         });
 
         return loaded;

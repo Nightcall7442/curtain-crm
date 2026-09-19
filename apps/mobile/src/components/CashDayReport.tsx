@@ -57,8 +57,21 @@ export function CashDayReport(): ReactElement {
             <Stat label={m('cashDay.received')} value={formatMoney(data?.total ?? 0)} />
             <Stat
               label={m('cashDay.inKassa')}
-              value={formatMoney(data?.inKassa ?? 0)}
-              hint={data === undefined ? undefined : kassaParts(data.inKassaParts, m)}
+              value={formatMoney(data?.balance.cash.total ?? 0)}
+              hint={data === undefined ? undefined : kassaParts(data.balance, m)}
+            />
+            <Stat
+              label={m('cashDay.onAccount')}
+              value={formatMoney(data?.balance.cashless.total ?? 0)}
+              hint={
+                data === undefined
+                  ? undefined
+                  : m('cashDay.onAccountParts', {
+                      card: formatMoney(data.balance.cashless.card),
+                      qr: formatMoney(data.balance.cashless.qr),
+                      click: formatMoney(data.balance.cashless.click),
+                    })
+              }
             />
             <Stat
               label={m('cashDay.onHands')}
@@ -149,14 +162,15 @@ function kassaParts(parts: CashSummaryParts, m: Translate): string {
   if (parts.since === null) return m('cashDay.inKassaNone');
   return m('cashDay.inKassaParts', {
     date: formatIsoDateShort(parts.since),
-    collected: formatMoney(parts.collected),
-    management: formatMoney(parts.byManagement),
-    payroll: formatMoney(parts.payroll),
-    purchases: formatMoney(parts.purchases),
+    collected: formatMoney(parts.cash.collected),
+    management: formatMoney(parts.cash.byManagement),
+    payroll: formatMoney(parts.cash.payroll),
+    purchases: formatMoney(parts.cash.purchases),
+    refunds: formatMoney(parts.cash.refunds),
   });
 }
 
-type CashSummaryParts = RouterOutputs['payments']['summary']['inKassaParts'];
+type CashSummaryParts = RouterOutputs['payments']['summary']['balance'];
 
 function Stat({
   label,

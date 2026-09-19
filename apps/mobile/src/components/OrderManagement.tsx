@@ -54,14 +54,15 @@ export function OrderManagement({
   orderId,
   orderType,
   workPrice,
-  deposit,
+  paidAmount,
   fees,
   assignees,
 }: {
   readonly orderId: number;
   readonly orderType: OrderType;
   readonly workPrice: string;
-  readonly deposit: string;
+  /** Оплачено по книге проводок — показывается, меняется приходом или возвратом. */
+  readonly paidAmount: string;
   /** Суммы по этапам. `null` — скрыта от этого пользователя сервером. */
   readonly fees: Readonly<Record<string, string | null>>;
   readonly assignees: Readonly<Partial<Record<Role, { readonly id: number; readonly fullName: string } | null>>>;
@@ -70,7 +71,6 @@ export function OrderManagement({
   const utils = trpc.useUtils();
 
   const [price, setPrice] = useState('');
-  const [prepaid, setPrepaid] = useState('');
   const [feeDrafts, setFeeDrafts] = useState<Readonly<Record<string, string>>>({});
 
   /** Роль, которой сейчас выбирают исполнителя. `null` — никакая. */
@@ -114,7 +114,6 @@ export function OrderManagement({
     async onSuccess() {
       notifySuccess();
       setPrice('');
-      setPrepaid('');
       await refresh();
     },
     onError: fail(m('manage.priceError')),
@@ -308,7 +307,7 @@ export function OrderManagement({
         <Text style={styles.hint}>
           {m('manage.priceHint', {
             price: formatMoney(parseMoney(workPrice)),
-            deposit: formatMoney(parseMoney(deposit)),
+            paid: formatMoney(parseMoney(paidAmount)),
           })}
         </Text>
 
@@ -320,32 +319,22 @@ export function OrderManagement({
           />
         </Field>
 
-        <Field label={m('manage.deposit')}>
-          <MoneyInput
-            value={prepaid}
-            onChangeText={setPrepaid}
-            placeholder={trimAmount(deposit)}
-          />
-        </Field>
-
         <Pressable
           onPress={() => {
             const parsedPrice = Number.parseFloat(price.replace(',', '.'));
-            const parsedDeposit = Number.parseFloat(prepaid.replace(',', '.'));
 
             setPriceMutation.mutate({
               id: orderId,
               ...(Number.isFinite(parsedPrice) ? { workPrice: parsedPrice } : {}),
-              ...(Number.isFinite(parsedDeposit) ? { deposit: parsedDeposit } : {}),
             });
           }}
           disabled={
-            setPriceMutation.isPending || (price.trim() === '' && prepaid.trim() === '')
+            setPriceMutation.isPending || price.trim() === ''
           }
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.submit,
-            price.trim() === '' && prepaid.trim() === '' ? styles.submitOff : null,
+            price.trim() === '' ? styles.submitOff : null,
             pressed ? styles.pressed : null,
           ]}
         >

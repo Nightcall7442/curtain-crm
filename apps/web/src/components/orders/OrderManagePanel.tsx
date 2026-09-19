@@ -43,7 +43,7 @@ export function OrderManagePanel({
   orderId,
   current,
   workPrice,
-  deposit,
+  paidAmount,
   stageFees,
   orderType,
   isClosed,
@@ -51,7 +51,8 @@ export function OrderManagePanel({
   readonly orderId: number;
   readonly current: Readonly<Record<AssignableRole, number | null>>;
   readonly workPrice: string;
-  readonly deposit: string;
+  /** Оплачено по книге проводок — здесь только показывается, меняется приходом или возвратом. */
+  readonly paidAmount: string;
   readonly stageFees: StageFeesDraft;
   readonly orderType: OrderTypeName;
   readonly isClosed: boolean;
@@ -61,7 +62,6 @@ export function OrderManagePanel({
   const [priceOpen, setPriceOpen] = useState(false);
   const [feesOpen, setFeesOpen] = useState(false);
   const [nextWorkPrice, setNextWorkPrice] = useState(workPrice);
-  const [nextDeposit, setNextDeposit] = useState(deposit);
   const [nextFees, setNextFees] = useState(stageFees);
 
   const refresh = async (): Promise<void> => {
@@ -116,7 +116,6 @@ export function OrderManagePanel({
                   variant="secondary"
                   onClick={() => {
                     setNextWorkPrice(workPrice);
-                    setNextDeposit(deposit);
                     setPriceOpen(true);
                   }}
                 >
@@ -189,7 +188,6 @@ export function OrderManagePanel({
                 setPrice.mutate({
                   id: orderId,
                   workPrice: Number.parseFloat(nextWorkPrice.replace(',', '.')) || 0,
-                  deposit: Number.parseFloat(nextDeposit.replace(',', '.')) || 0,
                 });
               }}
             >
@@ -208,21 +206,13 @@ export function OrderManagePanel({
             />
           </Field>
 
-          <Field label="Предоплата, сум">
-            <MoneyInput
-              value={nextDeposit}
-              onChange={setNextDeposit}
-            />
-          </Field>
-
           <p className="text-footnote text-secondary">
-            {`Остаток к оплате: ${formatMoney(
-              parseMoney(Number.parseFloat(nextWorkPrice.replace(',', '.')) || 0) -
-                parseMoney(Number.parseFloat(nextDeposit.replace(',', '.')) || 0),
+            {`Оплачено ${formatMoney(parseMoney(paidAmount))} · остаток к оплате: ${formatMoney(
+              parseMoney(Number.parseFloat(nextWorkPrice.replace(',', '.')) || 0) - parseMoney(paidAmount),
             )}`}
           </p>
           <p className="text-overline text-muted">
-            Остаток считает база, поле в форме — только предпросмотр.
+            «Оплачено» — сумма проводок; меняется через «Принять оплату» или «Возврат», не здесь.
           </p>
         </div>
       </Modal>

@@ -45,7 +45,7 @@ export default function TerminalArchivePage(): ReactElement {
         row.fullName,
         parseMoney(row.amount).toString(),
         row.comment ?? '',
-        row.photoUrl,
+        row.photoUrl ?? '',
       ]),
     })
       .then(() => {
@@ -144,16 +144,19 @@ export default function TerminalArchivePage(): ReactElement {
           {
             key: 'photo',
             header: 'Фото',
-            render: (row) => (
-              <a
-                href={row.photoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent underline-offset-2 hover:underline"
-              >
-                Открыть
-              </a>
-            ),
+            render: (row) =>
+              row.photoUrl === null ? (
+                <span className="text-muted">—</span>
+              ) : (
+                <a
+                  href={row.photoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline-offset-2 hover:underline"
+                >
+                  Открыть
+                </a>
+              ),
           },
         ]}
       />

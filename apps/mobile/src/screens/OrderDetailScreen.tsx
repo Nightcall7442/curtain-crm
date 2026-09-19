@@ -260,10 +260,10 @@ export function OrderDetailScreen({
             }
           />
           {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
-          {data.workPrice !== null && data.deposit !== null && (
+          {data.workPrice !== null && data.paidAmount !== null && (
             <>
               <Row label={m('order.price')} value={formatMoney(parseMoney(data.workPrice))} />
-              <Row label={m('order.deposit')} value={formatMoney(parseMoney(data.deposit))} />
+              <Row label={m('order.paid')} value={formatMoney(parseMoney(data.paidAmount))} />
               <Row
                 label={m('order.remaining')}
                 value={
@@ -679,7 +679,7 @@ export function OrderDetailScreen({
           orderId={orderId}
           orderType={data.orderType}
           workPrice={data.workPrice ?? '0'}
-          deposit={data.deposit ?? '0'}
+          paidAmount={data.paidAmount ?? '0'}
           fees={{
             measurementFee: data.measurementFee,
             cuttingFee: data.cuttingFee,

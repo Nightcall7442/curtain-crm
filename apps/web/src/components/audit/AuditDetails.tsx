@@ -230,7 +230,8 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   itemsCount: 'позиций',
   itemsReplaced: 'позиции заменены',
   workPrice: 'стоимость работ',
-  deposit: 'предоплата',
+  deposit: 'первая оплата',
+  paid: 'оплачено всего',
   assigneeId: 'исполнитель',
 
   // сотрудник и смены
@@ -268,7 +269,6 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   amount: 'сумма',
   calculated: 'начислено',
   payment: 'сумма',
-  paid: 'выплачено всего',
   method: 'способ',
   skipped: 'пропущено',
   failures: 'ошибок',

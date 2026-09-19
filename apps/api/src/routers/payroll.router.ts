@@ -1,4 +1,4 @@
-import { payrollPayouts, payrollRecords, payrollSchemes, userRoles, users } from '@curtain-crm/db';
+import { branches, payments, payrollRecords, payrollSchemes, userRoles, users } from '@curtain-crm/db';
 import {
   canTransitionPayrollStatus,
   formatMoney,
@@ -10,15 +10,17 @@ import {
   PayrollRecordStatus,
   ROLE_LABELS_RU,
   roleSchema,
+  PaymentKind,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText, periodSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { post } from '../services/ledger.service';
 import { notifyPayroll } from '../services/notifications.service';
 import {
   calculateForDay,
@@ -600,10 +602,14 @@ export const payrollRouter = router({
         recordIds.length === 0
           ? []
           : await ctx.db
-              .select({ day: payrollPayouts.day, amount: payrollPayouts.amount })
-              .from(payrollPayouts)
-              .where(inArray(payrollPayouts.recordId, recordIds));
-      const paidByDay = new Map(payouts.map((payout) => [payout.day, parseMoney(payout.amount)]));
+              .select({ day: payments.day, amount: payments.amount })
+              .from(payments)
+              .where(and(inArray(payments.payrollRecordId, recordIds), isNotNull(payments.day)));
+      const paidByDay = new Map<string, number>();
+      for (const payout of payouts) {
+        if (payout.day === null) continue;
+        paidByDay.set(payout.day, (paidByDay.get(payout.day) ?? 0) + parseMoney(payout.amount));
+      }
 
       let monthlyBase = false;
       let hasScheme = true;
@@ -682,26 +688,18 @@ export const payrollRouter = router({
         const days = input.days ?? [];
         if (days.length > 0) {
           const [dup] = await tx
-            .select({ day: payrollPayouts.day })
-            .from(payrollPayouts)
+            .select({ day: payments.day })
+            .from(payments)
             .where(
               and(
-                eq(payrollPayouts.recordId, record.id),
-                inArray(payrollPayouts.day, days.map((entry) => entry.day)),
+                eq(payments.payrollRecordId, record.id),
+                inArray(payments.day, days.map((entry) => entry.day)),
               ),
             )
             .limit(1);
-          if (dup !== undefined) {
+          if (dup?.day !== undefined && dup.day !== null) {
             throw new TRPCError({ code: 'CONFLICT', message: `День ${dup.day} уже выплачен` });
           }
-          await tx.insert(payrollPayouts).values(
-            days.map((entry) => ({
-              recordId: record.id,
-              day: entry.day,
-              amount: moneyToDecimalString(parseMoney(entry.amount)),
-              paidBy: ctx.user.id,
-            })),
-          );
         }
         const part =
           days.length > 0
@@ -712,6 +710,31 @@ export const payrollRouter = router({
 
         if (part <= 0) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Сумма выплаты должна быть больше нуля' });
+        }
+
+        /*
+          Каждая выплата — проводка в книге: наличные из кассы, за день или
+          суммой. Из них считаются касса и выплаты за период; `paid_amount`
+          у расчёта — итог по нему, а не второй учёт.
+        */
+        const branchId =
+          ctx.user.primaryBranchId ??
+          (await tx.select({ id: branches.id }).from(branches).orderBy(asc(branches.id)).limit(1))[0]?.id;
+        if (branchId === undefined) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите филиал: у вас не задан основной филиал' });
+        }
+        const payouts = days.length > 0 ? days.map((entry) => ({ day: entry.day, amount: parseMoney(entry.amount) })) : [{ day: null, amount: part }];
+        for (const payout of payouts) {
+          await post(tx, {
+            branchId,
+            kind: PaymentKind.PAYROLL,
+            method: 'cash',
+            amount: payout.amount,
+            payrollRecordId: record.id,
+            day: payout.day,
+            actorId: ctx.user.id,
+            comment: input.comment ?? null,
+          });
         }
 
         const paidTotal = alreadyPaid + part;
