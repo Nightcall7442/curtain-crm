@@ -63,21 +63,34 @@ export default function CashPage(): ReactElement {
         </Field>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-4">
         <StatCard
           label="Принято за день"
           value={formatMoney(data?.total ?? 0)}
-          caption="Все способы"
+          caption={
+            data === undefined || data.out.payroll + data.out.purchases + data.out.refunds === 0
+              ? 'Все способы'
+              : `ушло: зарплата ${formatMoney(data.out.payroll)} · закупки ${formatMoney(data.out.purchases)} · возвраты ${formatMoney(data.out.refunds)}`
+          }
         />
         <StatCard
           label="В кассе"
-          value={formatMoney(data?.inKassa ?? 0)}
+          value={formatMoney(data?.balance.cash.total ?? 0)}
           caption={
             data === undefined
               ? 'Наличные: сдано и принято руководством, минус выдано'
-              : data.inKassaParts.since === null
-                ? 'Наличные через систему ещё не сдавали'
-                : `с ${formatIsoDateShort(data.inKassaParts.since)}: сдано ${formatMoney(data.inKassaParts.collected)} + руководство ${formatMoney(data.inKassaParts.byManagement)} − зарплата ${formatMoney(data.inKassaParts.payroll)} − закупки ${formatMoney(data.inKassaParts.purchases)}`
+              : data.balance.since === null
+                ? 'Движений через книгу ещё не было'
+                : `с ${formatIsoDateShort(data.balance.since)}: сдано ${formatMoney(data.balance.cash.collected)} + руководство ${formatMoney(data.balance.cash.byManagement)} − зарплата ${formatMoney(data.balance.cash.payroll)} − закупки ${formatMoney(data.balance.cash.purchases)} − возвраты ${formatMoney(data.balance.cash.refunds)}`
+          }
+        />
+        <StatCard
+          label="На счёте"
+          value={formatMoney(data?.balance.cashless.total ?? 0)}
+          caption={
+            data === undefined
+              ? 'Карта, QR, Click — минус безналичные возвраты'
+              : `карта ${formatMoney(data.balance.cashless.card)} · QR ${formatMoney(data.balance.cashless.qr)} · Click ${formatMoney(data.balance.cashless.click)}`
           }
         />
         <StatCard
@@ -243,7 +256,10 @@ export default function CashPage(): ReactElement {
             {
               key: 'photo',
               header: 'Фото',
-              render: (row) => (
+            render: (row) =>
+              row.photoUrl === null ? (
+                <span className="text-muted">—</span>
+              ) : (
                 <a
                   href={row.photoUrl}
                   target="_blank"

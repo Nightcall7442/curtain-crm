@@ -49,11 +49,14 @@ import {
   type OrderStatus as OrderStatusName,
   type Priority,
   type Role as RoleName,
+  PaymentKind,
+  PaymentMethod,
 } from '@curtain-crm/shared';
 import { config as loadEnv } from 'dotenv';
 import { asc, eq, inArray, like } from 'drizzle-orm';
 
 import { loadAuthenticatedUser } from '../context';
+import { post } from '../services/ledger.service';
 import { calculateForUserRole, payableRoles, saveDraft } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import type { AuthenticatedUser } from '../types';
@@ -449,13 +452,23 @@ async function build(db: Database): Promise<void> {
           deadline: isoDate(new Date(createdAt.getTime() + between(10, 45) * 24 * 60 * 60 * 1000)),
           priority: pick(priorities),
           workPrice: moneyToDecimalString(workPrice * 100),
-          deposit: moneyToDecimalString(deposit * 100),
           createdBy: seller.id,
           createdAt,
         })
         .returning();
 
       if (order === undefined) continue;
+
+      // Первая оплата — проводкой в книгу: «оплачено» у заказа поднимет база.
+      await post(db, {
+        branchId: order.branchId,
+        kind: PaymentKind.ORDER_DEPOSIT,
+        method: PaymentMethod.CASH,
+        amount: deposit * 100,
+        orderId: order.id,
+        actorId: seller.id,
+        at: createdAt,
+      });
 
       // Позиции заказа
       const itemCount = between(1, 3);

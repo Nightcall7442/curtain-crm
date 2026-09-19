@@ -59,7 +59,9 @@ export function TerminalChecksScreen(): ReactElement {
               </View>
               <Text style={styles.amount}>{formatMoney(parseMoney(row.amount))}</Text>
             </View>
-            <Image source={{ uri: row.photoUrl }} style={styles.photo} resizeMode="contain" accessibilityLabel={m('terminal.photo')} />
+            {row.photoUrl !== null && (
+              <Image source={{ uri: row.photoUrl }} style={styles.photo} resizeMode="contain" accessibilityLabel={m('terminal.photo')} />
+            )}
           </Card>
         ))
       )}

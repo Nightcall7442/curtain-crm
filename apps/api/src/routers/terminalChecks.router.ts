@@ -1,12 +1,14 @@
 import {
-  moneyToDecimalString,
   ORDER_INTAKE_ROLES,
   parseMoney,
+  PAYMENT_INCOME_KINDS,
+  PaymentKind,
   Role,
   TERMINAL_CHECKS_DAILY_TARGET,
 } from '@curtain-crm/shared';
-import { terminalChecks, userRoles, users, type DbExecutor } from '@curtain-crm/db';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { userRoles, users, type DbExecutor } from '@curtain-crm/db';
+import { TRPCError } from '@trpc/server';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
@@ -14,69 +16,23 @@ import { base64FileSchema, moneySchema, optionalText } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure, roleProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { entries, post, terminalChecksCount } from '../services/ledger.service';
 import { notifyTerminalCheckCreated } from '../services/notifications.service';
 import { buildStorageKey, decodeBase64Payload, getStorage } from '../services/storage.service';
 import { router } from '../trpc';
 
+import { dayRange, workshopToday } from './payments.router';
+
 /**
- * Терминальные чеки.
+ * Терминальные чеки — обязанность продавцов: за день не меньше
+ * `TERMINAL_CHECKS_DAILY_TARGET` чеков по платёжному терминалу на всех.
  *
- * Обязанность продавцов: за день пробить на терминале не меньше
- * `TERMINAL_CHECKS_DAILY_TARGET` чеков, каждый — с фото. Цель общая на всех
- * продавцов: пробил один — остальным приходит «сегодня 2 из 3, остался 1».
- *
- * Права:
- *  - `create` — продавец и руководство (кто оформляет продажи, тот и
- *    пробивает);
- *  - `today` — любой вошедший: счётчик дня показывается в «Работе»;
- *  - `byDay` — руководство: чеки за любой день с фото.
- *
- * К оплатам и инкассации не привязано — по слову владельца это отдельная
- * система: считаем штуки и храним фото, сумму с чека не переписываем.
+ * Чек — не отдельная сущность, а приход по карте в книге проводок с фото
+ * чека. Поэтому «пробито сегодня» и «принято картой» — одно число, и
+ * карта, принятая по заказу продавцом или установщиком, тоже идёт в норму.
+ * Роутер оставлен как фасад: экранам нужен именно «чеки за день».
  */
 
-/** День по Ташкенту: чеки считаются по местным суткам, а не по UTC. */
-const localDay = (column: typeof terminalChecks.createdAt) => sql`(${column} at time zone 'Asia/Tashkent')::date`;
-
-async function countForDay(executor: DbExecutor, day: string | null): Promise<number> {
-  const [row] = await executor
-    .select({ count: sql<number>`count(*)`.mapWith(Number) })
-    .from(terminalChecks)
-    .where(dayFilter(day));
-  return row?.count ?? 0;
-}
-
-/** Условие «чек за этот день» / «за период»; `null` — сегодня по Ташкенту. */
-function dayFilter(day: string | null) {
-  return day === null
-    ? sql`${localDay(terminalChecks.createdAt)} = (now() at time zone 'Asia/Tashkent')::date`
-    : sql`${localDay(terminalChecks.createdAt)} = ${day}::date`;
-}
-
-async function listChecks(executor: DbExecutor, where: ReturnType<typeof sql>) {
-  const storage = getStorage();
-  const rows = await executor
-    .select({
-      id: terminalChecks.id,
-      userId: terminalChecks.userId,
-      fullName: users.fullName,
-      amount: terminalChecks.amount,
-      comment: terminalChecks.comment,
-      photoKey: terminalChecks.photoKey,
-      createdAt: terminalChecks.createdAt,
-    })
-    .from(terminalChecks)
-    .innerJoin(users, eq(users.id, terminalChecks.userId))
-    .where(where)
-    .orderBy(desc(terminalChecks.createdAt));
-  return Promise.all(
-    rows.map(async ({ photoKey, ...row }) => ({ ...row, photoUrl: await storage.getUrl(photoKey) })),
-  );
-}
-
-const listForDay = (executor: DbExecutor, day: string | null) => listChecks(executor, dayFilter(day));
-
-/** Активные продавцы — адресаты «чек пробит» и напоминаний. */
 export async function sellerUserIds(executor: DbExecutor): Promise<number[]> {
   const rows = await executor
     .selectDistinct({ id: users.id })
@@ -86,10 +42,32 @@ export async function sellerUserIds(executor: DbExecutor): Promise<number[]> {
   return rows.map((row) => row.id);
 }
 
-export { countForDay as terminalChecksToday };
+/** Чеков по терминалу сегодня — норма дня; `null` день = сегодня по Ташкенту. */
+export const terminalChecksToday = (executor: DbExecutor, day: string | null): Promise<number> =>
+  terminalChecksCount(executor, dayRange(day ?? workshopToday()));
+
+const toCheck = (row: Awaited<ReturnType<typeof entries>>[number]) => ({
+  id: row.id,
+  userId: row.receivedBy,
+  fullName: row.receivedByName,
+  amount: row.amount,
+  comment: row.comment,
+  photoUrl: row.photoUrl,
+  createdAt: row.receivedAt,
+  orderNumber: row.orderNumber,
+});
+
+async function checksInRange(executor: DbExecutor, range: { from: Date; to: Date }) {
+  const rows = await entries(executor, {
+    range,
+    methods: ['card'],
+    kinds: [...PAYMENT_INCOME_KINDS],
+  });
+  return rows.map(toCheck);
+}
 
 export const terminalChecksRouter = router({
-  /** Пробить чек: фото и сумма обязательны, комментарий — по желанию. */
+  /** Пробить чек: фото с терминала, сумма — прочий приход по карте. */
   create: roleProcedure(...ORDER_INTAKE_ROLES)
     .input(
       z.object({
@@ -99,6 +77,10 @@ export const terminalChecksRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const branchId = ctx.user.primaryBranchId;
+      if (branchId === null || branchId === undefined) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите филиал: у вас не задан основной филиал' });
+      }
       const stored = await getStorage().upload({
         key: buildStorageKey(['terminal-checks', ctx.user.id.toString()], input.photo.mimeType),
         body: decodeBase64Payload(input.photo, {
@@ -109,40 +91,38 @@ export const terminalChecksRouter = router({
       });
 
       return ctx.db.transaction(async (tx) => {
-        const [created] = await tx
-          .insert(terminalChecks)
-          .values({
-            userId: ctx.user.id,
-            branchId: ctx.user.primaryBranchId ?? null,
-            photoKey: stored.key,
-            amount: moneyToDecimalString(parseMoney(input.amount)),
-            comment: input.comment ?? null,
-          })
-          .returning({ id: terminalChecks.id });
-        const count = await countForDay(tx, null);
+        const id = await post(tx, {
+          branchId,
+          kind: PaymentKind.OTHER,
+          method: 'card',
+          amount: parseMoney(input.amount),
+          photoKey: stored.key,
+          actorId: ctx.user.id,
+          comment: input.comment ?? null,
+        });
+        const count = await terminalChecksToday(tx, null);
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'terminal_check.created',
-          entityType: 'terminal_check',
-          entityId: created?.id ?? null,
+          entityType: 'payment',
+          entityId: id,
           details: { count, target: TERMINAL_CHECKS_DAILY_TARGET },
           ipAddress: ctx.ipAddress,
         });
-        const recipients = (await sellerUserIds(tx)).filter((id) => id !== ctx.user.id);
+        const recipients = (await sellerUserIds(tx)).filter((userId) => userId !== ctx.user.id);
         await notifyTerminalCheckCreated(tx, recipients, {
           byName: ctx.user.fullName,
           count,
           target: TERMINAL_CHECKS_DAILY_TARGET,
         });
 
-        return { id: created?.id ?? 0, count, target: TERMINAL_CHECKS_DAILY_TARGET };
+        return { id: id ?? 0, count, target: TERMINAL_CHECKS_DAILY_TARGET };
       });
     }),
 
-  /** Сегодня: сколько пробито, сколько осталось и кто пробивал. */
   today: protectedProcedure.query(async ({ ctx }) => {
-    const rows = await listForDay(ctx.db, null);
+    const rows = await checksInRange(ctx.db, dayRange(workshopToday()));
     return {
       target: TERMINAL_CHECKS_DAILY_TARGET,
       count: rows.length,
@@ -151,7 +131,6 @@ export const terminalChecksRouter = router({
     };
   }),
 
-  /** Архив за период — руководству: таблица и выгрузка в Excel. */
   list: managementProcedure
     .input(
       z
@@ -159,15 +138,11 @@ export const terminalChecksRouter = router({
         .refine((value) => value.to >= value.from, { message: 'Конец периода раньше начала', path: ['to'] }),
     )
     .query(({ ctx, input }) =>
-      listChecks(
-        ctx.db,
-        sql`${localDay(terminalChecks.createdAt)} between ${input.from}::date and ${input.to}::date`,
-      ),
+      checksInRange(ctx.db, { from: dayRange(input.from).from, to: dayRange(input.to).to }),
     ),
 
-  /** Чеки за день — руководству. */
   byDay: managementProcedure.input(z.object({ day: z.string().date() })).query(async ({ ctx, input }) => {
-    const rows = await listForDay(ctx.db, input.day);
+    const rows = await checksInRange(ctx.db, dayRange(input.day));
     return { target: TERMINAL_CHECKS_DAILY_TARGET, count: rows.length, rows };
   }),
 });

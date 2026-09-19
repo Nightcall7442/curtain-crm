@@ -26,7 +26,6 @@ import {
   orderPhotos,
   orders,
   orderStatusHistory,
-  cashCollections,
   payments,
   payrollRecords,
   payrollSchemes,
@@ -67,7 +66,7 @@ import {
 } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
-import { cashOnHands, cashSummary, recordPayment } from '../services/payments.service';
+import { balance, dayReport, onHands, orderPaid, post } from '../services/ledger.service';
 import { employeeRating } from '../services/rating.service';
 import { TRPCError } from '@trpc/server';
 
@@ -179,6 +178,15 @@ async function cleanup(db: Database): Promise<void> {
 
   if (orderIds.length > 0) {
     await db.delete(payments).where(inArray(payments.orderId, orderIds));
+    // Инкассации, выплаты и прочие проводки смоука — по их авторам, до удаления людей.
+    await db
+      .delete(payments)
+      .where(
+        inArray(
+          payments.receivedBy,
+          db.select({ id: users.id }).from(users).where(like(users.fullName, `${PREFIX}%`)),
+        ),
+      );
     await db.delete(purchases).where(inArray(purchases.orderId, orderIds));
     await db.delete(orderPhotos).where(inArray(orderPhotos.orderId, orderIds));
     await db.delete(orderComments).where(inArray(orderComments.orderId, orderIds));
@@ -191,7 +199,6 @@ async function cleanup(db: Database): Promise<void> {
   if (userIds.length > 0) {
     // audit_log — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
-    await db.delete(cashCollections).where(inArray(cashCollections.userId, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -270,7 +277,6 @@ async function run(db: Database): Promise<void> {
       clientPhone: '+998901112233',
       createdBy: seller.id,
       workPrice: '5000000.00',
-      deposit: '2000000.00',
       deadline: '2026-12-31',
       // Сдельные расценки: их получат исполнители этапов, когда заказ закроют.
       measurementFee: '100000.00',
@@ -287,10 +293,39 @@ async function run(db: Database): Promise<void> {
     order.orderNumber !== null && order.orderNumber.startsWith('DH-'),
     order.orderNumber ?? 'null',
   );
+  // «Оплачено» у заказа поднимает база от проводки: приложение колонку не пишет.
+  await post(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_DEPOSIT,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('2000000'),
+    orderId: order.id,
+    actorId: seller.id,
+  });
+  const [orderAfterDeposit] = await db.select().from(orders).where(eq(orders.id, order.id));
   check(
-    'orders: remaining_payment = work_price - deposit',
-    order.remainingPayment === '3000000.00',
-    order.remainingPayment ?? 'null',
+    'ledger: проводка по заказу поднимает paid_amount и remaining_payment триггером',
+    orderAfterDeposit?.paidAmount === '2000000.00' && orderAfterDeposit.remainingPayment === '3000000.00',
+    `оплачено ${orderAfterDeposit?.paidAmount ?? 'null'}, остаток ${orderAfterDeposit?.remainingPayment ?? 'null'}`,
+  );
+  await expectRejected('ledger: база не даёт вернуть больше, чем оплачено', () =>
+    post(db, {
+      branchId: branch.id,
+      kind: PaymentKind.REFUND,
+      method: PaymentMethod.CASH,
+      amount: parseMoney('2000001'),
+      orderId: order.id,
+      actorId: admin.id,
+    }),
+  );
+  await expectRejected('ledger: выплата без расчёта отклоняется базой', () =>
+    post(db, {
+      branchId: branch.id,
+      kind: PaymentKind.PAYROLL,
+      method: PaymentMethod.CASH,
+      amount: parseMoney('1'),
+      actorId: admin.id,
+    }),
   );
 
   await expectRejected('orders: check не даёт отменить заказ без причины', () =>
@@ -1086,42 +1121,52 @@ async function run(db: Database): Promise<void> {
       clientPhone: '+998901112288',
       createdBy: seller.id,
       workPrice: '1000000.00',
-      deposit: '300000.00',
       installerId: installer.id,
     })
     .returning();
   if (cashOrder === undefined) throw new Error('заказ для кассы не создан');
 
-  await recordPayment(db, {
+  await post(db, {
     branchId: branch.id,
     kind: PaymentKind.ORDER_DEPOSIT,
     method: PaymentMethod.CASH,
     amount: parseMoney('300000'),
     orderId: cashOrder.id,
-    receivedBy: seller.id,
+    actorId: seller.id,
   });
-  await recordPayment(db, {
+  await post(db, {
     branchId: branch.id,
     kind: PaymentKind.ORDER_BALANCE,
     method: PaymentMethod.CASH,
     amount: parseMoney('500000'),
     orderId: cashOrder.id,
-    receivedBy: installer.id,
+    actorId: installer.id,
   });
-  await recordPayment(db, {
+  await post(db, {
     branchId: branch.id,
     kind: PaymentKind.ORDER_BALANCE,
     method: PaymentMethod.CARD,
     amount: parseMoney('200000'),
     orderId: cashOrder.id,
-    receivedBy: installer.id,
+    actorId: installer.id,
   });
 
-  // Установщик сдал 400 000 из 500 000 наличных — инкассация.
-  await db.insert(cashCollections).values({
+  // Установщик сдал 400 000 из 500 000 наличных — инкассация: проводка в ту же книгу.
+  await post(db, {
     branchId: branch.id,
-    userId: installer.id,
-    amount: '400000.00',
+    kind: PaymentKind.COLLECTION,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('400000'),
+    actorId: installer.id,
+  });
+  // Руководство вернуло клиенту 50 000 наличными — из кассы, «оплачено» уменьшилось.
+  await post(db, {
+    branchId: branch.id,
+    kind: PaymentKind.REFUND,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('50000'),
+    orderId: cashOrder.id,
+    actorId: admin.id,
   });
 
   const today = new Date();
@@ -1129,33 +1174,47 @@ async function run(db: Database): Promise<void> {
     from: new Date(today.getTime() - 60 * 60 * 1000),
     to: new Date(today.getTime() + 60 * 60 * 1000),
   };
-  const cash = await cashSummary(db, cashRange, branch.id, [admin.id]);
+  const cash = await dayReport(db, cashRange, branch.id, [admin.id]);
   const depositRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_DEPOSIT);
   const balanceRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_BALANCE);
   check(
-    'касса: приходы разложены по источнику и способу',
-    depositRow?.byMethod.cash === parseMoney('300000') &&
+    'касса: приходы разложены по источнику и способу, чек по карте посчитан в норму',
+    depositRow?.byMethod.cash === parseMoney('2300000') &&
       balanceRow?.byMethod.cash === parseMoney('500000') &&
       balanceRow.byMethod.card === parseMoney('200000') &&
-      cash.total === parseMoney('1000000'),
-    `итого ${moneyToDecimalString(cash.total)}`,
+      // 1 000 000 по этому заказу + 2 000 000 первой оплаты заказа из раздела 2.
+      cash.total === parseMoney('3000000') &&
+      cash.terminalChecks === 1 &&
+      cash.out.refunds === parseMoney('50000') &&
+      cash.collected === parseMoney('400000'),
+    `итого ${moneyToDecimalString(cash.total)}, чеков ${cash.terminalChecks.toString()}, возвратов ${moneyToDecimalString(cash.out.refunds)}`,
   );
-  const installerCash = await cashOnHands(db, installer.id);
-  const sellerCash = await cashOnHands(db, seller.id);
+  const installerCash = await onHands(db, installer.id);
+  const sellerCash = await onHands(db, seller.id);
   check(
     'касса: на руках — принятые наличные минус инкассация',
-    installerCash.onHands === parseMoney('100000') && sellerCash.onHands === parseMoney('300000'),
-    `установщик ${moneyToDecimalString(installerCash.onHands)}, продавец ${moneyToDecimalString(sellerCash.onHands)}`,
+    // У продавца ещё 2 000 000 первой оплаты из раздела 2 — тоже наличными на руках.
+    installerCash === parseMoney('100000') && sellerCash === parseMoney('2300000'),
+    `установщик ${moneyToDecimalString(installerCash)}, продавец ${moneyToDecimalString(sellerCash)}`,
   );
-  // «В кассе» — накопленный остаток на конец дня, а не разница за день: на
-  // базе с историей в нём и чужие дни, поэтому сверяются слагаемые, а не число.
-  const parts = cash.inKassaParts;
+  const cashPaid = await orderPaid(db, cashOrder.id);
+  const [cashOrderRow] = await db.select().from(orders).where(eq(orders.id, cashOrder.id));
   check(
-    'касса: в кассе — сданное и принятое руководством минус выданное, накопленным итогом',
-    cash.collected === parseMoney('400000') &&
-      parts.collected >= parseMoney('400000') &&
-      cash.inKassa === parts.collected + parts.byManagement - parts.payroll - parts.purchases,
-    `сдано ${moneyToDecimalString(cash.collected)}, в кассе ${moneyToDecimalString(cash.inKassa)}`,
+    'ledger: «оплачено» = приходы − возврат, и в заказе, и в книге',
+    cashPaid === parseMoney('950000') && cashOrderRow?.paidAmount === '950000.00',
+    `книга ${moneyToDecimalString(cashPaid)}, заказ ${cashOrderRow?.paidAmount ?? 'null'}`,
+  );
+  // Касса и счёт — накопленным итогом на конец дня: на базе с историей в них
+  // и чужие дни, поэтому сверяются слагаемые и то, что сегодняшнее попало.
+  const till = await balance(db, { at: cashRange.to, branchId: branch.id, managementIds: [admin.id] });
+  check(
+    'касса: в кассе — сдано и принято руководством минус выплаты, закупки и возвраты; на счёте — безнал',
+    till.cash.collected >= parseMoney('400000') &&
+      till.cash.refunds >= parseMoney('50000') &&
+      till.cash.total === till.cash.collected + till.cash.byManagement - till.cash.payroll - till.cash.purchases - till.cash.refunds &&
+      till.cashless.card >= parseMoney('200000') &&
+      till.cashless.total === till.cashless.card + till.cashless.qr + till.cashless.click,
+    `в кассе ${moneyToDecimalString(till.cash.total)}, на счёте ${moneyToDecimalString(till.cashless.total)}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

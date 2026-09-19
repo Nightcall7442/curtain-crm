@@ -92,7 +92,14 @@ export const orders = pgTable(
 
     /** Стоимость работ для клиента. Себестоимость считается по `purchases`. */
     workPrice: numeric('work_price', { precision: 14, scale: 2 }).notNull().default('0'),
-    deposit: numeric('deposit', { precision: 14, scale: 2 }).notNull().default('0'),
+    /**
+     * Оплачено по заказу: приходы минус возвраты из книги проводок.
+     *
+     * Кэш, а не источник: колонку поддерживает триггер `payments_sync_order_paid`
+     * на каждую проводку, приложение её не пишет. Так «оплачено» не может
+     * разойтись с кассой, а заказ читается одним запросом без подзапроса.
+     */
+    paidAmount: numeric('paid_amount', { precision: 14, scale: 2 }).notNull().default('0'),
 
     /* --- Сдельные расценки по этапам --------------------------------------- */
 
@@ -145,7 +152,7 @@ export const orders = pgTable(
      * Значение может быть отрицательным — это переплата, а не ошибка.
      */
     remainingPayment: numeric('remaining_payment', { precision: 14, scale: 2 })
-      .generatedAlwaysAs(sql`work_price - deposit`),
+      .generatedAlwaysAs(sql`work_price - paid_amount`),
 
     /* --- Участники --------------------------------------------------------- */
 
@@ -218,7 +225,8 @@ export const orders = pgTable(
 
     check('orders_client_phone_e164', sql`${table.clientPhone} ~ '^\\+998[0-9]{9}$'`),
     check('orders_work_price_non_negative', sql`${table.workPrice} >= 0`),
-    check('orders_deposit_non_negative', sql`${table.deposit} >= 0`),
+    // Возврат не может превысить оплаченное — это держит база, а не код.
+    check('orders_paid_non_negative', sql`${table.paidAmount} >= 0`),
     // Отрицательная расценка означала бы удержание с исполнителя за то, что
     // он выполнил этап. Удержания в системе есть, но это другая сущность.
     check(

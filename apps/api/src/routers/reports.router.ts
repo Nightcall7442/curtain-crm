@@ -694,7 +694,7 @@ export const reportsRouter = router({
           .select({
             ordersCount: count(),
             revenue: sql<string>`coalesce(sum(${orders.workPrice}), 0)`,
-            deposits: sql<string>`coalesce(sum(${orders.deposit}), 0)`,
+            deposits: sql<string>`coalesce(sum(${orders.paidAmount}), 0)`,
           })
           .from(orders)
           .where(completedInPeriod),

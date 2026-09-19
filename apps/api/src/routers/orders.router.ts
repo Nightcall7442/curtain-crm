@@ -66,7 +66,7 @@ import {
   changeOrderStatus,
   loadOrderForUpdate,
 } from '../services/orderWorkflow.service';
-import { recordPayment } from '../services/payments.service';
+import { post } from '../services/ledger.service';
 import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
@@ -296,7 +296,7 @@ const STAGE_EXECUTOR_COLUMN = {
 type StageFeeField = (typeof STAGE_FEE_COLUMN)[OrderStageFee];
 
 /** Деньги клиента по заказу — видят руководство и продавец, цех — нет. */
-const CLIENT_MONEY_FIELDS = ['workPrice', 'deposit', 'remainingPayment'] as const;
+const CLIENT_MONEY_FIELDS = ['workPrice', 'paidAmount', 'remainingPayment'] as const;
 type ClientMoneyField = (typeof CLIENT_MONEY_FIELDS)[number];
 
 /** Заказ, у которого скрытые от сотрудника суммы заменены на `null`. */
@@ -599,7 +599,6 @@ export const ordersRouter = router({
             deadline: input.deadline ?? null,
             priority: input.priority,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
-            deposit: moneyToDecimalString(parseMoney(input.deposit)),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -615,14 +614,15 @@ export const ordersRouter = router({
           .insert(orderItems)
           .values(input.items.map((item, index) => toOrderItemValues(item, created.id, index)));
 
-        // Предоплата при приёме — первый приход по заказу в кассу.
-        await recordPayment(tx, {
+        // Первая оплата при приёме — проводка в книгу; «оплачено» у заказа
+        // от неё поднимет база.
+        await post(tx, {
           branchId,
           kind: PaymentKind.ORDER_DEPOSIT,
           method: input.depositMethod,
           amount: parseMoney(input.deposit),
           orderId: created.id,
-          receivedBy: ctx.user.id,
+          actorId: ctx.user.id,
         });
 
         // Первая запись истории: у создания нет исходного статуса.
@@ -883,7 +883,6 @@ export const ordersRouter = router({
             installLongitude: input.needsInstallation ? (input.installLongitude ?? null) : null,
             deadline: input.deadline ?? null,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
-            deposit: moneyToDecimalString(parseMoney(input.deposit)),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -1043,13 +1042,13 @@ export const ordersRouter = router({
           comment: 'Продажа готовых штор',
         });
 
-        await recordPayment(tx, {
+        await post(tx, {
           branchId,
           kind: PaymentKind.READY_MADE,
           method: input.depositMethod,
           amount: parseMoney(input.deposit),
           orderId: created.id,
-          receivedBy: ctx.user.id,
+          actorId: ctx.user.id,
         });
 
         await recordAudit(tx, {
@@ -1173,20 +1172,18 @@ export const ordersRouter = router({
       z.object({
         id: idSchema,
         workPrice: moneySchema.optional(),
-        deposit: moneySchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const order = await loadOrderForUpdate(tx, input.id);
 
+        // «Оплачено» здесь не правится: это сумма проводок, и меняют её
+        // приходом или возвратом (`payments.acceptForOrder`, `payments.refund`).
         const patch = {
           ...(input.workPrice === undefined
             ? {}
             : { workPrice: moneyToDecimalString(parseMoney(input.workPrice)) }),
-          ...(input.deposit === undefined
-            ? {}
-            : { deposit: moneyToDecimalString(parseMoney(input.deposit)) }),
         };
 
         if (Object.keys(patch).length === 0) return maskStageFees(order, ctx.user);
@@ -1207,7 +1204,7 @@ export const ordersRouter = router({
           entityType: 'order',
           entityId: order.id,
           details: {
-            from: { workPrice: order.workPrice, deposit: order.deposit },
+            from: { workPrice: order.workPrice },
             to: patch,
           },
           ipAddress: ctx.ipAddress,

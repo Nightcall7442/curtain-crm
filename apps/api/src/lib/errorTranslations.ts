@@ -148,6 +148,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Расчёт уже выплачен': "Hisob allaqachon to'langan",
   'Сумма выплаты должна быть больше нуля': "To'lov summasi noldan katta bo'lishi kerak",
   'Принять оплату может продавец, установщик заказа или руководство': "To'lovni sotuvchi, buyurtma o'rnatuvchisi yoki rahbariyat qabul qilishi mumkin",
+  'Возврат больше, чем оплачено по заказу': "Qaytarish buyurtma bo'yicha to'langandan ko'p",
   'Сумма больше остатка по заказу': "Summa buyurtma qoldig'idan katta",
   'Сначала начните смену': 'Avval smenani boshlang',
   'Сумма больше, чем на руках': "Summa qo'ldagidan katta",

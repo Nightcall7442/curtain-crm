@@ -578,7 +578,8 @@ function CashTodayCard(): ReactElement | null {
         }
       />
       <Row label={m('cashDay.received')} value={formatMoney(today.data.total)} />
-      <Row label={m('cashDay.inKassa')} value={formatMoney(today.data.inKassa)} />
+      <Row label={m('cashDay.inKassa')} value={formatMoney(today.data.balance.cash.total)} />
+      <Row label={m('cashDay.onAccount')} value={formatMoney(today.data.balance.cashless.total)} />
       <Row
         label={
           byUser.length === 0
