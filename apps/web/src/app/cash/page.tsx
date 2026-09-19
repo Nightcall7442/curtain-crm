@@ -7,7 +7,9 @@ import {
   PAYMENT_KIND_LABELS_RU,
   PAYMENT_METHOD_LABELS_RU,
   PAYMENT_METHODS,
+  PaymentKind,
   todayIso,
+  type PaymentKind as PaymentKindName,
 } from '@curtain-crm/shared';
 import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
@@ -17,6 +19,7 @@ import { Field, Input } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
+import { cn } from '@/lib/utils';
 
 /**
  * Касса дня.
@@ -293,7 +296,7 @@ export default function CashPage(): ReactElement {
             },
             {
               key: 'kind',
-              header: 'Источник',
+              header: 'Движение',
               render: (row) => PAYMENT_KIND_LABELS_RU[row.kind],
             },
             {
@@ -313,14 +316,15 @@ export default function CashPage(): ReactElement {
             },
             {
               key: 'who',
-              header: 'Принял',
+              header: 'Чьи руки',
               render: (row) => row.receivedByName,
             },
             {
               key: 'amount',
               header: 'Сумма',
               align: 'right',
-              render: (row) => <Money value={parseMoney(row.amount)} strong />,
+              // Книга — не только приход: выплаты и возвраты со знаком, инкассация — перекладывание.
+              render: (row) => <Money value={parseMoney(row.amount)} strong sign={signOf(row.kind)} />,
             },
           ]}
         />
@@ -329,16 +333,32 @@ export default function CashPage(): ReactElement {
   );
 }
 
+/** Знак движения в книге: приход +, выплата и возврат −, инкассация — ни то ни другое. */
+function signOf(kind: PaymentKindName): 'in' | 'out' | 'move' {
+  if (kind === PaymentKind.PAYROLL || kind === PaymentKind.REFUND) return 'out';
+  if (kind === PaymentKind.COLLECTION) return 'move';
+  return 'in';
+}
+
 function Money({
   value,
   strong = false,
+  sign = 'in',
 }: {
   readonly value: number;
   readonly strong?: boolean;
+  readonly sign?: 'in' | 'out' | 'move';
 }): ReactElement {
   if (value === 0) return <span className="text-muted">—</span>;
   return (
-    <span className={strong ? 'font-medium tabular-nums' : 'tabular-nums'}>
+    <span
+      className={cn(
+        'tabular-nums',
+        strong ? 'font-medium' : undefined,
+        sign === 'out' ? 'text-danger' : sign === 'move' ? 'text-secondary' : undefined,
+      )}
+    >
+      {sign === 'out' ? '−' : sign === 'move' ? '→ ' : ''}
       {formatMoney(value)}
     </span>
   );

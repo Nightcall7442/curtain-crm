@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   index,
@@ -9,6 +10,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 import { branches } from './branches.schema';
@@ -67,6 +69,14 @@ export const payments = pgTable(
     /** Фото чека терминала — у приходов по карте; по ним считается норма дня продавцов. */
     photoKey: text('photo_key'),
 
+    /**
+     * Перенос: строка заведена миграцией из поля «предоплата» заказов, что
+     * были до книги. Считается в «оплачено» по заказу и только в нём: через
+     * руки и кассу в системе эти деньги не проходили, и класть их продавцу
+     * «на руки» или в ящик значило бы выдумать долг.
+     */
+    opening: boolean('opening').notNull().default(false),
+
     comment: text('comment'),
 
     // restrict: чьи руки — часть истории кассы.
@@ -82,6 +92,10 @@ export const payments = pgTable(
     index('payments_received_by_idx').on(table.receivedBy, table.method),
     index('payments_payroll_record_idx').on(table.payrollRecordId),
     index('payments_method_received_at_idx').on(table.method, table.receivedAt),
+    // День по расчёту выплачивается один раз — держит база, а не проверка перед вставкой.
+    uniqueIndex('payments_payroll_day_unique')
+      .on(table.payrollRecordId, table.day)
+      .where(sql`${table.day} is not null`),
     check('payments_amount_positive', sql`${table.amount} > 0`),
     // Выплата всегда привязана к расчёту, всё остальное — нет.
     check(

@@ -8,6 +8,8 @@ ALTER TYPE "public"."payment_kind_next" RENAME TO "payment_kind";--> statement-b
 ALTER TABLE "payments" ADD COLUMN "payroll_record_id" integer;--> statement-breakpoint
 ALTER TABLE "payments" ADD COLUMN "day" date;--> statement-breakpoint
 ALTER TABLE "payments" ADD COLUMN "photo_key" text;--> statement-breakpoint
+ALTER TABLE "payments" ADD COLUMN "opening" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "payments_payroll_day_unique" ON "payments" USING btree ("payroll_record_id","day") WHERE "payments"."day" is not null;--> statement-breakpoint
 ALTER TABLE "payments" ADD CONSTRAINT "payments_payroll_record_id_payroll_records_id_fk" FOREIGN KEY ("payroll_record_id") REFERENCES "public"."payroll_records"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "payments_payroll_record_idx" ON "payments" USING btree ("payroll_record_id");--> statement-breakpoint
 CREATE INDEX "payments_method_received_at_idx" ON "payments" USING btree ("method","received_at");--> statement-breakpoint
@@ -26,9 +28,23 @@ ALTER TABLE "orders" ADD CONSTRAINT "orders_paid_non_negative" CHECK ("orders"."
 INSERT INTO "payments" (branch_id, kind, method, amount, comment, received_by, received_at)
 SELECT c.branch_id, 'collection', 'cash', c.amount, c.comment, c.user_id, c.created_at
 FROM "cash_collections" c;--> statement-breakpoint
--- Терминальные чеки — приход по карте с фото. Чеки без суммы (заведены до
--- того, как сумму стали спрашивать) переносятся с одним тийином и пометкой:
--- фото и штука в норме дня важнее, чем ноль, которого книга не принимает.
+-- Терминальные чеки — приход по карте с фото. Если тот же человек в тот же
+-- день уже принял по карте ту же сумму (оплата по заказу или чек витрины),
+-- чек — это её фото, а не второй приход: фото прикрепляется к ней. Иначе —
+-- отдельный приход. Чеки без суммы (заведены до того, как сумму стали
+-- спрашивать) переносятся с одним тийином и пометкой: фото и штука в норме
+-- дня важнее, чем ноль, которого книга не принимает.
+UPDATE "payments" p SET photo_key = m.photo_key
+FROM (
+  SELECT DISTINCT ON (t.id) t.id AS check_id, t.photo_key, p2.id AS payment_id
+  FROM "terminal_checks" t
+  JOIN "payments" p2
+    ON p2.received_by = t.user_id AND p2.method = 'card' AND p2.photo_key IS NULL
+   AND p2.amount = t.amount
+   AND (p2.received_at AT TIME ZONE 'Asia/Tashkent')::date = (t.created_at AT TIME ZONE 'Asia/Tashkent')::date
+  ORDER BY t.id, abs(extract(epoch from (p2.received_at - t.created_at)))
+) m
+WHERE p.id = m.payment_id AND p.photo_key IS NULL;--> statement-breakpoint
 INSERT INTO "payments" (branch_id, kind, method, amount, comment, photo_key, received_by, received_at)
 SELECT coalesce(t.branch_id,
          (select ub.branch_id from user_branches ub where ub.user_id = t.user_id order by ub.is_primary desc, ub.branch_id limit 1),
@@ -37,7 +53,8 @@ SELECT coalesce(t.branch_id,
        CASE WHEN t.amount > 0 THEN t.amount ELSE 0.01 END,
        CASE WHEN t.amount > 0 THEN t.comment ELSE concat_ws(' · ', t.comment, 'сумма не указана при переносе') END,
        t.photo_key, t.user_id, t.created_at
-FROM "terminal_checks" t;--> statement-breakpoint
+FROM "terminal_checks" t
+WHERE NOT EXISTS (SELECT 1 FROM "payments" p WHERE p.photo_key = t.photo_key);--> statement-breakpoint
 -- Выплаты по дням.
 INSERT INTO "payments" (branch_id, kind, method, amount, payroll_record_id, day, received_by, received_at)
 SELECT coalesce(
@@ -55,11 +72,13 @@ SELECT coalesce(
        r.id, coalesce(r.approved_by, r.user_id), coalesce(r.paid_at, now())
 FROM "payroll_records" r
 WHERE r.paid_amount - coalesce((select sum(p.amount) from "payroll_payouts" p where p.record_id = r.id), 0) > 0;--> statement-breakpoint
--- Заказы, у которых «предоплата» больше, чем проводок по ним (заведены до книги): недостающее — первой оплатой наличными.
-INSERT INTO "payments" (branch_id, kind, method, amount, order_id, comment, received_by, received_at)
+-- Заказы, у которых «предоплата» больше, чем проводок по ним (заведены до
+-- книги): недостающее — переносом (`opening`): считается в «оплачено», но не
+-- на руках и не в кассе — через систему эти деньги не проходили.
+INSERT INTO "payments" (branch_id, kind, method, amount, order_id, comment, opening, received_by, received_at)
 SELECT o.branch_id, 'order_deposit', 'cash',
        o.paid_amount - coalesce((select sum(case when p.kind = 'refund' then -p.amount else p.amount end) from "payments" p where p.order_id = o.id), 0),
-       o.id, 'перенос из поля «предоплата»', o.created_by, o.created_at
+       o.id, 'перенос из поля «предоплата»', true, o.created_by, o.created_at
 FROM "orders" o
 WHERE o.paid_amount - coalesce((select sum(case when p.kind = 'refund' then -p.amount else p.amount end) from "payments" p where p.order_id = o.id), 0) > 0;--> statement-breakpoint
 -- ---------------------------------------------------------------------------

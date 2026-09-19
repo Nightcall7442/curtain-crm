@@ -1,22 +1,24 @@
 import {
+  isManagement,
   ORDER_INTAKE_ROLES,
   parseMoney,
   PAYMENT_INCOME_KINDS,
   PaymentKind,
   Role,
   TERMINAL_CHECKS_DAILY_TARGET,
+  type Role as RoleName,
 } from '@curtain-crm/shared';
-import { userRoles, users, type DbExecutor } from '@curtain-crm/db';
+import { branches, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
-import { base64FileSchema, moneySchema, optionalText } from '../lib/schemas';
+import { base64FileSchema, idSchema, moneySchema, optionalText } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
-import { managementProcedure, roleProcedure } from '../middleware/roleGuard.middleware';
+import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
-import { entries, post, terminalChecksCount } from '../services/ledger.service';
+import { attachPhoto, entries, post, terminalChecksCount } from '../services/ledger.service';
 import { notifyTerminalCheckCreated } from '../services/notifications.service';
 import { buildStorageKey, decodeBase64Payload, getStorage } from '../services/storage.service';
 import { router } from '../trpc';
@@ -57,30 +59,53 @@ const toCheck = (row: Awaited<ReturnType<typeof entries>>[number]) => ({
   orderNumber: row.orderNumber,
 });
 
-async function checksInRange(executor: DbExecutor, range: { from: Date; to: Date }) {
+/** Видит суммы и фото чеков тот, кто их пробивает или считает кассу. */
+const seesChecks = (roles: readonly RoleName[]): boolean =>
+  isManagement(roles) || roles.some((role) => ORDER_INTAKE_ROLES.includes(role));
+
+async function checksInRange(executor: DbExecutor, range: { from: Date; to: Date }, limit = 500) {
   const rows = await entries(executor, {
     range,
     methods: ['card'],
     kinds: [...PAYMENT_INCOME_KINDS],
+    limit,
   });
-  return rows.map(toCheck);
+  return rows.filter((row) => !row.opening).map(toCheck);
+}
+
+/** Филиал для чека: основной, любой свой, иначе первый — чек важнее привязки. */
+async function branchFor(executor: DbExecutor, user: { primaryBranchId: number | null; branchIds: readonly number[] }): Promise<number> {
+  const own = user.primaryBranchId ?? user.branchIds[0];
+  if (own !== undefined) return own;
+  const [first] = await executor.select({ id: branches.id }).from(branches).orderBy(asc(branches.id)).limit(1);
+  if (first === undefined) throw new TRPCError({ code: 'BAD_REQUEST', message: 'В системе нет ни одного филиала' });
+  return first.id;
 }
 
 export const terminalChecksRouter = router({
-  /** Пробить чек: фото с терминала, сумма — прочий приход по карте. */
-  create: roleProcedure(...ORDER_INTAKE_ROLES)
+  /**
+   * Пробить чек: фото с терминала и сумма.
+   *
+   * Если приход по карте уже есть (оплата по заказу, чек витрины) — фото
+   * прикрепляется к нему (`paymentId`) его владельцем, хоть установщиком у
+   * двери, и второй приход не рождается. Без `paymentId` — прочий приход по
+   * карте, его заводят только те, кто принимает заказы.
+   */
+  create: protectedProcedure
     .input(
       z.object({
         photo: base64FileSchema,
         amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
         comment: optionalText(200),
+        /** Приход по карте, к которому это фото; пусто — новый приход. */
+        paymentId: idSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const branchId = ctx.user.primaryBranchId;
-      if (branchId === null || branchId === undefined) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите филиал: у вас не задан основной филиал' });
+      if (input.paymentId === undefined && !ctx.user.roles.some((role) => ORDER_INTAKE_ROLES.includes(role))) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Чек без прихода заводит продавец или руководство' });
       }
+      const branchId = await branchFor(ctx.db, ctx.user);
       const stored = await getStorage().upload({
         key: buildStorageKey(['terminal-checks', ctx.user.id.toString()], input.photo.mimeType),
         body: decodeBase64Payload(input.photo, {
@@ -91,15 +116,24 @@ export const terminalChecksRouter = router({
       });
 
       return ctx.db.transaction(async (tx) => {
-        const id = await post(tx, {
-          branchId,
-          kind: PaymentKind.OTHER,
-          method: 'card',
-          amount: parseMoney(input.amount),
-          photoKey: stored.key,
-          actorId: ctx.user.id,
-          comment: input.comment ?? null,
-        });
+        let id: number | null;
+        if (input.paymentId !== undefined) {
+          const attached = await attachPhoto(tx, { paymentId: input.paymentId, actorId: ctx.user.id, photoKey: stored.key });
+          if (!attached) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Приход по карте не найден или не ваш' });
+          }
+          id = input.paymentId;
+        } else {
+          id = await post(tx, {
+            branchId,
+            kind: PaymentKind.OTHER,
+            method: 'card',
+            amount: parseMoney(input.amount),
+            photoKey: stored.key,
+            actorId: ctx.user.id,
+            comment: input.comment ?? null,
+          });
+        }
         const count = await terminalChecksToday(tx, null);
 
         await recordAudit(tx, {
@@ -121,13 +155,14 @@ export const terminalChecksRouter = router({
       });
     }),
 
+  /** Норму дня видят все (она общая), суммы и фото — только продавцы и руководство. */
   today: protectedProcedure.query(async ({ ctx }) => {
     const rows = await checksInRange(ctx.db, dayRange(workshopToday()));
     return {
       target: TERMINAL_CHECKS_DAILY_TARGET,
       count: rows.length,
       remaining: Math.max(0, TERMINAL_CHECKS_DAILY_TARGET - rows.length),
-      rows,
+      rows: seesChecks(ctx.user.roles) ? rows : [],
     };
   }),
 
@@ -138,7 +173,8 @@ export const terminalChecksRouter = router({
         .refine((value) => value.to >= value.from, { message: 'Конец периода раньше начала', path: ['to'] }),
     )
     .query(({ ctx, input }) =>
-      checksInRange(ctx.db, { from: dayRange(input.from).from, to: dayRange(input.to).to }),
+      // Архив — для выгрузки в Excel, потолок щедрый.
+      checksInRange(ctx.db, { from: dayRange(input.from).from, to: dayRange(input.to).to }, 5000),
     ),
 
   byDay: managementProcedure.input(z.object({ day: z.string().date() })).query(async ({ ctx, input }) => {

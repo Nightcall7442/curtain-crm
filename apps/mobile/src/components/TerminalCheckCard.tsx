@@ -1,8 +1,9 @@
-import { formatMoney, parseMoney } from '@curtain-crm/shared';
+import { formatMoney, ORDER_INTAKE_ROLES, parseMoney } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -26,11 +27,16 @@ export function TerminalCheckCard(): ReactElement {
   const { m } = useLocale();
   const utils = trpc.useUtils();
   const today = trpc.terminalChecks.today.useQuery();
+  const { user } = useAuth();
+  // Чек без прихода заводят те, кто принимает заказы; фото к своему приходу — любой.
+  const canCreate = (user?.roles ?? []).some((role) => ORDER_INTAKE_ROLES.includes(role));
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
   const [photo, setPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
+  /** Приход по карте, к которому прикрепляем фото; `null` — чек без прихода. */
+  const [attachTo, setAttachTo] = useState<{ id: number; amount: string } | null>(null);
 
   const pickPhoto = async (fromCamera: boolean): Promise<void> => {
     const permission = fromCamera
@@ -65,6 +71,7 @@ export function TerminalCheckCard(): ReactElement {
       setPhoto(null);
       setAmount('');
       setComment('');
+      setAttachTo(null);
       await utils.terminalChecks.today.invalidate();
     },
     onError(error) {
@@ -96,34 +103,60 @@ export function TerminalCheckCard(): ReactElement {
             ))}
           </View>
 
+          {/*
+            Строка — приход по карте за день. Свой приход без фото (оплата по
+            заказу, чек витрины) — кнопка «прикрепить фото»: чек к нему, а не
+            второй приход. Чужие — только видны.
+          */}
           {data.rows.map((row) => (
             <View key={row.id} style={styles.row}>
               <Text style={styles.rowName} numberOfLines={1}>
                 {row.fullName}
+                {row.orderNumber === null ? '' : ` · ${row.orderNumber}`}
               </Text>
               <Text style={styles.rowAmount}>{formatMoney(parseMoney(row.amount))}</Text>
               <Text style={styles.rowTime}>
                 {new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
               </Text>
+              {row.photoUrl === null && row.userId === user?.id ? (
+                <Pressable
+                  onPress={() => {
+                    setAttachTo({ id: row.id, amount: String(parseMoney(row.amount) / 100) });
+                    setAmount(String(parseMoney(row.amount) / 100));
+                    setOpen(true);
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={m('terminal.attachPhoto')}
+                >
+                  <Icon name="camera" size={18} color={colors.accent} />
+                </Pressable>
+              ) : (
+                <Icon name={row.photoUrl === null ? 'eyeOff' : 'completed'} size={16} color={colors.textMuted} />
+              )}
             </View>
           ))}
 
-          <Pressable
-            onPress={() => {
-              setOpen(true);
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
-          >
-            <Icon name="camera" size={18} color={colors.accent} />
-            <Text style={styles.buttonText}>{m('terminal.create')}</Text>
-          </Pressable>
+          {canCreate && (
+            <Pressable
+              onPress={() => {
+                setAttachTo(null);
+                setAmount('');
+                setOpen(true);
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
+            >
+              <Icon name="camera" size={18} color={colors.accent} />
+              <Text style={styles.buttonText}>{m('terminal.create')}</Text>
+            </Pressable>
+          )}
         </>
       )}
 
       <BottomSheet
         visible={open}
-        title={m('terminal.create')}
+        title={attachTo === null ? m('terminal.create') : m('terminal.attachPhoto')}
         onClose={() => {
           setOpen(false);
         }}
@@ -157,8 +190,8 @@ export function TerminalCheckCard(): ReactElement {
             </Pressable>
           </View>
         </Field>
-        <Field label={m('terminal.amount')} required>
-          <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
+        <Field label={m('terminal.amount')} required hint={attachTo === null ? undefined : m('terminal.attachHint')}>
+          <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" editable={attachTo === null} />
         </Field>
         <Field label={m('terminal.comment')}>
           <Input value={comment} onChangeText={setComment} placeholder={m('terminal.commentPlaceholder')} />
@@ -170,6 +203,7 @@ export function TerminalCheckCard(): ReactElement {
               photo: { mimeType: photo.mimeType, content: photo.base64 },
               amount: toMajor(amount),
               comment: comment.trim() === '' ? null : comment.trim(),
+              ...(attachTo === null ? {} : { paymentId: attachTo.id }),
             });
           }}
           disabled={create.isPending || photo === null || toMajor(amount) <= 0}
