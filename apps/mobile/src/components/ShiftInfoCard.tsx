@@ -1,3 +1,4 @@
+import { formatTime } from '@curtain-crm/shared';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
@@ -38,10 +39,7 @@ export function ShiftInfoCard({
     return m('shift.hoursMinutes', { h: hours, m: rest });
   })();
 
-  const timeLabel =
-    startedAt === null
-      ? '—'
-      : startedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const timeLabel = startedAt === null ? '—' : formatTime(startedAt);
 
   const dateLabel =
     startedAt === null

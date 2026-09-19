@@ -18,6 +18,17 @@
  * поэтому и часовому поясу нечего сдвигать.
  */
 
+import { WORKSHOP_TIME_ZONE } from '../constants/calendar';
+
+/**
+ * Локаль числовых дат и времени: `20.09.2026`, `14:05`.
+ *
+ * Так пишут в мастерской на обоих языках; локаль устройства тут ни при чём —
+ * узбекская дала бы `20/09/2026` рядом с русской `20.09.2026` на соседних
+ * телефонах.
+ */
+const NUMERIC_LOCALE = 'ru-RU';
+
 /**
  * Сегодняшняя дата в формате `YYYY-MM-DD` по ЛОКАЛЬНОМУ времени устройства.
  *
@@ -89,4 +100,47 @@ export function yesterdayIso(now: Date = new Date()): string {
   const shifted = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   return todayIso(shifted);
+}
+
+/** Сегодняшний день по времени мастерской: `{ year, month, day }`. */
+export function workshopToday(now: Date = new Date()): {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+} {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: WORKSHOP_TIME_ZONE,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(now);
+  const value = (type: string): number =>
+    Number.parseInt(parts.find((part) => part.type === type)?.value ?? '0', 10);
+
+  return { year: value('year'), month: value('month'), day: value('day') };
+}
+
+/** Время момента: `14:05`. Строка — как отдаёт сервер (`createdAt`), число — `Date.now()`. */
+export function formatTime(at: Date | string | number): string {
+  return new Date(at).toLocaleTimeString(NUMERIC_LOCALE, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** День момента: `20.09.2026`. Для календарной строки `YYYY-MM-DD` — `formatIsoDate`. */
+export function formatDate(at: Date | string | number): string {
+  return new Date(at).toLocaleDateString(NUMERIC_LOCALE, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+/** Момент целиком: `20.09.2026, 14:05`; с `withYear: false` — `20.09, 14:05`. */
+export function formatDateTime(at: Date | string | number, withYear = true): string {
+  return new Date(at).toLocaleString(NUMERIC_LOCALE, {
+    day: '2-digit',
+    month: '2-digit',
+    ...(withYear ? { year: 'numeric' } : {}),
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

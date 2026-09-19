@@ -1,22 +1,23 @@
 'use client';
 
 import {
+  type Department,
   DEPARTMENTS,
   EMPLOYMENT_TYPE_LABELS_RU,
   EMPLOYMENT_TYPES,
+  type EmploymentType,
   formatMoney,
   formatMoneyShort,
   formatPhone,
   formatTenure,
+  formatTime,
   parseMoney,
   PresenceStatus,
-  ROLES,
-  ROLE_LABELS_RU,
-  TENURE_BUCKETS,
-  type Department,
-  type EmploymentType,
   type PresenceStatus as PresenceStatusName,
   type Role,
+  ROLE_LABELS_RU,
+  ROLES,
+  TENURE_BUCKETS,
 } from '@curtain-crm/shared';
 import { Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
@@ -52,7 +53,7 @@ import { formatDate, formatPercent } from '@/lib/utils';
  * из фактических смен.
  */
 function formatTimeOfDay(value: Date | string): string {
-  return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return formatTime(value);
 }
 
 export default function EmployeesPage(): ReactElement {
@@ -74,11 +75,7 @@ function EmployeesFromUrl(): ReactElement {
   return <EmployeesInner initialSearch={search ?? ''} />;
 }
 
-function EmployeesInner({
-  initialSearch = '',
-}: {
-  readonly initialSearch?: string;
-}): ReactElement {
+function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: string }): ReactElement {
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
 
@@ -155,8 +152,7 @@ function EmployeesInner({
   const attendanceRate =
     attendance.data === undefined || attendance.data.days.length === 0
       ? null
-      : attendance.data.days.reduce((sum, day) => sum + day.rate, 0) /
-        attendance.data.days.length;
+      : attendance.data.days.reduce((sum, day) => sum + day.rate, 0) / attendance.data.days.length;
 
   return (
     <div className="space-y-6">
@@ -170,46 +166,46 @@ function EmployeesInner({
 
       {/* --- Показатели ---------------------------------------------------- */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        {stats.isLoading || summary === undefined
-          ? Array.from({ length: 6 }, (_unused, index) => (
-              <Skeleton key={index} className="h-[104px]" />
-            ))
-          : (
-              <>
-                <StatCard
-                  label="Всего сотрудников"
-                  value={summary.total.toString()}
-                  caption={`Активных: ${summary.active.toString()} · Неактивных: ${summary.inactive.toString()}`}
-                />
-                <StatCard
-                  label="На работе сегодня"
-                  value={summary.atWorkToday.toString()}
-                  caption={`Из ${summary.active.toString()} активных`}
-                />
-                <StatCard
-                  label="Отсутствуют сегодня"
-                  value={summary.absentToday.toString()}
-                  caption="Смена не открыта"
-                />
-                <StatCard
-                  label="Приняты в этом месяце"
-                  value={summary.hiredThisMonth.toString()}
-                  caption={`Уволены: ${summary.firedThisMonth.toString()}`}
-                />
-                <StatCard
-                  // Компактно, точная сумма — в подписи: плитка — сводка,
-                  // предметная точность живёт в ведомости зарплат.
-                  label="Фонд зарплаты (месяц)"
-                  value={formatMoneyShort(payrollFund)}
-                  caption={`Точно: ${formatMoney(payrollFund)} · выплачено: ${formatMoneyShort(payrollPaid)}`}
-                />
-                <StatCard
-                  label="Средняя З/П (месяц)"
-                  value={formatMoneyShort(averageSalary)}
-                  caption="На активного сотрудника"
-                />
-              </>
-            )}
+        {stats.isLoading || summary === undefined ? (
+          Array.from({ length: 6 }, (_unused, index) => (
+            <Skeleton key={index} className="h-[104px]" />
+          ))
+        ) : (
+          <>
+            <StatCard
+              label="Всего сотрудников"
+              value={summary.total.toString()}
+              caption={`Активных: ${summary.active.toString()} · Неактивных: ${summary.inactive.toString()}`}
+            />
+            <StatCard
+              label="На работе сегодня"
+              value={summary.atWorkToday.toString()}
+              caption={`Из ${summary.active.toString()} активных`}
+            />
+            <StatCard
+              label="Отсутствуют сегодня"
+              value={summary.absentToday.toString()}
+              caption="Смена не открыта"
+            />
+            <StatCard
+              label="Приняты в этом месяце"
+              value={summary.hiredThisMonth.toString()}
+              caption={`Уволены: ${summary.firedThisMonth.toString()}`}
+            />
+            <StatCard
+              // Компактно, точная сумма — в подписи: плитка — сводка,
+              // предметная точность живёт в ведомости зарплат.
+              label="Фонд зарплаты (месяц)"
+              value={formatMoneyShort(payrollFund)}
+              caption={`Точно: ${formatMoney(payrollFund)} · выплачено: ${formatMoneyShort(payrollPaid)}`}
+            />
+            <StatCard
+              label="Средняя З/П (месяц)"
+              value={formatMoneyShort(averageSalary)}
+              caption="На активного сотрудника"
+            />
+          </>
+        )}
       </section>
 
       {/*
@@ -228,8 +224,7 @@ function EmployeesInner({
                 const expectedReturn = new Date(started.getTime() + entry.plannedMinutes * 60_000);
                 const overdue = Date.now() > expectedReturn.getTime();
                 const overdueMinutes = Math.floor((Date.now() - expectedReturn.getTime()) / 60_000);
-                const timeLabel = (value: Date): string =>
-                  value.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                const timeLabel = (value: Date): string => formatTime(value);
 
                 return (
                   <li key={entry.id} className="flex items-center justify-between gap-3 py-2">
@@ -448,7 +443,9 @@ function EmployeesInner({
                 <span className="flex flex-col items-center gap-0.5">
                   <PresenceBadge status={presenceOf(row.id)} />
                   {presenceTime(row.id) !== null && (
-                    <span className="text-footnote tabular-nums text-muted">{presenceTime(row.id)}</span>
+                    <span className="text-footnote tabular-nums text-muted">
+                      {presenceTime(row.id)}
+                    </span>
                   )}
                 </span>
               ),
@@ -651,8 +648,8 @@ function EmployeesInner({
               <>
                 <Gauge percent={attendanceRate} label="Средняя посещаемость" />
                 <p className="mt-3 text-center text-footnote leading-relaxed text-muted">
-                  Считается по фактическим сменам. Показатели качества и
-                  своевременности не выводятся: система их не измеряет.
+                  Считается по фактическим сменам. Показатели качества и своевременности не
+                  выводятся: система их не измеряет.
                 </p>
               </>
             )}

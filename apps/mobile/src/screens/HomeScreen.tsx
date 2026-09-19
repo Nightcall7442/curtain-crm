@@ -1,6 +1,7 @@
 import {
   formatIsoDateShort,
   formatMoney,
+  formatTime,
   isActiveStatus,
   isOverdueDate,
   ORDER_STATUS_LABELS,
@@ -24,7 +25,16 @@ import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, radius, spacing, tabBarSpace, typography, opacity, fonts } from '../theme';
+import {
+  colors,
+  hairline,
+  radius,
+  spacing,
+  tabBarSpace,
+  typography,
+  opacity,
+  fonts,
+} from '../theme';
 
 /**
  * Главный экран: что нужно сотруднику в первые пять секунд после запуска.
@@ -88,10 +98,7 @@ export function HomeScreen(): ReactElement {
    * Здесь этого достаточно: показываются пять карточек, а не число. Плитка
    * же берёт `overdueCount`, потому что цифра обязана быть верной.
    */
-  const overdue = useMemo(
-    () => active.filter((order) => isOverdueDate(order.deadline)),
-    [active],
-  );
+  const overdue = useMemo(() => active.filter((order) => isOverdueDate(order.deadline)), [active]);
 
   /** Ближайшие по сроку — то, чем стоит заняться сегодня. */
   const upcoming = useMemo(
@@ -135,7 +142,12 @@ export function HomeScreen(): ReactElement {
         <View style={styles.heroRow}>
           <View style={styles.heroText}>
             {/* Знак мастерской латунью — как на обложке сайта: приложение и лендинг узнаются как одна вещь. */}
-            <Image source={LOGO} style={styles.heroLogo} resizeMode="contain" accessibilityIgnoresInvertColors />
+            <Image
+              source={LOGO}
+              style={styles.heroLogo}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
             <Text style={styles.heroGreeting}>{m(greeting())}</Text>
             <Text style={styles.heroName} numberOfLines={1}>
               {`${firstName(user?.fullName ?? '') ?? m('home.colleague')}!`}
@@ -210,32 +222,32 @@ export function HomeScreen(): ReactElement {
       */}
       {/* Руководство смен не открывает — вместо «текущей смены» ему касса дня. */}
       {!isManager && (
-      <View style={styles.overlap}>
-        <Card>
-          <CardTitle title={m('home.currentShift')} />
+        <View style={styles.overlap}>
+          <Card>
+            <CardTitle title={m('home.currentShift')} />
 
-          {/*
+            {/*
             Общая плашка, а не своя.
             Здесь стояла самодельная: прямоугольная вместо таблетки и с другим
             весом шрифта. Состояние смены то же самое, что на экране отметки и
             в карточке профиля, где оно показано через `Pill`, — и выглядеть
             оно обязано одинаково во всех трёх местах.
           */}
-          <Pill
-            text={isOnShift ? m('home.shiftOpen') : m('home.shiftClosed')}
-            tone={isOnShift ? 'positive' : 'warning'}
-          />
+            <Pill
+              text={isOnShift ? m('home.shiftOpen') : m('home.shiftClosed')}
+              tone={isOnShift ? 'positive' : 'warning'}
+            />
 
-          {shift.data !== null && shift.data !== undefined ? (
-            <View style={styles.shiftDetails}>
-              <Row label={m('home.branch')} value={shift.data.branchName} />
-              <Row label={m('home.shiftStart')} value={timeOf(shift.data.startedAt)} />
-            </View>
-          ) : (
-            <Text style={styles.shiftHint}>{m('home.shiftHint')}</Text>
-          )}
-        </Card>
-      </View>
+            {shift.data !== null && shift.data !== undefined ? (
+              <View style={styles.shiftDetails}>
+                <Row label={m('home.branch')} value={shift.data.branchName} />
+                <Row label={m('home.shiftStart')} value={timeOf(shift.data.startedAt)} />
+              </View>
+            ) : (
+              <Text style={styles.shiftHint}>{m('home.shiftHint')}</Text>
+            )}
+          </Card>
+        </View>
       )}
 
       {/*
@@ -315,10 +327,7 @@ export function HomeScreen(): ReactElement {
             }
           />
           {upcoming.length === 0 ? (
-            <Empty
-              message={m('home.noActiveOrders')}
-              hint={m('home.noActiveOrdersHint')}
-            />
+            <Empty message={m('home.noActiveOrders')} hint={m('home.noActiveOrdersHint')} />
           ) : (
             <View>
               {upcoming.map((order) => (
@@ -329,9 +338,7 @@ export function HomeScreen(): ReactElement {
                   <Text style={styles.upcomingStatus} numberOfLines={1}>
                     {t(ORDER_STATUS_LABELS, order.status)}
                   </Text>
-                  <Text style={styles.upcomingDeadline}>
-                    {formatIsoDateShort(order.deadline)}
-                  </Text>
+                  <Text style={styles.upcomingDeadline}>{formatIsoDateShort(order.deadline)}</Text>
                 </View>
               ))}
             </View>
@@ -411,7 +418,10 @@ function greeting(): MessageKey {
  * равно единственное, что есть.
  */
 function firstName(fullName: string): string | null {
-  const parts = fullName.trim().split(/\s+/).filter((part) => part.length > 0);
+  const parts = fullName
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
 
   // Пустое ФИО в базе технически возможно, а приветствие «Доброе утро, !»
   // выглядит как сбой. `null` — и экран подставит нейтральное обращение.
@@ -433,7 +443,7 @@ function count(value: number | undefined, isError: boolean): string {
 
 /** Время в формате `08:00`. */
 function timeOf(value: string | Date): string {
-  return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return formatTime(value);
 }
 
 /**
@@ -443,7 +453,10 @@ function timeOf(value: string | Date): string {
  * сломавшаяся картинка. Инициалы — честная замена.
  */
 function initials(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter((part) => part.length > 0);
+  const parts = fullName
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
   const letters = parts.slice(0, 2).map((part) => (part[0] ?? '').toUpperCase());
 
   return letters.join('') === '' ? '—' : letters.join('');
@@ -516,8 +529,7 @@ function WorkshopSummary(): ReactElement {
       <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
       {(onShift.data ?? []).map((row) => {
-        const clock = (value: Date | string): string =>
-          new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const clock = (value: Date | string): string => formatTime(value);
         const left = row.endedAt !== null;
         return (
           <View key={`${row.userId.toString()}-${String(row.startedAt)}`} style={styles.onShiftRow}>
@@ -572,7 +584,9 @@ function CashTodayCard(): ReactElement | null {
             hitSlop={8}
           >
             {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>{m('rating.more')}</Text>
+              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>
+                {m('rating.more')}
+              </Text>
             )}
           </Pressable>
         }
@@ -622,14 +636,18 @@ function TerminalTodayCard(): ReactElement | null {
             hitSlop={8}
           >
             {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>{m('rating.more')}</Text>
+              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>
+                {m('rating.more')}
+              </Text>
             )}
           </Pressable>
         }
       />
       <Row
         label={m('terminal.progress', { n: count, target })}
-        value={count >= target ? m('terminal.done') : m('terminal.remaining', { n: target - count })}
+        value={
+          count >= target ? m('terminal.done') : m('terminal.remaining', { n: target - count })
+        }
         valueColor={count >= target ? colors.positive : colors.warning}
       />
       {rows.length === 0 ? (
@@ -641,9 +659,7 @@ function TerminalTodayCard(): ReactElement | null {
               {row.fullName}
             </Text>
             <Text style={styles.terminalAmount}>{formatMoney(parseMoney(row.amount))}</Text>
-            <Text style={styles.terminalTime}>
-              {new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-            </Text>
+            <Text style={styles.terminalTime}>{formatTime(row.createdAt)}</Text>
           </View>
         ))
       )}
@@ -798,12 +814,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
     color: colors.headerText,
     marginTop: 2,
-  },
-  heroHint: {
-    ...typography.caption,
-    color: colors.headerText,
-    opacity: opacity.pressed,
-    marginTop: spacing.xs,
   },
   avatar: {
     width: 44,

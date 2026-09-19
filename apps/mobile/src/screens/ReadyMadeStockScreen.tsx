@@ -1,11 +1,12 @@
 import {
   CatalogKind,
   formatMoney,
+  inputToMajor,
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
   OrderItemKind,
-  parseMoney,
   type OrderItemKind as OrderItemKindName,
+  parseMoney,
 } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
@@ -53,7 +54,11 @@ interface FormState {
   readonly price: string;
   readonly quantity: string;
   readonly comment: string;
-  readonly photo: { readonly uri: string; readonly base64: string; readonly mimeType: string } | null;
+  readonly photo: {
+    readonly uri: string;
+    readonly base64: string;
+    readonly mimeType: string;
+  } | null;
   /** Остальные шторы комплекта — дверь к окну: свой вид, размер, цена, штук. */
   readonly mates: readonly MateDraft[];
 }
@@ -289,9 +294,7 @@ export function ReadyMadeStockScreen(): ReactElement {
           style={({ pressed }) => [styles.add, pressed ? styles.pressed : null]}
         >
           <Icon name="assigned" size={18} color={colors.onAccent} />
-          <Text style={styles.addText}>
-            {adding ? m('stock.collapse') : m('stock.add')}
-          </Text>
+          <Text style={styles.addText}>{adding ? m('stock.collapse') : m('stock.add')}</Text>
         </Pressable>
 
         {adding && (
@@ -305,7 +308,10 @@ export function ReadyMadeStockScreen(): ReactElement {
                 onChange={(kind) => {
                   patch({ kind });
                 }}
-                options={ORDER_ITEM_KINDS.map((value) => ({ value, label: t(ORDER_ITEM_KIND_LABELS, value) }))}
+                options={ORDER_ITEM_KINDS.map((value) => ({
+                  value,
+                  label: t(ORDER_ITEM_KIND_LABELS, value),
+                }))}
               />
             </Field>
 
@@ -419,7 +425,9 @@ export function ReadyMadeStockScreen(): ReactElement {
                     hitSlop={8}
                   >
                     {({ pressed }) => (
-                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>{m('create.remove')}</Text>
+                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
+                        {m('create.remove')}
+                      </Text>
                     )}
                   </Pressable>
                 </View>
@@ -427,9 +435,16 @@ export function ReadyMadeStockScreen(): ReactElement {
                   <ChipSelect
                     value={mate.kind}
                     onChange={(kind) => {
-                      patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, kind } : entry)) });
+                      patch({
+                        mates: form.mates.map((entry) =>
+                          entry.id === mate.id ? { ...entry, kind } : entry,
+                        ),
+                      });
                     }}
-                    options={ORDER_ITEM_KINDS.map((value) => ({ value, label: t(ORDER_ITEM_KIND_LABELS, value) }))}
+                    options={ORDER_ITEM_KINDS.map((value) => ({
+                      value,
+                      label: t(ORDER_ITEM_KIND_LABELS, value),
+                    }))}
                   />
                 </Field>
                 <View style={styles.row}>
@@ -438,7 +453,11 @@ export function ReadyMadeStockScreen(): ReactElement {
                       <Input
                         value={mate.widthCm}
                         onChangeText={(widthCm) => {
-                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, widthCm } : entry)) });
+                          patch({
+                            mates: form.mates.map((entry) =>
+                              entry.id === mate.id ? { ...entry, widthCm } : entry,
+                            ),
+                          });
                         }}
                         keyboardType="decimal-pad"
                         placeholder="150"
@@ -450,7 +469,11 @@ export function ReadyMadeStockScreen(): ReactElement {
                       <Input
                         value={mate.heightCm}
                         onChangeText={(heightCm) => {
-                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, heightCm } : entry)) });
+                          patch({
+                            mates: form.mates.map((entry) =>
+                              entry.id === mate.id ? { ...entry, heightCm } : entry,
+                            ),
+                          });
                         }}
                         keyboardType="decimal-pad"
                         placeholder="200"
@@ -464,7 +487,11 @@ export function ReadyMadeStockScreen(): ReactElement {
                       <MoneyInput
                         value={mate.price}
                         onChangeText={(price) => {
-                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, price } : entry)) });
+                          patch({
+                            mates: form.mates.map((entry) =>
+                              entry.id === mate.id ? { ...entry, price } : entry,
+                            ),
+                          });
                         }}
                         placeholder="300 000"
                       />
@@ -475,7 +502,11 @@ export function ReadyMadeStockScreen(): ReactElement {
                       <Input
                         value={mate.quantity}
                         onChangeText={(quantity) => {
-                          patch({ mates: form.mates.map((entry) => (entry.id === mate.id ? { ...entry, quantity } : entry)) });
+                          patch({
+                            mates: form.mates.map((entry) =>
+                              entry.id === mate.id ? { ...entry, quantity } : entry,
+                            ),
+                          });
                         }}
                         keyboardType="number-pad"
                         placeholder="1"
@@ -492,7 +523,10 @@ export function ReadyMadeStockScreen(): ReactElement {
                     ...form.mates,
                     {
                       id: form.mates.reduce((max, entry) => Math.max(max, entry.id), 0) + 1,
-                      kind: form.kind === OrderItemKind.DOOR ? OrderItemKind.WINDOW : OrderItemKind.DOOR,
+                      kind:
+                        form.kind === OrderItemKind.DOOR
+                          ? OrderItemKind.WINDOW
+                          : OrderItemKind.DOOR,
                       widthCm: '',
                       heightCm: '',
                       price: '',
@@ -556,10 +590,7 @@ export function ReadyMadeStockScreen(): ReactElement {
           {items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
-            <Empty
-              message={m('stock.none')}
-              hint={m('stock.noneHint')}
-            />
+            <Empty message={m('stock.none')} hint={m('stock.noneHint')} />
           ) : (
             items.data.map((item, index) => (
               <View key={item.id} style={styles.item}>
@@ -591,7 +622,9 @@ export function ReadyMadeStockScreen(): ReactElement {
                 <View style={styles.itemHead}>
                   {item.photoUrl === null ? (
                     <View style={[styles.thumb, styles.thumbEmpty]}>
-                      <Text style={styles.thumbLetter}>{item.model.trim().charAt(0).toUpperCase()}</Text>
+                      <Text style={styles.thumbLetter}>
+                        {item.model.trim().charAt(0).toUpperCase()}
+                      </Text>
                     </View>
                   ) : (
                     <Image source={{ uri: item.photoUrl }} style={styles.thumb} />
@@ -618,53 +651,59 @@ export function ReadyMadeStockScreen(): ReactElement {
 
                   <View style={styles.itemNumbers}>
                     <Text style={styles.itemPrice}>{formatMoney(parseMoney(item.price))}</Text>
-                    <Text style={styles.itemQuantity}>{m('stock.pcsOnly', { n: item.quantity })}</Text>
+                    <Text style={styles.itemQuantity}>
+                      {m('stock.pcsOnly', { n: item.quantity })}
+                    </Text>
                   </View>
                 </View>
 
                 {/* Остаток и ценник правятся в шторке: строка внизу списка уезжала под клавиатуру. */}
                 <View style={styles.actionsRow}>
-                    {item.quantity > 0 && (
-                      <Pressable
-                        onPress={() => {
-                          navigation.navigate('SellReadyMade', { readyMadeItemId: item.id });
-                        }}
-                        accessibilityRole="button"
-                        hitSlop={8}
-                      >
-                        {({ pressed }) => (
-                          <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>{m('stock.sell')}</Text>
-                        )}
-                      </Pressable>
+                  {item.quantity > 0 && (
+                    <Pressable
+                      onPress={() => {
+                        navigation.navigate('SellReadyMade', { readyMadeItemId: item.id });
+                      }}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                    >
+                      {({ pressed }) => (
+                        <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
+                          {m('stock.sell')}
+                        </Text>
+                      )}
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={() => {
+                      setCounting(item.id);
+                      setCountValue(item.quantity.toString());
+                    }}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                  >
+                    {({ pressed }) => (
+                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
+                        {m('stock.recount')}
+                      </Text>
                     )}
-                    <Pressable
-                      onPress={() => {
-                        setCounting(item.id);
-                        setCountValue(item.quantity.toString());
-                      }}
-                      accessibilityRole="button"
-                      hitSlop={8}
-                    >
-                      {({ pressed }) => (
-                        <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                          {m('stock.recount')}
-                        </Text>
-                      )}
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
-                        setPricing(item.id);
-                        setPriceValue(parseMoney(item.price) > 0 ? (parseMoney(item.price) / 100).toString() : '');
-                      }}
-                      accessibilityRole="button"
-                      hitSlop={8}
-                    >
-                      {({ pressed }) => (
-                        <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                          {parseMoney(item.price) > 0 ? m('stock.changePrice') : m('stock.setPrice')}
-                        </Text>
-                      )}
-                    </Pressable>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setPricing(item.id);
+                      setPriceValue(
+                        parseMoney(item.price) > 0 ? (parseMoney(item.price) / 100).toString() : '',
+                      );
+                    }}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                  >
+                    {({ pressed }) => (
+                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
+                        {parseMoney(item.price) > 0 ? m('stock.changePrice') : m('stock.setPrice')}
+                      </Text>
+                    )}
+                  </Pressable>
                 </View>
               </View>
             ))
@@ -679,13 +718,22 @@ export function ReadyMadeStockScreen(): ReactElement {
           }}
         >
           <Field label={m('stock.quantity')}>
-            <Input value={countValue} onChangeText={setCountValue} keyboardType="number-pad" placeholder="0" autoFocus />
+            <Input
+              value={countValue}
+              onChangeText={setCountValue}
+              keyboardType="number-pad"
+              placeholder="0"
+              autoFocus
+            />
           </Field>
           <Pressable
             disabled={setQuantity.isPending || counting === null}
             onPress={() => {
               if (counting === null) return;
-              setQuantity.mutate({ id: counting, quantity: Math.max(0, Number.parseInt(countValue, 10) || 0) });
+              setQuantity.mutate({
+                id: counting,
+                quantity: Math.max(0, Number.parseInt(countValue, 10) || 0),
+              });
             }}
             accessibilityRole="button"
             style={({ pressed }) => [styles.sheetSave, pressed ? styles.pressed : null]}
@@ -705,16 +753,16 @@ export function ReadyMadeStockScreen(): ReactElement {
             <MoneyInput value={priceValue} onChangeText={setPriceValue} placeholder="0" autoFocus />
           </Field>
           <Pressable
-            disabled={setPrice.isPending || pricing === null || toMoney(priceValue) <= 0}
+            disabled={setPrice.isPending || pricing === null || inputToMajor(priceValue) <= 0}
             onPress={() => {
               if (pricing === null) return;
-              setPrice.mutate({ id: pricing, price: toMoney(priceValue) });
+              setPrice.mutate({ id: pricing, price: inputToMajor(priceValue) });
             }}
             accessibilityRole="button"
             style={({ pressed }) => [
               styles.sheetSave,
               pressed ? styles.pressed : null,
-              toMoney(priceValue) <= 0 ? styles.disabled : null,
+              inputToMajor(priceValue) <= 0 ? styles.disabled : null,
             ]}
           >
             <Text style={styles.sheetSaveText}>{m('emp.save')}</Text>
@@ -723,11 +771,6 @@ export function ReadyMadeStockScreen(): ReactElement {
       </ScrollView>
     </KeyboardAvoidingView>
   );
-}
-
-function toMoney(value: string): number {
-  const parsed = Number.parseFloat(value.replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 const styles = StyleSheet.create({

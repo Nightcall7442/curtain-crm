@@ -3,13 +3,14 @@
 import {
   formatIsoDateShort,
   formatMoney,
+  formatTime,
   parseMoney,
   PAYMENT_KIND_LABELS_RU,
   PAYMENT_METHOD_LABELS_RU,
   PAYMENT_METHODS,
   PaymentKind,
-  todayIso,
   type PaymentKind as PaymentKindName,
+  todayIso,
 } from '@curtain-crm/shared';
 import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
@@ -142,7 +143,9 @@ export default function CashPage(): ReactElement {
             ))}
             <div className="flex justify-between sm:block">
               <span className="text-muted">Total</span>
-              <div className="text-subhead font-semibold tabular-nums">{formatMoney(data.total)}</div>
+              <div className="text-subhead font-semibold tabular-nums">
+                {formatMoney(data.total)}
+              </div>
             </div>
           </div>
         )}
@@ -161,11 +164,7 @@ export default function CashPage(): ReactElement {
               {
                 key: 'when',
                 header: 'Когда',
-                render: (row) =>
-                  new Date(row.createdAt).toLocaleTimeString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
+                render: (row) => formatTime(row.createdAt),
               },
               {
                 key: 'amount',
@@ -242,8 +241,7 @@ export default function CashPage(): ReactElement {
             {
               key: 'when',
               header: 'Когда',
-              render: (row) =>
-                new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+              render: (row) => formatTime(row.createdAt),
             },
             {
               key: 'amount',
@@ -259,19 +257,19 @@ export default function CashPage(): ReactElement {
             {
               key: 'photo',
               header: 'Фото',
-            render: (row) =>
-              row.photoUrl === null ? (
-                <span className="text-muted">—</span>
-              ) : (
-                <a
-                  href={row.photoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-accent underline-offset-2 hover:underline"
-                >
-                  Открыть
-                </a>
-              ),
+              render: (row) =>
+                row.photoUrl === null ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <a
+                    href={row.photoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent underline-offset-2 hover:underline"
+                  >
+                    Открыть
+                  </a>
+                ),
             },
           ]}
         />
@@ -288,11 +286,7 @@ export default function CashPage(): ReactElement {
             {
               key: 'time',
               header: 'Время',
-              render: (row) =>
-                new Date(row.receivedAt).toLocaleTimeString('ru-RU', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }),
+              render: (row) => formatTime(row.receivedAt),
             },
             {
               key: 'kind',
@@ -324,7 +318,9 @@ export default function CashPage(): ReactElement {
               header: 'Сумма',
               align: 'right',
               // Книга — не только приход: выплаты и возвраты со знаком, инкассация — перекладывание.
-              render: (row) => <Money value={parseMoney(row.amount)} strong sign={signOf(row.kind)} />,
+              render: (row) => (
+                <Money value={parseMoney(row.amount)} strong sign={signOf(row.kind)} />
+              ),
             },
           ]}
         />

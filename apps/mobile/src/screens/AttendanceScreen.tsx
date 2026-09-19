@@ -1,4 +1,4 @@
-import { SHIFT_ACTIVITY_LABELS, formatIsoDateShort } from '@curtain-crm/shared';
+import { formatIsoDateShort, formatTime, SHIFT_ACTIVITY_LABELS } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -87,16 +87,27 @@ export function AttendanceScreen(): ReactElement {
                   : elapsed(row.startedAt, m);
 
             return (
-              <View key={`${row.userId.toString()}-${row.startedAt.toISOString()}`} style={styles.row}>
+              <View
+                key={`${row.userId.toString()}-${row.startedAt.toISOString()}`}
+                style={styles.row}
+              >
                 <View style={styles.text}>
                   <Text style={styles.name} numberOfLines={1}>
                     {row.fullName}
                   </Text>
-                  <Text style={styles.meta}>{m('attendance.sinceDoing', { start: clock(row.startedAt), doing })}</Text>
+                  <Text style={styles.meta}>
+                    {m('attendance.sinceDoing', { start: clock(row.startedAt), doing })}
+                  </Text>
                 </View>
 
                 <Pill
-                  text={row.onTrip ? m('attendance.trip') : row.onBreak ? m('attendance.break') : m('attendance.working')}
+                  text={
+                    row.onTrip
+                      ? m('attendance.trip')
+                      : row.onBreak
+                        ? m('attendance.break')
+                        : m('attendance.working')
+                  }
                   tone={row.onTrip ? 'info' : row.onBreak ? 'warning' : 'positive'}
                 />
               </View>
@@ -126,7 +137,10 @@ export function AttendanceScreen(): ReactElement {
                   {order.installAddress ?? m('attendance.noAddress')}
                 </Text>
               </View>
-              <Text style={order.installerName === null ? styles.unassigned : styles.installer} numberOfLines={2}>
+              <Text
+                style={order.installerName === null ? styles.unassigned : styles.installer}
+                numberOfLines={2}
+              >
                 {order.installerName ?? m('attendance.noInstaller')}
               </Text>
             </View>
@@ -143,7 +157,10 @@ export function AttendanceScreen(): ReactElement {
           <Empty message={m('attendance.nobodyClosed')} />
         ) : (
           finished.map((row) => (
-            <View key={`${row.userId.toString()}-${row.startedAt.toISOString()}`} style={styles.row}>
+            <View
+              key={`${row.userId.toString()}-${row.startedAt.toISOString()}`}
+              style={styles.row}
+            >
               <View style={styles.text}>
                 <Text style={styles.name} numberOfLines={1}>
                   {row.fullName}
@@ -169,8 +186,7 @@ export function AttendanceScreen(): ReactElement {
   );
 }
 
-const clock = (value: Date): string =>
-  value.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+const clock = (value: Date): string => formatTime(value);
 
 /** Сколько прошло с начала смены — в часах и минутах. */
 function elapsed(startedAt: Date, m: Translate): string {

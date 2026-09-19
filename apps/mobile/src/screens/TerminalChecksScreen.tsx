@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney, todayIso } from '@curtain-crm/shared';
+import { formatMoney, formatTime, parseMoney, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -29,7 +29,9 @@ export function TerminalChecksScreen(): ReactElement {
           icon="paid"
           action={
             query.data === undefined ? undefined : (
-              <Text style={styles.total}>{m('terminal.progress', { n: query.data.count, target: query.data.target })}</Text>
+              <Text style={styles.total}>
+                {m('terminal.progress', { n: query.data.count, target: query.data.target })}
+              </Text>
             )
           }
         />
@@ -53,14 +55,19 @@ export function TerminalChecksScreen(): ReactElement {
               <View style={styles.headText}>
                 <Text style={styles.name}>{row.fullName}</Text>
                 <Text style={styles.time}>
-                  {new Date(row.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                  {formatTime(row.createdAt)}
                   {row.comment === null ? '' : ` · ${row.comment}`}
                 </Text>
               </View>
               <Text style={styles.amount}>{formatMoney(parseMoney(row.amount))}</Text>
             </View>
             {row.photoUrl !== null && (
-              <Image source={{ uri: row.photoUrl }} style={styles.photo} resizeMode="contain" accessibilityLabel={m('terminal.photo')} />
+              <Image
+                source={{ uri: row.photoUrl }}
+                style={styles.photo}
+                resizeMode="contain"
+                accessibilityLabel={m('terminal.photo')}
+              />
             )}
           </Card>
         ))

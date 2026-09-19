@@ -6,13 +6,14 @@ import {
   formatIsoDateShort,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle, Empty, Skeleton } from './Card';
 import { Field, Input } from './Field';
 
@@ -24,7 +25,11 @@ import { Field, Input } from './Field';
  * работает в обе стороны: по любой записи человек может дать объяснение —
  * его увидит руководство рядом с фактом, до разговора, а не во время.
  */
-export function DisciplineCard({ period }: { readonly period: { year: number; month: number } }): ReactElement {
+export function DisciplineCard({
+  period,
+}: {
+  readonly period: { year: number; month: number };
+}): ReactElement {
   const { m, t } = useLocale();
   const utils = trpc.useUtils();
   const query = trpc.discipline.my.useQuery(period);
@@ -45,7 +50,8 @@ export function DisciplineCard({ period }: { readonly period: { year: number; mo
 
   const summary = query.data?.summary ?? null;
   const events = query.data?.events ?? [];
-  const clean = summary !== null && summary.violations === 0 && summary.level === DisciplineLevel.CONTROL;
+  const clean =
+    summary !== null && summary.violations === 0 && summary.level === DisciplineLevel.CONTROL;
 
   return (
     <Card>
@@ -57,8 +63,16 @@ export function DisciplineCard({ period }: { readonly period: { year: number; mo
       ) : (
         <>
           <View style={styles.stats}>
-            <Stat label={m('discipline.penalty')} value={formatDisciplinePoints(summary.penalty)} tone="danger" />
-            <Stat label={m('discipline.bonus')} value={formatDisciplinePoints(summary.bonus)} tone="positive" />
+            <Stat
+              label={m('discipline.penalty')}
+              value={formatDisciplinePoints(summary.penalty)}
+              tone="danger"
+            />
+            <Stat
+              label={m('discipline.bonus')}
+              value={formatDisciplinePoints(summary.bonus)}
+              tone="positive"
+            />
             <Stat label={m('discipline.net')} value={formatDisciplinePoints(summary.net)} />
           </View>
           <View style={[styles.level, clean ? styles.levelClean : levelStyle(summary.level)]}>
@@ -82,11 +96,16 @@ export function DisciplineCard({ period }: { readonly period: { year: number; mo
                     {event.description === null ? '' : ` — ${event.description}`}
                   </Text>
                   {event.employeeComment !== null ? (
-                    <Text style={styles.rowComment}>{`${m('discipline.yourComment')}: ${event.employeeComment}`}</Text>
+                    <Text
+                      style={styles.rowComment}
+                    >{`${m('discipline.yourComment')}: ${event.employeeComment}`}</Text>
                   ) : (
                     <Pressable
                       onPress={() => {
-                        setExplaining({ id: event.id, title: t(DISCIPLINE_KIND_LABELS, event.kind) });
+                        setExplaining({
+                          id: event.id,
+                          title: t(DISCIPLINE_KIND_LABELS, event.kind),
+                        });
                       }}
                       accessibilityRole="button"
                       hitSlop={6}
@@ -96,7 +115,12 @@ export function DisciplineCard({ period }: { readonly period: { year: number; mo
                     </Pressable>
                   )}
                 </View>
-                <Text style={[styles.points, event.points < 0 ? styles.pointsDanger : styles.pointsPositive]}>
+                <Text
+                  style={[
+                    styles.points,
+                    event.points < 0 ? styles.pointsDanger : styles.pointsPositive,
+                  ]}
+                >
                   {formatDisciplinePoints(event.points)}
                 </Text>
               </View>
@@ -122,25 +146,15 @@ export function DisciplineCard({ period }: { readonly period: { year: number; mo
             style={styles.textarea}
           />
         </Field>
-        <Pressable
+        <SubmitButton
+          label={m('discipline.send')}
           onPress={() => {
             if (explaining === null) return;
             explain.mutate({ id: explaining.id, comment: comment.trim() });
           }}
-          disabled={explain.isPending || comment.trim().length === 0}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            pressed ? { opacity: opacity.pressed } : null,
-            comment.trim().length === 0 ? { opacity: opacity.disabled } : null,
-          ]}
-        >
-          {explain.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>{m('discipline.send')}</Text>
-          )}
-        </Pressable>
+          disabled={comment.trim().length === 0}
+          pending={explain.isPending}
+        />
       </BottomSheet>
     </Card>
   );
@@ -172,7 +186,11 @@ function Stat({
       <Text
         style={[
           styles.statValue,
-          tone === 'danger' ? styles.pointsDanger : tone === 'positive' ? styles.pointsPositive : null,
+          tone === 'danger'
+            ? styles.pointsDanger
+            : tone === 'positive'
+              ? styles.pointsPositive
+              : null,
         ]}
       >
         {value}
@@ -262,18 +280,5 @@ const styles = StyleSheet.create({
   textarea: {
     minHeight: 80,
     textAlignVertical: 'top',
-  },
-  submit: {
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
   },
 });

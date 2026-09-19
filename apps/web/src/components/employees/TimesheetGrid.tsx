@@ -1,6 +1,6 @@
 'use client';
 
-import { WORKSHOP_TIME_ZONE } from '@curtain-crm/shared';
+import { workshopToday } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 
 import { Skeleton } from '@/components/ui/Card';
@@ -32,18 +32,8 @@ const cellHours = (hours: number): string =>
 
 /** Сегодняшнее число месяца по времени мастерской — или `null` в другом месяце. */
 function todayColumn(year: number, month: number): number | null {
-  const parts = new Intl.DateTimeFormat('ru-RU', {
-    timeZone: WORKSHOP_TIME_ZONE,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  }).formatToParts(new Date());
-
-  const value = (type: string): number =>
-    Number.parseInt(parts.find((part) => part.type === type)?.value ?? '0', 10);
-
-  if (value('year') !== year || value('month') !== month) return null;
-  return value('day');
+  const today = workshopToday();
+  return today.year === year && today.month === month ? today.day : null;
 }
 
 const WEEKDAY_LETTERS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'] as const;
@@ -124,10 +114,7 @@ export function TimesheetGrid({
                   return (
                     <td
                       key={day}
-                      className={cn(
-                        'px-1 py-1.5 text-center',
-                        day === today ? 'bg-raised' : null,
-                      )}
+                      className={cn('px-1 py-1.5 text-center', day === today ? 'bg-raised' : null)}
                       title={
                         isOff
                           ? 'Согласованный выходной'

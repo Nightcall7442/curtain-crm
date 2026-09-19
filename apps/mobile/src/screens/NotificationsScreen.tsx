@@ -1,18 +1,38 @@
 import {
+  formatIsoDateShort,
+  formatTime,
   isImportantNotification,
-  PayrollRecordStatus,
   NOTIFICATION_TONES,
   type NotificationTone,
   type NotificationType,
+  PayrollRecordStatus,
+  todayIso,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon, NOTIFICATION_ICONS } from '../components/Icon';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, radius, spacing, tabBarSpace, typography, opacity, fonts } from '../theme';
+import {
+  cardShadow,
+  colors,
+  radius,
+  spacing,
+  tabBarSpace,
+  typography,
+  opacity,
+  fonts,
+} from '../theme';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 
@@ -136,11 +156,7 @@ export function NotificationsScreen(): ReactElement {
           ) : (
             <Empty
               message={m(emptyMessage(filter))}
-              hint={
-                filter === 'all'
-                  ? m('notif.emptyHintAll')
-                  : m('notif.emptyHintFilter')
-              }
+              hint={filter === 'all' ? m('notif.emptyHintAll') : m('notif.emptyHintFilter')}
             />
           )
         }
@@ -151,31 +167,33 @@ export function NotificationsScreen(): ReactElement {
           const payrollRecordId = item.relatedPayrollRecordId;
 
           return (
-          <Pressable
-            onPress={() => {
-              if (!item.isRead) markAsRead.mutate({ id: item.id });
-              if (item.relatedOrderId !== null) {
-                navigation.navigate('OrderDetail', { orderId: item.relatedOrderId });
-              }
-            }}
-            style={({ pressed }) => [styles.card, pressed ? styles.pressed : null]}
-            accessibilityRole="button"
-          >
-            <TypeTile type={item.type} />
+            <Pressable
+              onPress={() => {
+                if (!item.isRead) markAsRead.mutate({ id: item.id });
+                if (item.relatedOrderId !== null) {
+                  navigation.navigate('OrderDetail', { orderId: item.relatedOrderId });
+                }
+              }}
+              style={({ pressed }) => [styles.card, pressed ? styles.pressed : null]}
+              accessibilityRole="button"
+            >
+              <TypeTile type={item.type} />
 
-            <View style={styles.body}>
-              <View style={styles.titleRow}>
-                <Text style={styles.title} numberOfLines={1}>
-                  {item.title}
+              <View style={styles.body}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.time}>
+                    {shortTime(item.createdAt, m('common.yesterday'))}
+                  </Text>
+                </View>
+
+                <Text style={styles.text} numberOfLines={2}>
+                  {item.body}
                 </Text>
-                <Text style={styles.time}>{shortTime(item.createdAt, m('common.yesterday'))}</Text>
-              </View>
 
-              <Text style={styles.text} numberOfLines={2}>
-                {item.body}
-              </Text>
-
-              {/*
+                {/*
                 Подтверждение получения — прямо в уведомлении.
 
                 Сотрудник узнаёт о выплате здесь же, и требовать от него
@@ -183,36 +201,38 @@ export function NotificationsScreen(): ReactElement {
                 неподтверждённые расчёты. Кнопка появляется только у
                 выплаченного и ещё не подтверждённого расчёта.
               */}
-              {payrollRecordId !== null &&
-                item.payrollStatus === PayrollRecordStatus.PAID &&
-                (item.payrollReceiptConfirmedAt === null ? (
-                  <Pressable
-                    onPress={() => {
-                      confirmReceipt.mutate({ id: payrollRecordId });
-                    }}
-                    disabled={confirmReceipt.isPending}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.confirm,
-                      pressed ? styles.confirmPressed : null,
-                    ]}
-                  >
-                    {confirmReceipt.isPending ? (
-                      <ActivityIndicator color={colors.onAccent} size="small" />
-                    ) : (
-                      <Text style={styles.confirmText}>{m('notif.moneyReceived')}</Text>
-                    )}
-                  </Pressable>
-                ) : (
-                  <Text style={styles.confirmed}>
-                    {m('notif.receiptConfirmed', { time: shortTime(item.payrollReceiptConfirmedAt, m('common.yesterday')) })}
-                  </Text>
-                ))}
-            </View>
+                {payrollRecordId !== null &&
+                  item.payrollStatus === PayrollRecordStatus.PAID &&
+                  (item.payrollReceiptConfirmedAt === null ? (
+                    <Pressable
+                      onPress={() => {
+                        confirmReceipt.mutate({ id: payrollRecordId });
+                      }}
+                      disabled={confirmReceipt.isPending}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.confirm,
+                        pressed ? styles.confirmPressed : null,
+                      ]}
+                    >
+                      {confirmReceipt.isPending ? (
+                        <ActivityIndicator color={colors.onAccent} size="small" />
+                      ) : (
+                        <Text style={styles.confirmText}>{m('notif.moneyReceived')}</Text>
+                      )}
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.confirmed}>
+                      {m('notif.receiptConfirmed', {
+                        time: shortTime(item.payrollReceiptConfirmedAt, m('common.yesterday')),
+                      })}
+                    </Text>
+                  ))}
+              </View>
 
-            {/* Точка непрочитанного — справа, как в макете */}
-            {!item.isRead && <View style={styles.dot} accessibilityLabel={m('notif.unread')} />}
-          </Pressable>
+              {/* Точка непрочитанного — справа, как в макете */}
+              {!item.isRead && <View style={styles.dot} accessibilityLabel={m('notif.unread')} />}
+            </Pressable>
           );
         }}
       />
@@ -257,13 +277,13 @@ function shortTime(value: string | Date, yesterdayLabel: string): string {
   const sameDay = (a: Date, b: Date): boolean => a.toDateString() === b.toDateString();
 
   if (sameDay(date, now)) {
-    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    return formatTime(date);
   }
 
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   if (sameDay(date, yesterday)) return yesterdayLabel;
 
-  return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  return formatIsoDateShort(todayIso(date));
 }
 
 function emptyMessage(filter: FilterKey): MessageKey {

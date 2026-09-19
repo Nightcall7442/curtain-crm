@@ -118,7 +118,10 @@ export function groupDigits(raw: string): string {
 
   const separator = /[.,]/.exec(cleaned);
   const whole = separator === null ? cleaned : cleaned.slice(0, separator.index);
-  const rest = separator === null ? '' : cleaned.slice(separator.index).replace(/[.,]/g, (m, i) => (i === 0 ? m : ''));
+  const rest =
+    separator === null
+      ? ''
+      : cleaned.slice(separator.index).replace(/[.,]/g, (m, i) => (i === 0 ? m : ''));
 
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
   return `${grouped}${rest}`;
@@ -133,6 +136,18 @@ export function groupDigits(raw: string): string {
  */
 export function ungroupDigits(raw: string): string {
   return raw.replace(/[\s\u00A0]/g, '').replace(',', '.');
+}
+
+/**
+ * Сумма из поля ввода в основных единицах — сервер принимает число.
+ *
+ * Пустое поле, мусор и отрицательное — ноль, а не отказ: форма сама решает,
+ * можно ли отправлять ноль. До этого одна и та же функция жила в семи
+ * экранах под именами `toMajor` и `toMoney`.
+ */
+export function inputToMajor(raw: string): number {
+  const parsed = Number.parseFloat(ungroupDigits(raw));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 /** Строка для записи в колонку `numeric(14, 2)`: `"1250000.00"`. */
@@ -198,7 +213,6 @@ export function formatMoney(
   const amount = `${sign}${majorFormatted}${fractionFormatted}`;
   return withCurrency ? `${amount}\u00A0${CURRENCY_SYMBOL[locale]}` : amount;
 }
-
 
 /** Неразрывный пробел: сумма не должна рваться переносом строки. */
 const NBSP = '\u00A0';

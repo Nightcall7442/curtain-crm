@@ -1,4 +1,4 @@
-import { PERSONAL_BREAK_DURATION_OPTIONS } from '@curtain-crm/shared';
+import { formatTime, PERSONAL_BREAK_DURATION_OPTIONS } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -113,7 +113,12 @@ export function PersonalBreakCard({
       <CardTitle
         title={m('break.title')}
         icon="deadline"
-        action={<Pill text={overdue ? m('break.overdue') : m('break.active')} tone={overdue ? 'danger' : 'warning'} />}
+        action={
+          <Pill
+            text={overdue ? m('break.overdue') : m('break.active')}
+            tone={overdue ? 'danger' : 'warning'}
+          />
+        }
       />
 
       <Text style={[styles.timer, overdue ? styles.timerOverdue : null]}>
@@ -122,7 +127,7 @@ export function PersonalBreakCard({
       <Text style={styles.hint}>
         {overdue
           ? m('break.overdueHint')
-          : m('break.returnBy', { time: new Date(expectedReturn).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) })}
+          : m('break.returnBy', { time: formatTime(expectedReturn) })}
       </Text>
 
       <Pressable
