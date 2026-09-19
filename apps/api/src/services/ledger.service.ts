@@ -133,7 +133,7 @@ export async function onHands(executor: DbExecutor, userId: number): Promise<Mon
       when p.kind in (${PaymentKind.COLLECTION}, ${PaymentKind.REFUND}) then -p.amount
       else 0 end), 0) as on_hands
     from ${payments} p
-    where p.received_by = ${userId} and p.method = ${PaymentMethod.CASH}`);
+    where p.received_by = ${userId} and p.method = ${PaymentMethod.CASH} and not p.opening`);
   return Math.max(0, money(row?.['on_hands']));
 }
 
@@ -150,7 +150,7 @@ export async function onHandsByUser(
           when p.kind in (${PaymentKind.COLLECTION}, ${PaymentKind.REFUND}) then -p.amount
           else 0 end)
         from ${payments} p
-        where p.received_by = u.id and p.method = ${PaymentMethod.CASH}), 0) as on_hands
+        where p.received_by = u.id and p.method = ${PaymentMethod.CASH} and not p.opening), 0) as on_hands
     from ${users} u
     where u.is_active = true ${exclude}
     order by on_hands desc`);
@@ -212,9 +212,10 @@ export async function balance(
 
   const [first] = await executor.execute(sql`
     select min(p.received_at) as since from ${payments} p
-    where p.kind = ${PaymentKind.COLLECTION}
-       or (p.method = ${PaymentMethod.CASH} and p.received_by in (${managers}))
-       or p.method in (${CASHLESS})`);
+    where not p.opening and (
+         p.kind = ${PaymentKind.COLLECTION}
+      or (p.method = ${PaymentMethod.CASH} and p.received_by in (${managers}))
+      or p.method in (${CASHLESS}))`);
   const sinceRaw = first?.['since'];
   if (typeof sinceRaw !== 'string' && !(sinceRaw instanceof Date)) {
     return {
@@ -235,7 +236,7 @@ export async function balance(
       coalesce(sum(case when p.kind = ${PaymentKind.REFUND} and p.method = ${PaymentMethod.CASH}
                           and p.received_by in (${managers}) then p.amount end), 0) as refunds
     from ${payments} p
-    where p.received_at >= ${since} and p.received_at < ${to} ${branch}`);
+    where not p.opening and p.received_at >= ${since} and p.received_at < ${to} ${branch}`);
   const [bought] = await executor.execute(sql`
     select coalesce(sum(pu.total_price), 0) as amount
     from ${purchases} pu join ${orders} o on o.id = pu.order_id
@@ -247,7 +248,7 @@ export async function balance(
       coalesce(sum(case when p.kind in (${INCOME}) then p.amount
                         when p.kind = ${PaymentKind.REFUND} then -p.amount else 0 end), 0) as amount
     from ${payments} p
-    where p.method in (${CASHLESS}) and p.received_at < ${to} ${branch}
+    where not p.opening and p.method in (${CASHLESS}) and p.received_at < ${to} ${branch}
     group by p.method`);
   for (const cell of cells as Iterable<Record<string, unknown>>) {
     cashless[toText(cell['method']) as PaymentMethodName] = money(cell['amount']);
@@ -314,7 +315,7 @@ export async function dayReport(
   const cells = await executor.execute(sql`
     select p.kind, p.method, coalesce(sum(p.amount), 0) as amount, count(*) as n
     from ${payments} p
-    where p.received_at >= ${from} and p.received_at < ${to} ${branch}
+    where not p.opening and p.received_at >= ${from} and p.received_at < ${to} ${branch}
     group by p.kind, p.method`);
 
   const grid = new Map<string, MoneyMinor>();
@@ -360,7 +361,7 @@ export async function dayReport(
 
   const [byManagement] = await executor.execute(sql`
     select coalesce(sum(p.amount), 0) as amount from ${payments} p
-    where p.kind in (${INCOME}) and p.method = ${PaymentMethod.CASH}
+    where not p.opening and p.kind in (${INCOME}) and p.method = ${PaymentMethod.CASH}
       and p.received_by in (${managers})
       and p.received_at >= ${from} and p.received_at < ${to} ${branch}`);
 
@@ -387,6 +388,7 @@ export async function terminalChecksCount(
     .where(
       and(
         eq(payments.method, PaymentMethod.CARD),
+        eq(payments.opening, false),
         inArray(payments.kind, [...PAYMENT_INCOME_KINDS]),
         gte(payments.receivedAt, range.from),
         lt(payments.receivedAt, range.to),
@@ -412,6 +414,8 @@ export interface LedgerEntry {
   readonly payrollRecordId: number | null;
   /** Ссылка на фото чека, если оно есть. */
   readonly photoUrl: string | null;
+  /** Перенос из старого учёта: в кассе и на руках не участвует. */
+  readonly opening: boolean;
 }
 
 /**
@@ -449,6 +453,7 @@ export async function entries(
       retailSaleId: payments.retailSaleId,
       payrollRecordId: payments.payrollRecordId,
       photoKey: payments.photoKey,
+      opening: payments.opening,
     })
     .from(payments)
     .innerJoin(users, eq(users.id, payments.receivedBy))
@@ -477,6 +482,26 @@ export async function entries(
       photoUrl: photoKey === null ? null : await storage.getUrl(photoKey),
     })),
   );
+}
+
+/** Прикрепить фото чека к приходу по карте — второй раз приход не рождается. */
+export async function attachPhoto(
+  executor: DbExecutor,
+  input: { readonly paymentId: number; readonly actorId: number; readonly photoKey: string },
+): Promise<boolean> {
+  const [row] = await executor
+    .update(payments)
+    .set({ photoKey: input.photoKey })
+    .where(
+      and(
+        eq(payments.id, input.paymentId),
+        eq(payments.receivedBy, input.actorId),
+        eq(payments.method, PaymentMethod.CARD),
+        inArray(payments.kind, [...PAYMENT_INCOME_KINDS]),
+      ),
+    )
+    .returning({ id: payments.id });
+  return row !== undefined;
 }
 
 /** Сумма строк — для итогов журналов. */

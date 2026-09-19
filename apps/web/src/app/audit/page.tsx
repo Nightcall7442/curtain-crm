@@ -36,6 +36,7 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   task: 'Поручение',
   retail_item: 'Товар витрины',
   retail_sale: 'Чек',
+  payment: 'Проводка',
   ready_made_item: 'Готовая штора',
   fabric_stock: 'Ткань на складе',
 };

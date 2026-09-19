@@ -37,6 +37,7 @@ import {
   userRoles,
   users,
   type Database,
+  payments,
 } from '@curtain-crm/db';
 import {
   areaM2FromCm,
@@ -53,7 +54,7 @@ import {
   PaymentMethod,
 } from '@curtain-crm/shared';
 import { config as loadEnv } from 'dotenv';
-import { asc, eq, inArray, like } from 'drizzle-orm';
+import { asc, eq, inArray, isNotNull, like } from 'drizzle-orm';
 
 import { loadAuthenticatedUser } from '../context';
 import { post } from '../services/ledger.service';
@@ -215,6 +216,7 @@ async function cleanup(db: Database): Promise<void> {
   const orderIds = demoOrders.map((row) => row.id);
 
   if (orderIds.length > 0) {
+    await db.delete(payments).where(inArray(payments.orderId, orderIds));
     await db.delete(purchases).where(inArray(purchases.orderId, orderIds));
     await db.delete(orderPhotos).where(inArray(orderPhotos.orderId, orderIds));
     await db.delete(orderComments).where(inArray(orderComments.orderId, orderIds));
@@ -225,6 +227,11 @@ async function cleanup(db: Database): Promise<void> {
   }
 
   await db.delete(notifications);
+  // Проводки по выплатам держат расчёты (restrict) — сначала они.
+  await db.delete(payments).where(isNotNull(payments.payrollRecordId));
+  if (userIds.length > 0) {
+    await db.delete(payments).where(inArray(payments.receivedBy, userIds));
+  }
   await db.delete(payrollRecords);
 
   if (userIds.length > 0) {

@@ -71,6 +71,7 @@ import { employeeRating } from '../services/rating.service';
 import { TRPCError } from '@trpc/server';
 
 import { appRouter } from '../routers';
+import { terminalChecksToday } from '../routers/terminalChecks.router';
 import { createCallerFactory } from '../trpc';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
 import {
@@ -1215,6 +1216,64 @@ async function run(db: Database): Promise<void> {
       till.cashless.card >= parseMoney('200000') &&
       till.cashless.total === till.cashless.card + till.cashless.qr + till.cashless.click,
     `в кассе ${moneyToDecimalString(till.cash.total)}, на счёте ${moneyToDecimalString(till.cashless.total)}`,
+  );
+
+  // Терминальный чек — фото к приходу по карте, а не второй приход: установщик
+  // принял 200 000 картой по заказу, продавец пробил чек с фото на этот приход —
+  // норма дня растёт на ноль, деньги не удваиваются. Чек без прихода — новый приход.
+  // Без открытой смены сервер действий по работе не принимает — открываем обоим.
+  await db.insert(shifts).values([
+    { userId: seller.id, branchId: branch.id, startedAt: new Date(), startLatitude: 41.2995, startLongitude: 69.2401, startDistanceMeters: 5 },
+    { userId: installer.id, branchId: branch.id, startedAt: new Date(), startLatitude: 41.2995, startLongitude: 69.2401, startDistanceMeters: 5 },
+  ]);
+  const installerCaller = createCallerFactory(appRouter)({
+    db,
+    user: installerActor,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const cardEntry = (await installerCaller.payments.byOrder({ orderId: cashOrder.id })).find(
+    (row) => row.method === PaymentMethod.CARD,
+  );
+  const sellerCaller = createCallerFactory(appRouter)({
+    db,
+    user: sellerActor,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const pixel = {
+    mimeType: 'image/png',
+    content:
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  };
+  const attachedTo = cardEntry === undefined ? null : await sellerCaller.terminalChecks.create({
+    photo: pixel,
+    amount: 200000,
+    paymentId: cardEntry.id,
+  }).then(() => 'ok').catch((error: unknown) => (error instanceof TRPCError ? error.code : 'other'));
+  const attachedRows = await installerCaller.payments.byOrder({ orderId: cashOrder.id });
+  const withPhoto = attachedRows.filter((row) => row.photoUrl !== null).length;
+  const beforeStandalone = await terminalChecksToday(db, null);
+  await sellerCaller.terminalChecks.create({ photo: pixel, amount: 150000, comment: 'чек без заказа' });
+  const afterStandalone = await terminalChecksToday(db, null);
+  check(
+    'ledger: фото чека прикрепляется к чужому приходу по карте только владельцу; чек без прихода — новый приход',
+    attachedTo === 'NOT_FOUND' && withPhoto === 0 && afterStandalone === beforeStandalone + 1,
+    `к чужому: ${attachedTo ?? 'null'}, с фото ${withPhoto.toString()}, чеков ${beforeStandalone.toString()} → ${afterStandalone.toString()}`,
+  );
+  const ownCard = await installerCaller.terminalChecks
+    .create({ photo: pixel, amount: 200000, ...(cardEntry === undefined ? {} : { paymentId: cardEntry.id }) })
+    .then((result) => result.count)
+    .catch(() => -1);
+  const ownRows = await installerCaller.payments.byOrder({ orderId: cashOrder.id });
+  check(
+    'ledger: владелец прихода по карте прикрепляет фото — приход один, норма не удваивается',
+    ownCard === afterStandalone && ownRows.filter((row) => row.photoUrl !== null).length === 1,
+    `чеков ${ownCard.toString()}, с фото ${ownRows.filter((row) => row.photoUrl !== null).length.toString()}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

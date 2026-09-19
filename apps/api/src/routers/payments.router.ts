@@ -10,7 +10,7 @@ import {
   Role,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText } from '../lib/schemas';
@@ -58,6 +58,9 @@ export async function managementIds(executor: DbExecutor): Promise<number[]> {
     .where(inArray(userRoles.role, [...MANAGEMENT_ROLES]));
   return [...new Set(rows.map((row) => row.userId))];
 }
+
+/** Пространство advisory-замков инкассации — чтобы не пересечься с чужими замками. */
+const LOCK_COLLECT = 7_001;
 
 const requireBranch = (branchId: number | null | undefined): number => {
   if (branchId === null || branchId === undefined) {
@@ -218,9 +221,15 @@ export const paymentsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      if (isManagement(ctx.user.roles)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Наличные руководства и так в кассе — сдавать нечего' });
+      }
       const branchId = requireBranch(ctx.user.primaryBranchId);
       const amount = parseMoney(input.amount);
       return ctx.db.transaction(async (tx) => {
+        // Две параллельные сдачи не должны вдвоём пройти проверку «не больше,
+        // чем на руках»: замок на человека до конца транзакции.
+        await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_COLLECT}, ${ctx.user.id})`);
         const held = await onHands(tx, ctx.user.id);
         if (amount > held) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Сумма больше, чем на руках' });

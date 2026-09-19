@@ -2,6 +2,7 @@ import {
   formatMoney,
   parseMoney,
   PAYMENT_KIND_LABELS,
+  PaymentKind,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
   PaymentMethod,
@@ -79,7 +80,10 @@ export function OrderPayments({
               {new Date(row.receivedAt).toLocaleDateString('ru-RU')} · {row.receivedByName}
             </Text>
           </View>
-          <Text style={styles.rowAmount}>{formatMoney(parseMoney(row.amount))}</Text>
+          <Text style={[styles.rowAmount, row.kind === PaymentKind.REFUND ? styles.rowRefund : null]}>
+            {row.kind === PaymentKind.REFUND ? '−' : ''}
+            {formatMoney(parseMoney(row.amount))}
+          </Text>
         </View>
       ))}
 
@@ -170,6 +174,9 @@ const styles = StyleSheet.create({
   rowAmount: {
     ...typography.value,
     color: colors.textPrimary,
+  },
+  rowRefund: {
+    color: colors.danger,
   },
   button: {
     flexDirection: 'row',
