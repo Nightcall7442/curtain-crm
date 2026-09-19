@@ -1,4 +1,4 @@
-import { formatTime } from '@curtain-crm/shared';
+import { formatTime, monthNameGenitive, weekdayName } from '@curtain-crm/shared';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
@@ -25,7 +25,7 @@ export function ShiftInfoCard({
   readonly distanceMeters: number | null;
   readonly ordersInProgress: number;
 }): ReactElement {
-  const { m } = useLocale();
+  const { m, locale } = useLocale();
   const isOpen = startedAt !== null;
 
   const duration = ((): string => {
@@ -41,14 +41,15 @@ export function ShiftInfoCard({
 
   const timeLabel = startedAt === null ? '—' : formatTime(startedAt);
 
-  const dateLabel =
-    startedAt === null
-      ? '—'
-      : startedAt.toLocaleDateString('ru-RU', {
-          day: '2-digit',
-          month: 'long',
-          weekday: 'short',
-        });
+  // Месяц и день недели — из общих словарей, а не из `toLocaleDateString`:
+  // тот на узбекском телефоне всё равно печатал русское «сентября».
+  const dateLabel = ((): string => {
+    if (startedAt === null) return '—';
+
+    const weekday = weekdayName(((startedAt.getDay() + 6) % 7) + 1, locale);
+    const month = monthNameGenitive(startedAt.getMonth() + 1, locale);
+    return `${weekday}, ${startedAt.getDate().toString()} ${month}`;
+  })();
 
   return (
     <Card style={styles.card}>
