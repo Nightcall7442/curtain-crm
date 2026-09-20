@@ -12,7 +12,7 @@ import {
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components/Avatar';
@@ -505,11 +505,18 @@ function StatTile({
  * Просроченные вынесены отдельной строкой и красным: это единственное в
  * сводке, что требует действия сегодня.
  */
+/** Сколько имён видно сразу; остальные — за «Ещё N». */
+const ON_SHIFT_PREVIEW = 5;
+
 function WorkshopSummary(): ReactElement {
   const { m } = useLocale();
   const dashboard = trpc.reports.dashboard.useQuery({});
   /* Кто именно на смене: цифра «2 чел.» без имён не отвечала на вопрос владельца «кто они?». */
   const onShift = trpc.shifts.openNow.useQuery();
+  // В полную смену это шестнадцать строк, и карточка вытесняла кассу за экран.
+  const [allShown, setAllShown] = useState(false);
+  const shiftRows = onShift.data ?? [];
+  const hidden = allShown ? 0 : Math.max(0, shiftRows.length - ON_SHIFT_PREVIEW);
 
   if (dashboard.data === undefined) {
     return (
@@ -528,7 +535,7 @@ function WorkshopSummary(): ReactElement {
 
       <Row label={m('home.ordersInWork')} value={data.activeOrders.toString()} />
       <Row label={m('home.onShift')} value={m('home.people', { n: data.employeesOnShift })} />
-      {(onShift.data ?? []).map((row) => {
+      {shiftRows.slice(0, shiftRows.length - hidden).map((row) => {
         const clock = (value: Date | string): string => formatTime(value);
         const left = row.endedAt !== null;
         return (
@@ -546,6 +553,20 @@ function WorkshopSummary(): ReactElement {
           </View>
         );
       })}
+      {(hidden > 0 || allShown) && (
+        <Pressable
+          onPress={() => {
+            setAllShown((value) => !value);
+          }}
+          accessibilityRole="button"
+          hitSlop={8}
+          style={styles.onShiftRow}
+        >
+          <Text style={styles.onShiftMore}>
+            {hidden > 0 ? m('manage.more', { n: hidden }) : m('stock.collapse')}
+          </Text>
+        </Pressable>
+      )}
       <Row label={m('home.inProduction')} value={attention.toString()} />
     </Card>
   );
@@ -748,6 +769,10 @@ const styles = StyleSheet.create({
   },
   onShiftLeft: {
     opacity: opacity.disabled,
+  },
+  onShiftMore: {
+    ...typography.footnote,
+    color: colors.accent,
   },
   terminalRow: {
     flexDirection: 'row',
