@@ -6,6 +6,7 @@ import { MONTH_NAMES_RU } from '@curtain-crm/shared';
 
 import { LineSeries } from '@/components/charts/LineSeries';
 import { DiscountsReportCard } from '@/components/reports/DiscountsReportCard';
+import { CashByDayCard, DeadlinesCard, PayrollBreakdownCard, SewerOutputCard } from '@/components/reports/ReportCards';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
@@ -17,11 +18,11 @@ import { formatDuration, formatPercent } from '@/lib/utils';
 const MONTH_TICKS = MONTH_NAMES_RU.map((_, index) => index + 1);
 
 /**
- * Отчёты: финансовый итог месяца, фонд зарплаты по году и выработка сотрудников.
+ * Отчёты за месяц: финансовый итог, касса по дням, зарплата «из чего
+ * сложилась», сроки и переделки, швеи, скидки, фонд по году и выработка.
  *
- * Всё считается на сервере агрегатами SQL. Выгрузка в Excel не реализована —
- * это отдельная задача (формирование файла и его доставка), и рисовать кнопку,
- * которая ничего не делает, здесь не стали.
+ * Всё считается на сервере агрегатами SQL; карточки с таблицами выгружаются
+ * в Excel — владелец сверяет их с бухгалтерией на своей стороне.
  */
 export default function ReportsPage(): ReactElement {
   const now = new Date();
@@ -126,6 +127,14 @@ export default function ReportsPage(): ReactElement {
           </>
         )}
       </section>
+
+      <CashByDayCard period={period} />
+
+      <PayrollBreakdownCard period={period} />
+
+      <DeadlinesCard period={period} />
+
+      <SewerOutputCard period={period} />
 
       <DiscountsReportCard year={year} month={month} />
 

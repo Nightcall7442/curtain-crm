@@ -38,6 +38,7 @@ import { z } from 'zod';
 import { idSchema, periodSchema } from '../lib/schemas';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { topPerformers } from '../services/performance.service';
+import { cashByDay, deadlinesReport, payrollBreakdown, sewerOutput } from '../services/reports.service';
 import { periodBounds, workedSecondsExpression } from '../services/shifts.service';
 import { router } from '../trpc';
 
@@ -51,6 +52,16 @@ import { router } from '../trpc';
  * Агрегация выполняется в SQL, а не в приложении: выгружать все заказы,
  * чтобы посчитать их количество, недопустимо уже на нескольких тысячах строк.
  */
+const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+/** Отрезок календарных дней по Ташкенту: с 00:00 `from` до 00:00 дня после `to`. */
+function tashkentRange(from: string, to: string): { readonly from: Date; readonly to: Date } {
+  return {
+    from: new Date(new Date(`${from}T00:00:00Z`).getTime() - TASHKENT_OFFSET_MS),
+    to: new Date(new Date(`${to}T00:00:00Z`).getTime() - TASHKENT_OFFSET_MS + 24 * 60 * 60 * 1000),
+  };
+}
+
 export const reportsRouter = router({
   /** Показатели для главного экрана веб-панели. */
   dashboard: managementProcedure
@@ -723,6 +734,26 @@ export const reportsRouter = router({
         marginPercent: revenue === 0 ? null : Math.round((margin / revenue) * 10_000) / 100,
       };
     }),
+
+  /** Касса по дням и способам оплаты, и по продавцам — за отрезок дат. */
+  cashByDay: managementProcedure
+    .input(z.object({ from: z.string().date(), to: z.string().date(), branchId: idSchema.optional() }))
+    .query(({ ctx, input }) => cashByDay(ctx.db, tashkentRange(input.from, input.to), input.branchId)),
+
+  /** Зарплата за месяц: из чего сложилась у каждого — строки начисления, часы, заказы, дисциплина, категория. */
+  payrollBreakdown: managementProcedure
+    .input(periodSchema)
+    .query(({ ctx, input }) => payrollBreakdown(ctx.db, { year: input.year, month: input.month })),
+
+  /** Сроки и переделки за месяц: в срок / с опозданием, возвраты на переделку по швеям. */
+  deadlines: managementProcedure
+    .input(periodSchema.extend({ branchId: idSchema.optional() }))
+    .query(({ ctx, input }) => deadlinesReport(ctx.db, { year: input.year, month: input.month }, input.branchId)),
+
+  /** Швеи за месяц: сшито, м², качество, сроки, балл, категория — и динамика за полгода. */
+  sewerOutput: managementProcedure
+    .input(periodSchema)
+    .query(({ ctx, input }) => sewerOutput(ctx.db, { year: input.year, month: input.month })),
 
   /**
    * Скидки за период: кто, кому, сколько и за что.

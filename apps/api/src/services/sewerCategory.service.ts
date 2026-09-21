@@ -26,12 +26,17 @@ export interface SewerCategoryRow {
  * только запущена; тогда берётся текущий, чтобы категории появились с
  * первого закрытого заказа, а не через месяц.
  */
-export async function sewerCategories(db: Database, employees: readonly RatedEmployee[]): Promise<SewerCategoryRow[]> {
+export async function sewerCategories(
+  db: Database,
+  employees: readonly RatedEmployee[],
+  /** Месяц, для которого нужна категория; по умолчанию — текущий по Ташкенту. */
+  forPeriod?: Period,
+): Promise<SewerCategoryRow[]> {
   const sewers = employees.filter((employee) => employee.roles.includes(Role.SEWER));
   if (sewers.length === 0) return [];
 
   const local = new Date(Date.now() + TASHKENT_OFFSET_MS);
-  const current: Period = { year: local.getUTCFullYear(), month: local.getUTCMonth() + 1 };
+  const current: Period = forPeriod ?? { year: local.getUTCFullYear(), month: local.getUTCMonth() + 1 };
   const bounds = ratingPeriodBounds(RatingScope.MONTH, current);
 
   let period: Period = current.month === 1 ? { year: current.year - 1, month: 12 } : { year: current.year, month: current.month - 1 };
