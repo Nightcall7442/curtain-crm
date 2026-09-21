@@ -1,12 +1,15 @@
 import {
   formatDayRange,
   formatDisciplinePoints,
+  formatMonthPeriod,
   monthName,
   RATING_COMPONENT_LABELS,
   RATING_SCOPE_LABELS,
   RATING_SCOPES,
   RatingScope,
   ROLE_LABELS,
+  SEWER_CATEGORY_FEE_PERCENT,
+  SEWER_CATEGORY_LABELS,
   type RatingScope as RatingScopeName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
@@ -133,7 +136,7 @@ function MyPlaceCard({
   readonly data: RatingData | undefined;
   readonly isLoading: boolean;
 }): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, locale } = useLocale();
 
   if (isLoading || data === undefined) {
     return (
@@ -194,6 +197,19 @@ function MyPlaceCard({
         сотрудник, который видит одну итоговую цифру, не знает, что именно
         подтягивать — объём, качество или сроки.
       */}
+      {/* Швея видит свою категорию тут же: она и есть цена балла в сумах. */}
+      {me.sewerCategory !== null && (
+        <View style={styles.breakdown}>
+          <Text style={styles.breakdownRole}>{m('profile.sewerCategory')}</Text>
+          <Text style={styles.disciplinePoints}>{SEWER_CATEGORY_LABELS[locale][me.sewerCategory.category]}</Text>
+          <Text style={styles.breakdownRole}>
+            {m('profile.sewerCategoryHint', {
+              period: formatMonthPeriod(me.sewerCategory.period.year, me.sewerCategory.period.month, locale),
+              pct: SEWER_CATEGORY_FEE_PERCENT[me.sewerCategory.category],
+            })}
+          </Text>
+        </View>
+      )}
       {me.disciplinePoints !== 0 && (
         <View style={styles.breakdown}>
           <Text style={styles.breakdownRole}>{m('discipline.title')}</Text>

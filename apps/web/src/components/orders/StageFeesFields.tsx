@@ -1,15 +1,21 @@
 'use client';
 
 import {
+  formatMoney,
   ORDER_STAGE_FEE_LABELS_RU,
   OrderType,
+  parseMoney,
+  SEWER_CATEGORY_FEE_PERCENT,
+  SEWER_CATEGORY_LABELS_RU,
   stageFeesOfOrderType,
+  suggestedStageFee,
   type OrderStageFee,
   type OrderType as OrderTypeName,
 } from '@curtain-crm/shared';
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import { Field, MoneyInput } from '@/components/ui/Form';
+import { trpc } from '@/lib/trpc';
 
 /**
  * Сдельные расценки по этапам — сколько получит каждый исполнитель за этот
@@ -93,11 +99,14 @@ export function StageFeesFields({
   onChange,
   orderType = OrderType.CUSTOM,
   errors = {},
+  sewerId = null,
 }: {
   readonly value: StageFeesDraft;
   readonly onChange: (next: StageFeesDraft) => void;
   readonly orderType?: OrderTypeName;
   readonly errors?: Readonly<Record<string, string | undefined>>;
+  /** Назначенная швея — для подсказки расценки по её категории. */
+  readonly sewerId?: number | null;
 }): ReactElement {
   const stages = stageFeesOfOrderType(orderType);
 
@@ -116,8 +125,68 @@ export function StageFeesFields({
             }}
             placeholder="0"
           />
+          {stage === 'sewing' && sewerId !== null && (
+            <SewingFeeHint
+              sewerId={sewerId}
+              typed={value.sewing}
+              onApply={(next) => {
+                onChange({ ...value, sewing: next });
+              }}
+            />
+          )}
         </Field>
       ))}
     </div>
   );
 }
+
+/**
+ * Подсказка расценки по категории швеи.
+ *
+ * Руководитель пишет ставку первой категории — «за пошив 50 000», — а
+ * программа отвечает: «швея второй категории, пишите 40 000». Подставить —
+ * одна кнопка. После подстановки подсказка молчит, пока сумму не начнут
+ * править снова: иначе от 40 000 она предложила бы 32 000, и так по кругу.
+ */
+function SewingFeeHint({
+  sewerId,
+  typed,
+  onApply,
+}: {
+  readonly sewerId: number;
+  readonly typed: string;
+  readonly onApply: (next: string) => void;
+}): ReactElement | null {
+  const categories = trpc.rating.sewerCategories.useQuery();
+  const [applied, setApplied] = useState<string | null>(null);
+
+  const sewer = categories.data?.find((row) => row.userId === sewerId);
+  if (sewer === undefined) return null;
+
+  const base = Number.parseFloat(typed.replace(',', '.')) || 0;
+  const label = `${sewer.fullName} — ${SEWER_CATEGORY_LABELS_RU[sewer.category]}`;
+  if (sewer.category === 1 || base <= 0 || typed === applied) {
+    return <p className="mt-1 text-footnote text-muted">{`${label} (${String(SEWER_CATEGORY_FEE_PERCENT[sewer.category])}% ставки)`}</p>;
+  }
+
+  const suggested = suggestedStageFee(base, sewer.category);
+  return (
+    <p className="mt-1 text-footnote text-secondary">
+      {`${label}: ${String(SEWER_CATEGORY_FEE_PERCENT[sewer.category])}% от ${money(base)} — `}
+      <button
+        type="button"
+        className="text-accent hover:underline"
+        onClick={() => {
+          const next = suggested.toString();
+          setApplied(next);
+          onApply(next);
+        }}
+      >
+        {`подставить ${money(suggested)}`}
+      </button>
+    </p>
+  );
+}
+
+/** Сумма в сумах — в строку с разрядами; поля расценок хранят сумы, не тийины. */
+const money = (sum: number): string => formatMoney(parseMoney(sum.toString()));

@@ -18,6 +18,7 @@ import {
   type RatedEmployee,
   type RatingEntry,
 } from '../services/rating.service';
+import { sewerCategories } from '../services/sewerCategory.service';
 import { getStorage } from '../services/storage.service';
 import { router } from '../trpc';
 
@@ -127,11 +128,14 @@ export const ratingRouter = router({
     ]);
 
     const previousPlaces = new Map(previous.map((entry) => [entry.userId, entry.place]));
-    const avatars = await resolveAvatars(current);
+    const [avatars, categories] = await Promise.all([resolveAvatars(current), sewerCategories(ctx.db, employees)]);
+    const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
 
     const rows = current.map((entry) => ({
       ...entry,
       avatarUrl: avatars.get(entry.userId) ?? null,
+      /** Категория швеи — по прошлому месяцу; у остальных ролей `null`. */
+      sewerCategory: categoryOf.get(entry.userId) ?? null,
       placeDelta: placeDelta(entry.place, previousPlaces.get(entry.userId) ?? null),
       byRole: entry.byRole.map((role) => ({
         ...role,
@@ -200,6 +204,16 @@ export const ratingRouter = router({
    * участники не перечисляются: соревнование должно подталкивать, а не
    * вывешивать отстающих на всю мастерскую.
    */
+  /**
+   * Категории швей — из рейтинга с дисциплиной за прошлый месяц.
+   *
+   * Открыто всем вошедшим, а не только руководству: категория — как место
+   * в рейтинге, швея видит свою в профиле, а форма расценок подсказывает
+   * по ней сумму. Сами расценки при этом остаются скрытыми — их прячет
+   * `maskStageFees`, к категории это не относится.
+   */
+  sewerCategories: protectedProcedure.query(async ({ ctx }) => sewerCategories(ctx.db, await loadEmployees(ctx))),
+
   me: protectedProcedure
     .input(z.object({ scope: ratingScopeSchema.default(RatingScope.MONTH) }).default({}))
     .query(async ({ ctx, input }) => {
@@ -218,6 +232,7 @@ export const ratingRouter = router({
       const ranked = current.filter((entry) => entry.place !== null);
 
       const mine = current.find((entry) => entry.userId === ctx.user.id) ?? null;
+      const myCategory = (await sewerCategories(ctx.db, employees)).find((row) => row.userId === ctx.user.id) ?? null;
 
       return {
         period: {
@@ -258,6 +273,8 @@ export const ratingRouter = router({
                 score: mine.score,
                 ordersCount: mine.ordersCount,
                 disciplinePoints: mine.disciplinePoints,
+                /** Категория швеи с месяцем расчёта; не швея — `null`. */
+                sewerCategory: myCategory === null ? null : { category: myCategory.category, period: myCategory.period },
                 placeDelta: placeDelta(mine.place, previousPlaces.get(mine.userId) ?? null),
                 unratedReason: mine.unratedReason,
                 byRole: mine.byRole.map((role) => ({

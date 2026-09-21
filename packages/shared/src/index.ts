@@ -37,6 +37,7 @@ export * from './constants/stageFee';
 export * from './constants/discipline';
 export * from './constants/terminalCheck';
 export * from './constants/shift';
+export * from './constants/sewerCategory';
 
 /* Типы */
 export * from './types/orderItemAccessory';

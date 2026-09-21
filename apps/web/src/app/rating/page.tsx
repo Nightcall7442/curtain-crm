@@ -9,8 +9,9 @@ import {
   MONTH_NAMES_RU,
   RATING_SCOPE_LABELS_RU,
   RATING_SCOPES,
-  ROLE_LABELS_RU,
   RatingScope,
+  ROLE_LABELS_RU,
+  SEWER_CATEGORY_LABELS_RU,
   type RatingScope as RatingScopeName,
 } from '@curtain-crm/shared';
 
@@ -233,6 +234,7 @@ export default function RatingPage(): ReactElement {
                     <span className="block truncate text-caption text-primary">{row.fullName}</span>
                     <span className="block truncate text-overline text-muted">
                       {row.roles.map((role) => ROLE_LABELS_RU[role]).join(', ')}
+                      {row.sewerCategory !== null && ` · ${SEWER_CATEGORY_LABELS_RU[row.sewerCategory]}`}
                     </span>
                   </div>
                 </div>

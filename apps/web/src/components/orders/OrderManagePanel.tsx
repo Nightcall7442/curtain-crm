@@ -4,7 +4,9 @@ import {
   ASSIGNABLE_ROLES,
   formatMoney,
   parseMoney,
+  Role,
   ROLE_LABELS_RU,
+  SEWER_CATEGORY_LABELS_RU,
   type AssignableRole,
   type OrderType as OrderTypeName,
 } from '@curtain-crm/shared';
@@ -248,7 +250,7 @@ export function OrderManagePanel({
         <div className="space-y-3">
           <FormError message={setStageFees.error?.message ?? null} />
 
-          <StageFeesFields value={nextFees} onChange={setNextFees} orderType={orderType} />
+          <StageFeesFields value={nextFees} onChange={setNextFees} orderType={orderType} sewerId={current.sewer} />
 
           <p className="text-footnote text-secondary">
             {`Всего исполнителям: ${formatMoney(
@@ -282,6 +284,9 @@ function AssigneeSelect({
   readonly onChange: (assigneeId: number | null) => void;
 }): ReactElement {
   const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(role, value);
+  // Категория швеи прямо в списке: кого ставить на дорогой заказ, видно до выбора.
+  const categories = trpc.rating.sewerCategories.useQuery(undefined, { enabled: role === Role.SEWER });
+  const categoryOf = new Map((categories.data ?? []).map((row) => [row.userId, row.category]));
 
   return (
     <Field label={ROLE_LABELS_RU[role]}>
@@ -293,13 +298,16 @@ function AssigneeSelect({
           const next = event.target.value;
           onChange(next === '' ? null : Number.parseInt(next, 10));
         }}
-        options={candidates.map((person) => ({
-          value: person.id.toString(),
-          label:
-            person.mainRole === null
-              ? person.fullName
-              : `${person.fullName} · ${ROLE_LABELS_RU[person.mainRole]}`,
-        }))}
+        options={candidates.map((person) => {
+          const category = categoryOf.get(person.id);
+          const suffix =
+            category !== undefined
+              ? ` · ${SEWER_CATEGORY_LABELS_RU[category]}`
+              : person.mainRole === null
+                ? ''
+                : ` · ${ROLE_LABELS_RU[person.mainRole]}`;
+          return { value: person.id.toString(), label: `${person.fullName}${suffix}` };
+        })}
       />
       {canShowMore && (
         <button

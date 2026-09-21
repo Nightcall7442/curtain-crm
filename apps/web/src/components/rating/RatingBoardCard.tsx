@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 import Link from 'next/link';
 
-import { ROLE_LABELS_RU } from '@curtain-crm/shared';
+import { ROLE_LABELS_RU, SEWER_CATEGORY_LABELS_RU } from '@curtain-crm/shared';
 
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { trpc } from '@/lib/trpc';
@@ -105,6 +105,7 @@ export function RatingBoardCard({
                 <span className="block truncate text-caption text-primary">{row.fullName}</span>
                 <span className="block truncate text-footnote text-muted">
                   {row.roles.map((role) => ROLE_LABELS_RU[role]).join(', ')}
+                  {row.sewerCategory !== null && ` · ${SEWER_CATEGORY_LABELS_RU[row.sewerCategory]}`}
                 </span>
               </span>
 

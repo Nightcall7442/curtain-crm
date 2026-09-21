@@ -7,7 +7,10 @@ import {
   ORDER_STAGE_FEE_ROLE,
   parseMoney,
   ROLE_LABELS,
+  SEWER_CATEGORY_FEE_PERCENT,
+  SEWER_CATEGORY_LABELS,
   stageFeesOfOrderType,
+  suggestedStageFee,
   type OrderStageFee,
   type OrderType,
   type Role,
@@ -67,7 +70,7 @@ export function OrderManagement({
   readonly fees: Readonly<Record<string, string | null>>;
   readonly assignees: Readonly<Partial<Record<Role, { readonly id: number; readonly fullName: string } | null>>>;
 }): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, locale } = useLocale();
   const utils = trpc.useUtils();
 
   const [price, setPrice] = useState('');
@@ -127,6 +130,16 @@ export function OrderManagement({
     },
     onError: fail(m('manage.feesError')),
   });
+
+  /*
+    Категории швей — для чипов выбора и подсказки расценки: руководитель
+    пишет ставку первой категории, программа предлагает сумму по категории
+    назначенной швеи. После подстановки подсказка молчит, пока сумму не
+    начнут править снова, — иначе предлагала бы от уже сниженной.
+  */
+  const categories = trpc.rating.sewerCategories.useQuery();
+  const categoryOf = new Map((categories.data ?? []).map((row) => [row.userId, row.category]));
+  const [appliedSewing, setAppliedSewing] = useState<string | null>(null);
 
   const assign = trpc.orders.assign.useMutation({
     async onSuccess() {
@@ -266,6 +279,11 @@ export function OrderManagement({
                                 <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
                                   {person.fullName}
                                 </Text>
+                                {categoryOf.has(person.id) && (
+                                  <Text style={[styles.chipRole, active ? styles.chipTextActive : null]}>
+                                    {SEWER_CATEGORY_LABELS[locale][categoryOf.get(person.id) ?? 3]}
+                                  </Text>
+                                )}
                                 {foreign && person.roles[0] !== undefined && (
                                   <Text style={[styles.chipRole, active ? styles.chipTextActive : null]}>
                                     {t(ROLE_LABELS, person.roles[0])}
@@ -353,12 +371,29 @@ export function OrderManagement({
 
         {stages.map((stage) => {
           const stored = fees[FEE_FIELD[stage]] ?? null;
+          const sewer = stage === 'sewing' ? (assignees.sewer ?? null) : null;
+          const category = sewer === null ? undefined : categoryOf.get(sewer.id);
+          const typed = feeDrafts['sewing'] ?? '';
+          const base = stage === 'sewing' ? draftMoney(typed) : 0;
+          const suggested = category === undefined || category === 1 || base <= 0 || typed === appliedSewing
+            ? null
+            : suggestedStageFee(base, category);
 
           return (
             <Field
               key={stage}
               label={t(ORDER_STAGE_FEE_LABELS, stage)}
-              hint={stored === null ? undefined : m('manage.now', { v: formatMoney(parseMoney(stored)) })}
+              hint={
+                category !== undefined && sewer !== null
+                  ? m('manage.sewerCategory', {
+                      name: sewer.fullName,
+                      category: SEWER_CATEGORY_LABELS[locale][category],
+                      pct: SEWER_CATEGORY_FEE_PERCENT[category],
+                    })
+                  : stored === null
+                    ? undefined
+                    : m('manage.now', { v: formatMoney(parseMoney(stored)) })
+              }
             >
               <MoneyInput
                 value={feeDrafts[stage] ?? ''}
@@ -367,6 +402,18 @@ export function OrderManagement({
                 }}
                 placeholder={stored === null ? '0' : trimAmount(stored)}
               />
+              {suggested !== null && (
+                <Pressable
+                  onPress={() => {
+                    const next = trimAmount((suggested / 100).toFixed(2));
+                    setAppliedSewing(next);
+                    setFeeDrafts((current) => ({ ...current, sewing: next }));
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.suggest}>{m('manage.applySuggested', { v: formatMoney(suggested) })}</Text>
+                </Pressable>
+              )}
             </Field>
           );
         })}
@@ -401,6 +448,15 @@ export function OrderManagement({
 
 /** Сумма без хвоста «.00» — она нужна в подсказке, а не в расчёте. */
 /** Подсказка в пустом поле — теми же разрядами, что и ввод: «5 000 000». */
+/** Сумма из черновика поля: пусто или недописано — ноль, а не исключение `parseMoney`. */
+function draftMoney(raw: string): number {
+  try {
+    return raw.trim() === '' ? 0 : parseMoney(raw);
+  } catch {
+    return 0;
+  }
+}
+
 function trimAmount(value: string): string {
   return groupDigits(Number.parseFloat(value).toString());
 }
@@ -471,6 +527,11 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: colors.headerText,
     fontWeight: '600',
+  },
+  suggest: {
+    ...typography.caption,
+    color: colors.accent,
+    marginTop: spacing.xs,
   },
   hint: {
     ...typography.caption,
