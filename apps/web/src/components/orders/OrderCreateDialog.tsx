@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
+import { DiscountFields, discountError, discountPayload, emptyDiscount } from './DiscountFields';
 import {
   emptyItem,
   OrderItemFields,
@@ -81,6 +82,8 @@ export function OrderCreateDialog({
   const [priority, setPriority] = useState<PriorityName>(Priority.NORMAL);
   const [branchId, setBranchId] = useState('');
   const [workPrice, setWorkPrice] = useState('');
+  const [discount, setDiscount] = useState(emptyDiscount);
+  const [submitted, setSubmitted] = useState(false);
   const [deposit, setDeposit] = useState('');
   const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
@@ -228,6 +231,7 @@ export function OrderCreateDialog({
   };
 
   const handleSubmit = (): void => {
+    setSubmitted(true);
     const orderItemsPayload = items.map((item) => {
       /*
           Строки материала, которых у этой модели не бывает, не уезжают на
@@ -301,6 +305,8 @@ export function OrderCreateDialog({
       return;
     }
 
+    if (discountError(workPrice, discount) !== undefined) return;
+
     create.mutate({
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
@@ -309,7 +315,7 @@ export function OrderCreateDialog({
       ...(deadline.length > 0 ? { deadline } : {}),
       priority,
       ...(branchId.length > 0 ? { branchId: Number.parseInt(branchId, 10) } : {}),
-      workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
+      ...discountPayload(workPrice, discount),
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
       depositMethod,
       items: orderItemsPayload,
@@ -473,6 +479,13 @@ export function OrderCreateDialog({
                     placeholder={'5\u00A0000\u00A0000'}
                   />
                 </Field>
+
+                <DiscountFields
+                  price={workPrice}
+                  value={discount}
+                  onChange={setDiscount}
+                  error={errors['discountReason'] ?? (submitted ? discountError(workPrice, discount) : undefined)}
+                />
 
                 <Field label="Предоплата, сум" error={errors['deposit']}>
                   <MoneyInput

@@ -67,7 +67,7 @@ export default function CashPage(): ReactElement {
         </Field>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           label="Принято за день"
           value={formatMoney(data?.total ?? 0)}
@@ -101,6 +101,15 @@ export default function CashPage(): ReactElement {
           label="На руках"
           value={formatMoney(onHandsTotal)}
           caption={`У ${String(onHands.data?.byUser.length ?? 0)} сотрудников, сейчас`}
+        />
+        <StatCard
+          label="Скидки"
+          value={formatMoney(data?.discounts.total ?? 0)}
+          caption={
+            data === undefined || data.discounts.count === 0
+              ? 'По заказам, принятым за день'
+              : `По ${String(data.discounts.count)} заказам, принятым за день`
+          }
         />
       </section>
 

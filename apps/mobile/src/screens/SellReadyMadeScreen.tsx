@@ -28,6 +28,7 @@ import {
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
+import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { trpc } from '../lib/trpc';
@@ -67,6 +68,7 @@ export function SellReadyMadeScreen(): ReactElement {
   const [clientPhone, setClientPhone] = useState('');
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
   const [workPrice, setWorkPrice] = useState('');
+  const [discount, setDiscount] = useState(emptyDiscount);
   const [deposit, setDeposit] = useState('');
   const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [needsInstallation, setNeedsInstallation] = useState<'no' | 'yes'>('no');
@@ -180,12 +182,12 @@ export function SellReadyMadeScreen(): ReactElement {
 
   const submit = (): void => {
     setShowErrors(true);
-    if (hasErrors) return;
+    if (hasErrors || discountMissingReason(workPrice, discount)) return;
 
     sell.mutate({
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
-      workPrice: inputToMajor(workPrice),
+      ...discountPayload(workPrice, discount),
       deposit: inputToMajor(deposit),
       depositMethod,
       needsInstallation: needsInstallation === 'yes',
@@ -276,6 +278,7 @@ export function SellReadyMadeScreen(): ReactElement {
               </Field>
             </View>
           </View>
+          <DiscountFields price={workPrice} value={discount} onChange={setDiscount} showError={showErrors} />
           {/* Способ оплаты предоплаты — из него складывается касса дня. */}
           <Field label={m('cash.method')}>
             <ChipSelect

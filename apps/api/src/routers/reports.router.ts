@@ -725,6 +725,69 @@ export const reportsRouter = router({
     }),
 
   /**
+   * Скидки за период: кто, кому, сколько и за что.
+   *
+   * Контроль продавцов: скидка — это деньги, которых касса не увидит, и
+   * владелец хочет видеть их списком, а не догадываться по марже. По дате
+   * приёма заказа — скидку дают при приёме; отменённые тоже в списке, с
+   * пометкой: скидка была обещана, и это часть картины.
+   */
+  discounts: managementProcedure
+    .input(
+      z.object({
+        from: z.string().date(),
+        to: z.string().date(),
+        branchId: idSchema.optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const start = sql`(${input.from}::date::timestamp at time zone 'Asia/Tashkent')`;
+      const end = sql`((${input.to}::date + 1)::timestamp at time zone 'Asia/Tashkent')`;
+      const rows = await ctx.db
+        .select({
+          id: orders.id,
+          orderNumber: orders.orderNumber,
+          orderType: orders.orderType,
+          status: orders.status,
+          createdAt: orders.createdAt,
+          clientName: orders.clientName,
+          sellerName: users.fullName,
+          workPrice: orders.workPrice,
+          discountAmount: orders.discountAmount,
+          discountReason: orders.discountReason,
+        })
+        .from(orders)
+        .innerJoin(users, eq(users.id, orders.createdBy))
+        .where(
+          and(
+            gt(orders.discountAmount, '0'),
+            sql`${orders.createdAt} >= ${start}`,
+            sql`${orders.createdAt} < ${end}`,
+            ...(input.branchId === undefined ? [] : [eq(orders.branchId, input.branchId)]),
+          ),
+        )
+        .orderBy(desc(orders.createdAt))
+        .limit(500);
+
+      const totalMinor = rows.reduce((sum, row) => sum + parseMoney(row.discountAmount), 0);
+      const bySeller = new Map<string, { count: number; totalMinor: number }>();
+      for (const row of rows) {
+        const entry = bySeller.get(row.sellerName) ?? { count: 0, totalMinor: 0 };
+        entry.count += 1;
+        entry.totalMinor += parseMoney(row.discountAmount);
+        bySeller.set(row.sellerName, entry);
+      }
+
+      return {
+        rows,
+        totalMinor,
+        bySeller: [...bySeller.entries()]
+          .map(([sellerName, entry]) => ({ sellerName, ...entry }))
+          .sort((a, b) => b.totalMinor - a.totalMinor),
+      };
+    }),
+
+  /**
    * Выработка сотрудников за месяц: закрытые заказы по каждой роли участия
    * и отработанные часы.
    */

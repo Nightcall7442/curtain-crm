@@ -71,6 +71,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Укажите название': "Nomini ko'rsating",
   'Позиция справочника не найдена': "Ma'lumotnoma pozitsiyasi topilmadi",
   'Укажите код': "Kodni ko'rsating",
+  'Укажите причину скидки': "Chegirma sababini ko'rsating",
 
   // discipline
   'Сотрудник не найден или уволен': "Xodim topilmadi yoki ishdan bo'shatilgan",

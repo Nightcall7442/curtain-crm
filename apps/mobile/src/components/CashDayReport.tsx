@@ -80,6 +80,9 @@ export function CashDayReport(): ReactElement {
               hint={m('cashDay.onHandsWho', { n: byUser.length })}
               tone={onHandsTotal > 0 ? 'warning' : 'plain'}
             />
+            {data !== undefined && data.discounts.count > 0 && (
+              <Stat label={m('cashDay.discounts')} value={`−${formatMoney(data.discounts.total)}`} />
+            )}
           </>
         )}
       </Card>

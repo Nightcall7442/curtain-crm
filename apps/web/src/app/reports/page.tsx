@@ -5,6 +5,7 @@ import { useState, type ReactElement } from 'react';
 import { MONTH_NAMES_RU } from '@curtain-crm/shared';
 
 import { LineSeries } from '@/components/charts/LineSeries';
+import { DiscountsReportCard } from '@/components/reports/DiscountsReportCard';
 import { Card, CardBody, CardHeader, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
@@ -125,6 +126,8 @@ export default function ReportsPage(): ReactElement {
           </>
         )}
       </section>
+
+      <DiscountsReportCard year={year} month={month} />
 
       <Card>
         <CardHeader title={`Фонд заработной платы, ${year.toString()}`} />

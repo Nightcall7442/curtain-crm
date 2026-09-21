@@ -90,8 +90,19 @@ export const orders = pgTable(
 
     /* --- Деньги ------------------------------------------------------------ */
 
-    /** Стоимость работ для клиента. Себестоимость считается по `purchases`. */
+    /** Стоимость работ для клиента — уже со скидкой. Себестоимость считается по `purchases`. */
     workPrice: numeric('work_price', { precision: 14, scale: 2 }).notNull().default('0'),
+    /**
+     * Скидка клиенту — сколько сняли с цены, и почему.
+     *
+     * `workPrice` хранит цену ПОСЛЕ скидки: так остаток, оплаты и процент
+     * продавца считаются как раньше, а скидка остаётся сверху записью
+     * «было на столько дороже». Цена до скидки — `workPrice + discountAmount`.
+     * Причина — обязательна при ненулевой скидке на уровне формы, не базы:
+     * владельцу важно видеть, кто и за что сбрасывает.
+     */
+    discountAmount: numeric('discount_amount', { precision: 14, scale: 2 }).notNull().default('0'),
+    discountReason: text('discount_reason'),
     /**
      * Оплачено по заказу: приходы минус возвраты из книги проводок.
      *
@@ -225,6 +236,7 @@ export const orders = pgTable(
 
     check('orders_client_phone_e164', sql`${table.clientPhone} ~ '^\\+998[0-9]{9}$'`),
     check('orders_work_price_non_negative', sql`${table.workPrice} >= 0`),
+    check('orders_discount_non_negative', sql`${table.discountAmount} >= 0`),
     // Возврат не может превысить оплаченное — это держит база, а не код.
     check('orders_paid_non_negative', sql`${table.paidAmount} >= 0`),
     // Отрицательная расценка означала бы удержание с исполнителя за то, что

@@ -276,3 +276,22 @@ export function formatMoneyShort(
 
   return parts.join(NBSP);
 }
+
+/**
+ * Скидка из формы приёма: суммой или процентом от цены до скидки.
+ *
+ * Считается в основных единицах и не больше самой цены: сбросить больше,
+ * чем стоит заказ, нельзя ни опечаткой, ни намеренно. Поля процедур:
+ * `workPrice` — цена уже со скидкой, `discountAmount` — сколько сняли.
+ */
+export function discountFromInput(
+  priceRaw: string,
+  discountRaw: string,
+  mode: 'sum' | 'percent',
+): { readonly workPrice: number; readonly discountAmount: number } {
+  const price = inputToMajor(priceRaw);
+  const entered = inputToMajor(discountRaw);
+  const raw = mode === 'percent' ? (price * entered) / 100 : entered;
+  const discountAmount = Math.min(price, Math.max(0, Math.round(raw)));
+  return { workPrice: price - discountAmount, discountAmount };
+}

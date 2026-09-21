@@ -15,6 +15,8 @@ import { useState, type ReactElement } from 'react';
 import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
+import { DiscountFields, discountError, discountPayload, emptyDiscount } from './DiscountFields';
+
 /**
  * Продажа готовых штор — товар с витрины, минуя цех.
  *
@@ -47,6 +49,8 @@ export function SellReadyMadeDialog({
   const [plasticCode, setPlasticCode] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [workPrice, setWorkPrice] = useState('');
+  const [discount, setDiscount] = useState(emptyDiscount);
+  const [submitted, setSubmitted] = useState(false);
   const [deposit, setDeposit] = useState('');
   const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [comment, setComment] = useState('');
@@ -109,10 +113,12 @@ export function SellReadyMadeDialog({
   const errors = fieldErrors(sell.error);
 
   const handleSubmit = (): void => {
+    setSubmitted(true);
+    if (discountError(workPrice, discount) !== undefined) return;
     sell.mutate({
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
-      workPrice: Number.parseFloat(workPrice.replace(',', '.')) || 0,
+      ...discountPayload(workPrice, discount),
       deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
       depositMethod,
       needsInstallation,
@@ -404,6 +410,13 @@ export function SellReadyMadeDialog({
                 placeholder={'1\u00A0200\u00A0000'}
               />
             </Field>
+
+            <DiscountFields
+              price={workPrice}
+              value={discount}
+              onChange={setDiscount}
+              error={errors['discountReason'] ?? (submitted ? discountError(workPrice, discount) : undefined)}
+            />
 
             <Field label="Предоплата, сум" error={errors['deposit']} className="sm:col-span-2 lg:col-span-1">
               <MoneyInput

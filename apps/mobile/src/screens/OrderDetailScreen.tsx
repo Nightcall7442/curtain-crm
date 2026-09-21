@@ -218,6 +218,13 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
           {data.workPrice !== null && data.paidAmount !== null && (
             <>
               <Row label={m('order.price')} value={formatMoney(parseMoney(data.workPrice))} />
+              {/* Цена уже со скидкой; сколько сняли и за что — строкой рядом. */}
+              {data.discountAmount !== null && parseMoney(data.discountAmount) > 0 && (
+                <Row
+                  label={data.discountReason === null ? m('order.discount') : `${m('order.discount')} · ${data.discountReason}`}
+                  value={`−${formatMoney(parseMoney(data.discountAmount))}`}
+                />
+              )}
               <Row label={m('order.paid')} value={formatMoney(parseMoney(data.paidAmount))} />
               <Row
                 label={m('order.remaining')}

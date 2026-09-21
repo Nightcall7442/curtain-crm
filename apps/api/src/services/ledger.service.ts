@@ -296,6 +296,8 @@ export interface DayReport {
   readonly cashByManagement: MoneyMinor;
   /** Чеков по терминалу (приходов по карте) за период — норма дня продавцов. */
   readonly terminalChecks: number;
+  /** Скидок обещано по заказам, принятым за период: сколько и по скольким заказам. */
+  readonly discounts: { readonly total: MoneyMinor; readonly count: number };
   /** Касса и счёт на конец периода. */
   readonly balance: LedgerBalance;
 }
@@ -365,6 +367,13 @@ export async function dayReport(
       and p.received_by in (${managers})
       and p.received_at >= ${from} and p.received_at < ${to} ${branch}`);
 
+  // Скидки — по дате приёма заказа: их дают при приёме, и деньги в кассу не
+  // придут именно тогда. Владелец хочет видеть это рядом с выручкой дня.
+  const [discounted] = await executor.execute(sql`
+    select coalesce(sum(o.discount_amount), 0) as amount, count(*) filter (where o.discount_amount > 0) as n
+    from ${orders} o
+    where o.created_at >= ${from} and o.created_at < ${to} ${purchaseBranch}`);
+
   return {
     rows,
     byMethod,
@@ -373,6 +382,7 @@ export async function dayReport(
     collected,
     cashByManagement: money(byManagement?.['amount']),
     terminalChecks,
+    discounts: { total: money(discounted?.['amount']), count: Number.parseInt(toText(discounted?.['n']), 10) || 0 },
     balance: await balance(executor, { at: range.to, branchId, managementIds }),
   };
 }

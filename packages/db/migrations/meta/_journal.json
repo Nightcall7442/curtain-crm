@@ -358,6 +358,13 @@
       "when": 1790004794489,
       "tag": "0050_ledger_catchup",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790009219959,
+      "tag": "0051_order_discount",
+      "breakpoints": true
     }
   ]
 }

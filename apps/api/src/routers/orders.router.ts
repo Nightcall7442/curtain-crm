@@ -295,8 +295,33 @@ const STAGE_EXECUTOR_COLUMN = {
 
 type StageFeeField = (typeof STAGE_FEE_COLUMN)[OrderStageFee];
 
+/**
+ * Скидка при приёме: сумма и причина. `workPrice` во входе — уже со скидкой,
+ * скидка идёт сверху записью; причина обязательна, если скидка не ноль:
+ * владельцу важно видеть, кто и за что сбрасывает.
+ */
+const discountInput = {
+  discountAmount: moneySchema.default(0),
+  discountReason: optionalText(300),
+} as const;
+
+function discountValues(input: {
+  readonly discountAmount: string | number;
+  readonly discountReason?: string | null | undefined;
+}): { readonly discountAmount: string; readonly discountReason: string | null } {
+  const amount = parseMoney(input.discountAmount);
+  const reason = input.discountReason?.trim() ?? '';
+  if (amount > 0 && reason === '') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите причину скидки' });
+  }
+  return {
+    discountAmount: moneyToDecimalString(amount),
+    discountReason: amount > 0 ? reason : null,
+  };
+}
+
 /** Деньги клиента по заказу — видят руководство и продавец, цех — нет. */
-const CLIENT_MONEY_FIELDS = ['workPrice', 'paidAmount', 'remainingPayment'] as const;
+const CLIENT_MONEY_FIELDS = ['workPrice', 'paidAmount', 'remainingPayment', 'discountAmount'] as const;
 type ClientMoneyField = (typeof CLIENT_MONEY_FIELDS)[number];
 
 /** Заказ, у которого скрытые от сотрудника суммы заменены на `null`. */
@@ -550,6 +575,7 @@ export const ordersRouter = router({
         priority: prioritySchema.default('normal'),
 
         workPrice: moneySchema.default(0),
+        ...discountInput,
         deposit: moneySchema.default(0),
         /** Чем внесена предоплата — строка кассы. Без предоплаты не нужен. */
         depositMethod: paymentMethodSchema.default(PaymentMethod.CASH),
@@ -599,6 +625,7 @@ export const ordersRouter = router({
             deadline: input.deadline ?? null,
             priority: input.priority,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
+            ...discountValues(input),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -785,6 +812,7 @@ export const ordersRouter = router({
           clientComment: optionalText(2000),
 
           workPrice: moneySchema.default(0),
+          ...discountInput,
           deposit: moneySchema.default(0),
           /** Чем заплатили — строка кассы «Готовые шторы». */
           depositMethod: paymentMethodSchema.default(PaymentMethod.CASH),
@@ -883,6 +911,7 @@ export const ordersRouter = router({
             installLongitude: input.needsInstallation ? (input.installLongitude ?? null) : null,
             deadline: input.deadline ?? null,
             workPrice: moneyToDecimalString(parseMoney(input.workPrice)),
+            ...discountValues(input),
             createdBy: ctx.user.id,
           })
           .returning();
@@ -1172,6 +1201,8 @@ export const ordersRouter = router({
       z.object({
         id: idSchema,
         workPrice: moneySchema.optional(),
+        discountAmount: moneySchema.optional(),
+        discountReason: optionalText(300),
       }),
     )
     .mutation(async ({ ctx, input }) =>
@@ -1184,6 +1215,12 @@ export const ordersRouter = router({
           ...(input.workPrice === undefined
             ? {}
             : { workPrice: moneyToDecimalString(parseMoney(input.workPrice)) }),
+          ...(input.discountAmount === undefined
+            ? {}
+            : discountValues({
+                discountAmount: input.discountAmount,
+                discountReason: input.discountReason ?? order.discountReason,
+              })),
         };
 
         if (Object.keys(patch).length === 0) return maskStageFees(order, ctx.user);
@@ -1204,7 +1241,7 @@ export const ordersRouter = router({
           entityType: 'order',
           entityId: order.id,
           details: {
-            from: { workPrice: order.workPrice },
+            from: { workPrice: order.workPrice, discountAmount: order.discountAmount },
             to: patch,
           },
           ipAddress: ctx.ipAddress,

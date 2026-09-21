@@ -221,6 +221,18 @@ export default function OrderDetailPage(): ReactElement {
             {data.workPrice !== null && (
               <>
                 <MoneyItem label="Стоимость работ" value={data.workPrice} />
+                {/* Скидка — рядом с ценой: цена уже со скидкой, а сколько сняли и за что — вот. */}
+                {data.discountAmount !== null && parseMoney(data.discountAmount) > 0 && (
+                  <div>
+                    <dt className="text-muted">Скидка</dt>
+                    <dd className="text-primary">
+                      {`−${formatMoney(parseMoney(data.discountAmount))}`}
+                      {data.discountReason !== null && (
+                        <span className="block text-overline text-muted">{data.discountReason}</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
                 <MoneyItem label="Оплачено" value={data.paidAmount} />
                 <MoneyItem label="Остаток" value={data.remainingPayment} />
               </>

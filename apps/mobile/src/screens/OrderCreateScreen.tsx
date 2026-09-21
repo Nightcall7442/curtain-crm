@@ -37,6 +37,7 @@ import {
 } from '../components/order/OrderItemCard';
 import { CodeScanner } from '../components/CodeScanner';
 import { DateField } from '../components/DateField';
+import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -75,6 +76,7 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
   const [priority, setPriority] = useState<Priority>(Priority.NORMAL);
   const [deadline, setDeadline] = useState('');
   const [workPrice, setWorkPrice] = useState('');
+  const [discount, setDiscount] = useState(emptyDiscount);
   const [deposit, setDeposit] = useState('');
   const [depositMethod, setDepositMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [items, setItems] = useState<readonly DraftItem[]>([emptyItem(1)]);
@@ -221,7 +223,7 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
 
   const submit = (): void => {
     setShowErrors(true);
-    if (hasErrors) return;
+    if (hasErrors || (!forStock && discountMissingReason(workPrice, discount))) return;
 
     const orderItemsPayload = items.map((item) => {
       /*
@@ -295,7 +297,7 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
       priority,
       ...(installAddress.trim() === '' ? {} : { installAddress: installAddress.trim() }),
       ...(deadline.trim() === '' ? {} : { deadline: deadline.trim() }),
-      workPrice: inputToMajor(workPrice),
+      ...discountPayload(workPrice, discount),
       deposit: inputToMajor(deposit),
       depositMethod,
       items: orderItemsPayload,
@@ -407,6 +409,7 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
                   </Field>
                 </View>
               </View>
+              <DiscountFields price={workPrice} value={discount} onChange={setDiscount} showError={showErrors} />
               {/* Способ оплаты предоплаты — из него складывается касса дня. */}
               <Field label={m('cash.method')}>
                 <ChipSelect
