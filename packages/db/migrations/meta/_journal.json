@@ -379,6 +379,13 @@
       "when": 1790093610804,
       "tag": "0053_terminal_check_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790095176678,
+      "tag": "0054_money_reset",
+      "breakpoints": true
     }
   ]
 }
