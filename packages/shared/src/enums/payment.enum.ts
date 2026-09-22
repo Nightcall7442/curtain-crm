@@ -67,6 +67,7 @@ export const PAYMENT_KINDS = [
   'collection',
   'payroll',
   'refund',
+  'terminal_check',
 ] as const;
 
 export type PaymentKind = (typeof PAYMENT_KINDS)[number];
@@ -86,6 +87,14 @@ export const PaymentKind = {
   PAYROLL: 'payroll',
   /** Возврат денег клиенту. */
   REFUND: 'refund',
+  /**
+   * Терминальный чек: фото с фискального терминала и сумма.
+   *
+   * Не движение денег, а запись о пробитом чеке — владелец: «терминальный
+   * чек к кассе отношения не имеет». В кассу и на счёт не попадает, в
+   * приход по источникам не входит; считается только норма дня.
+   */
+  TERMINAL_CHECK: 'terminal_check',
 } as const satisfies Record<string, PaymentKind>;
 
 /** Приходы от клиентов — строки отчёта кассы «откуда деньги». */
@@ -110,6 +119,7 @@ export const PAYMENT_KIND_LABELS: Translated<PaymentKind> = {
     collection: 'Инкассация',
     payroll: 'Выплата зарплаты',
     refund: 'Возврат клиенту',
+    terminal_check: 'Терминальный чек',
   },
   uz: {
     order_deposit: 'Yangi buyurtmalar — birinchi to‘lov',
@@ -119,6 +129,7 @@ export const PAYMENT_KIND_LABELS: Translated<PaymentKind> = {
     collection: 'Inkassatsiya',
     payroll: 'Maosh to‘lovi',
     refund: 'Mijozga qaytarish',
+    terminal_check: 'Terminal cheki',
   },
 };
 

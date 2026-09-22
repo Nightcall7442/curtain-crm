@@ -45,7 +45,6 @@ export function TerminalCheckCard(): ReactElement {
     null,
   );
   /** Приход по карте, к которому прикрепляем фото; `null` — чек без прихода. */
-  const [attachTo, setAttachTo] = useState<{ id: number; amount: string } | null>(null);
 
   const pickPhoto = async (fromCamera: boolean): Promise<void> => {
     const permission = fromCamera
@@ -83,7 +82,6 @@ export function TerminalCheckCard(): ReactElement {
       setPhoto(null);
       setAmount('');
       setComment('');
-      setAttachTo(null);
       await utils.terminalChecks.today.invalidate();
     },
     onError(error) {
@@ -119,45 +117,24 @@ export function TerminalCheckCard(): ReactElement {
           </View>
 
           {/*
-            Строка — приход по карте за день. Свой приход без фото (оплата по
-            заказу, чек витрины) — кнопка «прикрепить фото»: чек к нему, а не
-            второй приход. Чужие — только видны.
+            Строка — пробитый чек: кто, на сколько, когда. Приходов по карте
+            здесь больше нет: чек и касса — разные вещи, и прикреплять фото
+            к оплате незачем.
           */}
           {data.rows.map((row) => (
             <View key={row.id} style={styles.row}>
               <Text style={styles.rowName} numberOfLines={1}>
                 {row.fullName}
-                {row.orderNumber === null ? '' : ` · ${row.orderNumber}`}
               </Text>
               <Text style={styles.rowAmount}>{formatMoney(parseMoney(row.amount))}</Text>
               <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
-              {row.photoUrl === null && row.userId === user?.id ? (
-                <Pressable
-                  onPress={() => {
-                    setAttachTo({ id: row.id, amount: String(parseMoney(row.amount) / 100) });
-                    setAmount(String(parseMoney(row.amount) / 100));
-                    setOpen(true);
-                  }}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={m('terminal.attachPhoto')}
-                >
-                  <Icon name="camera" size={18} color={colors.accent} />
-                </Pressable>
-              ) : (
-                <Icon
-                  name={row.photoUrl === null ? 'eyeOff' : 'completed'}
-                  size={16}
-                  color={colors.textMuted}
-                />
-              )}
+              <Icon name="completed" size={16} color={colors.textMuted} />
             </View>
           ))}
 
           {canCreate && (
             <Pressable
               onPress={() => {
-                setAttachTo(null);
                 setAmount('');
                 setOpen(true);
               }}
@@ -173,7 +150,7 @@ export function TerminalCheckCard(): ReactElement {
 
       <BottomSheet
         visible={open}
-        title={attachTo === null ? m('terminal.create') : m('terminal.attachPhoto')}
+        title={m('terminal.create')}
         onClose={() => {
           setOpen(false);
         }}
@@ -210,13 +187,11 @@ export function TerminalCheckCard(): ReactElement {
         <Field
           label={m('terminal.amount')}
           required
-          hint={attachTo === null ? undefined : m('terminal.attachHint')}
         >
           <MoneyInput
             value={amount}
             onChangeText={setAmount}
             placeholder="0"
-            editable={attachTo === null}
           />
         </Field>
         <Field label={m('terminal.comment')}>
@@ -234,7 +209,6 @@ export function TerminalCheckCard(): ReactElement {
               photo: { mimeType: photo.mimeType, content: photo.base64 },
               amount: inputToMajor(amount),
               comment: comment.trim() === '' ? null : comment.trim(),
-              ...(attachTo === null ? {} : { paymentId: attachTo.id }),
             });
           }}
           disabled={photo === null || inputToMajor(amount) <= 0}

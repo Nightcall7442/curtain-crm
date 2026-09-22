@@ -167,7 +167,14 @@ export async function onHandsByUser(
 export interface LedgerBalance {
   /** День первого движения через книгу (`YYYY-MM-DD`) — с него отсчёт; `null` — движений не было. */
   readonly since: string | null;
-  /** Наличные в ящике и из чего они сложились. */
+  /**
+   * Наличные в ящике и из чего они сложились.
+   *
+   * Выплаченная зарплата (`payroll`) показывается рядом, но из кассы НЕ
+   * вычитается: владелец попросил вести её отдельно от кассы. Касса —
+   * деньги от продаж: сдано инкассацией плюс принятое руководством минус
+   * закупки и возвраты.
+   */
   readonly cash: {
     readonly collected: MoneyMinor;
     readonly byManagement: MoneyMinor;
@@ -266,7 +273,7 @@ export async function balance(
     since: new Date(sinceAt.getTime() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10),
     cash: {
       ...parts,
-      total: parts.collected + parts.byManagement - parts.payroll - parts.purchases - parts.refunds,
+      total: parts.collected + parts.byManagement - parts.purchases - parts.refunds,
     },
     cashless: {
       ...cashless,
@@ -319,6 +326,7 @@ export async function dayReport(
     from ${payments} p
     where not p.opening and p.received_at >= ${from} and p.received_at < ${to} ${branch}
     group by p.kind, p.method`);
+  // (виды перебираются ниже: приход — в сетку, расход и чеки — отдельно)
 
   const grid = new Map<string, MoneyMinor>();
   let terminalChecks = 0;
@@ -331,10 +339,9 @@ export async function dayReport(
     if (kind === PaymentKind.PAYROLL) out.payroll += amount;
     else if (kind === PaymentKind.REFUND) out.refunds += amount;
     else if (kind === PaymentKind.COLLECTION) collected += amount;
-    else {
-      grid.set(`${kind}:${method}`, amount);
-      if (method === PaymentMethod.CARD) terminalChecks += Number.parseInt(toText(cell['n']), 10);
-    }
+    // Чек терминала — не деньги кассы: только штука в норму дня.
+    else if (kind === PaymentKind.TERMINAL_CHECK) terminalChecks += Number.parseInt(toText(cell['n']), 10);
+    else grid.set(`${kind}:${method}`, amount);
   }
 
   const emptyByMethod = (): Record<PaymentMethodName, MoneyMinor> =>
@@ -397,7 +404,7 @@ export async function dayReport(
   };
 }
 
-/** Сколько приходов по карте за отрезок — норма терминальных чеков. */
+/** Сколько чеков пробито за отрезок — норма дня продавцов. */
 export async function terminalChecksCount(
   executor: DbExecutor,
   range: { readonly from: Date; readonly to: Date },
@@ -407,9 +414,7 @@ export async function terminalChecksCount(
     .from(payments)
     .where(
       and(
-        eq(payments.method, PaymentMethod.CARD),
-        eq(payments.opening, false),
-        inArray(payments.kind, [...PAYMENT_INCOME_KINDS]),
+        eq(payments.kind, PaymentKind.TERMINAL_CHECK),
         gte(payments.receivedAt, range.from),
         lt(payments.receivedAt, range.to),
       ),

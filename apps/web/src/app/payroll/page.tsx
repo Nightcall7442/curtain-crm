@@ -14,6 +14,7 @@ import { Calculator, SlidersHorizontal } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { PayoutWeekDialog } from '@/components/payroll/PayoutWeekDialog';
+import { PayrollArchiveCard } from '@/components/payroll/PayrollArchiveCard';
 import { PayrollBreakdownDialog } from '@/components/payroll/PayrollBreakdownDialog';
 import { SchemeDialog } from '@/components/payroll/SchemeDialog';
 import { Badge } from '@/components/ui/Badge';
@@ -492,6 +493,8 @@ export default function PayrollPage(): ReactElement {
           setSchemeOpen(false);
         }}
       />
+
+      <PayrollArchiveCard />
 
       <Card>
         <CardHeader

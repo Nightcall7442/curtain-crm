@@ -55,7 +55,40 @@ export function CashDayReport(): ReactElement {
           <Skeleton />
         ) : (
           <>
+            {/*
+              Карточка дня — только про день: принято, сдано, на руках,
+              скидки. Накопленные остатки уехали ниже, в «Итого»: владелец
+              открывает кассу посчитать смену, а не остаток с начала работы.
+            */}
             <Stat label={m('cashDay.received')} value={formatMoney(data?.total ?? 0)} />
+            <Stat label={m('cashDay.handedToday')} value={formatMoney(data?.collected ?? 0)} />
+            <Stat
+              label={m('cashDay.onHands')}
+              value={formatMoney(onHandsTotal)}
+              hint={m('cashDay.onHandsWho', { n: byUser.length })}
+              tone={onHandsTotal > 0 ? 'warning' : 'plain'}
+            />
+            {data !== undefined && data.discounts.count > 0 && (
+              <Stat label={m('cashDay.discounts')} value={`−${formatMoney(data.discounts.total)}`} />
+            )}
+            {data !== undefined && data.out.payroll > 0 && (
+              <Stat label={m('cashDay.payrollToday')} value={formatMoney(data.out.payroll)} />
+            )}
+          </>
+        )}
+      </Card>
+
+      {/*
+        Накопленные остатки — отдельной карточкой и без зарплаты внутри:
+        владелец попросил вести выплаты отдельно от кассы, а кассу считать
+        по продажам. Зарплата видна здесь же строкой — но сама по себе.
+      */}
+      <Card>
+        <CardTitle title={m('cashDay.totals')} icon="paid" />
+        {summary.isLoading ? (
+          <Skeleton />
+        ) : (
+          <>
             <Stat
               label={m('cashDay.inKassa')}
               value={formatMoney(data?.balance.cash.total ?? 0)}
@@ -74,14 +107,12 @@ export function CashDayReport(): ReactElement {
                     })
               }
             />
-            <Stat
-              label={m('cashDay.onHands')}
-              value={formatMoney(onHandsTotal)}
-              hint={m('cashDay.onHandsWho', { n: byUser.length })}
-              tone={onHandsTotal > 0 ? 'warning' : 'plain'}
-            />
-            {data !== undefined && data.discounts.count > 0 && (
-              <Stat label={m('cashDay.discounts')} value={`−${formatMoney(data.discounts.total)}`} />
+            {data !== undefined && data.balance.cash.payroll > 0 && (
+              <Stat
+                label={m('cashDay.payrollPaid')}
+                value={formatMoney(data.balance.cash.payroll)}
+                hint={m('cashDay.payrollApart')}
+              />
             )}
           </>
         )}
@@ -174,7 +205,6 @@ function kassaParts(parts: CashSummaryParts, m: Translate): string {
     date: formatIsoDateShort(parts.since),
     collected: formatMoney(parts.cash.collected),
     management: formatMoney(parts.cash.byManagement),
-    payroll: formatMoney(parts.cash.payroll),
     purchases: formatMoney(parts.cash.purchases),
     refunds: formatMoney(parts.cash.refunds),
   });

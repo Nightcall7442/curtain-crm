@@ -2,7 +2,6 @@ import {
   isManagement,
   ORDER_INTAKE_ROLES,
   parseMoney,
-  PAYMENT_INCOME_KINDS,
   PaymentKind,
   Role,
   TERMINAL_CHECKS_DAILY_TARGET,
@@ -14,11 +13,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
-import { base64FileSchema, idSchema, moneySchema, optionalText } from '../lib/schemas';
+import { base64FileSchema, moneySchema, optionalText } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
-import { attachPhoto, entries, post, terminalChecksCount } from '../services/ledger.service';
+import { entries, post, terminalChecksCount } from '../services/ledger.service';
 import { notifyTerminalCheckCreated } from '../services/notifications.service';
 import { buildStorageKey, decodeBase64Payload, getStorage } from '../services/storage.service';
 import { router } from '../trpc';
@@ -64,13 +63,19 @@ const seesChecks = (roles: readonly RoleName[]): boolean =>
   isManagement(roles) || roles.some((role) => ORDER_INTAKE_ROLES.includes(role));
 
 async function checksInRange(executor: DbExecutor, range: { from: Date; to: Date }, limit = 500) {
+  /*
+    Чеки — только записи своего вида. Приход по карте сюда больше не
+    попадает: владелец развёл кассу и терминал («bir birina aloqasi
+    bulmashi garak»), и норма дня считается по пробитым чекам, а не по
+    оплатам картой.
+  */
   const rows = await entries(executor, {
     range,
     methods: ['card'],
-    kinds: [...PAYMENT_INCOME_KINDS],
+    kinds: [PaymentKind.TERMINAL_CHECK],
     limit,
   });
-  return rows.filter((row) => !row.opening).map(toCheck);
+  return rows.map(toCheck);
 }
 
 /** Филиал для чека: основной, любой свой, иначе первый — чек важнее привязки. */
@@ -86,10 +91,9 @@ export const terminalChecksRouter = router({
   /**
    * Пробить чек: фото с терминала и сумма.
    *
-   * Если приход по карте уже есть (оплата по заказу, чек витрины) — фото
-   * прикрепляется к нему (`paymentId`) его владельцем, хоть установщиком у
-   * двери, и второй приход не рождается. Без `paymentId` — прочий приход по
-   * карте, его заводят только те, кто принимает заказы.
+   * Чек — запись о пробитом фискальном чеке, а не деньги: в кассу и на счёт
+   * он не идёт, в приход по источникам не входит. Прикрепить фото к приходу
+   * по карте больше нельзя — владелец развёл эти две вещи совсем.
    */
   create: protectedProcedure
     .input(
@@ -97,14 +101,9 @@ export const terminalChecksRouter = router({
         photo: base64FileSchema,
         amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
         comment: optionalText(200),
-        /** Приход по карте, к которому это фото; пусто — новый приход. */
-        paymentId: idSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (input.paymentId === undefined && !ctx.user.roles.some((role) => ORDER_INTAKE_ROLES.includes(role))) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Чек без прихода заводит продавец или руководство' });
-      }
       const branchId = await branchFor(ctx.db, ctx.user);
       const stored = await getStorage().upload({
         key: buildStorageKey(['terminal-checks', ctx.user.id.toString()], input.photo.mimeType),
@@ -116,24 +115,15 @@ export const terminalChecksRouter = router({
       });
 
       return ctx.db.transaction(async (tx) => {
-        let id: number | null;
-        if (input.paymentId !== undefined) {
-          const attached = await attachPhoto(tx, { paymentId: input.paymentId, actorId: ctx.user.id, photoKey: stored.key });
-          if (!attached) {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'Приход по карте не найден или не ваш' });
-          }
-          id = input.paymentId;
-        } else {
-          id = await post(tx, {
-            branchId,
-            kind: PaymentKind.OTHER,
-            method: 'card',
-            amount: parseMoney(input.amount),
-            photoKey: stored.key,
-            actorId: ctx.user.id,
-            comment: input.comment ?? null,
-          });
-        }
+        const id = await post(tx, {
+          branchId,
+          kind: PaymentKind.TERMINAL_CHECK,
+          method: 'card',
+          amount: parseMoney(input.amount),
+          photoKey: stored.key,
+          actorId: ctx.user.id,
+          comment: input.comment ?? null,
+        });
         const count = await terminalChecksToday(tx, null);
 
         await recordAudit(tx, {

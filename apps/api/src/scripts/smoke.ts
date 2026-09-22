@@ -1234,9 +1234,6 @@ async function run(db: Database): Promise<void> {
     userAgent: null,
     locale: 'ru',
   });
-  const cardEntry = (await installerCaller.payments.byOrder({ orderId: cashOrder.id })).find(
-    (row) => row.method === PaymentMethod.CARD,
-  );
   const sellerCaller = createCallerFactory(appRouter)({
     db,
     user: sellerActor,
@@ -1250,30 +1247,22 @@ async function run(db: Database): Promise<void> {
     content:
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
   };
-  const attachedTo = cardEntry === undefined ? null : await sellerCaller.terminalChecks.create({
-    photo: pixel,
-    amount: 200000,
-    paymentId: cardEntry.id,
-  }).then(() => 'ok').catch((error: unknown) => (error instanceof TRPCError ? error.code : 'other'));
-  const attachedRows = await installerCaller.payments.byOrder({ orderId: cashOrder.id });
-  const withPhoto = attachedRows.filter((row) => row.photoUrl !== null).length;
   const beforeStandalone = await terminalChecksToday(db, null);
   await sellerCaller.terminalChecks.create({ photo: pixel, amount: 150000, comment: 'чек без заказа' });
   const afterStandalone = await terminalChecksToday(db, null);
-  check(
-    'ledger: фото чека прикрепляется к чужому приходу по карте только владельцу; чек без прихода — новый приход',
-    attachedTo === 'NOT_FOUND' && withPhoto === 0 && afterStandalone === beforeStandalone + 1,
-    `к чужому: ${attachedTo ?? 'null'}, с фото ${withPhoto.toString()}, чеков ${beforeStandalone.toString()} → ${afterStandalone.toString()}`,
+  const cardRowsAfter = await installerCaller.payments.byOrder({ orderId: cashOrder.id });
+  /* Чек не должен добавить прочий приход по карте — проверяем напрямую по книге. */
+  const [cardOther] = await db.execute(
+    sql`select coalesce(sum(amount), 0)::text as amount from payments
+        where kind = 'other' and method = 'card' and photo_key is not null`,
   );
-  const ownCard = await installerCaller.terminalChecks
-    .create({ photo: pixel, amount: 200000, ...(cardEntry === undefined ? {} : { paymentId: cardEntry.id }) })
-    .then((result) => result.count)
-    .catch(() => -1);
-  const ownRows = await installerCaller.payments.byOrder({ orderId: cashOrder.id });
+  const cardOtherAmount = typeof cardOther?.['amount'] === 'string' ? cardOther['amount'] : '0';
   check(
-    'ledger: владелец прихода по карте прикрепляет фото — приход один, норма не удваивается',
-    ownCard === afterStandalone && ownRows.filter((row) => row.photoUrl !== null).length === 1,
-    `чеков ${ownCard.toString()}, с фото ${ownRows.filter((row) => row.photoUrl !== null).length.toString()}`,
+    'ledger: терминальный чек — своя запись, в кассу и на счёт не идёт',
+    afterStandalone === beforeStandalone + 1 &&
+      cardRowsAfter.filter((row) => row.photoUrl !== null).length === 0 &&
+      Number.parseFloat(cardOtherAmount) === 0,
+    `чеков ${beforeStandalone.toString()} → ${afterStandalone.toString()}, приходов по карте с фото на ${cardOtherAmount}`,
   );
 
   /* ---------------------------- 7. Отчёты -------------------------------- */

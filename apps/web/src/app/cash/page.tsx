@@ -67,35 +67,13 @@ export default function CashPage(): ReactElement {
         </Field>
       </section>
 
+      {/* День — про день: принято, сдано, на руках, скидки, выплаты этого дня. */}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard label="Принято за день" value={formatMoney(data?.total ?? 0)} caption="Все способы" />
         <StatCard
-          label="Принято за день"
-          value={formatMoney(data?.total ?? 0)}
-          caption={
-            data === undefined || data.out.payroll + data.out.purchases + data.out.refunds === 0
-              ? 'Все способы'
-              : `ушло: зарплата ${formatMoney(data.out.payroll)} · закупки ${formatMoney(data.out.purchases)} · возвраты ${formatMoney(data.out.refunds)}`
-          }
-        />
-        <StatCard
-          label="В кассе"
-          value={formatMoney(data?.balance.cash.total ?? 0)}
-          caption={
-            data === undefined
-              ? 'Наличные: сдано и принято руководством, минус выдано'
-              : data.balance.since === null
-                ? 'Движений через книгу ещё не было'
-                : `с ${formatIsoDateShort(data.balance.since)}: сдано ${formatMoney(data.balance.cash.collected)} + руководство ${formatMoney(data.balance.cash.byManagement)} − зарплата ${formatMoney(data.balance.cash.payroll)} − закупки ${formatMoney(data.balance.cash.purchases)} − возвраты ${formatMoney(data.balance.cash.refunds)}`
-          }
-        />
-        <StatCard
-          label="На счёте"
-          value={formatMoney(data?.balance.cashless.total ?? 0)}
-          caption={
-            data === undefined
-              ? 'Карта, QR, Click — минус безналичные возвраты'
-              : `карта ${formatMoney(data.balance.cashless.card)} · QR ${formatMoney(data.balance.cashless.qr)} · Click ${formatMoney(data.balance.cashless.click)}`
-          }
+          label="Сдано за день"
+          value={formatMoney(data?.collected ?? 0)}
+          caption="Инкассация сотрудников"
         />
         <StatCard
           label="На руках"
@@ -110,6 +88,50 @@ export default function CashPage(): ReactElement {
               ? 'По заказам и чекам за день'
               : `По ${String(data.discounts.count)} заказам и чекам за день`
           }
+        />
+        <StatCard
+          label="Ушло за день"
+          value={formatMoney(
+            (data?.out.payroll ?? 0) + (data?.out.purchases ?? 0) + (data?.out.refunds ?? 0),
+          )}
+          caption={
+            data === undefined
+              ? 'Зарплата, закупки, возвраты'
+              : `зарплата ${formatMoney(data.out.payroll)} · закупки ${formatMoney(data.out.purchases)} · возвраты ${formatMoney(data.out.refunds)}`
+          }
+        />
+      </section>
+
+      {/*
+        Накопленные остатки — отдельной полосой: касса и счёт живут дольше
+        одного дня. Зарплата стоит рядом и из кассы не вычитается — владелец
+        попросил вести выплаты отдельно от кассы.
+      */}
+      <section className="grid gap-3 sm:grid-cols-3">
+        <StatCard
+          label="В кассе"
+          value={formatMoney(data?.balance.cash.total ?? 0)}
+          caption={
+            data === undefined
+              ? 'Наличные: сдано и принято руководством, минус закупки и возвраты'
+              : data.balance.since === null
+                ? 'Движений через книгу ещё не было'
+                : `с ${formatIsoDateShort(data.balance.since)}: сдано ${formatMoney(data.balance.cash.collected)} + руководство ${formatMoney(data.balance.cash.byManagement)} − закупки ${formatMoney(data.balance.cash.purchases)} − возвраты ${formatMoney(data.balance.cash.refunds)}`
+          }
+        />
+        <StatCard
+          label="На счёте"
+          value={formatMoney(data?.balance.cashless.total ?? 0)}
+          caption={
+            data === undefined
+              ? 'Карта, QR, Click — минус безналичные возвраты'
+              : `карта ${formatMoney(data.balance.cashless.card)} · QR ${formatMoney(data.balance.cashless.qr)} · Click ${formatMoney(data.balance.cashless.click)}`
+          }
+        />
+        <StatCard
+          label="Выплачено зарплаты"
+          value={formatMoney(data?.balance.cash.payroll ?? 0)}
+          caption="Отдельно от кассы: из остатка не вычитается"
         />
       </section>
 

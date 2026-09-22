@@ -5,6 +5,7 @@ import {
   isManagement,
   moneyToDecimalString,
   parseMoney,
+  payrollRecordStatusSchema,
   payrollSchemeTypeSchema,
   PAYROLL_SCHEME_REQUIRED_FIELDS,
   PayrollRecordStatus,
@@ -215,6 +216,54 @@ const schemesRouter = router({
 
 export const payrollRouter = router({
   schemes: schemesRouter,
+
+  /**
+   * Архив ведомостей: все месяцы разом — для выгрузки в Excel.
+   *
+   * `list` отдаёт один месяц, а владелец просил архив: он сверяет выплаты
+   * за год с бухгалтерией на своей стороне, и месяц за месяцем открывать
+   * для этого страницу незачем.
+   */
+  archive: managementProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2020).max(2100).optional(),
+        userId: idSchema.optional(),
+        status: payrollRecordStatusSchema.optional(),
+      }).default({}),
+    )
+    .query(async ({ ctx, input }) =>
+      ctx.db
+        .select({
+          id: payrollRecords.id,
+          periodYear: payrollRecords.periodYear,
+          periodMonth: payrollRecords.periodMonth,
+          userId: payrollRecords.userId,
+          userFullName: users.fullName,
+          role: payrollRecords.role,
+          calculatedAmount: payrollRecords.calculatedAmount,
+          paidAmount: payrollRecords.paidAmount,
+          kpiPercent: payrollRecords.kpiPercent,
+          status: payrollRecords.status,
+          comment: payrollRecords.comment,
+          approvedAt: payrollRecords.approvedAt,
+          paidAt: payrollRecords.paidAt,
+          receiptConfirmedAt: payrollRecords.receiptConfirmedAt,
+        })
+        .from(payrollRecords)
+        .innerJoin(users, eq(users.id, payrollRecords.userId))
+        .where(
+          and(
+            ...(input.year === undefined ? [] : [eq(payrollRecords.periodYear, input.year)]),
+            ...(input.userId === undefined ? [] : [eq(payrollRecords.userId, input.userId)]),
+            ...(input.status === undefined ? [] : [eq(payrollRecords.status, input.status)]),
+          ),
+        )
+        .orderBy(desc(payrollRecords.periodYear), desc(payrollRecords.periodMonth), asc(users.fullName))
+        // Потолок щедрый: годовая ведомость на два десятка человек — это сотни строк.
+        .limit(5000),
+    ),
+
 
   /**
    * Расчёт черновиков за период.
