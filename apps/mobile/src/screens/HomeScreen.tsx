@@ -16,7 +16,7 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components/Avatar';
-import { BirthdayBoard } from '../components/BirthdayBoard';
+import { EventsBoard } from '../components/EventsBoard';
 import { Card, CardTitle, Empty, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
@@ -69,7 +69,7 @@ export function HomeScreen(): ReactElement {
   const unread = trpc.notifications.unreadCount.useQuery();
   const rating = trpc.rating.me.useQuery({ scope: RatingScope.MONTH });
   // Доска дней рождения внизу экрана: список коллег, у кого праздник близко.
-  const birthdays = trpc.users.birthdays.useQuery({ withinDays: 30 });
+  const events = trpc.users.upcomingEvents.useQuery({ withinDays: 30 });
 
   /**
    * Счётчик просроченных — отдельным запросом, а не подсчётом по списку.
@@ -377,7 +377,7 @@ export function HomeScreen(): ReactElement {
         читается как передышка.
       */}
       <View style={styles.section}>
-        <BirthdayBoard people={birthdays.data ?? []} isLoading={birthdays.isLoading} />
+        <EventsBoard events={events.data ?? []} isLoading={events.isLoading} />
       </View>
     </ScrollView>
   );

@@ -8,11 +8,15 @@ import { Card, CardTitle, Skeleton } from './Card';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
- * Ближайшие дни рождения коллег.
+ * Ближайшие события: дни рождения и одобренные выходные.
  *
  * Единственное место в приложении, где сотрудник видит не работу, а людей.
  * Поэтому карточки крупные и с фотографией: список фамилий никого не
  * заставит подойти и поздравить, а лицо — заставит.
+ *
+ * Раньше карточка звалась «Дни рождения» и их же одних и показывала.
+ * Владелец: «тут не только дни рождения» — рядом встали выходные: кого не
+ * будет на месте, видно там же, где именинники.
  *
  * Возраст не показывается. Дата и «через сколько» — всё, что нужно, чтобы
  * поздравить; объявлять всему цеху, сколько человеку лет, для этого не
@@ -22,11 +26,16 @@ import { useLocale, type Translate } from '../hooks/useLocale';
 /** Сколько дней вперёд считается «ближайшим». */
 const HORIZON_DAYS = 30;
 
-export interface BirthdayPerson {
+export interface StaffEvent {
+  readonly id: string;
+  readonly kind: 'birthday' | 'day_off';
   readonly userId: number;
   readonly fullName: string;
   readonly jobTitle: string | null;
-  readonly birthDate: string;
+  /** Дата события: день рождения или первый день выходных. */
+  readonly date: string;
+  /** Последний день выходных; у дня рождения — `null`. */
+  readonly endDate: string | null;
   readonly daysUntil: number;
   readonly avatarUrl: string | null;
 }
@@ -52,26 +61,26 @@ function initials(fullName: string): string {
     .join('');
 }
 
-export function BirthdayBoard({
-  people,
+export function EventsBoard({
+  events,
   isLoading,
 }: {
-  readonly people: readonly BirthdayPerson[];
+  readonly events: readonly StaffEvent[];
   readonly isLoading: boolean;
 }): ReactElement | null {
   const { m } = useLocale();
   /*
     Пустую карточку не показываем вовсе.
 
-    «Ближайших дней рождения нет» — сообщение ни о чём: оно занимает экран
-    и ничего не меняет в работе. Ближайший месяц без именинников в
-    коллективе из восемнадцати человек — обычное дело.
+    «Ближайших событий нет» — сообщение ни о чём: оно занимает экран и
+    ничего не меняет в работе. Месяц без именинников и отгулов в коллективе
+    из восемнадцати человек — обычное дело.
   */
-  if (!isLoading && people.length === 0) return null;
+  if (!isLoading && events.length === 0) return null;
 
   return (
     <Card>
-      <CardTitle title={m('birthday.title')} icon="calendar" />
+      <CardTitle title={m('events.title')} icon="calendar" />
 
       {isLoading ? (
         <Skeleton />
@@ -81,13 +90,14 @@ export function BirthdayBoard({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.row}
         >
-          {people.map((person) => {
+          {events.map((person) => {
             const isToday = person.daysUntil === 0;
+            const isDayOff = person.kind === 'day_off';
 
             return (
               <View
-                key={person.userId}
-                style={[styles.person, isToday ? styles.personToday : null]}
+                key={person.id}
+                style={[styles.person, isToday && !isDayOff ? styles.personToday : null]}
               >
                 {person.avatarUrl === null ? (
                   <View style={[styles.photo, styles.photoFallback]}>
@@ -111,17 +121,26 @@ export function BirthdayBoard({
                   </Text>
                 )}
 
-                <Text style={[styles.when, isToday ? styles.whenToday : null]}>
-                  {isToday ? m('birthday.todayMark') : whenLabel(person.daysUntil, m)}
+                <Text style={[styles.when, isToday && !isDayOff ? styles.whenToday : null]}>
+                  {isDayOff
+                    ? m('events.dayOff')
+                    : isToday
+                      ? m('birthday.todayMark')
+                      : whenLabel(person.daysUntil, m)}
                 </Text>
-                <Text style={styles.date}>{formatIsoDateShort(person.birthDate)}</Text>
+                <Text style={styles.date}>
+                  {/* Выходной на несколько дней — диапазоном: «24.09 – 26.09». */}
+                  {person.endDate === null || person.endDate === person.date
+                    ? formatIsoDateShort(person.date)
+                    : `${formatIsoDateShort(person.date)} – ${formatIsoDateShort(person.endDate)}`}
+                </Text>
               </View>
             );
           })}
         </ScrollView>
       )}
 
-      {!isLoading && people.length > 0 && (
+      {!isLoading && events.length > 0 && (
         <Text style={styles.footnote}>{m('birthday.horizon', { n: HORIZON_DAYS })}</Text>
       )}
     </Card>

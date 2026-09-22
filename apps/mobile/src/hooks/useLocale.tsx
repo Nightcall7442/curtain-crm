@@ -57,6 +57,7 @@ const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     /*
@@ -69,7 +70,16 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
 
     void AsyncStorage.getItem(LOCALE_STORAGE_KEY)
       .then((stored) => {
-        if (!cancelled && isLocale(stored)) setLocaleState(stored);
+        if (cancelled || !isLocale(stored) || stored === DEFAULT_LOCALE) return;
+        setLocaleState(stored);
+        /*
+          Язык восстановился уже после первых запросов: они ушли на русском,
+          и ответы — уведомления, ошибки — легли в кэш по-русски. Без сброса
+          лента оставалась бы русской до следующего обновления экрана, и
+          владелец видел бы узбекский интерфейс с русскими уведомлениями.
+        */
+        setRequestLocale(stored);
+        void queryClient.invalidateQueries();
       })
       .catch(() => {
         // Недоступное хранилище не должно ронять запуск: останется русский.
@@ -78,9 +88,7 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const queryClient = useQueryClient();
+  }, [queryClient]);
 
   // Сервер тоже должен знать язык: на нём приходят ошибки и уведомления.
   useEffect(() => {

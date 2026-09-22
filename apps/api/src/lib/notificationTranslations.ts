@@ -1,4 +1,4 @@
-import type { Locale } from '@curtain-crm/shared';
+import { CURRENCY_SYMBOL, type Locale } from '@curtain-crm/shared';
 
 import { compileTranslator, type TranslationTable } from './sourceTranslation';
 
@@ -68,9 +68,18 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
 
 const translate = compileTranslator({ exact: EXACT, patterns: PATTERNS } satisfies TranslationTable);
 
-/** Заголовок или тело уведомления на языке клиента; русский — как есть. */
+/**
+ * Заголовок или тело уведомления на языке клиента; русский — как есть.
+ *
+ * Суммы в уведомление попадают уже отформатированными («1 925 000 сум»), и
+ * подстановка переносит их как есть — вместе с русским словом. Валюту
+ * дописываем на язык читателя отдельно: ради одного слова держать вторую
+ * форму текста не стоит.
+ */
 export function translateNotificationText(text: string, locale: Locale): string {
-  return translate(text, locale);
+  const translated = translate(text, locale);
+  // `` после кириллицы не работает — границу слова проверяем сами.
+  return locale === 'uz' ? translated.replace(/сум(?!\p{L})/gu, CURRENCY_SYMBOL.uz) : translated;
 }
 
 /** Для теста покрытия: все известные русские тексты. */
