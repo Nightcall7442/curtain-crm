@@ -72,6 +72,13 @@ const envSchema = z.object({
     дополнение к приложению, а не его условие.
   */
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+
+  /*
+    Чат группы, куда идёт лента действий: «-1001234567890». Владелец
+    попросил, чтобы бот писал в группу о каждом действии. Не задан — ленты
+    нет, личные уведомления работают как работали.
+  */
+  TELEGRAM_GROUP_CHAT_ID: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

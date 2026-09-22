@@ -143,6 +143,38 @@ export async function sendTelegramMessage(
   });
 }
 
+/** Чат группы для ленты действий или `null`, если группа не настроена. */
+function groupChatId(): string | null {
+  const id = getEnv().TELEGRAM_GROUP_CHAT_ID;
+  return id === undefined || id === '' ? null : id;
+}
+
+export function isTelegramGroupEnabled(): boolean {
+  return botToken() !== null && groupChatId() !== null;
+}
+
+/**
+ * Сообщение в группу мастерской — лента действий.
+ *
+ * Пишется всем сразу и никому лично: группа для того и заведена, чтобы
+ * владелец и админы видели происходящее, не открывая журнал. Текст уже
+ * собран вызывающим; экранирование — здесь, чтобы имя клиента с «<» не
+ * ломало разметку.
+ */
+export async function sendTelegramGroupMessage(title: string, body: string): Promise<void> {
+  const chatId = groupChatId();
+  if (chatId === null) return;
+
+  await callBotApi('sendMessage', {
+    chat_id: chatId,
+    text: `<b>${escapeHtml(title)}</b>
+${escapeHtml(body)}`,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    disable_notification: true,
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /*                           Приём сообщений боту                             */
 /* -------------------------------------------------------------------------- */
@@ -151,7 +183,7 @@ interface TelegramUpdate {
   readonly update_id: number;
   readonly message?: {
     readonly text?: string;
-    readonly chat: { readonly id: number };
+    readonly chat: { readonly id: number; readonly type?: string; readonly title?: string };
   };
 }
 
@@ -168,6 +200,28 @@ async function handleUpdate(executor: DbExecutor, update: TelegramUpdate): Promi
 
   const chatId = message.chat.id;
   const [command, argument] = message.text.trim().split(/\s+/, 2);
+
+  /*
+    `/id` в группе — чтобы узнать её номер.
+
+    Лента действий шлётся в чат, номер которого лежит в переменной
+    `TELEGRAM_GROUP_CHAT_ID`, а узнать его иначе как у самого Telegram
+    нельзя: в ссылке-приглашении номера нет. Команда отвечает номером —
+    владелец переносит его в настройки Railway и лента оживает.
+  */
+  if (command === '/id') {
+    await sendTelegramMessage(
+      chatId,
+      message.chat.title ?? 'Этот чат',
+      `Номер чата: ${chatId.toString()}
+Впишите его в TELEGRAM_GROUP_CHAT_ID, чтобы сюда шла лента действий.`,
+    );
+    return;
+  }
+
+  // В группе бот молчит: иначе на каждое сообщение коллег отвечал бы подсказкой.
+  const isGroup = message.chat.type === 'group' || message.chat.type === 'supergroup';
+  if (isGroup) return;
 
   if (command !== '/start' || argument === undefined) {
     await sendTelegramMessage(
