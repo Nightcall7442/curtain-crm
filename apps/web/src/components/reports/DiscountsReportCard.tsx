@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney, ORDER_STATUS_LABELS_RU, parseMoney } from '@curtain-crm/shared';
+import { formatMoney, ORDER_STATUS_LABELS_RU, type OrderStatus } from '@curtain-crm/shared';
 import { Download } from 'lucide-react';
 import type { ReactElement } from 'react';
 
@@ -12,7 +12,11 @@ import { exportToXlsx } from '@/lib/spreadsheet';
 import { trpc } from '@/lib/trpc';
 import { formatDateTime } from '@/lib/utils';
 
-const HEADERS = ['Дата', 'Заказ', 'Клиент', 'Продавец', 'Цена до скидки', 'Скидка', 'Причина', 'Статус'] as const;
+const HEADERS = ['Дата', 'Документ', 'Клиент', 'Продавец', 'Цена до скидки', 'Скидка', 'Причина', 'Статус'] as const;
+
+/** Статус строки: у заказа — его статус, у чека витрины статусов нет. */
+const statusOf = (row: { readonly kind: 'order' | 'retail'; readonly status: OrderStatus | null }): string =>
+  row.status === null ? 'Продажа с витрины' : ORDER_STATUS_LABELS_RU[row.status];
 
 /** Первый и последний день месяца — границы отчёта, `YYYY-MM-DD`. */
 function monthRange(year: number, month: number): { readonly from: string; readonly to: string } {
@@ -25,8 +29,9 @@ function monthRange(year: number, month: number): { readonly from: string; reado
  * Скидки за месяц: кто, кому, сколько и за что.
  *
  * Контроль продавцов: скидка — деньги, которых касса не увидит, и владелец
- * хочет видеть их списком, а не догадываться по марже. Сверху — итог и
- * разбивка по продавцам, ниже — каждый заказ; всё выгружается в Excel.
+ * хочет видеть их списком, а не догадываться по марже. В одной таблице и
+ * заказы, и чеки витрины: уступку за метром тюля он ищет там же, где
+ * скидку на заказ. Сверху — итог и разбивка по продавцам.
  */
 export function DiscountsReportCard({ year, month }: { readonly year: number; readonly month: number }): ReactElement {
   const toast = useToast();
@@ -41,13 +46,13 @@ export function DiscountsReportCard({ year, month }: { readonly year: number; re
       headers: HEADERS,
       rows: rows.map((row) => [
         formatDateTime(row.createdAt),
-        row.orderNumber ?? '',
+        row.number ?? '',
         row.clientName,
         row.sellerName,
-        (parseMoney(row.workPrice) + parseMoney(row.discountAmount)).toString(),
-        parseMoney(row.discountAmount).toString(),
+        (row.priceBefore / 100).toString(),
+        (row.discountMinor / 100).toString(),
         row.discountReason ?? '',
-        ORDER_STATUS_LABELS_RU[row.status],
+        statusOf(row),
       ]),
     })
       .then(() => {
@@ -84,27 +89,22 @@ export function DiscountsReportCard({ year, month }: { readonly year: number; re
       <DataTable
         isLoading={report.isLoading}
         rows={rows}
-        rowKey={(row) => row.id}
+        rowKey={(row) => `${row.kind}-${row.id.toString()}`}
         emptyMessage="За этот месяц скидок не давали"
         columns={[
           { key: 'date', header: 'Дата', render: (row) => formatDateTime(row.createdAt) },
-          { key: 'order', header: 'Заказ', render: (row) => <span className="text-primary">{row.orderNumber}</span> },
-          { key: 'client', header: 'Клиент', render: (row) => row.clientName },
+          { key: 'order', header: 'Документ', render: (row) => <span className="text-primary">{row.number}</span> },
+          { key: 'client', header: 'Клиент', render: (row) => (row.clientName === '' ? '—' : row.clientName) },
           { key: 'seller', header: 'Продавец', render: (row) => row.sellerName },
-          {
-            key: 'price',
-            header: 'Цена до скидки',
-            align: 'right',
-            render: (row) => formatMoney(parseMoney(row.workPrice) + parseMoney(row.discountAmount)),
-          },
+          { key: 'price', header: 'Цена до скидки', align: 'right', render: (row) => formatMoney(row.priceBefore) },
           {
             key: 'discount',
             header: 'Скидка',
             align: 'right',
-            render: (row) => <span className="text-primary">{`−${formatMoney(parseMoney(row.discountAmount))}`}</span>,
+            render: (row) => <span className="text-primary">{`−${formatMoney(row.discountMinor)}`}</span>,
           },
           { key: 'reason', header: 'Причина', render: (row) => row.discountReason ?? '—' },
-          { key: 'status', header: 'Статус', render: (row) => ORDER_STATUS_LABELS_RU[row.status] },
+          { key: 'status', header: 'Статус', render: (row) => statusOf(row) },
         ]}
       />
     </Card>

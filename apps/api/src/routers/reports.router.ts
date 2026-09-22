@@ -800,17 +800,61 @@ export const reportsRouter = router({
         .orderBy(desc(orders.createdAt))
         .limit(500);
 
-      const totalMinor = rows.reduce((sum, row) => sum + parseMoney(row.discountAmount), 0);
+      /*
+        Чеки витрины — здесь же: скидку на метр тюля дают на кассе, и в
+        отдельной таблице владелец её искать не станет. Цена до скидки у
+        чека — сумма строк, у заказа — цена плюс скидка.
+      */
+      const saleBranch = input.branchId === undefined ? sql`` : sql`and s.branch_id = ${input.branchId}`;
+      const saleRows = await ctx.db.execute(sql`
+        select s.id, s.created_at, s.client_name, u.full_name as seller_name,
+               s.discount_amount, s.discount_reason,
+               coalesce((select sum(i.line_total) from retail_sale_items i where i.sale_id = s.id), 0) as subtotal
+        from retail_sales s join users u on u.id = s.seller_id
+        where s.discount_amount > 0 and s.created_at >= ${start} and s.created_at < ${end} ${saleBranch}
+        order by s.created_at desc limit 500`);
+
+      const asText = (value: unknown): string =>
+        typeof value === 'string' ? value : typeof value === 'number' ? value.toString() : '';
+
+      const all = [
+        ...rows.map((row) => ({
+          kind: 'order' as const,
+          id: row.id,
+          number: row.orderNumber,
+          status: row.status,
+          createdAt: row.createdAt,
+          clientName: row.clientName,
+          sellerName: row.sellerName,
+          priceBefore: parseMoney(row.workPrice) + parseMoney(row.discountAmount),
+          discountMinor: parseMoney(row.discountAmount),
+          discountReason: row.discountReason,
+        })),
+        ...[...(saleRows as Iterable<Record<string, unknown>>)].map((row) => ({
+          kind: 'retail' as const,
+          id: Number.parseInt(asText(row['id']), 10),
+          number: `Чек №${asText(row['id'])}`,
+          status: null,
+          createdAt: row['created_at'] instanceof Date ? row['created_at'] : new Date(asText(row['created_at'])),
+          clientName: asText(row['client_name']),
+          sellerName: asText(row['seller_name']),
+          priceBefore: parseMoney(asText(row['subtotal']) || '0'),
+          discountMinor: parseMoney(asText(row['discount_amount']) || '0'),
+          discountReason: asText(row['discount_reason']) === '' ? null : asText(row['discount_reason']),
+        })),
+      ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      const totalMinor = all.reduce((sum, row) => sum + row.discountMinor, 0);
       const bySeller = new Map<string, { count: number; totalMinor: number }>();
-      for (const row of rows) {
+      for (const row of all) {
         const entry = bySeller.get(row.sellerName) ?? { count: 0, totalMinor: 0 };
         entry.count += 1;
-        entry.totalMinor += parseMoney(row.discountAmount);
+        entry.totalMinor += row.discountMinor;
         bySeller.set(row.sellerName, entry);
       }
 
       return {
-        rows,
+        rows: all,
         totalMinor,
         bySeller: [...bySeller.entries()]
           .map(([sellerName, entry]) => ({ sellerName, ...entry }))

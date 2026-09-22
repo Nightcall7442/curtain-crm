@@ -106,12 +106,25 @@ export const retailSales = pgTable(
 
     comment: text('comment'),
 
+    /**
+     * Скидка по чеку: сколько сняли с суммы строк и почему.
+     *
+     * Строки чека остаются как есть — цена с бирки и количество; скидка
+     * сверху, отдельной суммой. К оплате уходит сумма строк минус скидка,
+     * и именно она попадает в кассу. Причина обязательна при ненулевой
+     * скидке — на уровне формы и процедуры, не базы.
+     */
+    discountAmount: numeric('discount_amount', { precision: 14, scale: 2 }).notNull().default('0'),
+    discountReason: text('discount_reason'),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('retail_sales_created_idx').on(table.createdAt),
     index('retail_sales_seller_idx').on(table.sellerId, table.createdAt),
     index('retail_sales_branch_idx').on(table.branchId, table.createdAt),
+
+    check('retail_sales_discount_non_negative', sql`${table.discountAmount} >= 0`),
 
     check(
       'retail_sales_client_phone_e164',

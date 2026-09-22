@@ -845,8 +845,14 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: radius.pill,
     backgroundColor: colors.headerRaised,
+    /*
+      Кольцо — хвойное, а не белое. Портреты сняты на светлом фоне, и белая
+      обводка сливалась с фоном снимка в одно светлое пятно на тёмной шапке:
+      владелец показал крупным планом. Зелёное кольцо отделяет фото от шапки
+      и само в ней растворяется.
+    */
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
+    borderColor: colors.headerRaised,
     alignItems: 'center',
     justifyContent: 'center',
     // Обрезает фото по кругу — без этого снимок торчал бы за рамкой углами.

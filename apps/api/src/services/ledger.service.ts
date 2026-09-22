@@ -296,7 +296,7 @@ export interface DayReport {
   readonly cashByManagement: MoneyMinor;
   /** Чеков по терминалу (приходов по карте) за период — норма дня продавцов. */
   readonly terminalChecks: number;
-  /** Скидок обещано по заказам, принятым за период: сколько и по скольким заказам. */
+  /** Скидки, данные за период (заказы при приёме и чеки витрины): сколько и по скольким. */
   readonly discounts: { readonly total: MoneyMinor; readonly count: number };
   /** Касса и счёт на конец периода. */
   readonly balance: LedgerBalance;
@@ -367,12 +367,22 @@ export async function dayReport(
       and p.received_by in (${managers})
       and p.received_at >= ${from} and p.received_at < ${to} ${branch}`);
 
-  // Скидки — по дате приёма заказа: их дают при приёме, и деньги в кассу не
-  // придут именно тогда. Владелец хочет видеть это рядом с выручкой дня.
+  /*
+    Скидки — по дате, когда их дали: заказу при приёме, чеку витрины при
+    пробитии. Деньги, которых касса не увидит, владелец хочет видеть рядом
+    с выручкой дня, а не выводить по марже.
+  */
+  const saleBranch = branchId === undefined ? sql`` : sql`and s.branch_id = ${branchId}`;
   const [discounted] = await executor.execute(sql`
-    select coalesce(sum(o.discount_amount), 0) as amount, count(*) filter (where o.discount_amount > 0) as n
-    from ${orders} o
-    where o.created_at >= ${from} and o.created_at < ${to} ${purchaseBranch}`);
+    select
+      (select coalesce(sum(o.discount_amount), 0) from ${orders} o
+        where o.created_at >= ${from} and o.created_at < ${to} ${purchaseBranch})
+      + (select coalesce(sum(s.discount_amount), 0) from retail_sales s
+        where s.created_at >= ${from} and s.created_at < ${to} ${saleBranch}) as amount,
+      (select count(*) from ${orders} o
+        where o.discount_amount > 0 and o.created_at >= ${from} and o.created_at < ${to} ${purchaseBranch})
+      + (select count(*) from retail_sales s
+        where s.discount_amount > 0 and s.created_at >= ${from} and s.created_at < ${to} ${saleBranch}) as n`);
 
   return {
     rows,

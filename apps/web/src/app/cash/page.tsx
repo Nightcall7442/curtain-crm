@@ -107,8 +107,8 @@ export default function CashPage(): ReactElement {
           value={formatMoney(data?.discounts.total ?? 0)}
           caption={
             data === undefined || data.discounts.count === 0
-              ? 'По заказам, принятым за день'
-              : `По ${String(data.discounts.count)} заказам, принятым за день`
+              ? 'По заказам и чекам за день'
+              : `По ${String(data.discounts.count)} заказам и чекам за день`
           }
         />
       </section>

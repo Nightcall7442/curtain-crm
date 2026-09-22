@@ -65,6 +65,29 @@ const quantitySchema = z
 
 const toQuantity = (value: number): string => value.toFixed(3);
 
+/**
+ * Скидка по чеку витрины: сумма и причина.
+ *
+ * Причина обязательна при ненулевой скидке — те же правила, что у заказа:
+ * скидка без причины не отличима от недостачи в кассе.
+ */
+const retailDiscountInput = {
+  discountAmount: moneySchema.default(0),
+  discountReason: optionalText(300),
+} as const;
+
+function retailDiscountValues(input: {
+  readonly discountAmount: string | number;
+  readonly discountReason?: string | null | undefined;
+}): { readonly discountAmount: string; readonly discountReason: string | null } {
+  const amount = parseMoney(input.discountAmount);
+  const reason = input.discountReason?.trim() ?? '';
+  if (amount > 0 && reason === '') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Укажите причину скидки' });
+  }
+  return { discountAmount: moneyToDecimalString(amount), discountReason: amount > 0 ? reason : null };
+}
+
 export const retailRouter = router({
   items: router({
     /** Прайс витрины. По умолчанию — только то, что продаётся. */
@@ -296,6 +319,7 @@ export const retailRouter = router({
         comment: optionalText(500),
         /** Чем заплатили — строка кассы «Прочие продажи». */
         method: paymentMethodSchema.default(PaymentMethod.CASH),
+        ...retailDiscountInput,
         lines: z
           .array(z.object({ itemId: idSchema, quantity: quantitySchema }))
           .min(1, 'Добавьте хотя бы один товар')
@@ -356,6 +380,7 @@ export const retailRouter = router({
             clientName: input.clientName ?? null,
             clientPhone: input.clientPhone ?? null,
             comment: input.comment ?? null,
+            ...retailDiscountValues(input),
           })
           .returning();
 
@@ -446,6 +471,7 @@ export const retailRouter = router({
         clientName: optionalText(200),
         comment: optionalText(500),
         method: paymentMethodSchema.default(PaymentMethod.CASH),
+        ...retailDiscountInput,
         lines: z
           .array(z.object({ code: nonEmptyString(200), quantity: quantitySchema }))
           .min(1, 'Добавьте хотя бы один товар')
@@ -496,6 +522,7 @@ export const retailRouter = router({
             clientName: input.clientName ?? null,
             clientPhone: null,
             comment: input.comment ?? null,
+            ...retailDiscountValues(input),
           })
           .returning();
         if (sale === undefined) {
@@ -589,7 +616,9 @@ export const retailRouter = router({
               clientName: retailSales.clientName,
               comment: retailSales.comment,
               createdAt: retailSales.createdAt,
-              total: sql<string>`coalesce(sum(${retailSaleItems.lineTotal}), 0)`,
+              // Итог со скидкой: в списке чек должен выглядеть так же, как в руках у клиента.
+              total: sql<string>`greatest(coalesce(sum(${retailSaleItems.lineTotal}), 0) - ${retailSales.discountAmount}, 0)`,
+              discountAmount: retailSales.discountAmount,
               lines: sql<string>`count(${retailSaleItems.id})`,
             })
             .from(retailSales)
@@ -624,7 +653,9 @@ export const retailRouter = router({
               id: retailSales.id,
               clientName: retailSales.clientName,
               createdAt: retailSales.createdAt,
-              total: sql<string>`coalesce(sum(${retailSaleItems.lineTotal}), 0)`,
+              // Итог со скидкой: в списке чек должен выглядеть так же, как в руках у клиента.
+              total: sql<string>`greatest(coalesce(sum(${retailSaleItems.lineTotal}), 0) - ${retailSales.discountAmount}, 0)`,
+              discountAmount: retailSales.discountAmount,
               lines: sql<string>`count(${retailSaleItems.id})`,
             })
             .from(retailSales)
@@ -676,7 +707,18 @@ async function loadSale(executor: DbExecutor, saleId: number) {
     .where(eq(retailSaleItems.saleId, saleId))
     .orderBy(retailSaleItems.id);
 
-  const total = lines.reduce((sum, line) => sum + parseMoney(line.lineTotal ?? '0'), 0);
+  /*
+    `subtotal` — сумма строк, `total` — к оплате, уже со скидкой. Именно
+    `total` уходит в кассу и показывается в чеке: клиент платит его.
+    Скидка не может увести чек в минус — больше подытога её не снять.
+  */
+  const subtotal = lines.reduce((sum, line) => sum + parseMoney(line.lineTotal ?? '0'), 0);
+  const discount = Math.min(subtotal, parseMoney(sale.discountAmount));
 
-  return { ...sale, lines, total: moneyToDecimalString(total) };
+  return {
+    ...sale,
+    lines,
+    subtotal: moneyToDecimalString(subtotal),
+    total: moneyToDecimalString(subtotal - discount),
+  };
 }

@@ -25,6 +25,7 @@ import { Card, CardTitle } from '../components/Card';
 import { CashCollectionCard } from '../components/CashCollectionCard';
 import { CashDayReport } from '../components/CashDayReport';
 import { CodeScanner } from '../components/CodeScanner';
+import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useIsManagement } from '../hooks/useAuth';
@@ -70,6 +71,8 @@ export function CashDeskScreen(): ReactElement {
   const [method, setMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
   const [clientName, setClientName] = useState('');
   const [comment, setComment] = useState('');
+  const [discount, setDiscount] = useState(emptyDiscount);
+  const [showErrors, setShowErrors] = useState(false);
   /* Какая строка ждёт код с камеры: QR с бирки вместо набора вручную. */
   const [scanningKey, setScanningKey] = useState<number | null>(null);
 
@@ -80,6 +83,8 @@ export function CashDeskScreen(): ReactElement {
       setLines([emptyLine()]);
       setClientName('');
       setComment('');
+      setDiscount(emptyDiscount());
+      setShowErrors(false);
       Alert.alert(m('cash.sold'), m('cash.receiptFor', { sum: formatMoney(parseMoney(sale.total)) }));
       navigation.goBack();
     },
@@ -93,6 +98,10 @@ export function CashDeskScreen(): ReactElement {
   };
 
   const filled = lines.filter((line) => line.code.trim() !== '' && quantityOf(line) > 0);
+  /* Подытог нужен и внизу экрана, и полю скидки: процент считается от него. */
+  const subtotal = useCartSubtotal(filled);
+  const subtotalInput = (subtotal / 100).toString();
+  const discountSum = discountPayload(subtotalInput, discount).discountAmount;
 
   return (
     <KeyboardAvoidingView
@@ -163,6 +172,17 @@ export function CashDeskScreen(): ReactElement {
           </Field>
         </Card>
 
+        {/*
+          Скидка на кассе: за метр тюля торгуются у прилавка, и продавец
+          должен уметь уступить, не пересчитывая цену в уме. Цена строки
+          остаётся ценой с бирки, скидка идёт отдельной суммой — и попадает
+          в отчёт по скидкам.
+        */}
+        <Card>
+          <CardTitle title={m('discount.title')} icon="paid" />
+          <DiscountFields price={subtotalInput} value={discount} onChange={setDiscount} showError={showErrors} />
+        </Card>
+
         <MySales />
 
         {/* Наличные на руках и «сдал в кассу» — здесь, у кассы, а не на
@@ -176,7 +196,7 @@ export function CashDeskScreen(): ReactElement {
         клиент достаёт деньги или телефон.
       */}
       <View style={styles.footer}>
-        <TotalRow lines={filled} />
+        <TotalRow lines={filled} subtotal={subtotal} discount={discountSum} />
 
         <Field label={m('cash.method')}>
           <ChipSelect
@@ -191,11 +211,16 @@ export function CashDeskScreen(): ReactElement {
 
         <Pressable
           onPress={() => {
+            setShowErrors(true);
+            if (discountMissingReason(subtotalInput, discount)) return;
+
+            const { discountAmount, discountReason } = discountPayload(subtotalInput, discount);
             sell.mutate({
               method,
               lines: filled.map((line) => ({ code: line.code.trim(), quantity: quantityOf(line) })),
               ...(clientName.trim() === '' ? {} : { clientName: clientName.trim() }),
               ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
+              ...(discountAmount > 0 ? { discountAmount, discountReason } : {}),
             });
           }}
           disabled={filled.length === 0 || sell.isPending}
@@ -320,23 +345,42 @@ function CodeLine({
   );
 }
 
-/** Итог по заполненным строкам — считается на клиенте по тем же ценам, что и сервер. */
-function TotalRow({ lines }: { readonly lines: readonly CartLine[] }): ReactElement {
-  const { m } = useLocale();
+/** Сумма строк чека — считается на клиенте по тем же ценам, что и на сервере. */
+function useCartSubtotal(lines: readonly CartLine[]): number {
   const utils = trpc.useUtils();
 
-  const total = lines.reduce((sum, line) => {
+  return lines.reduce((sum, line) => {
     const cached = utils.retail.codeLookup.getData({ code: line.code.trim() });
     if (cached == null || cached.price == null) return sum;
     return sum + Math.round(parseMoney(cached.price) * quantityOf(line));
   }, 0);
+}
+
+/** Итог у кнопки: к оплате, а под ним — сколько уступили, если уступили. */
+function TotalRow({
+  lines,
+  subtotal,
+  discount,
+}: {
+  readonly lines: readonly CartLine[];
+  readonly subtotal: number;
+  /** Скидка в основных единицах — как её вводит продавец. */
+  readonly discount: number;
+}): ReactElement {
+  const { m } = useLocale();
+  const discountMinor = Math.min(subtotal, Math.round(discount * 100));
 
   return (
     <View style={styles.totalRow}>
-      <Text style={styles.totalLabel}>
-        {lines.length === 0 ? m('cash.nothingSelected') : m('cash.items', { n: lines.length })}
-      </Text>
-      <Text style={styles.totalValue}>{formatMoney(total)}</Text>
+      <View style={styles.totalText}>
+        <Text style={styles.totalLabel}>
+          {lines.length === 0 ? m('cash.nothingSelected') : m('cash.items', { n: lines.length })}
+        </Text>
+        {discountMinor > 0 && (
+          <Text style={styles.totalDiscount}>{m('cash.discountLine', { v: formatMoney(discountMinor) })}</Text>
+        )}
+      </View>
+      <Text style={styles.totalValue}>{formatMoney(subtotal - discountMinor)}</Text>
     </View>
   );
 }
@@ -491,6 +535,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  totalText: {
+    flex: 1,
+  },
+  totalDiscount: {
+    ...typography.footnote,
+    color: colors.accent,
   },
   totalLabel: {
     ...typography.caption,
