@@ -43,6 +43,8 @@ export interface CashDayRow {
   readonly byMethod: Readonly<Record<PaymentMethodName, MoneyMinor>>;
   readonly total: MoneyMinor;
   readonly refunds: MoneyMinor;
+  /** Сколько приходов было в этот день — из него считается средний чек. */
+  readonly count: number;
 }
 
 export interface CashSellerRow {
@@ -67,7 +69,8 @@ export async function cashByDay(
     db.execute(sql`
       select (p.received_at at time zone 'Asia/Tashkent')::date::text as day, p.method,
              coalesce(sum(p.amount) filter (where p.kind in (${income})), 0) as income,
-             coalesce(sum(p.amount) filter (where p.kind = ${PaymentKind.REFUND}), 0) as refunds
+             coalesce(sum(p.amount) filter (where p.kind = ${PaymentKind.REFUND}), 0) as refunds,
+             count(*) filter (where p.kind in (${income})) as n
       from payments p
       where not p.opening and p.received_at >= ${from} and p.received_at < ${to} ${branch}
         and (p.kind in (${income}) or p.kind = ${PaymentKind.REFUND})
@@ -80,12 +83,13 @@ export async function cashByDay(
       group by 1, 2, 3`),
   ]);
 
-  const days = new Map<string, { byMethod: Record<PaymentMethodName, MoneyMinor>; refunds: MoneyMinor }>();
+  const days = new Map<string, { byMethod: Record<PaymentMethodName, MoneyMinor>; refunds: MoneyMinor; count: number }>();
   for (const row of byDay as Iterable<Record<string, unknown>>) {
     const day = text(row['day']);
-    const entry = days.get(day) ?? { byMethod: emptyByMethod(), refunds: 0 };
+    const entry = days.get(day) ?? { byMethod: emptyByMethod(), refunds: 0, count: 0 };
     entry.byMethod[text(row['method']) as PaymentMethodName] += money(row['income']);
     entry.refunds += money(row['refunds']);
+    entry.count += int(row['n']);
     days.set(day, entry);
   }
 
@@ -99,11 +103,12 @@ export async function cashByDay(
 
   const sum = (byMethod: Readonly<Record<PaymentMethodName, MoneyMinor>>): MoneyMinor =>
     PAYMENT_METHODS.reduce((total, method) => total + byMethod[method], 0);
-  const totals = { byMethod: emptyByMethod(), refunds: 0 };
+  const totals = { byMethod: emptyByMethod(), refunds: 0, count: 0 };
   const dayRows = [...days.entries()].map(([day, entry]) => {
     for (const method of PAYMENT_METHODS) totals.byMethod[method] += entry.byMethod[method];
     totals.refunds += entry.refunds;
-    return { day, byMethod: entry.byMethod, total: sum(entry.byMethod), refunds: entry.refunds };
+    totals.count += entry.count;
+    return { day, byMethod: entry.byMethod, total: sum(entry.byMethod), refunds: entry.refunds, count: entry.count };
   });
 
   return {
@@ -111,7 +116,7 @@ export async function cashByDay(
     bySeller: [...sellers.entries()]
       .map(([userId, entry]) => ({ userId, fullName: entry.fullName, byMethod: entry.byMethod, total: sum(entry.byMethod) }))
       .sort((a, b) => b.total - a.total),
-    totals: { day: '', byMethod: totals.byMethod, total: sum(totals.byMethod), refunds: totals.refunds },
+    totals: { day: '', byMethod: totals.byMethod, total: sum(totals.byMethod), refunds: totals.refunds, count: totals.count },
   };
 }
 

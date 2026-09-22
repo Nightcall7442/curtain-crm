@@ -1,11 +1,9 @@
 'use client';
 
 import {
-  type Department,
   DEPARTMENTS,
   EMPLOYMENT_TYPE_LABELS_RU,
   EMPLOYMENT_TYPES,
-  type EmploymentType,
   formatMoney,
   formatMoneyShort,
   formatPhone,
@@ -13,11 +11,14 @@ import {
   formatTime,
   parseMoney,
   PresenceStatus,
-  type PresenceStatus as PresenceStatusName,
-  type Role,
   ROLE_LABELS_RU,
   ROLES,
+  SEWER_CATEGORY_LABELS_RU,
   TENURE_BUCKETS,
+  type Department,
+  type EmploymentType,
+  type PresenceStatus as PresenceStatusName,
+  type Role,
 } from '@curtain-crm/shared';
 import { Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
@@ -41,7 +42,7 @@ import { Button, controlClass } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDate, formatPercent } from '@/lib/utils';
+import { cn, formatDate, formatPercent } from '@/lib/utils';
 
 /**
  * Ведомость рабочих.
@@ -96,6 +97,15 @@ function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: strin
   const attendance = trpc.users.attendance.useQuery(period);
   const birthdays = trpc.users.birthdays.useQuery({ withinDays: 30 });
   const payroll = trpc.payroll.list.useQuery(period);
+  /* Категория швеи — рядом с должностью: владелец решает по ней расценку,
+     и смотреть её в рейтинге, чтобы назначить заказ, неудобно. */
+  const sewerCategories = trpc.rating.sewerCategories.useQuery();
+  const utils = trpc.useUtils();
+  const setCategory = trpc.users.setSewerCategory.useMutation({
+    async onSuccess() {
+      await Promise.all([utils.rating.sewerCategories.invalidate(), utils.users.list.invalidate()]);
+    },
+  });
   const performance = trpc.users.performance.useQuery(period);
 
   // Все фильтры уходят на сервер: фильтрация уже загруженной страницы
@@ -343,7 +353,25 @@ function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: strin
             {
               key: 'job',
               header: 'Должность',
-              render: (row) => row.jobTitle ?? '—',
+              render: (row) => {
+                const entry = (sewerCategories.data ?? []).find((item) => item.userId === row.id);
+                return (
+                  <span className="block">
+                    <span className="block">{row.jobTitle ?? '—'}</span>
+                    {entry !== undefined && (
+                      <SewerCategorySelect
+                        userId={row.id}
+                        category={entry.category}
+                        isManual={entry.isManual}
+                        disabled={setCategory.isPending}
+                        onChange={(next) => {
+                          setCategory.mutate({ userId: row.id, category: next });
+                        }}
+                      />
+                    )}
+                  </span>
+                );
+              },
             },
             {
               key: 'department',
@@ -727,6 +755,51 @@ function FilterSelect({
       {options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * Категория швеи в строке списка — и сразу способ её поменять.
+ *
+ * По умолчанию категория считается сама: рейтинг за прошлый месяц с
+ * дисциплиной. Владелец попросил возможность поправить руками — перевод
+ * человека случается раньше, чем это видно по закрытым заказам. «Авто»
+ * возвращает расчёт.
+ */
+function SewerCategorySelect({
+  category,
+  isManual,
+  disabled,
+  onChange,
+}: {
+  readonly userId: number;
+  readonly category: 1 | 2 | 3;
+  readonly isManual: boolean;
+  readonly disabled: boolean;
+  readonly onChange: (next: 1 | 2 | 3 | null) => void;
+}): ReactElement {
+  return (
+    <select
+      value={isManual ? category.toString() : ''}
+      disabled={disabled}
+      aria-label="Категория швеи"
+      className={cn(controlClass('sm'), 'mt-1 w-full max-w-[11rem] text-overline')}
+      onClick={(event) => {
+        // Строка таблицы кликабельна — выбор категории не должен открывать карточку.
+        event.stopPropagation();
+      }}
+      onChange={(event) => {
+        const value = event.target.value;
+        onChange(value === '' ? null : (Number.parseInt(value, 10) as 1 | 2 | 3));
+      }}
+    >
+      <option value="">{`Авто · ${SEWER_CATEGORY_LABELS_RU[category]}`}</option>
+      {([1, 2, 3] as const).map((value) => (
+        <option key={value} value={value}>
+          {SEWER_CATEGORY_LABELS_RU[value]}
         </option>
       ))}
     </select>

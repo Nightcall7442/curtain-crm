@@ -3,6 +3,7 @@ import {
   DEPARTMENTS,
   formatPhone,
   ROLE_LABELS,
+  SEWER_CATEGORY_LABELS,
   ROLES,
   type Department,
   type Role,
@@ -44,7 +45,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  * в панели, где директор сидит один.
  */
 export function EmployeesScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, locale } = useLocale();
   const utils = trpc.useUtils();
 
   const [search, setSearch] = useState('');
@@ -177,6 +178,8 @@ export function EmployeesScreen(): ReactElement {
     настоящей нуждой в ней.
   */
   const employees = trpc.users.list.useQuery({ page: 1, pageSize: 100 });
+  /* Категория швеи — в строке списка: по ней руководитель решает расценку. */
+  const sewerCategories = trpc.rating.sewerCategories.useQuery();
   const branches = trpc.branches.list.useQuery();
 
   const refresh = async (): Promise<void> => {
@@ -411,6 +414,10 @@ export function EmployeesScreen(): ReactElement {
                       {`${formatPhone(person.phone)} · ${person.roles
                         .map((role) => t(ROLE_LABELS, role))
                         .join(', ')}`}
+                      {(() => {
+                        const category = (sewerCategories.data ?? []).find((entry) => entry.userId === person.id)?.category;
+                        return category === undefined ? '' : ` · ${SEWER_CATEGORY_LABELS[locale][category]}`;
+                      })()}
                     </Text>
                   </View>
 

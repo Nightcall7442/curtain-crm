@@ -1,5 +1,6 @@
-import type { Database } from '@curtain-crm/db';
+import { users, type Database } from '@curtain-crm/db';
 import { RatingScope, Role, sewerCategoryFor, type SewerCategory } from '@curtain-crm/shared';
+import { and, eq, isNotNull } from 'drizzle-orm';
 
 import { employeeRating, ratingPeriodBounds, type RatedEmployee } from './rating.service';
 import type { Period } from './shifts.service';
@@ -10,6 +11,8 @@ export interface SewerCategoryRow {
   readonly userId: number;
   readonly fullName: string;
   readonly category: SewerCategory;
+  /** Поставлена руками: расчёт её не меняет, пока руководство не вернёт «авто». */
+  readonly isManual: boolean;
   /** Балл рейтинга за расчётный период — с дисциплиной. */
   readonly score: number;
   /** Лучший балл среди швей за тот же период — знаменатель категории. */
@@ -48,12 +51,30 @@ export async function sewerCategories(
 
   const best = entries.reduce((max, entry) => Math.max(max, entry.score ?? 0), 0);
 
-  return entries.map((entry) => ({
-    userId: entry.userId,
-    fullName: entry.fullName,
-    category: sewerCategoryFor(entry.score ?? 0, best),
-    score: entry.score ?? 0,
-    best,
-    period,
-  }));
+  /*
+    Ручная категория выше расчётной: система знает закрытые заказы и
+    опоздания, но не знает, что швею перевели вчера. Пока она стоит,
+    пересчёт её не трогает; «авто» возвращает расчёт.
+  */
+  const manual = new Map(
+    (
+      await db
+        .select({ id: users.id, category: users.sewerCategory })
+        .from(users)
+        .where(and(eq(users.isActive, true), isNotNull(users.sewerCategory)))
+    ).map((row) => [row.id, row.category]),
+  );
+
+  return entries.map((entry) => {
+    const own = manual.get(entry.userId) ?? null;
+    return {
+      userId: entry.userId,
+      fullName: entry.fullName,
+      category: own === null ? sewerCategoryFor(entry.score ?? 0, best) : (own as SewerCategory),
+      isManual: own !== null,
+      score: entry.score ?? 0,
+      best,
+      period,
+    };
+  });
 }

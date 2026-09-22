@@ -15,6 +15,7 @@ import {
 import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
 
+import { SalesDynamicsCard } from '@/components/cash/SalesDynamicsCard';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Field, Input } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
@@ -101,6 +102,8 @@ export default function CashPage(): ReactElement {
           }
         />
       </section>
+
+      <SalesDynamicsCard day={day} />
 
       {/*
         Накопленные остатки — отдельной полосой: касса и счёт живут дольше

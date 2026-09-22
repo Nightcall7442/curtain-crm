@@ -386,6 +386,13 @@
       "when": 1790095176678,
       "tag": "0054_money_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790097228067,
+      "tag": "0055_sewer_category_manual",
+      "breakpoints": true
     }
   ]
 }

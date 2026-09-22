@@ -96,6 +96,15 @@ export const users = pgTable(
      */
     weeklyDayOff: smallint('weekly_day_off'),
 
+    /**
+     * Категория швеи, поставленная руководством: 1, 2 или 3.
+     *
+     * `null` — считается сама, по рейтингу с дисциплиной за прошлый месяц.
+     * Ручная стоит выше расчётной: система знает закрытые заказы и
+     * опоздания, но не знает, что человека перевели вчера.
+     */
+    sewerCategory: smallint('sewer_category'),
+
     isActive: boolean('is_active').notNull().default(true),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
 
@@ -116,6 +125,7 @@ export const users = pgTable(
     index('users_birthday_idx').on(sql`extract(month from ${table.birthDate})`, sql`extract(day from ${table.birthDate})`),
     check('users_phone_e164', sql`${table.phone} ~ '^\\+998[0-9]{9}$'`),
     check('users_weekly_day_off_range', sql`${table.weeklyDayOff} between 1 and 7`),
+    check('users_sewer_category_range', sql`${table.sewerCategory} between 1 and 3`),
     check(
       'users_fired_after_hired',
       sql`${table.firedAt} is null or ${table.hiredAt} is null or ${table.firedAt} >= ${table.hiredAt}`,

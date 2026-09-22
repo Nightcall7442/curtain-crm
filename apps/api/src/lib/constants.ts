@@ -139,6 +139,7 @@ export const AUDIT_ACTIONS = [
   'user.password_reset',
   'user.impersonated',
   'user.avatar_changed',
+  'user.sewer_category_set',
   'user.role_granted',
   'user.role_revoked',
   'user.branches_changed',

@@ -101,6 +101,7 @@ export interface UserDto {
   readonly avatarStorageKey: string | null;
   /** Готовая ссылка на фото; `null`, если фото не загружено. */
   readonly avatarUrl: string | null;
+  readonly sewerCategory: number | null;
   readonly roles: readonly Role[];
   readonly branchIds: readonly number[];
   readonly primaryBranchId: number | null;
@@ -166,6 +167,8 @@ async function loadUsers(executor: DbExecutor, userIds: readonly number[]): Prom
         lastLoginAt: row.lastLoginAt,
         avatarStorageKey: row.avatarStorageKey,
         avatarUrl: avatarUrls.get(row.id) ?? null,
+        /** Категория швеи, поставленная руками; `null` — считается по рейтингу. */
+        sewerCategory: row.sewerCategory,
         roles: row.roles.map((entry) => entry.role),
         branchIds: row.branches.map((entry) => entry.branchId),
         primaryBranchId: row.branches.find((entry) => entry.isPrimary)?.branchId ?? null,
@@ -770,6 +773,37 @@ export const usersRouter = router({
     ),
 
   /** Привязка сотрудника к филиалам. */
+  /**
+   * Категория швеи руками: 1, 2, 3 — или `null`, чтобы считалась сама.
+   *
+   * Расчёт по рейтингу владельцу нравится, но последнее слово он оставил за
+   * собой: перевод человека случается раньше, чем это видно по заказам.
+   */
+  setSewerCategory: managementProcedure
+    .input(z.object({ userId: idSchema, category: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const [updated] = await ctx.db
+        .update(users)
+        .set({ sewerCategory: input.category, updatedAt: new Date() })
+        .where(eq(users.id, input.userId))
+        .returning({ id: users.id, sewerCategory: users.sewerCategory });
+
+      if (updated === undefined) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден' });
+      }
+
+      await recordAudit(ctx.db, {
+        actorId: ctx.user.id,
+        action: 'user.sewer_category_set',
+        entityType: 'user',
+        entityId: input.userId,
+        details: { category: input.category },
+        ipAddress: ctx.ipAddress,
+      });
+
+      return updated;
+    }),
+
   setBranches: managementProcedure
     .input(
       z.object({
