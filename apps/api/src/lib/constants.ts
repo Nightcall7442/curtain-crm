@@ -219,6 +219,8 @@ export const AUDIT_ACTIONS = [
   'discipline.recorded',
   'discipline.explained',
   'discipline.removed',
+  'event.created',
+  'event.removed',
 
   'terminal_check.created',
 ] as const;

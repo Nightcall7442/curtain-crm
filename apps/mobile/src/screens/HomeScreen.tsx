@@ -69,7 +69,7 @@ export function HomeScreen(): ReactElement {
   const unread = trpc.notifications.unreadCount.useQuery();
   const rating = trpc.rating.me.useQuery({ scope: RatingScope.MONTH });
   // Доска дней рождения внизу экрана: список коллег, у кого праздник близко.
-  const events = trpc.users.upcomingEvents.useQuery({ withinDays: 30 });
+  const events = trpc.events.upcoming.useQuery({ withinDays: 30 });
 
   /**
    * Счётчик просроченных — отдельным запросом, а не подсчётом по списку.

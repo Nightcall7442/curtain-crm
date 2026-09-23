@@ -1,5 +1,4 @@
 import {
-  dayOffRequests,
   hashPassword,
   payrollRecords,
   payrollSchemes,
@@ -9,7 +8,6 @@ import {
   type DbExecutor,
 } from '@curtain-crm/db';
 import {
-  DayOffStatus,
   DEFAULT_DEPARTMENT_BY_ROLE,
   departmentSchema,
   employmentTypeSchema,
@@ -22,7 +20,7 @@ import {
   type EmploymentType,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, eq, exists, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, exists, ilike, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
@@ -943,89 +941,6 @@ export const usersRouter = router({
           ...row,
           avatarUrl:
             row.avatarStorageKey === null ? null : await storage.getUrl(row.avatarStorageKey),
-        })),
-      );
-    }),
-
-  /**
-   * Ближайшие события: дни рождения и одобренные выходные.
-   *
-   * Карточка на главной называлась «Дни рождения», а владелец хочет видеть
-   * там всё, что скоро случится с людьми: кто именинник и кого не будет на
-   * месте. Отсюда и общее имя — «Ближайшие события».
-   *
-   * Заказы сюда не идут: у них свой блок «Ближайшие сроки».
-   */
-  upcomingEvents: protectedProcedure
-    .input(z.object({ withinDays: z.number().int().min(1).max(365).default(30) }).default({}))
-    .query(async ({ ctx, input }) => {
-      const today = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const until = new Date(Date.now() + (5 * 60 + input.withinDays * 24 * 60) * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
-
-      const [birthdays, daysOff] = await Promise.all([
-        upcomingBirthdays(ctx.db, input.withinDays),
-        ctx.db
-          .select({
-            id: dayOffRequests.id,
-            userId: dayOffRequests.userId,
-            fullName: users.fullName,
-            jobTitle: users.jobTitle,
-            avatarStorageKey: users.avatarStorageKey,
-            startDate: dayOffRequests.startDate,
-            endDate: dayOffRequests.endDate,
-          })
-          .from(dayOffRequests)
-          .innerJoin(users, eq(users.id, dayOffRequests.userId))
-          .where(
-            and(
-              eq(dayOffRequests.status, DayOffStatus.APPROVED),
-              eq(users.isActive, true),
-              gte(dayOffRequests.endDate, today),
-              lte(dayOffRequests.startDate, until),
-            ),
-          )
-          .orderBy(asc(dayOffRequests.startDate))
-          .limit(50),
-      ]);
-
-      const storage = getStorage();
-      const dayFrom = (date: string): number =>
-        Math.max(0, Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000));
-
-      const events = [
-        ...birthdays.map((row) => ({
-          kind: 'birthday' as const,
-          id: `birthday-${row.userId.toString()}`,
-          userId: row.userId,
-          fullName: row.fullName,
-          jobTitle: row.jobTitle,
-          avatarStorageKey: row.avatarStorageKey,
-          daysUntil: row.daysUntil,
-          date: row.birthDate,
-          endDate: null as string | null,
-          turningAge: row.turningAge,
-        })),
-        ...daysOff.map((row) => ({
-          kind: 'day_off' as const,
-          id: `day-off-${row.id.toString()}`,
-          userId: row.userId,
-          fullName: row.fullName,
-          jobTitle: row.jobTitle,
-          avatarStorageKey: row.avatarStorageKey,
-          daysUntil: dayFrom(row.startDate),
-          date: row.startDate,
-          endDate: row.endDate,
-          turningAge: null as number | null,
-        })),
-      ].sort((a, b) => a.daysUntil - b.daysUntil);
-
-      return Promise.all(
-        events.map(async (event) => ({
-          ...event,
-          avatarUrl:
-            event.avatarStorageKey === null ? null : await storage.getUrl(event.avatarStorageKey),
         })),
       );
     }),

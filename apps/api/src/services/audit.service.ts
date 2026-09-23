@@ -31,6 +31,7 @@ export const AUDIT_ENTITY_TYPES = [
   'ready_made_item',
   'fabric_stock',
   'discipline_event',
+  'event',
   'payment',
 ] as const;
 

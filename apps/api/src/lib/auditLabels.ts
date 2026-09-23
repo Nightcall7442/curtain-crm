@@ -75,6 +75,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<AuditAction, string>> = {
   'discipline.explained': 'Дисциплина: объяснение',
   'discipline.removed': 'Дисциплина: запись удалена',
 
+  'event.created': 'Мероприятие добавлено',
+  'event.removed': 'Мероприятие убрано',
+
   'terminal_check.created': 'Терминальный чек пробит',
 
   'purchase_item.created': 'Товар закупки создан',

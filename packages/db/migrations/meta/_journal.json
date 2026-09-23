@@ -393,6 +393,13 @@
       "when": 1790097228067,
       "tag": "0055_sewer_category_manual",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1790178917220,
+      "tag": "0056_workshop_events",
+      "breakpoints": true
     }
   ]
 }
