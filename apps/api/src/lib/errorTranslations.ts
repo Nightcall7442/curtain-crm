@@ -72,6 +72,9 @@ const EXACT: Readonly<Record<string, string>> = {
   'Позиция справочника не найдена': "Ma'lumotnoma pozitsiyasi topilmadi",
   'Укажите код': "Kodni ko'rsating",
   'Укажите причину скидки': "Chegirma sababini ko'rsating",
+  'Конец мероприятия раньше начала': 'Tadbir tugashi boshlanishidan oldin',
+  'Не удалось сохранить мероприятие': "Tadbirni saqlab bo'lmadi",
+  'Мероприятие не найдено': 'Tadbir topilmadi',
 
   // discipline
   'Сотрудник не найден или уволен': "Xodim topilmadi yoki ishdan bo'shatilgan",
