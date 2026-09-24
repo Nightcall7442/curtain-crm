@@ -5,6 +5,8 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "designhouse",
+
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
@@ -22,6 +24,7 @@
     "android": {
       "package": "uz.designhouse.crm",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#14504A"
       },
       "permissions": [
@@ -64,7 +67,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#14504A"
+          "backgroundColor": "#14504A",
+          "image": "./assets/logo.png",
+          "imageWidth": 220
         }
       ],
       "@react-native-community/datetimepicker"
