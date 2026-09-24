@@ -33,15 +33,12 @@ import { SubmitButton } from './SubmitButton';
  * требуется. Руководству возраст по-прежнему виден в панели.
  */
 
-/** Сколько дней вперёд считается «ближайшим». */
-const HORIZON_DAYS = 30;
-
 /** Сколько плиток в ряду всегда: меньше — ряд выглядит недоделанным. */
 const SLOTS = 3;
 
 export interface StaffEvent {
   readonly id: string;
-  readonly kind: 'birthday' | 'day_off' | 'event';
+  readonly kind: 'birthday' | 'event';
   /** Мероприятие, которое можно убрать; у дней рождения и выходных — `null`. */
   readonly eventId: number | null;
   readonly title: string;
@@ -166,8 +163,7 @@ export function EventsBoard({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
           {events.map((item) => {
             const isSoon = item.daysUntil === 0;
-            const isDayOff = item.kind === 'day_off';
-            const highlight = isSoon && !isDayOff;
+            const highlight = isSoon;
 
             return (
               <View key={item.id} style={[styles.person, highlight ? styles.personToday : null]}>
@@ -190,11 +186,7 @@ export function EventsBoard({
                 )}
 
                 <Text style={[styles.when, highlight ? styles.whenToday : null]}>
-                  {isDayOff
-                    ? m('events.dayOff')
-                    : isSoon
-                      ? m('birthday.todayMark')
-                      : whenLabel(item.daysUntil, m)}
+                  {isSoon ? m('birthday.todayMark') : whenLabel(item.daysUntil, m)}
                 </Text>
                 <Text style={styles.date}>
                   {/* Событие на несколько дней — диапазоном: «24.09 – 26.09». */}
@@ -252,7 +244,7 @@ export function EventsBoard({
         </ScrollView>
       )}
 
-      <Text style={styles.footnote}>{m('birthday.horizon', { n: HORIZON_DAYS })}</Text>
+      <Text style={styles.footnote}>{m('birthday.horizon')}</Text>
 
       <BottomSheet
         visible={open}

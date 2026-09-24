@@ -1,5 +1,4 @@
-import { branches, dayOffRequests, events, users } from '@curtain-crm/db';
-import { DayOffStatus } from '@curtain-crm/shared';
+import { branches, events, users } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, gte, lte, or } from 'drizzle-orm';
 import { z } from 'zod';
@@ -16,13 +15,28 @@ import { router } from '../trpc';
 /**
  * Ближайшие события мастерской.
  *
- * Три источника в одной ленте: дни рождения и одобренные выходные система
- * выводит сама, мероприятия (собрание, выезд, обучение) заводит
- * руководство — их она знать не может. Владелец: «тут не только дни
- * рождения», и добавить своё событие с картинкой он просил отдельно.
+ * Два источника в одной ленте: дни рождения система знает сама, мероприятия
+ * (собрание, выезд, обучение) заводит руководство — их она знать не может.
+ *
+ * Выходных здесь нет: владелец вычеркнул их с карточки. Ими и так занят
+ * отдельный раздел, а место в ряду они отнимали у именинников, ради которых
+ * карточку и смотрят.
  */
 
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+/**
+ * Сколько дней рождения в ленте всегда.
+ *
+ * Горизонт в 30 дней задуман для мероприятий и выходных: дальше них
+ * заглядывать незачем. Дням рождения он выходил боком — в пустой месяц
+ * в карточке оставался один именинник, и владелец попросил показывать
+ * три ближайших, даже если до них ещё далеко: подарок покупают заранее.
+ */
+const ALWAYS_BIRTHDAYS = 3;
+
+/** Год вперёд — весь круг дней рождения; ближе ничего не потеряется. */
+const BIRTHDAY_LOOKAHEAD_DAYS = 365;
 
 /** Сегодня по Ташкенту, `YYYY-MM-DD`: день события — календарный, не UTC. */
 const today = (): string => new Date(Date.now() + TASHKENT_OFFSET_MS).toISOString().slice(0, 10);
@@ -36,7 +50,7 @@ const daysFromToday = (date: string): number =>
 
 export const eventsRouter = router({
   /**
-   * Лента ближайших событий: мероприятия, дни рождения, выходные.
+   * Лента ближайших событий: мероприятия и дни рождения.
    *
    * Одним запросом, а не тремя: карточка на главной показывает их вперемешку
    * по дате, и склеивать три ответа на клиенте значило бы гонять сортировку
@@ -48,30 +62,8 @@ export const eventsRouter = router({
       const from = today();
       const until = dayAfter(input.withinDays);
 
-      const [birthdays, daysOff, own] = await Promise.all([
-        upcomingBirthdays(ctx.db, input.withinDays),
-        ctx.db
-          .select({
-            id: dayOffRequests.id,
-            userId: dayOffRequests.userId,
-            fullName: users.fullName,
-            jobTitle: users.jobTitle,
-            avatarStorageKey: users.avatarStorageKey,
-            startDate: dayOffRequests.startDate,
-            endDate: dayOffRequests.endDate,
-          })
-          .from(dayOffRequests)
-          .innerJoin(users, eq(users.id, dayOffRequests.userId))
-          .where(
-            and(
-              eq(dayOffRequests.status, DayOffStatus.APPROVED),
-              eq(users.isActive, true),
-              gte(dayOffRequests.endDate, from),
-              lte(dayOffRequests.startDate, until),
-            ),
-          )
-          .orderBy(asc(dayOffRequests.startDate))
-          .limit(50),
+      const [allBirthdays, own] = await Promise.all([
+        upcomingBirthdays(ctx.db, BIRTHDAY_LOOKAHEAD_DAYS),
         ctx.db
           .select({
             id: events.id,
@@ -96,6 +88,14 @@ export const eventsRouter = router({
           .orderBy(asc(events.startDate))
           .limit(50),
       ]);
+
+      /*
+        Три ближайших — и те, что попали в горизонт, сверх них. Список уже
+        отсортирован по близости, поэтому берётся началом.
+      */
+      const birthdays = allBirthdays.filter(
+        (row, index) => index < ALWAYS_BIRTHDAYS || row.daysUntil <= input.withinDays,
+      );
 
       const storage = getStorage();
       const withUrl = async (key: string | null): Promise<string | null> =>
@@ -123,17 +123,6 @@ export const eventsRouter = router({
           date: row.birthDate,
           endDate: null as string | null,
           daysUntil: row.daysUntil,
-        })),
-        ...daysOff.map((row) => ({
-          kind: 'day_off' as const,
-          id: `day-off-${row.id.toString()}`,
-          eventId: null as number | null,
-          title: row.fullName,
-          subtitle: row.jobTitle,
-          photoKey: row.avatarStorageKey,
-          date: row.startDate,
-          endDate: row.endDate,
-          daysUntil: daysFromToday(row.startDate),
         })),
       ].sort((a, b) => a.daysUntil - b.daysUntil);
 
