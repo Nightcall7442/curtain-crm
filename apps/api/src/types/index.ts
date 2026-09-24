@@ -1,4 +1,4 @@
-import type { Role } from '@curtain-crm/shared';
+import type { Locale, Role } from '@curtain-crm/shared';
 
 /**
  * Типы уровня приложения, общие для контекста, middleware и сервисов.
@@ -20,6 +20,8 @@ export interface AuthenticatedUser {
   /** Фиксированный выходной, ISO-день недели 1–7; `null` — нет. */
   readonly weeklyDayOff: number | null;
   readonly roles: readonly Role[];
+  /** Язык, которым человек пользовался последним; `null` — ещё не заходил. */
+  readonly locale: Locale | null;
   readonly branchIds: readonly number[];
   /** Основной филиал — подставляется по умолчанию при создании заказа. */
   readonly primaryBranchId: number | null;

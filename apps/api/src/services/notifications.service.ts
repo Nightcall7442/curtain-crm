@@ -7,6 +7,7 @@ import {
   ORDER_STATUS_LABELS_RU,
   OrderStatus,
   ROLE_LABELS_RU,
+  resolveLocale,
   WEEKDAY_NAMES_RU,
   type DisciplineKind,
   type IsoWeekday,
@@ -14,6 +15,8 @@ import {
   type Role,
 } from '@curtain-crm/shared';
 import { and, eq, inArray } from 'drizzle-orm';
+
+import { translateNotificationText } from '../lib/notificationTranslations';
 
 import { isTelegramEnabled, sendTelegramMessage } from './telegram.service';
 
@@ -86,6 +89,11 @@ export async function createNotifications(
  * которой создаётся уведомление (назначение исполнителя, смена статуса),
  * держалась бы открытой на время запроса к чужому серверу, а при его
  * недоступности откатывалась бы целиком. Заказ важнее сообщения.
+ *
+ * Текст переводится ЗДЕСЬ, на язык получателя из его карточки. В ленте
+ * приложения перевод делается при чтении — там язык известен из запроса, а
+ * сюда сообщение уходит в момент события, и спрашивать его не у кого.
+ * Поэтому язык и запоминается при каждом обращении (см. `createContext`).
  */
 async function mirrorToTelegram(
   executor: DbExecutor,
@@ -94,23 +102,29 @@ async function mirrorToTelegram(
   if (!isTelegramEnabled()) return;
 
   const recipients = await executor
-    .select({ id: users.id, telegramId: users.telegramId })
+    .select({ id: users.id, telegramId: users.telegramId, locale: users.locale })
     .from(users)
     .where(inArray(users.id, [...new Set(drafts.map((draft) => draft.userId))]));
 
   const chats = new Map(
     recipients
-      .filter((row): row is { id: number; telegramId: number } => row.telegramId !== null)
-      .map((row) => [row.id, row.telegramId]),
+      .filter((row): row is { id: number; telegramId: number; locale: string | null } =>
+        row.telegramId !== null,
+      )
+      .map((row) => [row.id, { chatId: row.telegramId, locale: resolveLocale(row.locale) }]),
   );
 
   if (chats.size === 0) return;
 
   for (const draft of drafts) {
-    const chatId = chats.get(draft.userId);
-    if (chatId === undefined) continue;
+    const chat = chats.get(draft.userId);
+    if (chat === undefined) continue;
 
-    void sendTelegramMessage(chatId, draft.title, draft.body);
+    void sendTelegramMessage(
+      chat.chatId,
+      translateNotificationText(draft.title, chat.locale),
+      translateNotificationText(draft.body, chat.locale),
+    );
   }
 }
 

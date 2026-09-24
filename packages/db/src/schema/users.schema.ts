@@ -105,6 +105,20 @@ export const users = pgTable(
      */
     sewerCategory: smallint('sewer_category'),
 
+    /**
+     * Язык интерфейса, которым человек пользовался последним.
+     *
+     * Нужен не приложению — оно и так знает свой язык, — а сообщениям,
+     * которые уходят человеку БЕЗ запроса от него: уведомления в Telegram.
+     * Отправляются они в момент события, когда спросить у телефона нечего.
+     *
+     * Записывается сам, по заголовку `x-locale` любого запроса: отдельной
+     * настройки «язык уведомлений» нет намеренно — две настройки языка
+     * неизбежно разъезжаются. `null` — человек ещё не заходил после
+     * появления столбца, такому пишем по-русски.
+     */
+    locale: text('locale'),
+
     isActive: boolean('is_active').notNull().default(true),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
 
@@ -126,6 +140,7 @@ export const users = pgTable(
     check('users_phone_e164', sql`${table.phone} ~ '^\\+998[0-9]{9}$'`),
     check('users_weekly_day_off_range', sql`${table.weeklyDayOff} between 1 and 7`),
     check('users_sewer_category_range', sql`${table.sewerCategory} between 1 and 3`),
+    check('users_locale_known', sql`${table.locale} in ('ru', 'uz')`),
     check(
       'users_fired_after_hired',
       sql`${table.firedAt} is null or ${table.hiredAt} is null or ${table.firedAt} >= ${table.hiredAt}`,

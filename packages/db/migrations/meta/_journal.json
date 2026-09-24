@@ -400,6 +400,13 @@
       "when": 1790178917220,
       "tag": "0056_workshop_events",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1790263032732,
+      "tag": "0057_user_locale",
+      "breakpoints": true
     }
   ]
 }

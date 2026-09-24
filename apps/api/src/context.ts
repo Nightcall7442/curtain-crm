@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { createDatabase, users, type Database, type DbExecutor } from '@curtain-crm/db';
-import { resolveLocale, type Locale, type Role } from '@curtain-crm/shared';
+import { DEFAULT_LOCALE, resolveLocale, type Locale, type Role } from '@curtain-crm/shared';
 import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch';
 import { eq } from 'drizzle-orm';
 
@@ -77,7 +77,14 @@ export async function loadAuthenticatedUser(
 ): Promise<AuthenticatedUser | null> {
   const row = await executor.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: { id: true, fullName: true, phone: true, isActive: true, weeklyDayOff: true },
+    columns: {
+      id: true,
+      fullName: true,
+      phone: true,
+      isActive: true,
+      weeklyDayOff: true,
+      locale: true,
+    },
     with: {
       roles: { columns: { role: true } },
       branches: { columns: { branchId: true, isPrimary: true } },
@@ -93,6 +100,9 @@ export async function loadAuthenticatedUser(
     isActive: row.isActive,
     weeklyDayOff: row.weeklyDayOff,
     roles: row.roles.map((entry) => entry.role satisfies Role),
+    // В столбце по построению лежит только «ru» или «uz» (ограничение
+    // `users_locale_known`), но строка из БД об этом не знает.
+    locale: row.locale === null ? null : resolveLocale(row.locale),
     branchIds: row.branches.map((entry) => entry.branchId),
     primaryBranchId: row.branches.find((entry) => entry.isPrimary)?.branchId ?? null,
   };
@@ -133,12 +143,41 @@ export async function createContext(opts: FetchCreateContextFnOptions): Promise<
   const claims = token === null ? null : await verifyAccessToken(token);
   const user = claims === null ? null : await loadAuthenticatedUser(db, claims.userId);
 
+  const sent = headers.get('x-locale');
+  const clientLocale = sent === null ? null : resolveLocale(sent);
+
+  if (user !== null && clientLocale !== null && clientLocale !== user.locale) {
+    rememberLocale(db, user.id, clientLocale);
+  }
+
   return {
     db,
     user,
     requestId: randomUUID(),
     ipAddress: readClientIp(headers),
     userAgent: headers.get('user-agent'),
-    locale: resolveLocale(headers.get('x-locale')),
+    locale: clientLocale ?? DEFAULT_LOCALE,
   };
+}
+
+/**
+ * Запоминает язык интерфейса сотрудника.
+ *
+ * Нужен он не приложению, а уведомлениям в Telegram: они уходят в момент
+ * события, когда спросить у телефона язык не у кого. Отдельной настройки
+ * «язык уведомлений» нет намеренно — две настройки языка разъезжаются, и
+ * человек не понимает, какая из них главная.
+ *
+ * Запись не ждётся и происходит только при РАСХОЖДЕНИИ: на каждом запросе
+ * это был бы лишний UPDATE, а язык меняют раз в жизни. Ошибка гасится —
+ * из-за не сохранённого языка запрос падать не должен.
+ */
+function rememberLocale(db: Database, userId: number, locale: Locale): void {
+  void db
+    .update(users)
+    .set({ locale })
+    .where(eq(users.id, userId))
+    .catch(() => {
+      /* язык — не то, ради чего стоит ронять запрос */
+    });
 }
