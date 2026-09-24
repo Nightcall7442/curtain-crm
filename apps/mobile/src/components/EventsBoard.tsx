@@ -1,7 +1,7 @@
 import { formatIsoDateShort, todayIso } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useIsManagement } from '../hooks/useAuth';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -160,7 +160,7 @@ export function EventsBoard({
       {isLoading ? (
         <Skeleton />
       ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+        <View style={styles.row}>
           {events.map((item) => {
             const isSoon = item.daysUntil === 0;
             const highlight = isSoon;
@@ -241,7 +241,7 @@ export function EventsBoard({
               </View>
             ),
           )}
-        </ScrollView>
+        </View>
       )}
 
       <Text style={styles.footnote}>{m('birthday.horizon')}</Text>
@@ -301,13 +301,23 @@ export function EventsBoard({
 }
 
 const styles = StyleSheet.create({
+  /*
+    Плитки делят ширину карточки поровну, а не стоят фиксированными 108
+    точками: на телефоне три таких с отступами в строку не влезали, и
+    третья — та, ради которой список и расширили, — обрезалась краем экрана.
+    Четвёртая и дальше (мероприятие рядом с именинниками) переносятся вниз:
+    `minWidth` не даёт ряду ужаться до нечитаемого.
+  */
   row: {
     flexDirection: 'row',
-    gap: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
   person: {
-    width: 108,
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 96,
     alignItems: 'center',
     padding: spacing.sm,
     borderRadius: radius.md,
