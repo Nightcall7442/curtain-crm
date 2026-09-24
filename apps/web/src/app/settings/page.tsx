@@ -10,6 +10,7 @@ import { SkinPicker } from '@/components/settings/SkinPicker';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Button, Field, FormError, Input, Modal } from '@/components/ui/Form';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { trpc } from '@/lib/trpc';
 
 /**
@@ -28,27 +29,54 @@ import { trpc } from '@/lib/trpc';
  */
 type SettingsTab = 'organization' | 'catalogs' | 'personal';
 
-const SETTINGS_TABS: readonly { readonly key: SettingsTab; readonly label: string }[] = [
-  { key: 'organization', label: 'Организация' },
-  { key: 'catalogs', label: 'Справочники' },
+/**
+ * `management: true` — вкладка руководства.
+ *
+ * Филиалы, радиус отметки и справочники правит только руководство: сервер
+ * отвечает на такую попытку отказом (`managementProcedure`). Швея и продавец
+ * видели при этом полностью рабочие на вид формы, которые отвечали ошибкой
+ * при сохранении, — владелец попросил убрать их с глаз. Скрытие вкладки
+ * НЕ заменяет серверную проверку, оно только перестаёт врать о правах.
+ */
+const SETTINGS_TABS: readonly {
+  readonly key: SettingsTab;
+  readonly label: string;
+  readonly management?: true;
+}[] = [
+  { key: 'organization', label: 'Организация', management: true },
+  { key: 'catalogs', label: 'Справочники', management: true },
   { key: 'personal', label: 'Личные настройки' },
 ];
 
 export default function SettingsPage(): ReactElement {
-  const [tab, setTab] = useState<SettingsTab>('organization');
+  const { isManagement } = useAuth();
+  const tabs = SETTINGS_TABS.filter((entry) => isManagement || entry.management !== true);
 
-  // Вкладка адресуется якорем (`/settings#personal`), чтобы на неё можно
-  // было прийти по ссылке — из меню человека в шапке. Якорь, а не
-  // `?tab=`: `useSearchParams` потребовал бы Suspense вокруг всей страницы.
+  const [tab, setTab] = useState<SettingsTab>('personal');
+
+  /*
+    Вкладка адресуется якорем (`/settings#personal`), чтобы на неё можно
+    было прийти по ссылке — из меню человека в шапке. Якорь, а не
+    `?tab=`: `useSearchParams` потребовал бы Suspense вокруг всей страницы.
+
+    Начальная вкладка зависит от прав, а права приходят ответом `auth.me`,
+    поэтому выбор живёт в эффекте, а не в `useState`: до ответа роли
+    неизвестны, и первый рендер поставил бы руководителю личные настройки.
+  */
   useEffect(() => {
     const fromHash = window.location.hash.slice(1);
-    if (SETTINGS_TABS.some((entry) => entry.key === fromHash)) setTab(fromHash as SettingsTab);
-  }, []);
+    const allowed = SETTINGS_TABS.filter((entry) => isManagement || entry.management !== true);
+    const requested = allowed.find((entry) => entry.key === fromHash);
+    setTab(requested?.key ?? (isManagement ? 'organization' : 'personal'));
+    // Зависимость ТОЛЬКО от прав: со списком вкладок в зависимостях эффект
+    // срабатывал бы на каждый рендер (новый массив) и возвращал вкладку
+    // обратно сразу после клика по другой.
+  }, [isManagement]);
 
   return (
     <div className="space-y-4">
       <nav aria-label="Разделы настроек" className="flex flex-wrap gap-1.5">
-        {SETTINGS_TABS.map((entry) => {
+        {tabs.map((entry) => {
           const isActive = entry.key === tab;
           return (
             <button
@@ -71,7 +99,7 @@ export default function SettingsPage(): ReactElement {
         })}
       </nav>
 
-      {tab === 'organization' && (
+      {tab === 'organization' && isManagement && (
         <SettingsSection
           title="Организация"
           hint="Параметры мастерской. Действуют на всех сотрудников сразу."
@@ -80,7 +108,7 @@ export default function SettingsPage(): ReactElement {
         </SettingsSection>
       )}
 
-      {tab === 'catalogs' && (
+      {tab === 'catalogs' && isManagement && (
         <SettingsSection
           title="Справочники"
           hint="То, из чего продавец собирает заказ. Позиции отсюда не удаляются, а выводятся из обращения — удалённая позиция обнулила бы аналитику по старым заказам."
