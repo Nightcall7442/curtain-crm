@@ -47,6 +47,17 @@ export function resolveApiUrl(): string {
   const fromEnv = process.env['EXPO_PUBLIC_API_URL'];
   if (typeof fromEnv === 'string' && fromEnv.length > 0) return fromEnv;
 
+  /*
+    В браузере приложение отдаёт та же панель, что проксирует `/trpc`, —
+    значит, адрес API это адрес страницы. Берётся он в рантайме, а не из
+    `extra.apiUrl`: иначе один собранный бандл был бы намертво привязан к
+    одному домену и на любом другом (тест, второй домен мастерской) ходил
+    бы в прод.
+  */
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/trpc`;
+  }
+
   // `expoConfig.extra` типизирован как `Record<string, any>`, поэтому
   // значение сначала приводится к `unknown` и сужается проверкой:
   // иначе любая опечатка в `app.json` попала бы в код как `any`.

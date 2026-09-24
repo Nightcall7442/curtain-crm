@@ -71,7 +71,13 @@
     ],
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "lang": "ru",
+      "description": "Мастерская штор: заказы, смены, касса.",
+      "themeColor": "#14504A"
+    },
+    "experiments": {
+      "baseUrl": "/app"
     },
     "extra": {
       "apiUrl": "https://pardabozor.uz/trpc",

@@ -40,8 +40,8 @@
 ```
 apps/
   api       Hono + tRPC v11 — роутеры, сервисы, middleware
-  web       Next.js 15 — панель руководства
-  mobile    Expo 57 / React Native — приложение персонала
+  web       Next.js 15 — панель руководства; раздаёт приложение по `/app/`
+  mobile    Expo 57 / React Native — приложение персонала (телефон и браузер)
 packages/
   shared    Перечисления, константы, чистые утилиты — единственный источник правды
   db        Схемы Drizzle, миграции, сид
@@ -112,6 +112,8 @@ pnpm db:studio        # Drizzle Studio
 pnpm --filter @curtain-crm/api run smoke   # проверки на живой базе
 pnpm --filter @curtain-crm/api run demo    # демо-данные: 2 филиала, 21 сотрудник, ~66 заказов
 pnpm --filter @curtain-crm/api backup      # дамп базы + файловое хранилище
+
+pnpm pwa              # собрать приложение для браузера в apps/web/public/app
 ```
 
 ## Развёртывание
@@ -119,6 +121,7 @@ pnpm --filter @curtain-crm/api backup      # дамп базы + файлово�
 - **Railway** — три сервиса, один домен; панель проксирует `/trpc` и `/files` в API. Пошагово: [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
 - **Свой сервер** — `docker-compose.prod.yml`: база, API, панель и Caddy с автоматическим HTTPS. См. [docs/OPERATIONS.md](docs/OPERATIONS.md).
 - **Мобильное** — сборка через EAS из `apps/mobile` (`eas build --profile preview`, APK).
+- **В браузере** — то же приложение по адресу `/app/`: Expo собирает его под веб отдельной стадией образа панели, и оно ставится на домашний экран без магазина приложений.
 
 ## Документация
 

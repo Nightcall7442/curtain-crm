@@ -181,6 +181,20 @@ export default function LoginPage(): ReactElement {
           <p className="text-footnote leading-relaxed text-[rgb(234_245_238_/_0.5)]">
             Забыли пароль? Обратитесь к директору — сброс делает только он.
           </p>
+
+          {/*
+            Панель рассчитана на большой экран: таблицы, отчёты, журнал.
+            Смену отмечают, заказ принимают и фото этапа снимают с телефона —
+            там то же приложение, что стоит у сотрудников, и открывается оно
+            в браузере без установки.
+          */}
+          <p className="text-footnote leading-relaxed text-[rgb(234_245_238_/_0.5)]">
+            С телефона —{' '}
+            <a className="underline underline-offset-4 hover:text-[rgb(234_245_238_/_0.8)]" href="/app/">
+              приложение мастерской
+            </a>
+            .
+          </p>
         </form>
       </section>
     </main>

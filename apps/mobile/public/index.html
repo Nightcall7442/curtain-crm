@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>%WEB_TITLE%</title>
+
+    <!--
+      Шаблон страницы приложения в браузере.
+
+      Expo берёт `public/index.html` вместо своего шаблона, подставляет язык,
+      заголовок и тег бандла. Всё, что делает из страницы устанавливаемое
+      приложение — манифест, иконки, service worker, — живёт здесь: в коде
+      приложения этому места нет, оно одинаково на телефоне и в браузере.
+    -->
+    <link rel="manifest" href="/app/manifest.json" />
+    <link rel="icon" href="/app/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/app/icons/icon-192.png" />
+
+    <!-- iPhone: без этого приложение с домашнего экрана открывается в Safari с адресной строкой. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Design House" />
+
+    <style id="expo-reset">
+      /* Рекомендованный сброс react-native-web: высота на весь экран и без прокрутки body. */
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        overflow: hidden;
+        margin: 0;
+        /* Цвет фона приложения: пока грузится бандл, страница не мигает белым. */
+        background-color: #14504a;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>Для работы приложения нужен JavaScript.</noscript>
+    <div id="root"></div>
+
+    <script>
+      /*
+        Service worker делает страницу приложением: браузер предлагает
+        «установить», а открытое приложение переживает пропажу сети.
+        Регистрация после `load` — чтобы не отнимать канал у бандла.
+      */
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/app/sw.js').catch(function () {
+            // Не установился — приложение работает как обычная вкладка.
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

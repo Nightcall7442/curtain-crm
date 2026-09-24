@@ -5,6 +5,46 @@
 #
 # Причины одной стадии — те же, что у API: символические ссылки pnpm не
 # переживают копирование `node_modules` между стадиями.
+# Стадия сборки приложения мастерской для браузера.
+#
+# Панель раздаёт его по адресу `/app/`: это тот же код, что стоит у
+# сотрудников на телефонах, собранный Expo под веб. Сборка идёт здесь, а не
+# коммитом готовой статики, потому что иначе браузерная версия молча
+# отставала бы от телефонной на каждую правку — а заметить это можно только
+# по жалобе из цеха.
+#
+# Стадия отдельная и выбрасывается: приложению для телефона нужен весь
+# react-native со сборщиком, и тащить их в образ панели незачем — наружу
+# уходят только готовые файлы.
+FROM node:22-alpine AS pwa
+
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc tsconfig.base.json ./
+COPY apps/mobile/package.json apps/mobile/
+COPY apps/api/package.json apps/api/
+COPY packages/config/package.json packages/config/
+COPY packages/db/package.json packages/db/
+COPY packages/shared/package.json packages/shared/
+
+RUN pnpm install --frozen-lockfile --filter @curtain-crm/mobile...
+
+COPY packages/ packages/
+COPY apps/api/ apps/api/
+COPY apps/mobile/ apps/mobile/
+
+# Metro складывает граф модулей целиком в память, и стандартной кучи Node
+# на приложение такого размера не хватает — сборка падает на OOM.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV CI=1
+ENV EXPO_NO_TELEMETRY=1
+
+RUN pnpm --filter @curtain-crm/mobile exec expo export -p web --output-dir /pwa
+
+
+# Образ самой панели.
 FROM node:22-alpine
 
 RUN apk add --no-cache tini
@@ -31,6 +71,10 @@ RUN pnpm install --frozen-lockfile --filter @curtain-crm/web...
 COPY packages/ packages/
 COPY apps/api/ apps/api/
 COPY apps/web/ apps/web/
+
+# Приложение для телефона — статикой рядом с панелью. Адрес `/app/` разводит
+# `next.config.ts`; файлы отсюда Next отдаёт как есть.
+COPY --from=pwa /pwa apps/web/public/app
 
 # Адрес API снаружи НЕ передаётся: при NODE_ENV=production сборка сама
 # подставляет относительный `/trpc` (см. next.config.ts). Браузер обращается

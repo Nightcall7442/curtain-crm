@@ -9,6 +9,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web:local": "node scripts/web-local.cjs",
+    "pwa": "expo export -p web --output-dir ../web/public/app",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src App.tsx index.ts"
   },

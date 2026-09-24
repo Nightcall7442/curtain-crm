@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 /**
  * Хранение токенов на устройстве.
@@ -33,9 +34,20 @@ const CURRENT_USER_KEY = 'curtain_crm_current_user_id';
  */
 let cachedAccessToken: string | null = null;
 
+/**
+ * В браузере (PWA) защищённого хранилища нет вовсе: `expo-secure-store`
+ * написан под Keychain и EncryptedSharedPreferences, а его веб-реализация —
+ * пустой модуль. Без замены сессия жила бы до перезагрузки вкладки: человека
+ * выбрасывало бы на вход при каждом открытии приложения.
+ *
+ * Поэтому на вебе — `localStorage`. Он не шифруется, и это осознанная плата:
+ * иначе с телефона без установленного APK в приложение не зайти вообще.
+ */
+const isWeb = Platform.OS === 'web';
+
 async function readSecure(key: string): Promise<string | null> {
   try {
-    return await SecureStore.getItemAsync(key);
+    return isWeb ? window.localStorage.getItem(key) : await SecureStore.getItemAsync(key);
   } catch {
     return null;
   }
@@ -43,6 +55,12 @@ async function readSecure(key: string): Promise<string | null> {
 
 async function writeSecure(key: string, value: string | null): Promise<void> {
   try {
+    if (isWeb) {
+      if (value === null) window.localStorage.removeItem(key);
+      else window.localStorage.setItem(key, value);
+      return;
+    }
+
     if (value === null) await SecureStore.deleteItemAsync(key);
     else await SecureStore.setItemAsync(key, value);
   } catch {

@@ -19,6 +19,7 @@
     "db:push": "pnpm --filter @curtain-crm/db db:push",
     "db:studio": "pnpm --filter @curtain-crm/db db:studio",
     "db:seed": "pnpm --filter @curtain-crm/db db:seed",
+    "pwa": "pnpm --filter @curtain-crm/mobile pwa",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },

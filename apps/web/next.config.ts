@@ -72,16 +72,38 @@ const nextConfig: NextConfig = {
    * `API_INTERNAL_URL` обязана быть видна во время `next build`, а её смена
    * требует пересборки панели, а не перезапуска.
    */
+  /**
+   * Приложение для телефона живёт в браузере по адресу `/app/` — со слэшем.
+   *
+   * Слэш здесь не косметика: service worker, лежащий в `/app/sw.js`, умеет
+   * управлять только страницами внутри своей папки. Без этого флага Next
+   * увёл бы `/app/` на `/app` редиректом, страница оказалась бы вне зоны
+   * worker'а, и браузер перестал бы предлагать установку приложения.
+   */
+  skipTrailingSlashRedirect: true,
+
   async rewrites() {
+    /*
+      Приложение мастерской в браузере: собранная статика лежит в
+      `public/app`, но входная ссылка — `pardabozor.uz/app/`, а файла с
+      таким именем нет. Оба написания ведут на его `index.html`; всё
+      остальное внутри `/app/` — настоящие файлы, и до правил не доходит.
+    */
+    const app = [
+      { source: '/app', destination: '/app/index.html' },
+      { source: '/app/', destination: '/app/index.html' },
+    ];
+
     const target = process.env['API_INTERNAL_URL'];
 
-    if (target === undefined || target.length === 0) return [];
+    if (target === undefined || target.length === 0) return app;
 
     // Хвостовой слэш в переменной сделал бы `//trpc` — адрес, на котором
     // часть прокси отвечает 404, а часть молча схлопывает. Убираем заранее.
     const base = target.replace(/\/+$/, '');
 
     return [
+      ...app,
       { source: '/trpc/:path*', destination: `${base}/trpc/:path*` },
       { source: '/files/:path*', destination: `${base}/files/:path*` },
       { source: '/health', destination: `${base}/health` },
