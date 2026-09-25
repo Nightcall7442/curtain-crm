@@ -50,15 +50,31 @@ export interface StaffEvent {
   readonly photoUrl: string | null;
 }
 
-/** «сегодня» / «завтра» / «через 5 дней» — человеческий счёт, а не число. */
+/*
+  «сегодня» / «завтра» / «5 дней» — человеческий счёт, а не голое число.
+
+  Без «через»: плитка узкая, три в ряд, и «через 41 день» переносилось на
+  вторую строку, наезжая на дату. Под строкой и так стоит день и месяц,
+  так что предлог ничего не добавлял.
+*/
 function whenLabel(daysUntil: number, m: Translate): string {
   if (daysUntil === 0) return m('birthday.today');
   if (daysUntil === 1) return m('birthday.tomorrow');
 
-  // 2–4 → «дня», остальное → «дней». Для 12–14 всегда «дней».
+  /*
+    Склонение по последней цифре: 1 → «день», 2–4 → «дня», остальное →
+    «дней». Одиннадцатый–четырнадцатый — исключение, там всегда «дней»,
+    иначе выходило «через 41 дней».
+  */
   const tail = daysUntil % 10;
-  const teen = daysUntil % 100 >= 12 && daysUntil % 100 <= 14;
-  const word = !teen && tail >= 2 && tail <= 4 ? m('birthday.day2') : m('birthday.day5');
+  const teen = daysUntil % 100 >= 11 && daysUntil % 100 <= 14;
+  const word = teen
+    ? m('birthday.day5')
+    : tail === 1
+      ? m('birthday.day1')
+      : tail >= 2 && tail <= 4
+        ? m('birthday.day2')
+        : m('birthday.day5');
   return m('birthday.inDays', { n: daysUntil, word });
 }
 
@@ -185,7 +201,7 @@ export function EventsBoard({
                   </Text>
                 )}
 
-                <Text style={[styles.when, highlight ? styles.whenToday : null]}>
+                <Text style={[styles.when, highlight ? styles.whenToday : null]} numberOfLines={1}>
                   {isSoon ? m('birthday.todayMark') : whenLabel(item.daysUntil, m)}
                 </Text>
                 <Text style={styles.date}>
@@ -372,8 +388,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.accentStrong,
   },
+  /*
+    У каждой строки своя постоянная высота, а не «сколько займёт текст».
+
+    Иначе плитки стояли криво: у одного фамилия в две строки, у другого в
+    одну, у именинника дня подпись жирнее — и дата в каждой плитке
+    оказывалась на своей высоте. Две строки под фамилию хватает и самой
+    длинной: шрифт подобран так, чтобы «Palvannazirova» помещалась целиком
+    и не рвалась посередине слова.
+  */
   name: {
-    ...typography.caption,
+    fontFamily: fonts.medium,
+    fontSize: 11.5,
+    lineHeight: 14,
+    height: 28,
     fontWeight: '600',
     color: colors.textPrimary,
     textAlign: 'center',
@@ -382,12 +410,16 @@ const styles = StyleSheet.create({
   jobTitle: {
     fontFamily: fonts.medium,
     fontSize: 10,
+    lineHeight: 13,
+    height: 13,
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: 1,
   },
   when: {
     ...typography.caption,
+    lineHeight: 17,
+    height: 17,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
