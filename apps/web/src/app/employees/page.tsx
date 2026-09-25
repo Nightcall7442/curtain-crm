@@ -338,7 +338,7 @@ function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: strin
               header: 'ФИО',
               render: (row) => (
                 <span className="flex items-center gap-2.5">
-                  {/* Фото сотрудник загружает сам в мобильном приложении;
+                  {/* Фото ставит руководство — кнопкой в конце строки;
                       пока его нет — инициалы, а не пустая рамка. */}
                   <Avatar url={row.avatarUrl} fullName={row.fullName} />
                   <span className="block min-w-0">
@@ -489,6 +489,7 @@ function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: strin
                     fullName: row.fullName,
                     isActive: row.isActive,
                     roles: row.roles,
+                    avatarUrl: row.avatarUrl,
                   }}
                   onEdit={() => {
                     setEditing({
