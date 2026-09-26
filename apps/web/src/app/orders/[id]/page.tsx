@@ -165,7 +165,7 @@ export default function OrderDetailPage(): ReactElement {
     внесли». Руководство видит нули там, где им место, — в окне правки.
   */
   const stageFeeDraft = stageFeesFromOrder(data);
-  const visibleStageFees = stageFeesOfOrderType(data.orderType)
+  const visibleStageFees = stageFeesOfOrderType(data.orderType, data.status)
     .map((stage) => [stage, stageFeeDraft[stage]] as const)
     .filter(([, value]) => value.length > 0 && Number.parseFloat(value) > 0);
 
@@ -228,7 +228,9 @@ export default function OrderDetailPage(): ReactElement {
                     <dd className="text-primary">
                       {`−${formatMoney(parseMoney(data.discountAmount))}`}
                       {data.discountReason !== null && (
-                        <span className="block text-overline text-muted">{data.discountReason}</span>
+                        <span className="block text-overline text-muted">
+                          {data.discountReason}
+                        </span>
                       )}
                     </dd>
                   </div>
@@ -440,6 +442,7 @@ export default function OrderDetailPage(): ReactElement {
               paidAmount={data.paidAmount ?? '0'}
               stageFees={stageFeesFromOrder(data)}
               orderType={data.orderType}
+              status={data.status}
               isClosed={isTerminalStatus(data.status)}
             />
           )}

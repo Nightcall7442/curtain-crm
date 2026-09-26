@@ -1,6 +1,5 @@
 import {
   CatalogKind,
-  formatMoney,
   inputToMajor,
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
@@ -70,6 +69,11 @@ interface MateDraft {
   readonly heightCm: string;
   readonly price: string;
   readonly quantity: string;
+  readonly photo: {
+    readonly uri: string;
+    readonly base64: string;
+    readonly mimeType: string;
+  } | null;
 }
 
 const emptyForm = (): FormState => ({
@@ -89,7 +93,7 @@ const toNumber = (raw: string): number => Number.parseFloat(raw.replace(',', '.'
 
 export function ReadyMadeStockScreen(): ReactElement {
   const navigation = useNavigation();
-  const { m, t } = useLocale();
+  const { m, t, money } = useLocale();
   const utils = trpc.useUtils();
 
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -100,7 +104,12 @@ export function ReadyMadeStockScreen(): ReactElement {
   const [pricing, setPricing] = useState<number | null>(null);
   const [priceValue, setPriceValue] = useState('');
 
-  const items = trpc.readyMade.list.useQuery({ includeEmpty: true, includeInactive: false });
+  /*
+    Проданные с полки не показываем: «0 шт» в списке остатков — не ответ на
+    вопрос «что есть». Ошибочную продажу возвращает панель: там список
+    полный, вместе с пустыми и снятыми.
+  */
+  const items = trpc.readyMade.list.useQuery({ includeEmpty: false, includeInactive: false });
   const catalog = trpc.catalog.list.useQuery({});
 
   const modelOptions = useMemo(
@@ -160,7 +169,12 @@ export function ReadyMadeStockScreen(): ReactElement {
     },
   });
 
-  const pickPhoto = async (fromCamera: boolean): Promise<void> => {
+  /**
+   * Снимок — на позицию, а не на карточку: окно и дверь выглядят по-разному,
+   * и один снимок на комплект оставлял бы вторую позицию совсем без фото.
+   * `mateId === null` — снимок основной позиции, иначе — позиции комплекта.
+   */
+  const pickPhoto = async (fromCamera: boolean, mateId: number | null): Promise<void> => {
     const permission = fromCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -192,12 +206,18 @@ export function ReadyMadeStockScreen(): ReactElement {
       return;
     }
 
+    const photo = {
+      uri: asset.uri,
+      base64: asset.base64,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    };
+
+    if (mateId === null) {
+      patch({ photo });
+      return;
+    }
     patch({
-      photo: {
-        uri: asset.uri,
-        base64: asset.base64,
-        mimeType: asset.mimeType ?? 'image/jpeg',
-      },
+      mates: form.mates.map((entry) => (entry.id === mateId ? { ...entry, photo } : entry)),
     });
   };
 
@@ -228,6 +248,15 @@ export function ReadyMadeStockScreen(): ReactElement {
         heightCm: toNumber(mate.heightCm),
         price: toNumber(mate.price),
         quantity: Math.max(0, Number.parseInt(mate.quantity, 10) || 0),
+        ...(mate.photo === null
+          ? {}
+          : {
+              photo: {
+                fileName: 'ready-made.jpg',
+                mimeType: mate.photo.mimeType,
+                content: mate.photo.base64,
+              },
+            }),
       })),
       ...(form.code.trim() === '' ? {} : { code: form.code.trim() }),
       ...(form.comment.trim() === '' ? {} : { comment: form.comment.trim() }),
@@ -408,6 +437,33 @@ export function ReadyMadeStockScreen(): ReactElement {
               </View>
             </View>
 
+            <View style={styles.photoRow}>
+              {form.photo === null ? (
+                <Text style={styles.photoHint}>{m('stock.photoHint')}</Text>
+              ) : (
+                <Image source={{ uri: form.photo.uri }} style={styles.photoPreview} />
+              )}
+
+              <Pressable
+                onPress={() => {
+                  void pickPhoto(true, null);
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
+              >
+                <Icon name="camera" size={18} color={colors.accentStrong} />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  void pickPhoto(false, null);
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
+              >
+                <Icon name="photo" size={18} color={colors.accentStrong} />
+              </Pressable>
+            </View>
+
             {/*
               Комплект руками: окно + дверь одной карточкой. Модель, код и
               описание общие, у каждой шторы свой размер, цена и остаток —
@@ -514,6 +570,33 @@ export function ReadyMadeStockScreen(): ReactElement {
                     </Field>
                   </View>
                 </View>
+
+                <View style={styles.photoRow}>
+                  {mate.photo === null ? (
+                    <Text style={styles.photoHint}>{m('stock.photoHint')}</Text>
+                  ) : (
+                    <Image source={{ uri: mate.photo.uri }} style={styles.photoPreview} />
+                  )}
+
+                  <Pressable
+                    onPress={() => {
+                      void pickPhoto(true, mate.id);
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
+                  >
+                    <Icon name="camera" size={18} color={colors.accentStrong} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      void pickPhoto(false, mate.id);
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
+                  >
+                    <Icon name="photo" size={18} color={colors.accentStrong} />
+                  </Pressable>
+                </View>
               </View>
             ))}
             <Pressable
@@ -531,6 +614,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                       heightCm: '',
                       price: '',
                       quantity: '1',
+                      photo: null,
                     },
                   ],
                 });
@@ -541,33 +625,6 @@ export function ReadyMadeStockScreen(): ReactElement {
               <Icon name="assigned" size={18} color={colors.accent} />
               <Text style={styles.addMateText}>{m('stock.addMate')}</Text>
             </Pressable>
-
-            <View style={styles.photoRow}>
-              {form.photo === null ? (
-                <Text style={styles.photoHint}>{m('stock.photoHint')}</Text>
-              ) : (
-                <Image source={{ uri: form.photo.uri }} style={styles.photoPreview} />
-              )}
-
-              <Pressable
-                onPress={() => {
-                  void pickPhoto(true);
-                }}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
-              >
-                <Icon name="camera" size={18} color={colors.accentStrong} />
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  void pickPhoto(false);
-                }}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.photoButton, pressed ? styles.pressed : null]}
-              >
-                <Icon name="photo" size={18} color={colors.accentStrong} />
-              </Pressable>
-            </View>
 
             <Pressable
               disabled={create.isPending}
@@ -611,7 +668,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                         .join(' + ')}
                     </Text>
                     <Text style={styles.setTotal}>
-                      {formatMoney(
+                      {money(
                         items.data
                           .filter((entry) => entry.setId === item.setId)
                           .reduce((sum, entry) => sum + parseMoney(entry.price), 0),
@@ -650,7 +707,7 @@ export function ReadyMadeStockScreen(): ReactElement {
                   </View>
 
                   <View style={styles.itemNumbers}>
-                    <Text style={styles.itemPrice}>{formatMoney(parseMoney(item.price))}</Text>
+                    <Text style={styles.itemPrice}>{money(parseMoney(item.price))}</Text>
                     <Text style={styles.itemQuantity}>
                       {m('stock.pcsOnly', { n: item.quantity })}
                     </Text>
@@ -840,7 +897,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.accent,
   },
-  actionsRow: { flexDirection: 'row', gap: spacing.lg },
+  // Переносом: по-узбекски «Narxni o'zgartirish» длиннее, и в одну строку
+  // три действия не помещались — последнее обрезалось на полуслове.
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.xs },
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   content: {

@@ -16,7 +16,6 @@ import {
   CatalogKind,
   CurtainMountKind,
   curtainMountKindOf,
-  formatMoney,
   inputToMajor,
   MATERIAL_CODE_KINDS,
   parseMoney,
@@ -28,7 +27,12 @@ import {
 
 import { Card, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
-import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
+import {
+  DiscountFields,
+  discountMissingReason,
+  discountPayload,
+  emptyDiscount,
+} from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { trpc } from '../lib/trpc';
@@ -59,7 +63,7 @@ import { useLocale, type Translate } from '../hooks/useLocale';
  * в обход этой формы.
  */
 export function SellReadyMadeScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'SellReadyMade'>>();
   const utils = trpc.useUtils();
@@ -278,7 +282,12 @@ export function SellReadyMadeScreen(): ReactElement {
               </Field>
             </View>
           </View>
-          <DiscountFields price={workPrice} value={discount} onChange={setDiscount} showError={showErrors} />
+          <DiscountFields
+            price={workPrice}
+            value={discount}
+            onChange={setDiscount}
+            showError={showErrors}
+          />
           {/* Способ оплаты предоплаты — из него складывается касса дня. */}
           <Field label={m('cash.method')}>
             <ChipSelect
@@ -508,9 +517,7 @@ export function SellReadyMadeScreen(): ReactElement {
                               {m('sell.pcs', { branch: entry.branchName, n: entry.quantity })}
                             </Text>
                           </View>
-                          <Text style={styles.stockPrice}>
-                            {formatMoney(parseMoney(entry.price))}
-                          </Text>
+                          <Text style={styles.stockPrice}>{money(parseMoney(entry.price))}</Text>
                         </Pressable>
                       );
                     });

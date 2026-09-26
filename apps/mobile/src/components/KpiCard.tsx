@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney } from '@curtain-crm/shared';
+import { parseMoney } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -40,7 +40,7 @@ export function KpiCard({
   readonly kpiPercent: string | null;
   readonly isLoading: boolean;
 }): ReactElement {
-  const { m } = useLocale();
+  const { m, money: formatMoney } = useLocale();
   const percent = kpiPercent === null ? null : Number.parseFloat(kpiPercent);
 
   /*
@@ -78,11 +78,7 @@ export function KpiCard({
                 hitSlop={12}
                 style={({ pressed }) => (pressed ? styles.eyePressed : null)}
               >
-                <Icon
-                  name={revealed ? 'eyeOff' : 'eye'}
-                  size={18}
-                  color={colors.textSecondary}
-                />
+                <Icon name={revealed ? 'eyeOff' : 'eye'} size={18} color={colors.textSecondary} />
               </Pressable>
             )}
           </View>
@@ -92,10 +88,7 @@ export function KpiCard({
       {isLoading ? (
         <Empty message={m('kpi.loading')} />
       ) : calculatedAmount === null ? (
-        <Empty
-          message={m('kpi.none')}
-          hint={m('kpi.noneHint')}
-        />
+        <Empty message={m('kpi.none')} hint={m('kpi.noneHint')} />
       ) : (
         <>
           {targetAmount !== null && (

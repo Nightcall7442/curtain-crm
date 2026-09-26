@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_LOCALE, isLocale, type Locale, type Translated } from '@curtain-crm/shared';
+import {
+  DEFAULT_LOCALE,
+  formatMoney,
+  isLocale,
+  type Locale,
+  type Translated,
+} from '@curtain-crm/shared';
 
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -40,6 +46,15 @@ interface LocaleContextValue {
   readonly t: <TKey extends string>(dictionary: Translated<TKey>, key: TKey) => string;
   /** Строка интерфейса из `i18n/messages.ts`; `{name}` заменяется на `params.name`. */
   readonly m: (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string;
+  /**
+   * Сумма на текущем языке: `formatMoney`, привязанный к языку интерфейса.
+   *
+   * Раньше каждый экран звал `formatMoney` напрямую и молча получал русское
+   * «сум» даже там, где всё остальное — на узбекском: `formatMoney` без
+   * второго аргумента по умолчанию берёт `'ru'`, а передавать `{ locale }`
+   * вручную в каждом месте никто не делал.
+   */
+  readonly money: (minor: number, options?: { readonly withCurrency?: boolean }) => string;
 }
 
 function format(template: string, params?: Readonly<Record<string, string | number>>): string {
@@ -52,6 +67,8 @@ function format(template: string, params?: Readonly<Record<string, string | numb
 
 /** Тип `m` — для вспомогательных функций вне компонентов, которым передают переводчик. */
 export type Translate = LocaleContextValue['m'];
+/** Тип `money` — для вспомогательных функций вне компонентов. */
+export type LocaleMoney = LocaleContextValue['money'];
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
@@ -95,19 +112,22 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
     setRequestLocale(locale);
   }, [locale]);
 
-  const setLocale = useCallback((next: Locale): void => {
-    setLocaleState(next);
-    // Заголовок — до сброса кэша, иначе первые перезапросы ушли бы ещё на
-    // прежнем языке: эффект выше сработает только после рендера.
-    setRequestLocale(next);
-    // Уведомления переводит сервер по языку запроса: в кэше лежит лента на
-    // прежнем языке, и без сброса она сменилась бы только при следующем
-    // обновлении экрана.
-    void queryClient.invalidateQueries();
-    void AsyncStorage.setItem(LOCALE_STORAGE_KEY, next).catch(() => {
-      // Выбор проживёт до перезапуска приложения — это лучше, чем падение.
-    });
-  }, [queryClient]);
+  const setLocale = useCallback(
+    (next: Locale): void => {
+      setLocaleState(next);
+      // Заголовок — до сброса кэша, иначе первые перезапросы ушли бы ещё на
+      // прежнем языке: эффект выше сработает только после рендера.
+      setRequestLocale(next);
+      // Уведомления переводит сервер по языку запроса: в кэше лежит лента на
+      // прежнем языке, и без сброса она сменилась бы только при следующем
+      // обновлении экрана.
+      void queryClient.invalidateQueries();
+      void AsyncStorage.setItem(LOCALE_STORAGE_KEY, next).catch(() => {
+        // Выбор проживёт до перезапуска приложения — это лучше, чем падение.
+      });
+    },
+    [queryClient],
+  );
 
   const value = useMemo<LocaleContextValue>(
     () => ({
@@ -115,6 +135,7 @@ export function LocaleProvider({ children }: { readonly children: ReactNode }): 
       setLocale,
       t: (dictionary, key) => dictionary[locale][key],
       m: (key, params) => format(MESSAGES[locale][key], params),
+      money: (minor, options) => formatMoney(minor, { ...options, locale }),
     }),
     [locale, setLocale],
   );

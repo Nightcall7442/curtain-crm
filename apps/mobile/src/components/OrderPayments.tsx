@@ -1,6 +1,5 @@
 import {
   formatDate,
-  formatMoney,
   inputToMajor,
   parseMoney,
   PAYMENT_KIND_LABELS,
@@ -43,7 +42,7 @@ export function OrderPayments({
   readonly remaining: string | null;
   readonly canAccept: boolean;
 }): ReactElement | null {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const utils = trpc.useUtils();
   const history = trpc.payments.byOrder.useQuery({ orderId });
 
@@ -87,7 +86,7 @@ export function OrderPayments({
             style={[styles.rowAmount, row.kind === PaymentKind.REFUND ? styles.rowRefund : null]}
           >
             {row.kind === PaymentKind.REFUND ? '−' : ''}
-            {formatMoney(parseMoney(row.amount))}
+            {money(parseMoney(row.amount))}
           </Text>
         </View>
       ))}
@@ -115,7 +114,7 @@ export function OrderPayments({
       >
         <Field
           label={m('payment.amount')}
-          hint={m('payment.remainingHint', { sum: formatMoney(remainingValue) })}
+          hint={m('payment.remainingHint', { sum: money(remainingValue) })}
         >
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>

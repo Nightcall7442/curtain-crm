@@ -1,6 +1,5 @@
 import {
   formatIsoDate,
-  formatMoney,
   formatPhone,
   ORDER_ITEM_KIND_LABELS,
   ORDER_STAGE_FEE_LABELS,
@@ -57,7 +56,7 @@ import type { RootStackScreenProps } from '../types';
  */
 export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>): ReactElement {
   const { orderId } = route.params;
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
 
   const utils = trpc.useUtils();
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
@@ -171,7 +170,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
     директору нужен именно полный список: пропущенная строка — это забытая
     расценка, и заметить её можно только там, где она должна была быть.
   */
-  const visibleStageFees = stageFeesOfOrderType(data.orderType)
+  const visibleStageFees = stageFeesOfOrderType(data.orderType, data.status)
     .map((stage) => [stage, stageFeeValue[stage] ?? null] as const)
     .filter(
       (entry): entry is readonly [(typeof entry)[0], string] =>
@@ -217,21 +216,23 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
           {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
           {data.workPrice !== null && data.paidAmount !== null && (
             <>
-              <Row label={m('order.price')} value={formatMoney(parseMoney(data.workPrice))} />
+              <Row label={m('order.price')} value={money(parseMoney(data.workPrice))} />
               {/* Цена уже со скидкой; сколько сняли и за что — строкой рядом. */}
               {data.discountAmount !== null && parseMoney(data.discountAmount) > 0 && (
                 <Row
-                  label={data.discountReason === null ? m('order.discount') : `${m('order.discount')} · ${data.discountReason}`}
-                  value={`−${formatMoney(parseMoney(data.discountAmount))}`}
+                  label={
+                    data.discountReason === null
+                      ? m('order.discount')
+                      : `${m('order.discount')} · ${data.discountReason}`
+                  }
+                  value={`−${money(parseMoney(data.discountAmount))}`}
                 />
               )}
-              <Row label={m('order.paid')} value={formatMoney(parseMoney(data.paidAmount))} />
+              <Row label={m('order.paid')} value={money(parseMoney(data.paidAmount))} />
               <Row
                 label={m('order.remaining')}
                 value={
-                  data.remainingPayment === null
-                    ? '—'
-                    : formatMoney(parseMoney(data.remainingPayment))
+                  data.remainingPayment === null ? '—' : money(parseMoney(data.remainingPayment))
                 }
               />
             </>
@@ -278,9 +279,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                   key={stage}
                   label={t(ORDER_STAGE_FEE_LABELS, stage)}
                   value={
-                    Number.parseFloat(value) > 0
-                      ? formatMoney(parseMoney(value))
-                      : m('order.feeNotSet')
+                    Number.parseFloat(value) > 0 ? money(parseMoney(value)) : m('order.feeNotSet')
                   }
                 />
               ))}
@@ -526,6 +525,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
         <OrderManagement
           orderId={orderId}
           orderType={data.orderType}
+          status={data.status}
           workPrice={data.workPrice ?? '0'}
           paidAmount={data.paidAmount ?? '0'}
           fees={{

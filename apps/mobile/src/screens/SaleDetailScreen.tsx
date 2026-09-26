@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
+import { parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -19,10 +19,8 @@ import type { RootStackScreenProps } from '../types';
  * Права проверяет сервер: свой чек видит продавец, любой — руководство.
  * Экран не решает этого сам и не прячет кнопок «на всякий случай».
  */
-export function SaleDetailScreen({
-  route,
-}: RootStackScreenProps<'SaleDetail'>): ReactElement {
-  const { t, m } = useLocale();
+export function SaleDetailScreen({ route }: RootStackScreenProps<'SaleDetail'>): ReactElement {
+  const { t, m, money } = useLocale();
   const sale = trpc.retail.sales.byId.useQuery({ id: route.params.saleId });
 
   if (sale.isError) {
@@ -72,18 +70,16 @@ export function SaleDetailScreen({
                 {`${Number.parseFloat(line.quantity).toString()} ${t(
                   PURCHASE_UNIT_LABELS,
                   line.unit,
-                )} × ${formatMoney(parseMoney(line.unitPrice))}`}
+                )} × ${money(parseMoney(line.unitPrice))}`}
               </Text>
             </View>
-            <Text style={styles.lineTotal}>
-              {formatMoney(parseMoney(line.lineTotal ?? '0'))}
-            </Text>
+            <Text style={styles.lineTotal}>{money(parseMoney(line.lineTotal ?? '0'))}</Text>
           </View>
         ))}
 
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>{m('sale.total')}</Text>
-          <Text style={styles.totalValue}>{formatMoney(parseMoney(data.total))}</Text>
+          <Text style={styles.totalValue}>{money(parseMoney(data.total))}</Text>
         </View>
       </Card>
     </ScrollView>

@@ -1,4 +1,4 @@
-import { formatMoney, inputToMajor, parseMoney, Role, todayIso } from '@curtain-crm/shared';
+import { inputToMajor, parseMoney, Role, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -30,7 +30,7 @@ import { Icon } from './Icon';
  * кнопки «сдал».
  */
 export function CashCollectionCard(): ReactElement | null {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const handlesCash = (user?.roles ?? []).includes(Role.SELLER);
@@ -65,11 +65,11 @@ export function CashCollectionCard(): ReactElement | null {
       <CardTitle title={m('collection.title')} icon="paid" />
       <View style={styles.row}>
         <Text style={styles.label}>{m('collection.onHands')}</Text>
-        <Text style={styles.value}>{formatMoney(onHandsValue)}</Text>
+        <Text style={styles.value}>{money(onHandsValue)}</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.label}>{m('collection.todayTotal')}</Text>
-        <Text style={styles.value}>{formatMoney(todayTotal)}</Text>
+        <Text style={styles.value}>{money(todayTotal)}</Text>
       </View>
 
       {onHandsValue > 0 && (
@@ -95,7 +95,7 @@ export function CashCollectionCard(): ReactElement | null {
       >
         <Field
           label={m('payment.amount')}
-          hint={m('collection.onHandsHint', { sum: formatMoney(onHandsValue) })}
+          hint={m('collection.onHandsHint', { sum: money(onHandsValue) })}
         >
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>

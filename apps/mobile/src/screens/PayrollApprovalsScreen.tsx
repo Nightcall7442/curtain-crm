@@ -1,5 +1,4 @@
 import {
-  formatMoney,
   groupDigits,
   parseMoney,
   PAYROLL_RECORD_STATUS_LABELS,
@@ -41,7 +40,7 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
  * до купюр. Поле необязательное — пустое значит «выплачено как посчитано».
  */
 export function PayrollApprovalsScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const utils = trpc.useUtils();
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -106,10 +105,7 @@ export function PayrollApprovalsScreen(): ReactElement {
     return (
       <View style={styles.content}>
         <Card>
-          <Empty
-            message={m('payroll.none')}
-            hint={m('payroll.noneHint')}
-          />
+          <Empty message={m('payroll.none')} hint={m('payroll.noneHint')} />
         </Card>
       </View>
     );
@@ -125,10 +121,7 @@ export function PayrollApprovalsScreen(): ReactElement {
             title={row.userFullName}
             icon="person"
             action={
-              <Pill
-                text={t(PAYROLL_RECORD_STATUS_LABELS, row.status)}
-                tone={toneOf(row.status)}
-              />
+              <Pill text={t(PAYROLL_RECORD_STATUS_LABELS, row.status)} tone={toneOf(row.status)} />
             }
           />
 
@@ -136,15 +129,13 @@ export function PayrollApprovalsScreen(): ReactElement {
 
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>{m('payroll.accrued')}</Text>
-            <Text style={styles.amountValue}>
-              {formatMoney(parseMoney(row.calculatedAmount))}
-            </Text>
+            <Text style={styles.amountValue}>{money(parseMoney(row.calculatedAmount))}</Text>
           </View>
 
           {row.paidAmount !== null && parseMoney(row.paidAmount) > 0 && (
             <View style={styles.amountRow}>
               <Text style={styles.amountLabel}>{m('payroll.paid')}</Text>
-              <Text style={styles.amountValue}>{formatMoney(parseMoney(row.paidAmount))}</Text>
+              <Text style={styles.amountValue}>{money(parseMoney(row.paidAmount))}</Text>
             </View>
           )}
 
@@ -153,7 +144,7 @@ export function PayrollApprovalsScreen(): ReactElement {
             <View style={styles.amountRow}>
               <Text style={styles.amountLabel}>{m('payroll.remaining')}</Text>
               <Text style={styles.amountValue}>
-                {formatMoney(parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'))}
+                {money(parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'))}
               </Text>
             </View>
           )}
@@ -213,7 +204,7 @@ export function PayrollApprovalsScreen(): ReactElement {
             <View style={styles.payBox}>
               <Text style={styles.payLabel}>
                 {m('payroll.amountLabel', {
-                  amount: formatMoney(
+                  amount: money(
                     parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0'),
                   ),
                 })}
@@ -221,7 +212,12 @@ export function PayrollApprovalsScreen(): ReactElement {
               <MoneyInput
                 value={amount}
                 onChangeText={setAmount}
-                placeholder={groupDigits(((parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0')) / 100).toString())}
+                placeholder={groupDigits(
+                  (
+                    (parseMoney(row.calculatedAmount) - parseMoney(row.paidAmount ?? '0')) /
+                    100
+                  ).toString(),
+                )}
                 autoFocus
               />
 

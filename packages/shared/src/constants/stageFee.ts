@@ -1,4 +1,5 @@
 import type { Translated } from '../i18n/locale';
+import { ORDER_STATUS_PHASE, type OrderStatus as OrderStatusName } from '../enums/orderStatus.enum';
 import { OrderType, type OrderType as OrderTypeName } from '../enums/orderType.enum';
 import { Role, type Role as RoleName } from '../enums/role.enum';
 
@@ -132,8 +133,22 @@ export function stageFeesOfRole(role: RoleName): readonly OrderStageFee[] {
  * есть только сам цех. Замер тоже лишний — размер штора получает от того,
  * кто ставит её в план, а не от визита к окну, которого не существует.
  */
-export function stageFeesOfOrderType(orderType: OrderTypeName): readonly OrderStageFee[] {
-  if (orderType === OrderType.READY_MADE) return [OrderStageFee.INSTALLATION];
+export function stageFeesOfOrderType(
+  orderType: OrderTypeName,
+  /**
+   * Текущий статус ЭТОГО экземпляра заказа. Тип заказа фиксируется при
+   * продаже и не меняется, а готовая штора с браком уходит в переделку —
+   * раскрой, шитьё, контроль — тем же путём, что обычный заказ. Без статуса
+   * такой заказ навсегда остаётся с одним этапом «установка», и админ не
+   * может назначить на переделку швею — только установщика.
+   */
+  status?: OrderStatusName,
+): readonly OrderStageFee[] {
+  if (orderType === OrderType.READY_MADE) {
+    const phase = status === undefined ? undefined : ORDER_STATUS_PHASE[status];
+    const inRework = phase === 'measurement' || phase === 'sewing' || phase === 'qc';
+    return inRework ? ORDER_STAGE_FEES : [OrderStageFee.INSTALLATION];
+  }
   if (orderType === OrderType.STOCK) {
     return [OrderStageFee.CUTTING, OrderStageFee.SEWING, OrderStageFee.QC];
   }

@@ -1,6 +1,5 @@
 import {
   formatIsoDateShort,
-  formatMoney,
   formatTime,
   parseMoney,
   PAYMENT_KIND_LABELS,
@@ -11,7 +10,7 @@ import {
 import { useState, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { useLocale, type Translate } from '../hooks/useLocale';
+import { type LocaleMoney, useLocale, type Translate } from '../hooks/useLocale';
 import { trpc, type RouterOutputs } from '../lib/trpc';
 import { colors, hairline, spacing, typography } from '../theme';
 import { Card, CardTitle, Empty, Skeleton } from './Card';
@@ -31,7 +30,7 @@ import { Field } from './Field';
  * общим списком. Цифры те же, что в панели: `payments.summary` один на оба.
  */
 export function CashDayReport(): ReactElement {
-  const { m, t } = useLocale();
+  const { m, t, money } = useLocale();
   const [day, setDay] = useState(() => todayIso());
 
   const summary = trpc.payments.summary.useQuery({ day });
@@ -60,19 +59,19 @@ export function CashDayReport(): ReactElement {
               скидки. Накопленные остатки уехали ниже, в «Итого»: владелец
               открывает кассу посчитать смену, а не остаток с начала работы.
             */}
-            <Stat label={m('cashDay.received')} value={formatMoney(data?.total ?? 0)} />
-            <Stat label={m('cashDay.handedToday')} value={formatMoney(data?.collected ?? 0)} />
+            <Stat label={m('cashDay.received')} value={money(data?.total ?? 0)} />
+            <Stat label={m('cashDay.handedToday')} value={money(data?.collected ?? 0)} />
             <Stat
               label={m('cashDay.onHands')}
-              value={formatMoney(onHandsTotal)}
+              value={money(onHandsTotal)}
               hint={m('cashDay.onHandsWho', { n: byUser.length })}
               tone={onHandsTotal > 0 ? 'warning' : 'plain'}
             />
             {data !== undefined && data.discounts.count > 0 && (
-              <Stat label={m('cashDay.discounts')} value={`−${formatMoney(data.discounts.total)}`} />
+              <Stat label={m('cashDay.discounts')} value={`−${money(data.discounts.total)}`} />
             )}
             {data !== undefined && data.out.payroll > 0 && (
-              <Stat label={m('cashDay.payrollToday')} value={formatMoney(data.out.payroll)} />
+              <Stat label={m('cashDay.payrollToday')} value={money(data.out.payroll)} />
             )}
           </>
         )}
@@ -91,26 +90,26 @@ export function CashDayReport(): ReactElement {
           <>
             <Stat
               label={m('cashDay.inKassa')}
-              value={formatMoney(data?.balance.cash.total ?? 0)}
-              hint={data === undefined ? undefined : kassaParts(data.balance, m)}
+              value={money(data?.balance.cash.total ?? 0)}
+              hint={data === undefined ? undefined : kassaParts(data.balance, m, money)}
             />
             <Stat
               label={m('cashDay.onAccount')}
-              value={formatMoney(data?.balance.cashless.total ?? 0)}
+              value={money(data?.balance.cashless.total ?? 0)}
               hint={
                 data === undefined
                   ? undefined
                   : m('cashDay.onAccountParts', {
-                      card: formatMoney(data.balance.cashless.card),
-                      qr: formatMoney(data.balance.cashless.qr),
-                      click: formatMoney(data.balance.cashless.click),
+                      card: money(data.balance.cashless.card),
+                      qr: money(data.balance.cashless.qr),
+                      click: money(data.balance.cashless.click),
                     })
               }
             />
             {data !== undefined && data.balance.cash.payroll > 0 && (
               <Stat
                 label={m('cashDay.payrollPaid')}
-                value={formatMoney(data.balance.cash.payroll)}
+                value={money(data.balance.cash.payroll)}
                 hint={m('cashDay.payrollApart')}
               />
             )}
@@ -130,7 +129,7 @@ export function CashDayReport(): ReactElement {
               <Line
                 key={row.kind}
                 label={t(PAYMENT_KIND_LABELS, row.kind)}
-                value={formatMoney(row.total)}
+                value={money(row.total)}
               />
             ))}
             <View style={styles.divider} />
@@ -138,11 +137,11 @@ export function CashDayReport(): ReactElement {
               <Line
                 key={method}
                 label={m('cashDay.methodTotal', { method: t(PAYMENT_METHOD_LABELS, method) })}
-                value={formatMoney(data.byMethod[method])}
+                value={money(data.byMethod[method])}
                 muted
               />
             ))}
-            <Line label={m('cashDay.total')} value={formatMoney(data.total)} strong />
+            <Line label={m('cashDay.total')} value={money(data.total)} strong />
           </>
         )}
       </Card>
@@ -159,14 +158,14 @@ export function CashDayReport(): ReactElement {
               key={row.id}
               label={row.fullName}
               hint={formatTime(row.createdAt)}
-              value={formatMoney(parseMoney(row.amount))}
+              value={money(parseMoney(row.amount))}
             />
           ))
         )}
         {collections.data !== undefined && (
           <Line
             label={m('cashDay.handed')}
-            value={formatMoney(parseMoney(collections.data.total))}
+            value={money(parseMoney(collections.data.total))}
             strong
           />
         )}
@@ -183,7 +182,7 @@ export function CashDayReport(): ReactElement {
             <Line
               key={row.userId}
               label={row.fullName}
-              value={formatMoney(parseMoney(row.onHands))}
+              value={money(parseMoney(row.onHands))}
               strong
             />
           ))
@@ -199,14 +198,14 @@ export function CashDayReport(): ReactElement {
  * 13 386 055 и спросил «а это что»: остаток за всё время без слагаемых
  * читается как случайное число.
  */
-function kassaParts(parts: CashSummaryParts, m: Translate): string {
+function kassaParts(parts: CashSummaryParts, m: Translate, money: LocaleMoney): string {
   if (parts.since === null) return m('cashDay.inKassaNone');
   return m('cashDay.inKassaParts', {
     date: formatIsoDateShort(parts.since),
-    collected: formatMoney(parts.cash.collected),
-    management: formatMoney(parts.cash.byManagement),
-    purchases: formatMoney(parts.cash.purchases),
-    refunds: formatMoney(parts.cash.refunds),
+    collected: money(parts.cash.collected),
+    management: money(parts.cash.byManagement),
+    purchases: money(parts.cash.purchases),
+    refunds: money(parts.cash.refunds),
   });
 }
 

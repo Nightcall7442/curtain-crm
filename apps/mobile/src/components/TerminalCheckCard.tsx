@@ -1,10 +1,4 @@
-import {
-  formatMoney,
-  formatTime,
-  inputToMajor,
-  ORDER_INTAKE_ROLES,
-  parseMoney,
-} from '@curtain-crm/shared';
+import { formatTime, inputToMajor, ORDER_INTAKE_ROLES, parseMoney } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -31,7 +25,7 @@ import { Icon } from './Icon';
  * не пробить лишний и не спорить, чей был второй.
  */
 export function TerminalCheckCard(): ReactElement {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const utils = trpc.useUtils();
   const today = trpc.terminalChecks.today.useQuery();
   const { user } = useAuth();
@@ -126,7 +120,7 @@ export function TerminalCheckCard(): ReactElement {
               <Text style={styles.rowName} numberOfLines={1}>
                 {row.fullName}
               </Text>
-              <Text style={styles.rowAmount}>{formatMoney(parseMoney(row.amount))}</Text>
+              <Text style={styles.rowAmount}>{money(parseMoney(row.amount))}</Text>
               <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
               <Icon name="completed" size={16} color={colors.textMuted} />
             </View>
@@ -184,15 +178,8 @@ export function TerminalCheckCard(): ReactElement {
             </Pressable>
           </View>
         </Field>
-        <Field
-          label={m('terminal.amount')}
-          required
-        >
-          <MoneyInput
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="0"
-          />
+        <Field label={m('terminal.amount')} required>
+          <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
         <Field label={m('terminal.comment')}>
           <Input

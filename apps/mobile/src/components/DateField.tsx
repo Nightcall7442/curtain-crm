@@ -46,6 +46,45 @@ export function DateField({
     onChange(toIso(date));
   };
 
+  /*
+    В браузере (приложение на pardabozor.uz/app) календаря от
+    `@react-native-community/datetimepicker` не существует вовсе: у пакета
+    нет веб-реализации, и шторка открывалась пустой — с одной кнопкой
+    «Подтвердить» и ничем над ней.
+
+    У браузера календарь свой, и на телефоне это тот же системный календарь.
+    Формат значения у `<input type="date">` — ровно `YYYY-MM-DD`, то есть
+    тот же, что уходит наружу.
+  */
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[styles.control, invalid ? styles.invalid : null]}>
+        <input
+          type="date"
+          value={value}
+          aria-label={placeholder}
+          {...(minimumDate === undefined ? {} : { min: toIso(minimumDate) })}
+          onChange={(event) => {
+            onChange(event.target.value);
+          }}
+          style={webInput}
+        />
+        {value !== '' && (
+          <Pressable
+            onPress={() => {
+              onChange('');
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={m('common.close')}
+          >
+            <Icon name="remove" size={16} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+
   return (
     <>
       <Pressable
@@ -125,6 +164,18 @@ export function DateField({
     </>
   );
 }
+
+/** Поле браузера стилей React Native не понимает — те же размеры, но CSS. */
+const webInput = {
+  flex: 1,
+  minWidth: 0,
+  border: 'none',
+  outline: 'none',
+  background: 'transparent',
+  color: colors.textPrimary,
+  fontFamily: typography.body.fontFamily,
+  fontSize: typography.body.fontSize,
+} as const;
 
 /** Календарная дата по местному времени — без сдвига через UTC. */
 function toIso(date: Date): string {
