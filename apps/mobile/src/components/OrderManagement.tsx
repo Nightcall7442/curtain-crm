@@ -1,5 +1,4 @@
 import {
-  formatMoney,
   groupDigits,
   ORDER_STAGE_FEE_LABELS,
   isAssignableRole,
@@ -12,6 +11,7 @@ import {
   stageFeesOfOrderType,
   suggestedStageFee,
   type OrderStageFee,
+  type OrderStatus,
   type OrderType,
   type Role,
 } from '@curtain-crm/shared';
@@ -56,6 +56,7 @@ const FEE_FIELD = {
 export function OrderManagement({
   orderId,
   orderType,
+  status,
   workPrice,
   paidAmount,
   fees,
@@ -63,14 +64,18 @@ export function OrderManagement({
 }: {
   readonly orderId: number;
   readonly orderType: OrderType;
+  /** Нужен вместе с типом: готовая штора в переделке проходит цех как обычный заказ. */
+  readonly status: OrderStatus;
   readonly workPrice: string;
   /** Оплачено по книге проводок — показывается, меняется приходом или возвратом. */
   readonly paidAmount: string;
   /** Суммы по этапам. `null` — скрыта от этого пользователя сервером. */
   readonly fees: Readonly<Record<string, string | null>>;
-  readonly assignees: Readonly<Partial<Record<Role, { readonly id: number; readonly fullName: string } | null>>>;
+  readonly assignees: Readonly<
+    Partial<Record<Role, { readonly id: number; readonly fullName: string } | null>>
+  >;
 }): ReactElement {
-  const { t, m, locale } = useLocale();
+  const { t, m, locale, money } = useLocale();
   const utils = trpc.useUtils();
 
   const [price, setPrice] = useState('');
@@ -81,7 +86,7 @@ export function OrderManagement({
   /** Показывать и тех, у кого этой роли нет. Сбрасывается вместе с ролью. */
   const [showOthers, setShowOthers] = useState(false);
 
-  const stages = stageFeesOfOrderType(orderType);
+  const stages = stageFeesOfOrderType(orderType, status);
 
   /*
     В «Назначении» — роли, а не этапы, и только те, на которые назначают.
@@ -276,16 +281,22 @@ export function OrderManagement({
                                 accessibilityRole="button"
                                 style={[styles.chip, active ? styles.chipActive : null]}
                               >
-                                <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
+                                <Text
+                                  style={[styles.chipText, active ? styles.chipTextActive : null]}
+                                >
                                   {person.fullName}
                                 </Text>
                                 {categoryOf.has(person.id) && (
-                                  <Text style={[styles.chipRole, active ? styles.chipTextActive : null]}>
+                                  <Text
+                                    style={[styles.chipRole, active ? styles.chipTextActive : null]}
+                                  >
                                     {SEWER_CATEGORY_LABELS[locale][categoryOf.get(person.id) ?? 3]}
                                   </Text>
                                 )}
                                 {foreign && person.roles[0] !== undefined && (
-                                  <Text style={[styles.chipRole, active ? styles.chipTextActive : null]}>
+                                  <Text
+                                    style={[styles.chipRole, active ? styles.chipTextActive : null]}
+                                  >
                                     {t(ROLE_LABELS, person.roles[0])}
                                   </Text>
                                 )}
@@ -324,17 +335,13 @@ export function OrderManagement({
         <CardTitle title={m('manage.priceTitle')} icon="paid" />
         <Text style={styles.hint}>
           {m('manage.priceHint', {
-            price: formatMoney(parseMoney(workPrice)),
-            paid: formatMoney(parseMoney(paidAmount)),
+            price: money(parseMoney(workPrice)),
+            paid: money(parseMoney(paidAmount)),
           })}
         </Text>
 
         <Field label={m('manage.workPrice')}>
-          <MoneyInput
-            value={price}
-            onChangeText={setPrice}
-            placeholder={trimAmount(workPrice)}
-          />
+          <MoneyInput value={price} onChangeText={setPrice} placeholder={trimAmount(workPrice)} />
         </Field>
 
         <Pressable
@@ -346,9 +353,7 @@ export function OrderManagement({
               ...(Number.isFinite(parsedPrice) ? { workPrice: parsedPrice } : {}),
             });
           }}
-          disabled={
-            setPriceMutation.isPending || price.trim() === ''
-          }
+          disabled={setPriceMutation.isPending || price.trim() === ''}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.submit,
@@ -375,9 +380,10 @@ export function OrderManagement({
           const category = sewer === null ? undefined : categoryOf.get(sewer.id);
           const typed = feeDrafts['sewing'] ?? '';
           const base = stage === 'sewing' ? draftMoney(typed) : 0;
-          const suggested = category === undefined || category === 1 || base <= 0 || typed === appliedSewing
-            ? null
-            : suggestedStageFee(base, category);
+          const suggested =
+            category === undefined || category === 1 || base <= 0 || typed === appliedSewing
+              ? null
+              : suggestedStageFee(base, category);
 
           return (
             <Field
@@ -392,7 +398,7 @@ export function OrderManagement({
                     })
                   : stored === null
                     ? undefined
-                    : m('manage.now', { v: formatMoney(parseMoney(stored)) })
+                    : m('manage.now', { v: money(parseMoney(stored)) })
               }
             >
               <MoneyInput
@@ -411,7 +417,9 @@ export function OrderManagement({
                   }}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.suggest}>{m('manage.applySuggested', { v: formatMoney(suggested) })}</Text>
+                  <Text style={styles.suggest}>
+                    {m('manage.applySuggested', { v: money(suggested) })}
+                  </Text>
                 </Pressable>
               )}
             </Field>

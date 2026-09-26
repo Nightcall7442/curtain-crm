@@ -1,4 +1,4 @@
-import { formatMoney, formatTime, parseMoney, todayIso } from '@curtain-crm/shared';
+import { formatTime, parseMoney, todayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -17,7 +17,7 @@ import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
  * чеке мелкие, и превью-квадратик читать пришлось бы через увеличение.
  */
 export function TerminalChecksScreen(): ReactElement {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const [day, setDay] = useState(() => todayIso());
   const query = trpc.terminalChecks.byDay.useQuery({ day });
 
@@ -59,7 +59,7 @@ export function TerminalChecksScreen(): ReactElement {
                   {row.comment === null ? '' : ` · ${row.comment}`}
                 </Text>
               </View>
-              <Text style={styles.amount}>{formatMoney(parseMoney(row.amount))}</Text>
+              <Text style={styles.amount}>{money(parseMoney(row.amount))}</Text>
             </View>
             {row.photoUrl !== null && (
               <Image

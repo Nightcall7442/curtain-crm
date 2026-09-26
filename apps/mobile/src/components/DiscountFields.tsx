@@ -1,4 +1,4 @@
-import { discountFromInput, formatMoney, inputToMajor, parseMoney } from '@curtain-crm/shared';
+import { discountFromInput, inputToMajor, parseMoney } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -21,7 +21,10 @@ export interface DiscountDraft {
 export const emptyDiscount = (): DiscountDraft => ({ value: '', mode: 'sum', reason: '' });
 
 /** Поля процедур `orders.create` и `orders.sellReadyMade` из цены и черновика скидки. */
-export function discountPayload(priceRaw: string, draft: DiscountDraft): {
+export function discountPayload(
+  priceRaw: string,
+  draft: DiscountDraft,
+): {
   readonly workPrice: number;
   readonly discountAmount: number;
   readonly discountReason?: string;
@@ -32,10 +35,11 @@ export function discountPayload(priceRaw: string, draft: DiscountDraft): {
 
 /** Есть скидка, нет причины — форму не отправляем. */
 export function discountMissingReason(priceRaw: string, draft: DiscountDraft): boolean {
-  return discountFromInput(priceRaw, draft.value, draft.mode).discountAmount > 0 && draft.reason.trim() === '';
+  return (
+    discountFromInput(priceRaw, draft.value, draft.mode).discountAmount > 0 &&
+    draft.reason.trim() === ''
+  );
 }
-
-const major = (sum: number): string => formatMoney(parseMoney(sum.toString()));
 
 export function DiscountFields({
   price,
@@ -49,14 +53,19 @@ export function DiscountFields({
   readonly onChange: (next: DiscountDraft) => void;
   readonly showError?: boolean;
 }): ReactElement {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const { workPrice, discountAmount } = discountFromInput(price, value.value, value.mode);
+  const major = (sum: number): string => money(parseMoney(sum.toString()));
 
   return (
     <>
       <Field
         label={m('discount.title')}
-        hint={discountAmount > 0 ? m('discount.payable', { pay: major(workPrice), was: major(inputToMajor(price)) }) : undefined}
+        hint={
+          discountAmount > 0
+            ? m('discount.payable', { pay: major(workPrice), was: major(inputToMajor(price)) })
+            : undefined
+        }
       >
         <View style={styles.row}>
           <View style={styles.input}>
@@ -95,7 +104,11 @@ export function DiscountFields({
       <Field
         label={m('discount.reason')}
         required={discountAmount > 0}
-        error={showError && discountMissingReason(price, value) ? m('discount.reasonRequired') : undefined}
+        error={
+          showError && discountMissingReason(price, value)
+            ? m('discount.reasonRequired')
+            : undefined
+        }
       >
         <Input
           value={value.reason}

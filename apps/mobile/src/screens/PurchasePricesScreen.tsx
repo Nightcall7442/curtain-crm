@@ -1,9 +1,4 @@
-import {
-  formatMoney,
-  parseMoney,
-  PURCHASE_CATEGORY_LABELS,
-  PURCHASE_UNIT_LABELS,
-} from '@curtain-crm/shared';
+import { parseMoney, PURCHASE_CATEGORY_LABELS, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -78,7 +73,7 @@ export function PurchasePricesScreen({
   /** Переключатель разделов сверху; отдельно экран не открывается. */
   readonly header?: ReactElement;
 } = {}): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const utils = trpc.useUtils();
 
   /** Позиция, которой правят цену. `null` — никакая. */
@@ -93,7 +88,7 @@ export function PurchasePricesScreen({
       setEditing(null);
       setPrice('');
       await utils.purchases.items.list.invalidate();
-      Alert.alert(m('prices.updated'), `${item.name}: ${formatMoney(parseMoney(item.price))}`);
+      Alert.alert(m('prices.updated'), `${item.name}: ${money(parseMoney(item.price))}`);
     },
     onError(error) {
       notifyError();
@@ -135,10 +130,7 @@ export function PurchasePricesScreen({
           {items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
-            <Empty
-              message={m('prices.empty')}
-              hint={m('prices.emptyHint')}
-            />
+            <Empty message={m('prices.empty')} hint={m('prices.emptyHint')} />
           ) : (
             items.data.map((item) => (
               <View key={item.id}>
@@ -151,7 +143,7 @@ export function PurchasePricesScreen({
                       {item.name}
                     </Text>
                     <Text style={styles.meta}>
-                      {`${t(PURCHASE_CATEGORY_LABELS, item.category)} · ${formatMoney(
+                      {`${t(PURCHASE_CATEGORY_LABELS, item.category)} · ${money(
                         parseMoney(item.price),
                       )} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
                     </Text>
@@ -176,22 +168,22 @@ export function PurchasePricesScreen({
                     disabled={setActive.isPending}
                     accessibilityRole="button"
                     accessibilityLabel={
-                      item.isActive ? m('prices.removeA11y', { name: item.name }) : m('prices.restoreA11y', { name: item.name })
+                      item.isActive
+                        ? m('prices.removeA11y', { name: item.name })
+                        : m('prices.restoreA11y', { name: item.name })
                     }
                     style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
                   >
-                    <Text style={styles.actionText}>{item.isActive ? m('prices.remove') : m('prices.restore')}</Text>
+                    <Text style={styles.actionText}>
+                      {item.isActive ? m('prices.remove') : m('prices.restore')}
+                    </Text>
                   </Pressable>
                 </View>
 
                 {editing === item.id && (
                   <View style={styles.editor}>
                     <Field label={m('prices.newPrice')}>
-                      <MoneyInput
-                        value={price}
-                        onChangeText={setPrice}
-                        autoFocus
-                      />
+                      <MoneyInput value={price} onChangeText={setPrice} autoFocus />
                     </Field>
 
                     <Pressable

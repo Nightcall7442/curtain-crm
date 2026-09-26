@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
+import { parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
@@ -38,7 +38,7 @@ export function RetailStockScreen({
   /** Переключатель разделов сверху — его рисует экран закупочных материалов. */
   readonly header?: ReactElement;
 } = {}): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
 
@@ -85,10 +85,7 @@ export function RetailStockScreen({
           {items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
-            <Empty
-              message={m('cash.priceEmpty')}
-              hint={m('retail.emptyHint')}
-            />
+            <Empty message={m('cash.priceEmpty')} hint={m('retail.emptyHint')} />
           ) : (
             items.data.map((item) => {
               const stock = Number.parseFloat(item.stockQuantity);
@@ -105,7 +102,7 @@ export function RetailStockScreen({
                       </Text>
                       <Text style={styles.itemMeta}>
                         {m('retail.stockMeta', {
-                          price: formatMoney(parseMoney(item.price)),
+                          price: money(parseMoney(item.price)),
                           unit: t(PURCHASE_UNIT_LABELS, item.unit),
                           n: stock,
                         })}
@@ -185,7 +182,7 @@ export function RetailStockScreen({
                     {`${sale.sellerName} · ${sale.clientName ?? m('cash.noNameLower')}`}
                   </Text>
                 </View>
-                <Text style={styles.total}>{formatMoney(parseMoney(sale.total))}</Text>
+                <Text style={styles.total}>{money(parseMoney(sale.total))}</Text>
                 <Icon name="chevron" size={16} color={colors.textMuted} />
               </Pressable>
             ))

@@ -3,14 +3,15 @@
 import {
   formatMoney,
   ORDER_STAGE_FEE_LABELS_RU,
+  type OrderStageFee,
+  type OrderStatus as OrderStatusName,
   OrderType,
+  type OrderType as OrderTypeName,
   parseMoney,
   SEWER_CATEGORY_FEE_PERCENT,
   SEWER_CATEGORY_LABELS_RU,
   stageFeesOfOrderType,
   suggestedStageFee,
-  type OrderStageFee,
-  type OrderType as OrderTypeName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
@@ -98,17 +99,20 @@ export function StageFeesFields({
   value,
   onChange,
   orderType = OrderType.CUSTOM,
+  status,
   errors = {},
   sewerId = null,
 }: {
   readonly value: StageFeesDraft;
   readonly onChange: (next: StageFeesDraft) => void;
   readonly orderType?: OrderTypeName;
+  /** Нужен вместе с типом: готовая штора в переделке проходит цех как обычный заказ. */
+  readonly status?: OrderStatusName;
   readonly errors?: Readonly<Record<string, string | undefined>>;
   /** Назначенная швея — для подсказки расценки по её категории. */
   readonly sewerId?: number | null;
 }): ReactElement {
-  const stages = stageFeesOfOrderType(orderType);
+  const stages = stageFeesOfOrderType(orderType, status);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -166,7 +170,9 @@ function SewingFeeHint({
   const base = Number.parseFloat(typed.replace(',', '.')) || 0;
   const label = `${sewer.fullName} — ${SEWER_CATEGORY_LABELS_RU[sewer.category]}`;
   if (sewer.category === 1 || base <= 0 || typed === applied) {
-    return <p className="mt-1 text-footnote text-muted">{`${label} (${String(SEWER_CATEGORY_FEE_PERCENT[sewer.category])}% ставки)`}</p>;
+    return (
+      <p className="mt-1 text-footnote text-muted">{`${label} (${String(SEWER_CATEGORY_FEE_PERCENT[sewer.category])}% ставки)`}</p>
+    );
   }
 
   const suggested = suggestedStageFee(base, sewer.category);

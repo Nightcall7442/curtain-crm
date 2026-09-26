@@ -16,7 +16,16 @@ import { useState, type ReactElement } from 'react';
 import { SellReadyMadeDialog } from '@/components/orders/SellReadyMadeDialog';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
-import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
+import {
+  Button,
+  Field,
+  fieldErrors,
+  FormError,
+  Input,
+  Modal,
+  MoneyInput,
+  Select,
+} from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
@@ -33,6 +42,13 @@ import { trpc } from '@/lib/trpc';
  * Остаток вводится числом «сколько стало», а не «сколько прибавить»: полку
  * пересчитывают глазами, и вычитание в уме — лишний способ ошибиться.
  */
+interface MatePhotoDraft {
+  readonly name: string;
+  readonly mimeType: string;
+  readonly content: string;
+  readonly preview: string;
+}
+
 interface MateDraft {
   readonly id: number;
   readonly kind: OrderItemKindName;
@@ -40,6 +56,8 @@ interface MateDraft {
   readonly heightCm: string;
   readonly price: string;
   readonly quantity: string;
+  /** Своё фото на позицию: окно и дверь выглядят по-разному. */
+  readonly photo: MatePhotoDraft | null;
 }
 
 export default function ReadyMadePage(): ReactElement {
@@ -82,10 +100,34 @@ export default function ReadyMadePage(): ReactElement {
     Файл держим уже в base64: tRPC работает поверх JSON, и читать его при
     нажатии «Поставить на склад» значило бы ждать чтения после нажатия.
   */
-  const [photo, setPhoto] = useState<
-    { readonly name: string; readonly mimeType: string; readonly content: string; readonly preview: string } | null
-  >(null);
+  const [photo, setPhoto] = useState<MatePhotoDraft | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  /** Читает выбранный файл в data-URL; `onError` — при сбое чтения. */
+  const readPhotoFile = (
+    file: File,
+    onDone: (photo: MatePhotoDraft) => void,
+    onError: () => void,
+  ): void => {
+    const reader = new FileReader();
+    reader.onerror = onError;
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        onError();
+        return;
+      }
+      onDone({
+        name: file.name,
+        mimeType: file.type,
+        // `readAsDataURL` даёт `data:image/jpeg;base64,…` — сервер такой
+        // префикс срезает сам, но отправлять лишние байты незачем.
+        content: result.slice(result.indexOf(',') + 1),
+        preview: result,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
 
   /** Штора, которой пересчитывают остаток. `null` — окно закрыто. */
   const [counting, setCounting] = useState<{ id: number; model: string } | null>(null);
@@ -276,9 +318,7 @@ export default function ReadyMadePage(): ReactElement {
           rows={rows}
           rowKey={(row) => row.id}
           emptyMessage={
-            needle === ''
-              ? 'Готовых штор нет — добавьте первую'
-              : 'По этому запросу ничего нет'
+            needle === '' ? 'Готовых штор нет — добавьте первую' : 'По этому запросу ничего нет'
           }
           /* Кнопка стоит там же, где сказано «добавьте»: искать её в шапке
              карточки человеку незачем. По результату поиска — нечего. */
@@ -463,6 +503,15 @@ export default function ReadyMadePage(): ReactElement {
                       heightCm: Number.parseFloat(mate.heightCm.replace(',', '.')) || 0,
                       price: Number.parseFloat(mate.price.replace(',', '.')) || 0,
                       quantity: Math.max(0, Number.parseInt(mate.quantity, 10) || 0),
+                      ...(mate.photo === null
+                        ? {}
+                        : {
+                            photo: {
+                              fileName: mate.photo.name,
+                              mimeType: mate.photo.mimeType,
+                              content: mate.photo.content,
+                            },
+                          }),
                     })),
                   });
                 } else {
@@ -491,7 +540,10 @@ export default function ReadyMadePage(): ReactElement {
               onChange={(event) => {
                 setKind(event.target.value as OrderItemKindName);
               }}
-              options={ORDER_ITEM_KINDS.map((value) => ({ value, label: ORDER_ITEM_KIND_LABELS_RU[value] }))}
+              options={ORDER_ITEM_KINDS.map((value) => ({
+                value,
+                label: ORDER_ITEM_KIND_LABELS_RU[value],
+              }))}
             />
           </Field>
 
@@ -518,19 +570,19 @@ export default function ReadyMadePage(): ReactElement {
             своей кнопкой и своей записью в журнале.
           */}
           {editingId === null && (
-          <Field label="Филиал" hint="По умолчанию — ваш основной">
-            <Select
-              value={branchId}
-              onChange={(event) => {
-                setBranchId(event.target.value);
-              }}
-              placeholder="Основной филиал"
-              options={(branches.data ?? []).map((branch) => ({
-                value: branch.id.toString(),
-                label: branch.name,
-              }))}
-            />
-          </Field>
+            <Field label="Филиал" hint="По умолчанию — ваш основной">
+              <Select
+                value={branchId}
+                onChange={(event) => {
+                  setBranchId(event.target.value);
+                }}
+                placeholder="Основной филиал"
+                options={(branches.data ?? []).map((branch) => ({
+                  value: branch.id.toString(),
+                  label: branch.name,
+                }))}
+              />
+            </Field>
           )}
 
           <Field label="Код" hint="Бирка на шторе — по нему её найдут в продаже">
@@ -557,7 +609,11 @@ export default function ReadyMadePage(): ReactElement {
             Снимок читается сразу при выборе файла: к нажатию «Поставить на
             склад» он уже готов, и продавец не ждёт чтения после нажатия.
           */}
-          <Field label="Снимок" hint="Продавец показывает штору клиенту" error={photoError ?? undefined}>
+          <Field
+            label="Снимок"
+            hint="Продавец показывает штору клиенту"
+            error={photoError ?? undefined}
+          >
             <div className="flex items-center gap-3">
               {photo === null && currentPhotoUrl !== null && (
                 /* Снимок, который уже стоит у шторы: новый файл его заменит,
@@ -588,28 +644,9 @@ export default function ReadyMadePage(): ReactElement {
                     setPhoto(null);
                     return;
                   }
-
-                  const reader = new FileReader();
-                  reader.onerror = () => {
+                  readPhotoFile(file, setPhoto, () => {
                     setPhotoError('Не удалось прочитать файл');
-                  };
-                  reader.onload = () => {
-                    const result = reader.result;
-                    if (typeof result !== 'string') {
-                      setPhotoError('Не удалось прочитать файл');
-                      return;
-                    }
-                    setPhoto({
-                      name: file.name,
-                      mimeType: file.type,
-                      // `readAsDataURL` даёт `data:image/jpeg;base64,…` —
-                      // сервер такой префикс срезает сам, но отправлять
-                      // лишние байты незачем.
-                      content: result.slice(result.indexOf(',') + 1),
-                      preview: result,
-                    });
-                  };
-                  reader.readAsDataURL(file);
+                  });
                 }}
               />
               {photo !== null && (
@@ -646,11 +683,7 @@ export default function ReadyMadePage(): ReactElement {
               />
             </Field>
             <Field label="Цена, сум" required error={errors['price']}>
-              <MoneyInput
-                value={price}
-                onChange={setPrice}
-                placeholder="450 000"
-              />
+              <MoneyInput value={price} onChange={setPrice} placeholder="450 000" />
             </Field>
             {editingId === null && (
               <Field label="Количество" error={errors['quantity']}>
@@ -693,9 +726,16 @@ export default function ReadyMadePage(): ReactElement {
                         value={mate.kind}
                         onChange={(event) => {
                           const kindValue = event.target.value as OrderItemKindName;
-                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, kind: kindValue } : entry)));
+                          setMates((current) =>
+                            current.map((entry) =>
+                              entry.id === mate.id ? { ...entry, kind: kindValue } : entry,
+                            ),
+                          );
                         }}
-                        options={ORDER_ITEM_KINDS.map((value) => ({ value, label: ORDER_ITEM_KIND_LABELS_RU[value] }))}
+                        options={ORDER_ITEM_KINDS.map((value) => ({
+                          value,
+                          label: ORDER_ITEM_KIND_LABELS_RU[value],
+                        }))}
                       />
                     </Field>
                     <Field label="Количество">
@@ -703,7 +743,11 @@ export default function ReadyMadePage(): ReactElement {
                         value={mate.quantity}
                         onChange={(event) => {
                           const value = event.target.value;
-                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, quantity: value } : entry)));
+                          setMates((current) =>
+                            current.map((entry) =>
+                              entry.id === mate.id ? { ...entry, quantity: value } : entry,
+                            ),
+                          );
                         }}
                         placeholder="1"
                       />
@@ -713,7 +757,11 @@ export default function ReadyMadePage(): ReactElement {
                         value={mate.widthCm}
                         onChange={(event) => {
                           const value = event.target.value;
-                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, widthCm: value } : entry)));
+                          setMates((current) =>
+                            current.map((entry) =>
+                              entry.id === mate.id ? { ...entry, widthCm: value } : entry,
+                            ),
+                          );
                         }}
                         placeholder="150"
                       />
@@ -723,7 +771,11 @@ export default function ReadyMadePage(): ReactElement {
                         value={mate.heightCm}
                         onChange={(event) => {
                           const value = event.target.value;
-                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, heightCm: value } : entry)));
+                          setMates((current) =>
+                            current.map((entry) =>
+                              entry.id === mate.id ? { ...entry, heightCm: value } : entry,
+                            ),
+                          );
                         }}
                         placeholder="200"
                       />
@@ -732,10 +784,54 @@ export default function ReadyMadePage(): ReactElement {
                       <MoneyInput
                         value={mate.price}
                         onChange={(value) => {
-                          setMates((current) => current.map((entry) => (entry.id === mate.id ? { ...entry, price: value } : entry)));
+                          setMates((current) =>
+                            current.map((entry) =>
+                              entry.id === mate.id ? { ...entry, price: value } : entry,
+                            ),
+                          );
                         }}
                         placeholder="300 000"
                       />
+                    </Field>
+                    <Field label="Снимок" className="sm:col-span-2">
+                      <div className="flex items-center gap-3">
+                        {mate.photo !== null && (
+                          <img
+                            src={mate.photo.preview}
+                            alt=""
+                            className="h-16 w-16 shrink-0 rounded-tile object-cover"
+                          />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="text-footnote text-secondary file:mr-3 file:rounded-tile file:border file:border-subtle file:bg-panel file:px-3 file:py-1.5 file:text-footnote file:text-primary hover:file:bg-raised"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file === undefined) {
+                              setMates((current) =>
+                                current.map((entry) =>
+                                  entry.id === mate.id ? { ...entry, photo: null } : entry,
+                                ),
+                              );
+                              return;
+                            }
+                            readPhotoFile(
+                              file,
+                              (next) => {
+                                setMates((current) =>
+                                  current.map((entry) =>
+                                    entry.id === mate.id ? { ...entry, photo: next } : entry,
+                                  ),
+                                );
+                              },
+                              () => {
+                                // Тот же отказ, что и у основной позиции: файл просто не подставляется.
+                              },
+                            );
+                          }}
+                        />
+                      </div>
                     </Field>
                   </div>
                 </div>
@@ -753,6 +849,7 @@ export default function ReadyMadePage(): ReactElement {
                       heightCm: '',
                       price: '',
                       quantity: '1',
+                      photo: null,
                     },
                   ]);
                 }}

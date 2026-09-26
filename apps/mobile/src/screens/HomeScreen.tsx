@@ -1,6 +1,5 @@
 import {
   formatIsoDateShort,
-  formatMoney,
   formatTime,
   isActiveStatus,
   isOverdueDate,
@@ -582,7 +581,7 @@ function WorkshopSummary(): ReactElement {
  * источникам и сдачам — за «Подробнее», в кассе дня.
  */
 function CashTodayCard(): ReactElement | null {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const navigation = useNavigation();
   const today = trpc.payments.summary.useQuery({ day: todayIso(new Date()) });
   const onHands = trpc.payments.onHands.useQuery();
@@ -612,16 +611,16 @@ function CashTodayCard(): ReactElement | null {
           </Pressable>
         }
       />
-      <Row label={m('cashDay.received')} value={formatMoney(today.data.total)} />
-      <Row label={m('cashDay.inKassa')} value={formatMoney(today.data.balance.cash.total)} />
-      <Row label={m('cashDay.onAccount')} value={formatMoney(today.data.balance.cashless.total)} />
+      <Row label={m('cashDay.received')} value={money(today.data.total)} />
+      <Row label={m('cashDay.inKassa')} value={money(today.data.balance.cash.total)} />
+      <Row label={m('cashDay.onAccount')} value={money(today.data.balance.cashless.total)} />
       <Row
         label={
           byUser.length === 0
             ? m('cashDay.onHands')
             : `${m('cashDay.onHands')} · ${m('cashDay.onHandsWho', { n: byUser.length })}`
         }
-        value={formatMoney(onHandsTotal)}
+        value={money(onHandsTotal)}
         valueColor={onHandsTotal > 0 ? colors.warning : undefined}
       />
     </Card>
@@ -636,7 +635,7 @@ function CashTodayCard(): ReactElement | null {
  * «сколько в кассе». За «Подробнее» — те же чеки с фото.
  */
 function TerminalTodayCard(): ReactElement | null {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const navigation = useNavigation();
   const today = trpc.terminalChecks.today.useQuery();
 
@@ -679,7 +678,7 @@ function TerminalTodayCard(): ReactElement | null {
             <Text style={styles.terminalName} numberOfLines={1}>
               {row.fullName}
             </Text>
-            <Text style={styles.terminalAmount}>{formatMoney(parseMoney(row.amount))}</Text>
+            <Text style={styles.terminalAmount}>{money(parseMoney(row.amount))}</Text>
             <Text style={styles.terminalTime}>{formatTime(row.createdAt)}</Text>
           </View>
         ))

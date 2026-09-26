@@ -170,8 +170,9 @@ export const readyMadeRouter = router({
         photo: base64FileSchema.optional(),
         /**
          * Остальные шторы комплекта — дверь к окну. Модель, код, описание
-         * общие; у каждой свой вид, размер, цена и остаток. Снимок — только
-         * у первой: он один на карточку.
+         * общие; у каждой свой вид, размер, цена, остаток и своё фото: окно
+         * и дверь выглядят по-разному, и один снимок на двоих оставлял бы
+         * вторую позицию совсем без картинки.
          */
         mates: z
           .array(
@@ -181,6 +182,7 @@ export const readyMadeRouter = router({
               heightCm: dimensionSchema,
               price: moneySchema,
               quantity: z.number().int().min(0).max(10000).default(1),
+              photo: base64FileSchema.optional(),
             }),
           )
           .max(10)
@@ -197,19 +199,37 @@ export const readyMadeRouter = router({
       }
       assertBranchAllowed(ctx.user, branchId);
 
-      // Файл кладём до транзакции — как у фото заказа: осиротевший объект
-      // в хранилище дешевле, чем строка в базе со ссылкой в никуда.
-      const stored =
-        input.photo === undefined
-          ? null
-          : await getStorage().upload({
-              key: buildStorageKey(['ready-made', branchId.toString()], input.photo.mimeType),
-              body: decodeBase64Payload(input.photo, {
-                allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
-                maxBytes: getEnv().MAX_UPLOAD_SIZE_MB * 1024 * 1024,
-              }),
-              mimeType: input.photo.mimeType,
-            });
+      // Файлы кладём до транзакции — как у фото заказа: осиротевший объект
+      // в хранилище дешевле, чем строка в базе со ссылкой в никуда. Каждая
+      // позиция комплекта — свой файл, поэтому загружаем их все и на любой
+      // сбой откатываем все загруженные ключи, а не только первый.
+      const uploadPhoto = async (
+        photo: NonNullable<typeof input.photo>,
+      ): Promise<{ key: string }> =>
+        getStorage().upload({
+          key: buildStorageKey(['ready-made', branchId.toString()], photo.mimeType),
+          body: decodeBase64Payload(photo, {
+            allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
+            maxBytes: getEnv().MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+          }),
+          mimeType: photo.mimeType,
+        });
+
+      const stored = input.photo === undefined ? null : await uploadPhoto(input.photo);
+      const matesStored: (Awaited<ReturnType<typeof uploadPhoto>> | null)[] = [];
+      try {
+        for (const mate of input.mates) {
+          matesStored.push(mate.photo === undefined ? null : await uploadPhoto(mate.photo));
+        }
+      } catch (error) {
+        if (stored !== null) await getStorage().delete(stored.key).catch(() => undefined);
+        for (const mate of matesStored) {
+          if (mate !== null) await getStorage().delete(mate.key).catch(() => undefined);
+        }
+        throw error;
+      }
+
+      const allStored = [stored, ...matesStored];
 
       try {
         return await ctx.db.transaction(async (tx) => {
@@ -252,7 +272,7 @@ export const readyMadeRouter = router({
             const mates = await tx
               .insert(readyMadeItems)
               .values(
-                input.mates.map((mate) => ({
+                input.mates.map((mate, index) => ({
                   branchId,
                   model: input.model,
                   kind: mate.kind,
@@ -261,6 +281,7 @@ export const readyMadeRouter = router({
                   heightCm: mate.heightCm.toFixed(1),
                   price: moneyToDecimalString(parseMoney(mate.price)),
                   quantity: mate.quantity,
+                  photoKey: matesStored[index]?.key ?? null,
                   comment: input.comment ?? null,
                   setKey,
                   createdBy: ctx.user.id,
@@ -282,7 +303,9 @@ export const readyMadeRouter = router({
           return created;
         });
       } catch (error) {
-        if (stored !== null) await getStorage().delete(stored.key).catch(() => undefined);
+        for (const item of allStored) {
+          if (item !== null) await getStorage().delete(item.key).catch(() => undefined);
+        }
         throw error;
       }
     }),

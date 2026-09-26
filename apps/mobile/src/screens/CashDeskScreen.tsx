@@ -1,5 +1,4 @@
 import {
-  formatMoney,
   parseMoney,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
@@ -25,14 +24,28 @@ import { Card, CardTitle } from '../components/Card';
 import { CashCollectionCard } from '../components/CashCollectionCard';
 import { CashDayReport } from '../components/CashDayReport';
 import { CodeScanner } from '../components/CodeScanner';
-import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
+import {
+  DiscountFields,
+  discountMissingReason,
+  discountPayload,
+  emptyDiscount,
+} from '../components/DiscountFields';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography, fonts } from '../theme';
+import {
+  colors,
+  hairline,
+  opacity,
+  radius,
+  spacing,
+  tabBarSpace,
+  typography,
+  fonts,
+} from '../theme';
 
 /**
  * Касса: продажа по кодам склада.
@@ -62,7 +75,7 @@ let nextKey = 1;
 const emptyLine = (): CartLine => ({ key: nextKey++, code: '', quantity: '' });
 
 export function CashDeskScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
   const isManager = useIsManagement();
@@ -85,7 +98,7 @@ export function CashDeskScreen(): ReactElement {
       setComment('');
       setDiscount(emptyDiscount());
       setShowErrors(false);
-      Alert.alert(m('cash.sold'), m('cash.receiptFor', { sum: formatMoney(parseMoney(sale.total)) }));
+      Alert.alert(m('cash.sold'), m('cash.receiptFor', { sum: money(parseMoney(sale.total)) }));
       navigation.goBack();
     },
     onError(error) {
@@ -180,7 +193,12 @@ export function CashDeskScreen(): ReactElement {
         */}
         <Card>
           <CardTitle title={m('discount.title')} icon="paid" />
-          <DiscountFields price={subtotalInput} value={discount} onChange={setDiscount} showError={showErrors} />
+          <DiscountFields
+            price={subtotalInput}
+            value={discount}
+            onChange={setDiscount}
+            showError={showErrors}
+          />
         </Card>
 
         <MySales />
@@ -283,7 +301,7 @@ function CodeLine({
   readonly onRemove: () => void;
   readonly onScan: () => void;
 }): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, money } = useLocale();
   const code = line.code.trim();
   const lookup = trpc.retail.codeLookup.useQuery({ code }, { enabled: code.length > 0 });
   const item = lookup.data ?? null;
@@ -311,12 +329,14 @@ function CodeLine({
             onChangeText={(value) => {
               onChange({ quantity: value });
             }}
-            placeholder={item?.unit == null ? m('cash.qtyPlaceholder') : t(PURCHASE_UNIT_LABELS, item.unit)}
+            placeholder={
+              item?.unit == null ? m('cash.qtyPlaceholder') : t(PURCHASE_UNIT_LABELS, item.unit)
+            }
             keyboardType="decimal-pad"
           />
         </View>
         <Text style={styles.lineSum} numberOfLines={1}>
-          {sum === null || quantity === 0 ? '—' : formatMoney(sum)}
+          {sum === null || quantity === 0 ? '—' : money(sum)}
         </Text>
       </View>
 
@@ -330,13 +350,23 @@ function CodeLine({
                 ? m('cash.codeUnknown')
                 : item.price == null || item.unit == null
                   ? m('cash.codeNoPrice')
-                  : `${item.description ?? item.name} · ${formatMoney(parseMoney(item.price))} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
+                  : `${item.description ?? item.name} · ${money(parseMoney(item.price))} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
         </Text>
-        <Pressable onPress={onScan} hitSlop={8} accessibilityRole="button" accessibilityLabel={m('create.scanA11y')}>
+        <Pressable
+          onPress={onScan}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={m('create.scanA11y')}
+        >
           <Icon name="camera" size={18} color={colors.accent} />
         </Pressable>
         {canRemove && (
-          <Pressable onPress={onRemove} hitSlop={8} accessibilityRole="button" accessibilityLabel={m('common.close')}>
+          <Pressable
+            onPress={onRemove}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={m('common.close')}
+          >
             <Icon name="remove" size={16} color={colors.textMuted} />
           </Pressable>
         )}
@@ -367,7 +397,7 @@ function TotalRow({
   /** Скидка в основных единицах — как её вводит продавец. */
   readonly discount: number;
 }): ReactElement {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const discountMinor = Math.min(subtotal, Math.round(discount * 100));
 
   return (
@@ -377,10 +407,12 @@ function TotalRow({
           {lines.length === 0 ? m('cash.nothingSelected') : m('cash.items', { n: lines.length })}
         </Text>
         {discountMinor > 0 && (
-          <Text style={styles.totalDiscount}>{m('cash.discountLine', { v: formatMoney(discountMinor) })}</Text>
+          <Text style={styles.totalDiscount}>
+            {m('cash.discountLine', { v: money(discountMinor) })}
+          </Text>
         )}
       </View>
-      <Text style={styles.totalValue}>{formatMoney(subtotal - discountMinor)}</Text>
+      <Text style={styles.totalValue}>{money(subtotal - discountMinor)}</Text>
     </View>
   );
 }
@@ -392,7 +424,7 @@ function TotalRow({
  * полный список, тот смотрит его в панели.
  */
 function MySales(): ReactElement | null {
-  const { m } = useLocale();
+  const { m, money } = useLocale();
   const navigation = useNavigation();
   const sales = trpc.retail.sales.mine.useQuery({ page: 1, pageSize: 5 });
 
@@ -415,10 +447,13 @@ function MySales(): ReactElement | null {
           <View style={styles.itemText}>
             <Text style={styles.itemName}>{m('cash.receiptN', { n: sale.id })}</Text>
             <Text style={styles.itemMeta}>
-              {m('cash.receiptMeta', { name: sale.clientName ?? m('cash.noName'), n: Number(sale.lines) })}
+              {m('cash.receiptMeta', {
+                name: sale.clientName ?? m('cash.noName'),
+                n: Number(sale.lines),
+              })}
             </Text>
           </View>
-          <Text style={styles.saleTotal}>{formatMoney(parseMoney(sale.total))}</Text>
+          <Text style={styles.saleTotal}>{money(parseMoney(sale.total))}</Text>
           <Icon name="chevron" size={18} color={colors.textMuted} />
         </Pressable>
       ))}

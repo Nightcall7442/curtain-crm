@@ -2,13 +2,14 @@
 
 import {
   ASSIGNABLE_ROLES,
+  type AssignableRole,
   formatMoney,
+  type OrderStatus as OrderStatusName,
+  type OrderType as OrderTypeName,
   parseMoney,
   Role,
   ROLE_LABELS_RU,
   SEWER_CATEGORY_LABELS_RU,
-  type AssignableRole,
-  type OrderType as OrderTypeName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 
@@ -48,6 +49,7 @@ export function OrderManagePanel({
   paidAmount,
   stageFees,
   orderType,
+  status,
   isClosed,
 }: {
   readonly orderId: number;
@@ -57,6 +59,8 @@ export function OrderManagePanel({
   readonly paidAmount: string;
   readonly stageFees: StageFeesDraft;
   readonly orderType: OrderTypeName;
+  /** Нужен вместе с типом: готовая штора в переделке проходит цех как обычный заказ. */
+  readonly status: OrderStatusName;
   readonly isClosed: boolean;
 }): ReactElement {
   const utils = trpc.useUtils();
@@ -141,8 +145,8 @@ export function OrderManagePanel({
 
       <CardBody>
         <p className="mb-3 text-footnote text-muted">
-          Назначение вступает в силу сразу. Сотрудник получит уведомление, а
-          статус заказа при этом не меняется.
+          Назначение вступает в силу сразу. Сотрудник получит уведомление, а статус заказа при этом
+          не меняется.
         </p>
 
         {/* Один столбец: панель живёт в узкой правой колонке карточки, и четыре селекта в ряд там не помещались. */}
@@ -202,15 +206,13 @@ export function OrderManagePanel({
           <FormError message={setPrice.error?.message ?? null} />
 
           <Field label="Стоимость работ, сум">
-            <MoneyInput
-              value={nextWorkPrice}
-              onChange={setNextWorkPrice}
-            />
+            <MoneyInput value={nextWorkPrice} onChange={setNextWorkPrice} />
           </Field>
 
           <p className="text-footnote text-secondary">
             {`Оплачено ${formatMoney(parseMoney(paidAmount))} · остаток к оплате: ${formatMoney(
-              parseMoney(Number.parseFloat(nextWorkPrice.replace(',', '.')) || 0) - parseMoney(paidAmount),
+              parseMoney(Number.parseFloat(nextWorkPrice.replace(',', '.')) || 0) -
+                parseMoney(paidAmount),
             )}`}
           </p>
           <p className="text-overline text-muted">
@@ -250,7 +252,13 @@ export function OrderManagePanel({
         <div className="space-y-3">
           <FormError message={setStageFees.error?.message ?? null} />
 
-          <StageFeesFields value={nextFees} onChange={setNextFees} orderType={orderType} sewerId={current.sewer} />
+          <StageFeesFields
+            value={nextFees}
+            onChange={setNextFees}
+            orderType={orderType}
+            status={status}
+            sewerId={current.sewer}
+          />
 
           <p className="text-footnote text-secondary">
             {`Всего исполнителям: ${formatMoney(
@@ -261,12 +269,11 @@ export function OrderManagePanel({
             )}`}
           </p>
           <p className="text-overline text-muted">
-            Суммы попадут в зарплату исполнителей за месяц, в котором заказ
-            закрыт. Каждый видит только свою.
+            Суммы попадут в зарплату исполнителей за месяц, в котором заказ закрыт. Каждый видит
+            только свою.
           </p>
         </div>
       </Modal>
-
     </Card>
   );
 }
@@ -285,7 +292,9 @@ function AssigneeSelect({
 }): ReactElement {
   const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(role, value);
   // Категория швеи прямо в списке: кого ставить на дорогой заказ, видно до выбора.
-  const categories = trpc.rating.sewerCategories.useQuery(undefined, { enabled: role === Role.SEWER });
+  const categories = trpc.rating.sewerCategories.useQuery(undefined, {
+    enabled: role === Role.SEWER,
+  });
   const categoryOf = new Map((categories.data ?? []).map((row) => [row.userId, row.category]));
 
   return (
