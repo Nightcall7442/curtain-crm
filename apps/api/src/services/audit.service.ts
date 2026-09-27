@@ -1,6 +1,8 @@
 import { auditLog, users, type DbExecutor } from '@curtain-crm/db';
 import { eq } from 'drizzle-orm';
 
+import { isOrderStatus, orderStatusLabel } from '@curtain-crm/shared';
+
 import { AUDIT_ACTION_LABELS } from '../lib/auditLabels';
 import type { AuditAction } from '../lib/constants';
 
@@ -53,10 +55,7 @@ export interface RecordAuditInput {
  * Таблица append-only: обновления и удаления записей не предусмотрены
  * ни здесь, ни где-либо ещё в кодовой базе.
  */
-export async function recordAudit(
-  executor: DbExecutor,
-  input: RecordAuditInput,
-): Promise<void> {
+export async function recordAudit(executor: DbExecutor, input: RecordAuditInput): Promise<void> {
   await executor.insert(auditLog).values({
     actorId: input.actorId,
     action: input.action,
@@ -78,7 +77,11 @@ const DETAILS_LIMIT = 180;
 
 /** Значение детали строкой; объекты и массивы сюда не попадают. */
 const scalar = (value: unknown): string =>
-  typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? value.toString() : '';
+  typeof value === 'string'
+    ? value
+    : typeof value === 'number' || typeof value === 'boolean'
+      ? value.toString()
+      : '';
 
 /** Вложенный объект («было/стало») — одним уровнем: `workPrice=100, deposit=0`. */
 const flatten = (value: Record<string, unknown>): string =>
@@ -86,6 +89,26 @@ const flatten = (value: Record<string, unknown>): string =>
     .map(([key, inner]) => (scalar(inner) === '' ? '' : `${key}=${scalar(inner)}`))
     .filter((part) => part !== '')
     .join(', ');
+
+/**
+ * Переход статуса заказа — человеческой строкой: «Проверка ОТК → Прошёл ОТК».
+ *
+ * fromStatus/toStatus в деталях — служебные слаги (pending_qc), не то, что
+ * стоит показывать в ленте. systemInitiated тоже служебное: отличать
+ * «переход поставил человек» от «случился сам» в общей ленте незачем —
+ * там и так подписан исполнитель.
+ */
+function describeStatusChange(details: Record<string, unknown> | undefined): string | null {
+  if (details === undefined) return null;
+
+  const from = details['fromStatus'];
+  const to = details['toStatus'];
+  if (!isOrderStatus(from) || !isOrderStatus(to)) return null;
+
+  const comment = typeof details['comment'] === 'string' ? details['comment'] : '';
+  const arrow = orderStatusLabel(from) + ' → ' + orderStatusLabel(to);
+  return comment === '' ? arrow : arrow + '\n' + comment;
+}
 
 /**
  * Короткая расшифровка деталей: «kind: late_15_30 · points: -1».
@@ -101,7 +124,8 @@ function describeDetails(details: Record<string, unknown> | undefined): string {
   for (const [key, value] of Object.entries(details)) {
     if (value === null || value === undefined) continue;
 
-    const text = typeof value === 'object' ? flatten(value as Record<string, unknown>) : scalar(value);
+    const text =
+      typeof value === 'object' ? flatten(value as Record<string, unknown>) : scalar(value);
 
     if (text === '') continue;
     parts.push(`${key}: ${text}`);
@@ -139,7 +163,7 @@ async function announceToGroup(executor: DbExecutor, input: RecordAuditInput): P
     input.entityId === null || input.entityId === undefined ? '' : ` #${input.entityId.toString()}`;
   const body = [
     `${actor?.fullName ?? 'Сотрудник'} · ${input.entityType}${entity}`,
-    describeDetails(input.details),
+    describeStatusChange(input.details) ?? describeDetails(input.details),
   ]
     .filter((line) => line !== '')
     .join('\n');
