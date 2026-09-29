@@ -198,6 +198,11 @@ export function HomeScreen(): ReactElement {
       {/* Те же боковые поля, что у «Цеха сегодня»: карточки стоят одной колонкой. */}
       {isManager && (
         <View style={styles.section}>
+          <RevenueCard />
+        </View>
+      )}
+      {isManager && (
+        <View style={styles.section}>
           <CashTodayCard />
         </View>
       )}
@@ -572,13 +577,56 @@ function WorkshopSummary(): ReactElement {
 }
 
 /**
+ * Выручка — сегодня, с понедельника и с первого числа.
+ *
+ * Одно число на всю систему (`reports.revenue`): все деньги от клиентов
+ * любым способом, где бы они ни лежали — на руках, в кассе или на счёте, —
+ * минус возвраты. Раньше «выручкой за месяц» здесь была сумма закрытых
+ * заказов: без готовых штор, витрины и предоплат, и с кассой она не
+ * сходилась. С какого дня считается неделя и месяц — написано в строке.
+ */
+function RevenueCard(): ReactElement | null {
+  const { m, money } = useLocale();
+  const revenue = trpc.reports.revenue.useQuery({});
+
+  if (revenue.isError) {
+    return (
+      <Card>
+        <CardTitle title={m('home.revenue')} icon="paid" />
+        <ErrorState message={revenue.error.message} />
+      </Card>
+    );
+  }
+  if (revenue.data === undefined) return null;
+  const { today, week, month } = revenue.data;
+
+  return (
+    <Card>
+      <CardTitle title={m('home.revenue')} icon="paid" />
+      <Row label={m('home.revenueTodayRow')} value={money(today.net)} />
+      <Row
+        label={m('home.revenueWeek', { date: formatIsoDateShort(week.since) })}
+        value={money(week.net)}
+      />
+      <Row
+        label={m('home.revenueMonthSince', { date: formatIsoDateShort(month.since) })}
+        value={money(month.net)}
+      />
+      {month.refunds > 0 && (
+        <Text style={styles.revenueNote}>{m('home.revenueRefunds', { sum: money(month.refunds) })}</Text>
+      )}
+      <Text style={styles.revenueNote}>{m('home.revenueNote')}</Text>
+    </Card>
+  );
+}
+
+/**
  * Деньги за сегодня — своей карточкой, не строками в «Цехе сегодня».
  *
  * Заказы, люди и производство — про работу; выручка и касса — про деньги.
- * В одной карточке они стояли подряд, и владелец попросил развести — и
- * сделать «как в панели»: там страница «Касса» открывается тремя цифрами
- * (принято, в кассе, на руках). Здесь те же три, а полный разбор по
- * источникам и сдачам — за «Подробнее», в кассе дня.
+ * Выручка — карточкой выше; здесь — где деньги лежат: в кассе, на счёте,
+ * на руках. Полный разбор по источникам и сдачам — за «Подробнее», в кассе
+ * дня.
  */
 function CashTodayCard(): ReactElement | null {
   const { m, money } = useLocale();
@@ -621,7 +669,6 @@ function CashTodayCard(): ReactElement | null {
           </Pressable>
         }
       />
-      <Row label={m('cashDay.received')} value={money(today.data.total)} />
       <Row label={m('cashDay.inKassa')} value={money(today.data.balance.cash.total)} />
       <Row label={m('cashDay.onAccount')} value={money(today.data.balance.cashless.total)} />
       <Row
@@ -725,7 +772,11 @@ function MonthCard(): ReactElement | null {
   return (
     <Card>
       <CardTitle title={m('home.month')} icon="calendar" />
-      <Row label={m('home.revenue')} value={data.revenueThisMonthFormatted} />
+      {/*
+        Не «Выручка»: это сумма работ заказов, закрытых в этом месяце, —
+        основа маржи ниже. Выручка (деньги) — в карточке «Выручка» выше.
+      */}
+      <Row label={m('home.completedValue')} value={data.revenueThisMonthFormatted} />
 
       {/*
         Маржа рядом с выручкой, а не вместо неё: выручка говорит, сколько
@@ -810,6 +861,11 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.accent,
     fontWeight: '600',
+  },
+  revenueNote: {
+    ...typography.footnote,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   linkPressed: {
     opacity: opacity.pressed,

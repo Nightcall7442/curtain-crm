@@ -37,6 +37,7 @@ import { z } from 'zod';
 
 import { idSchema, periodSchema } from '../lib/schemas';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
+import { revenue as ledgerRevenue, revenueByDay } from '../services/ledger.service';
 import { topPerformers } from '../services/performance.service';
 import { cashByDay, deadlinesReport, payrollBreakdown, sewerOutput } from '../services/reports.service';
 import { periodBounds, workedSecondsExpression } from '../services/shifts.service';
@@ -68,25 +69,77 @@ function tashkentRange(from: string, to: string): { readonly from: Date; readonl
  * Главная считала «сегодня» и «этот месяц» от полуночи по UTC, то есть с
  * пяти утра по Ташкенту: заказ, принятый в полпервого ночи, числился
  * вчерашним, а первые пять часов первого числа — прошлым месяцем.
+ *
+ * Неделя — календарная, с понедельника: так её считают в мастерской.
  */
 export function workshopPeriodStarts(now: Date): {
   readonly today: Date;
+  readonly tomorrow: Date;
+  readonly week: Date;
   readonly month: Date;
   readonly prevMonth: Date;
 } {
   const local = new Date(now.getTime() + TASHKENT_OFFSET_MS);
   const year = local.getUTCFullYear();
   const month = local.getUTCMonth();
+  const date = local.getUTCDate();
+  // getUTCDay: воскресенье — 0; сколько дней прошло с понедельника.
+  const sinceMonday = (local.getUTCDay() + 6) % 7;
   const at = (utcMidnight: number): Date => new Date(utcMidnight - TASHKENT_OFFSET_MS);
   return {
-    today: at(Date.UTC(year, month, local.getUTCDate())),
+    today: at(Date.UTC(year, month, date)),
+    tomorrow: at(Date.UTC(year, month, date + 1)),
+    // Date.UTC сам переносит отрицательные дни и месяцы через границу.
+    week: at(Date.UTC(year, month, date - sinceMonday)),
     month: at(Date.UTC(year, month, 1)),
-    // Date.UTC сам переносит месяц −1 на декабрь прошлого года.
     prevMonth: at(Date.UTC(year, month - 1, 1)),
   };
 }
 
+/** Календарный день по Ташкенту `YYYY-MM-DD` для момента начала периода. */
+const workshopDay = (at: Date): string =>
+  new Date(at.getTime() + TASHKENT_OFFSET_MS).toISOString().slice(0, 10);
+
+/** Месяц по Ташкенту как отрезок моментов UTC. */
+const workshopMonth = (period: { readonly year: number; readonly month: number }) => ({
+  from: new Date(Date.UTC(period.year, period.month - 1, 1) - TASHKENT_OFFSET_MS),
+  to: new Date(Date.UTC(period.year, period.month, 1) - TASHKENT_OFFSET_MS),
+});
+
 export const reportsRouter = router({
+  /**
+   * Выручка — сегодня, с понедельника и с первого числа, по книге проводок.
+   *
+   * Одна на сайт и приложение. Раньше «выручкой за месяц» называлась сумма
+   * работ заказов, закрытых в этом месяце: в неё не попадали готовые шторы,
+   * витрина и предоплаты по незакрытым заказам, и она не сходилась с
+   * кассой. Здесь — деньги: все приходы от клиентов любым способом, где бы
+   * они ни лежали, минус возвраты (см. `ledger.revenue`).
+   *
+   * Периоды — до конца сегодняшнего дня по Ташкенту; `since` — с какого дня
+   * считается, чтобы подпись на экране говорила это прямо.
+   */
+  revenue: managementProcedure
+    .input(z.object({ branchId: idSchema.optional() }).default({}))
+    .query(async ({ ctx, input }) => {
+      const starts = workshopPeriodStarts(new Date());
+      const upTo = starts.tomorrow;
+      const [today, week, month, prevMonth] = await Promise.all([
+        ledgerRevenue(ctx.db, { from: starts.today, to: upTo }, input.branchId),
+        ledgerRevenue(ctx.db, { from: starts.week, to: upTo }, input.branchId),
+        ledgerRevenue(ctx.db, { from: starts.month, to: upTo }, input.branchId),
+        ledgerRevenue(ctx.db, { from: starts.prevMonth, to: starts.month }, input.branchId),
+      ]);
+
+      return {
+        today: { ...today, since: workshopDay(starts.today) },
+        week: { ...week, since: workshopDay(starts.week) },
+        month: { ...month, since: workshopDay(starts.month) },
+        /** Прошлый месяц целиком — для сравнения. */
+        prevMonth: { ...prevMonth, since: workshopDay(starts.prevMonth) },
+      };
+    }),
+
   /** Показатели для главного экрана веб-панели. */
   dashboard: managementProcedure
     .input(z.object({ branchId: idSchema.optional() }).default({}))
@@ -551,60 +604,54 @@ export const reportsRouter = router({
   /**
    * Динамика заказов и выручки нарастающим итогом по дням месяца,
    * текущий период против предыдущего.
+   *
+   * Выручка — по книге проводок, как в `revenue`: раньше здесь суммировалась
+   * стоимость СОЗДАННЫХ заказов, и график «выручки» рос от заказов, за
+   * которые ещё не заплатили. Дни и месяцы — по Ташкенту, не по UTC.
    */
   dynamics: managementProcedure
     .input(periodSchema.extend({ branchId: idSchema.optional() }))
     .query(async ({ ctx, input }) => {
-      const current = periodBounds(input);
-      const previous = periodBounds(
+      const previousPeriod =
         input.month === 1
           ? { year: input.year - 1, month: 12 }
-          : { year: input.year, month: input.month - 1 },
-      );
+          : { year: input.year, month: input.month - 1 };
 
       const branchFilter =
         input.branchId === undefined ? [] : [eq(orders.branchId, input.branchId)];
+      const localDay = sql<string>`extract(day from ${orders.createdAt} at time zone 'Asia/Tashkent')`;
 
-      const seriesFor = async (bounds: { start: Date; end: Date }) =>
-        ctx.db
-          .select({
-            day: sql<string>`extract(day from ${orders.createdAt} at time zone 'UTC')`,
-            orders: sql<string>`count(*)`,
-            revenue: sql<string>`coalesce(sum(${orders.workPrice}), 0)`,
-          })
-          .from(orders)
-          .where(
-            and(
-              gte(orders.createdAt, bounds.start),
-              lt(orders.createdAt, bounds.end),
-              ...branchFilter,
-            ),
-          )
-          .groupBy(sql`extract(day from ${orders.createdAt} at time zone 'UTC')`)
-          .orderBy(sql`extract(day from ${orders.createdAt} at time zone 'UTC')`);
+      const seriesFor = async (period: { readonly year: number; readonly month: number }) => {
+        const range = workshopMonth(period);
+        const [orderRows, moneyByDate] = await Promise.all([
+          ctx.db
+            .select({ day: localDay, orders: sql<string>`count(*)` })
+            .from(orders)
+            .where(and(gte(orders.createdAt, range.from), lt(orders.createdAt, range.to), ...branchFilter))
+            .groupBy(localDay),
+          revenueByDay(ctx.db, range, input.branchId),
+        ]);
 
-      const [currentRows, previousRows] = await Promise.all([
-        seriesFor(current),
-        seriesFor(previous),
-      ]);
+        const ordersByDay = new Map(
+          orderRows.map((row) => [Number.parseInt(row.day, 10), Number.parseInt(row.orders, 10)]),
+        );
+        const moneyByDay = new Map(
+          [...moneyByDate].map(([date, net]) => [Number.parseInt(date.slice(8, 10), 10), net]),
+        );
+        const days = [...new Set([...ordersByDay.keys(), ...moneyByDay.keys()])].sort((a, b) => a - b);
 
-      /** Нарастающий итог считаем здесь: оконная функция ради этого избыточна. */
-      const cumulate = (rows: { day: string; orders: string; revenue: string }[]) => {
+        // Нарастающий итог считаем здесь: оконная функция ради этого избыточна.
         let orderTotal = 0;
         let revenueTotal = 0;
-
-        return rows.map((row) => {
-          orderTotal += Number.parseInt(row.orders, 10);
-          revenueTotal += parseMoney(row.revenue);
-          return {
-            day: Number.parseInt(row.day, 10),
-            orders: orderTotal,
-            revenueMinor: revenueTotal,
-          };
+        return days.map((day) => {
+          orderTotal += ordersByDay.get(day) ?? 0;
+          revenueTotal += moneyByDay.get(day) ?? 0;
+          return { day, orders: orderTotal, revenueMinor: revenueTotal };
         });
       };
 
-      return { current: cumulate(currentRows), previous: cumulate(previousRows) };
+      const [current, previous] = await Promise.all([seriesFor(input), seriesFor(previousPeriod)]);
+      return { current, previous };
     }),
 
   /**

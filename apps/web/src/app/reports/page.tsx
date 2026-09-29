@@ -100,8 +100,13 @@ export default function ReportsPage(): ReactElement {
               value={finance.data.ordersCompleted.toString()}
               caption="За период"
             />
+            {/*
+              Не «Выручка»: здесь сумма работ по закрытым заказам — основа
+              маржи. Выручка (деньги от клиентов) — на главной и в кассе;
+              одно слово для двух разных чисел путало.
+            */}
             <StatCard
-              label="Выручка"
+              label="Сумма закрытых заказов"
               value={finance.data.revenueFormatted}
               caption="Сумма работ по закрытым заказам"
             />
@@ -113,7 +118,7 @@ export default function ReportsPage(): ReactElement {
             <StatCard
               label="Маржа"
               value={finance.data.marginFormatted}
-              caption="Выручка минус закупки"
+              caption="Сумма заказов минус закупки"
             />
             <StatCard
               label="Рентабельность"
@@ -122,7 +127,7 @@ export default function ReportsPage(): ReactElement {
                   ? '—'
                   : formatPercent(finance.data.marginPercent)
               }
-              caption="Маржа к выручке"
+              caption="Маржа к сумме заказов"
             />
           </>
         )}
