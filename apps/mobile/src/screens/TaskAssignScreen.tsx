@@ -1,4 +1,9 @@
-import { formatIsoDate, TASK_STATUS_LABELS, type TaskStatus } from '@curtain-crm/shared';
+import {
+  formatIsoDate,
+  isTaskActive,
+  TASK_STATUS_LABELS,
+  type TaskStatus,
+} from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
@@ -198,7 +203,7 @@ export function TaskAssignScreen(): ReactElement {
 
                   <Pill text={t(TASK_STATUS_LABELS, task.status)} tone={toneOf(task.status)} />
 
-                  {task.status === 'open' && cancelling !== task.id && (
+                  {isTaskActive(task.status) && cancelling !== task.id && (
                     <Pressable
                       onPress={() => {
                         setCancelling(task.id);
@@ -273,9 +278,11 @@ export function TaskAssignScreen(): ReactElement {
   );
 }
 
-function toneOf(status: TaskStatus): 'positive' | 'danger' | 'neutral' {
+function toneOf(status: TaskStatus): 'positive' | 'danger' | 'neutral' | 'info' {
   if (status === 'done') return 'positive';
   if (status === 'cancelled') return 'danger';
+  // Сдано и ждёт решения руководителя — строка открывает поручение с кнопками.
+  if (status === 'pending_review') return 'info';
   return 'neutral';
 }
 

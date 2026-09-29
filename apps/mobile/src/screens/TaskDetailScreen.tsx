@@ -1,5 +1,7 @@
 import {
   formatIsoDate,
+  isManagement,
+  isTaskActive,
   TASK_STATUS_LABELS,
   TaskStatus,
   type TaskStatus as TaskStatusName,
@@ -49,6 +51,9 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
   const { taskId } = route.params;
 
   const [body, setBody] = useState('');
+  /** Руководитель пишет, что доделать, — поле открыто. */
+  const [returning, setReturning] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
   /** Выбранное фото, ещё не отправленное. */
   const [attachment, setAttachment] = useState<
     { readonly uri: string; readonly base64: string; readonly mimeType: string } | null
@@ -77,6 +82,8 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
     },
   });
 
+  const isBoss = isManagement(user?.roles ?? []);
+
   const complete = trpc.tasks.complete.useMutation({
     async onSuccess() {
       notifySuccess();
@@ -84,7 +91,20 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
     },
     onError(error) {
       notifyError();
-      Alert.alert(m('task.completeError'), error.message);
+      Alert.alert(isBoss ? m('task.approveError') : m('task.completeError'), error.message);
+    },
+  });
+
+  const sendBack = trpc.tasks.sendBack.useMutation({
+    async onSuccess() {
+      notifySuccess();
+      setReturning(false);
+      setReturnReason('');
+      await refresh();
+    },
+    onError(error) {
+      notifyError();
+      Alert.alert(m('task.sendBackError'), error.message);
     },
   });
 
@@ -133,6 +153,12 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
 
   const { data } = task;
   const isOpen = data.status === TaskStatus.OPEN;
+  const isSubmitted = data.status === TaskStatus.PENDING_REVIEW;
+  /*
+    Кнопка закрытия: сотруднику — сдать открытое, руководителю — принять
+    сданное или закрыть открытое за сотрудника.
+  */
+  const canComplete = isBoss ? isTaskActive(data.status) : isOpen;
   const canSend = (body.trim().length > 0 || attachment !== null) && !reply.isPending;
 
   return (
@@ -162,7 +188,9 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
             приходит на этот экран, чтобы разобраться в задании, и логично
             закрыть его там же, где он только что дочитал условие.
           */}
-          {isOpen && (
+          {isSubmitted && !isBoss && <Text style={styles.waiting}>{m('task.waiting')}</Text>}
+
+          {canComplete && (
             <Pressable
               onPress={() => {
                 complete.mutate({ id: taskId });
@@ -176,10 +204,71 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               ) : (
                 <>
                   <Icon name="completed" size={18} color={colors.onAccent} />
-                  <Text style={styles.doneText}>{m('task.done')}</Text>
+                  <Text style={styles.doneText}>
+                    {isBoss && isSubmitted ? m('task.approve') : m('task.done')}
+                  </Text>
                 </>
               )}
             </Pressable>
+          )}
+
+          {/*
+            Вернуть сданное — только руководителю и только с причиной: она
+            ляжет в переписку ниже, и сотрудник увидит, что доделать.
+          */}
+          {isBoss && isSubmitted && !returning && (
+            <Pressable
+              onPress={() => {
+                setReturning(true);
+                setReturnReason('');
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.sendBack, pressed ? styles.pressed : null]}
+            >
+              <Text style={styles.sendBackText}>{m('task.sendBack')}</Text>
+            </Pressable>
+          )}
+
+          {isBoss && isSubmitted && returning && (
+            <View style={styles.returnBox}>
+              <Text style={styles.returnLabel}>{m('task.sendBackWhy')}</Text>
+              <Input
+                value={returnReason}
+                onChangeText={setReturnReason}
+                placeholder={m('task.sendBackPlaceholder')}
+                multiline
+                autoFocus
+              />
+              <View style={styles.returnActions}>
+                <Pressable
+                  onPress={() => {
+                    setReturning(false);
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.returnGhost, pressed ? styles.pressed : null]}
+                >
+                  <Text style={styles.returnGhostText}>{m('common.cancel')}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    sendBack.mutate({ id: taskId, reason: returnReason.trim() });
+                  }}
+                  disabled={returnReason.trim().length < 3 || sendBack.isPending}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.returnConfirm,
+                    returnReason.trim().length < 3 ? styles.sendOff : null,
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  {sendBack.isPending ? (
+                    <ActivityIndicator color={colors.onAccent} size="small" />
+                  ) : (
+                    <Text style={styles.doneText}>{m('task.sendBackConfirm')}</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
           )}
         </Card>
 
@@ -320,9 +409,10 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
 
 const isImage = (mimeType: string | null): boolean => mimeType?.startsWith('image/') === true;
 
-function toneOf(status: TaskStatusName): 'positive' | 'danger' | 'neutral' {
+function toneOf(status: TaskStatusName): 'positive' | 'danger' | 'neutral' | 'info' {
   if (status === TaskStatus.DONE) return 'positive';
   if (status === TaskStatus.CANCELLED) return 'danger';
+  if (status === TaskStatus.PENDING_REVIEW) return 'info';
   return 'neutral';
 }
 
@@ -359,6 +449,59 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: '700',
     color: colors.onAccent,
+  },
+  waiting: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+  sendBack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: radius.md,
+    borderWidth: hairline,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
+  },
+  sendBackText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  returnBox: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  returnLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  returnActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  returnGhost: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: radius.md,
+    borderWidth: hairline,
+    borderColor: colors.border,
+  },
+  returnGhostText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  returnConfirm: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
   },
   message: {
     paddingVertical: spacing.sm,

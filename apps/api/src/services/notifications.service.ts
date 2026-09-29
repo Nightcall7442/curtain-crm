@@ -369,7 +369,54 @@ export async function notifyTaskAssigned(
   });
 }
 
-/** Сотрудник отметил поручение выполненным — узнаёт его автор. */
+/** Сотрудник сдал поручение — автор должен принять или вернуть его. */
+export async function notifyTaskSubmitted(
+  executor: DbExecutor,
+  creatorId: number,
+  params: { readonly title: string; readonly assigneeName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: creatorId,
+    type: NotificationType.TASK_COMPLETED,
+    title: 'Доп. работа ждёт подтверждения',
+    body: `${params.assigneeName}: «${params.title}»`,
+  });
+}
+
+/** Руководство приняло сданное поручение — узнаёт исполнитель. */
+export async function notifyTaskApproved(
+  executor: DbExecutor,
+  assigneeId: number,
+  params: { readonly title: string; readonly approverName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: assigneeId,
+    type: NotificationType.TASK_COMPLETED,
+    title: 'Доп. работа принята',
+    body: `${params.approverName}: «${params.title}»`,
+  });
+}
+
+/**
+ * Руководство вернуло поручение в работу — исполнитель узнаёт, что доделать.
+ *
+ * Тип — как у выдачи поручения: для исполнителя это снова работа на нём, и
+ * заметна она должна быть так же.
+ */
+export async function notifyTaskReturned(
+  executor: DbExecutor,
+  assigneeId: number,
+  params: { readonly title: string; readonly reason: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId: assigneeId,
+    type: NotificationType.TASK_ASSIGNED,
+    title: 'Доп. работа возвращена',
+    body: `«${params.title}» — ${params.reason}`,
+  });
+}
+
+/** Руководитель сам закрыл поручение за сотрудника — узнаёт его автор. */
 export async function notifyTaskCompleted(
   executor: DbExecutor,
   creatorId: number,

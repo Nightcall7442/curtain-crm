@@ -115,6 +115,9 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
 
   'task.created': 'Поручение выдано',
   'task.completed': 'Поручение выполнено',
+  'task.submitted': 'Поручение сдано на проверку',
+  'task.approved': 'Поручение принято',
+  'task.returned': 'Поручение возвращено',
   'task.cancelled': 'Поручение отменено',
 
   'dayoff.requested': 'Отгул запрошен',

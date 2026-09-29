@@ -1,6 +1,7 @@
 import { orders, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
   findTransition,
+  formatIsoDate,
   isOrderStatus,
   isRole,
   MANAGEMENT_ROLES,
@@ -33,9 +34,9 @@ import {
 /**
  * Лента действий в Telegram-группе мастерской.
  *
- * Группа — общая для всех сотрудников, поэтому в неё идёт только ход работы
- * по заказам: новый заказ, смена статуса, кто назначен, карниз, продажа,
- * фото этапов.
+ * Группа — общая для всех сотрудников, поэтому в неё идёт только ход работы:
+ * по заказам — новый заказ, смена статуса, кто назначен, карниз, продажа,
+ * фото этапов; по доп. работам — выдача, сдача, приёмка, возврат, отмена.
  * Деньги (цены, расценки, оплаты, зарплата), дисциплина, права и пароли
  * остаются в журнале панели — их видит руководство, а не двадцать человек
  * в чате. Сумм в ленте нет ни в каком виде.
@@ -56,6 +57,12 @@ const FEED_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
   'order.cornice_done',
   'ready_made_item.sold',
   'retail_sale.created',
+  'task.created',
+  'task.submitted',
+  'task.approved',
+  'task.returned',
+  'task.completed',
+  'task.cancelled',
 ]);
 
 interface FeedText {
@@ -67,6 +74,14 @@ interface FeedText {
   readonly corniceTaken: (order: string) => string;
   readonly corniceDone: (order: string) => string;
   readonly photos: (order: string, stage: string) => string;
+  readonly taskNew: string;
+  readonly taskSubmitted: string;
+  readonly taskApproved: string;
+  readonly taskReturned: string;
+  readonly taskClosed: string;
+  readonly taskCancelled: string;
+  readonly assignee: string;
+  readonly due: string;
   readonly readyMadeSold: string;
   readonly retailSale: string;
   readonly receipt: string;
@@ -95,6 +110,14 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     corniceTaken: (order) => `Заказ ${order}: карниз взят в работу`,
     corniceDone: (order) => `Заказ ${order}: карниз повешен`,
     photos: (order, stage) => `Фото заказа ${order}: ${stage}`,
+    taskNew: 'Новая доп. работа',
+    taskSubmitted: 'Доп. работа выполнена — ждёт подтверждения',
+    taskApproved: 'Доп. работа принята',
+    taskReturned: 'Доп. работа возвращена на доработку',
+    taskClosed: 'Доп. работа закрыта',
+    taskCancelled: 'Доп. работа отменена',
+    assignee: 'Исполнитель',
+    due: 'Срок',
     readyMadeSold: 'Продана готовая штора',
     retailSale: 'Продажа с витрины',
     receipt: 'Чек',
@@ -121,6 +144,14 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     corniceTaken: (order) => `${order} buyurtmasi: karniz ishga olindi`,
     corniceDone: (order) => `${order} buyurtmasi: karniz osildi`,
     photos: (order, stage) => `${order} buyurtmasi rasmlari: ${stage}`,
+    taskNew: "Yangi qo'shimcha ish",
+    taskSubmitted: "Qo'shimcha ish bajarildi — tasdiq kutilmoqda",
+    taskApproved: "Qo'shimcha ish qabul qilindi",
+    taskReturned: "Qo'shimcha ish qayta ishlashga qaytarildi",
+    taskClosed: "Qo'shimcha ish yopildi",
+    taskCancelled: "Qo'shimcha ish bekor qilindi",
+    assignee: 'Ijrochi',
+    due: 'Muddat',
     readyMadeSold: 'Tayyor parda sotildi',
     retailSale: 'Vitrinadan sotuv',
     receipt: 'Chek',
@@ -297,6 +328,41 @@ export function describeForGroup(
     ]);
   }
 
+  if (input.action.startsWith('task.')) {
+    const title = text(details['title']);
+    const work = title === null ? null : `«${title}»`;
+    const assigneeId = details['assigneeId'];
+    // Сдал сам исполнитель — его строка уже есть в подписи автора.
+    const assignee = assigneeId === input.actorId ? null : line(t.assignee, name(assigneeId));
+    const reason = line(t.reason, text(details['reason']));
+    // Выдаёт, принимает, возвращает и отменяет руководство.
+    const boss = actorLine(MANAGEMENT_ROLES);
+
+    switch (input.action) {
+      case 'task.created': {
+        const due = text(details['dueDate']);
+        return message(t.taskNew, [
+          work,
+          assignee,
+          due === null ? null : line(t.due, formatIsoDate(due)),
+          boss,
+        ]);
+      }
+      case 'task.submitted':
+        return message(t.taskSubmitted, [work, actor]);
+      case 'task.approved':
+        return message(t.taskApproved, [work, assignee, boss]);
+      case 'task.returned':
+        return message(t.taskReturned, [work, assignee, reason, boss]);
+      case 'task.completed':
+        return message(t.taskClosed, [work, assignee, boss]);
+      case 'task.cancelled':
+        return message(t.taskCancelled, [work, assignee, reason, boss]);
+      default:
+        return null;
+    }
+  }
+
   // Дальше — действия по заказу: без заказа их не описать.
   const order = context.order;
   if (order === null) return null;
@@ -413,7 +479,9 @@ export async function announceToGroup(executor: DbExecutor, input: RecordAuditIn
       ? [details['from'], details['to']]
       : input.action === 'order.cornice_done'
         ? [details['corniceInstallerId']]
-        : [];
+        : input.entityType === 'task'
+          ? [details['assigneeId']]
+          : [];
   const userIds = [input.actorId, ...mentioned].filter((id): id is number => typeof id === 'number');
 
   const people = await executor

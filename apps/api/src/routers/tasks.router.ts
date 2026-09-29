@@ -1,5 +1,6 @@
 import {
   isManagement,
+  isTaskActive,
   MAX_TASK_DETAILS_LENGTH,
   MAX_TASK_TITLE_LENGTH,
   TaskStatus,
@@ -28,10 +29,13 @@ import {
   getStorage,
 } from '../services/storage.service';
 import {
+  notifyTaskApproved,
   notifyTaskAssigned,
   notifyTaskCancelled,
   notifyTaskCompleted,
   notifyTaskReplied,
+  notifyTaskReturned,
+  notifyTaskSubmitted,
 } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -39,11 +43,13 @@ import { router } from '../trpc';
  * Доп работы (в коде — tasks) — дополнительная работа мимо конвейера заказов.
  *
  * Права доступа:
- *  - `create`, `list`, `cancel` — руководство (CEO, админ): поручения выдаёт
- *    и отменяет тот, кто отвечает за загрузку людей;
+ *  - `create`, `list`, `cancel`, `sendBack` — руководство (CEO, админ):
+ *    поручения выдаёт, возвращает и отменяет тот, кто отвечает за загрузку
+ *    людей;
  *  - `my` — любой вошедший, ТОЛЬКО свои поручения;
- *  - `complete` — адресат поручения или руководство: отметить чужую работу
- *    выполненной нельзя, руководитель может закрыть за сотрудника.
+ *  - `complete` — адресат поручения или руководство. Адресат только СДАЁТ
+ *    работу: поручение ждёт подтверждения, а закрывает его руководство —
+ *    принимая сданное или закрывая за сотрудника.
  *
  * Записи не удаляются: выполненное — история работы, ошибочное отменяется
  * с причиной. Инварианты «выполнено ⇒ есть дата», «отменено ⇒ есть причина»
@@ -97,7 +103,11 @@ export const tasksRouter = router({
           action: 'task.created',
           entityType: 'task',
           entityId: created.id,
-          details: { assigneeId: input.assigneeId, title: input.title },
+          details: {
+            assigneeId: input.assigneeId,
+            title: input.title,
+            dueDate: input.dueDate ?? null,
+          },
           ipAddress: ctx.ipAddress,
         });
 
@@ -133,10 +143,10 @@ export const tasksRouter = router({
       .from(tasks)
       .innerJoin(users, eq(tasks.createdBy, users.id))
       .where(eq(tasks.assigneeId, ctx.user.id))
-      // Открытые сверху; внутри — ближайший срок первым, поручения без
-      // срока в конце (в Postgres `asc` ставит NULL последними по nulls last).
+      // Открытые сверху, за ними сданные на проверку; внутри — ближайший
+      // срок первым, поручения без срока в конце.
       .orderBy(
-        sql`case ${tasks.status} when 'open' then 0 else 1 end`,
+        sql`case ${tasks.status} when 'open' then 0 when 'pending_review' then 1 else 2 end`,
         sql`${tasks.dueDate} asc nulls last`,
         desc(tasks.createdAt),
       )
@@ -317,8 +327,9 @@ export const tasksRouter = router({
             assignee: { columns: { id: true, fullName: true } },
             creator: { columns: { id: true, fullName: true } },
           },
+          // Сданные на проверку — первыми: это работа самого руководителя.
           orderBy: [
-            sql`case ${tasks.status} when 'open' then 0 else 1 end`,
+            sql`case ${tasks.status} when 'pending_review' then 0 when 'open' then 1 else 2 end`,
             asc(tasks.dueDate),
             desc(tasks.createdAt),
           ],
@@ -330,7 +341,14 @@ export const tasksRouter = router({
       return { items: rows, total: totalRow?.value ?? 0 };
     }),
 
-  /** Отметить выполнение. Адресат — или руководитель за него. */
+  /**
+   * Отметить выполнение.
+   *
+   * Адресат сдаёт работу — поручение ждёт подтверждения, автор получает
+   * уведомление. Руководство закрывает: принимает сданное или закрывает
+   * открытое за сотрудника. Отметка сотрудника больше не закрывает работу
+   * сама — иначе «сделано» ставилось без проверки.
+   */
   complete: protectedProcedure
     .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) =>
@@ -353,9 +371,43 @@ export const tasksRouter = router({
           });
         }
 
-        if (task.status !== TaskStatus.OPEN) {
+        if (!isTaskActive(task.status)) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Доп. работа уже закрыта' });
         }
+
+        /* Сотрудник сдаёт работу — закрывать её будет руководство. */
+        if (!isBoss) {
+          if (task.status === TaskStatus.PENDING_REVIEW) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'Доп. работа уже сдана — ждёт подтверждения руководителя',
+            });
+          }
+
+          const [submitted] = await tx
+            .update(tasks)
+            .set({ status: TaskStatus.PENDING_REVIEW })
+            .where(eq(tasks.id, input.id))
+            .returning();
+
+          await recordAudit(tx, {
+            actorId: ctx.user.id,
+            action: 'task.submitted',
+            entityType: 'task',
+            entityId: input.id,
+            details: { title: task.title, assigneeId: task.assigneeId },
+            ipAddress: ctx.ipAddress,
+          });
+
+          await notifyTaskSubmitted(tx, task.createdBy, {
+            title: task.title,
+            assigneeName: task.assignee.fullName,
+          });
+
+          return submitted;
+        }
+
+        const wasSubmitted = task.status === TaskStatus.PENDING_REVIEW;
 
         const [updated] = await tx
           .update(tasks)
@@ -365,20 +417,81 @@ export const tasksRouter = router({
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
-          action: 'task.completed',
+          action: wasSubmitted ? 'task.approved' : 'task.completed',
           entityType: 'task',
           entityId: input.id,
-          details: { title: task.title },
+          details: { title: task.title, assigneeId: task.assigneeId },
           ipAddress: ctx.ipAddress,
         });
 
-        // Автор узнаёт о выполнении — кроме случая, когда сам и закрыл.
-        if (task.createdBy !== ctx.user.id) {
+        if (wasSubmitted) {
+          // Исполнитель узнаёт, что работу приняли, — если принял не он сам.
+          if (task.assigneeId !== ctx.user.id) {
+            await notifyTaskApproved(tx, task.assigneeId, {
+              title: task.title,
+              approverName: ctx.user.fullName,
+            });
+          }
+        } else if (task.createdBy !== ctx.user.id) {
+          // Закрыли за сотрудника — автор узнаёт, кроме случая, когда сам и закрыл.
           await notifyTaskCompleted(tx, task.createdBy, {
             title: task.title,
             assigneeName: task.assignee.fullName,
           });
         }
+
+        return updated;
+      }),
+    ),
+
+  /**
+   * Вернуть сданное поручение в работу — только руководство и с причиной.
+   *
+   * Причина ложится репликой в переписку поручения: исполнитель видит её
+   * там же, где обсуждает работу, и она остаётся в истории, а не только в
+   * уведомлении, которое прочитают и забудут.
+   */
+  sendBack: managementProcedure
+    .input(z.object({ id: idSchema, reason: reasonSchema }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const task = await tx.query.tasks.findFirst({ where: eq(tasks.id, input.id) });
+
+        if (task === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Доп. работа не найдена' });
+        }
+        if (task.status !== TaskStatus.PENDING_REVIEW) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Вернуть можно только сданную работу, которая ждёт подтверждения',
+          });
+        }
+
+        const [updated] = await tx
+          .update(tasks)
+          .set({ status: TaskStatus.OPEN })
+          .where(eq(tasks.id, input.id))
+          .returning();
+
+        await tx.insert(taskMessages).values({
+          taskId: task.id,
+          authorId: ctx.user.id,
+          body: input.reason,
+        });
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'task.returned',
+          entityType: 'task',
+          entityId: input.id,
+          details: { title: task.title, assigneeId: task.assigneeId, reason: input.reason },
+          ipAddress: ctx.ipAddress,
+        });
+
+        await notifyTaskReturned(tx, task.assigneeId, {
+          title: task.title,
+          reason: input.reason,
+        });
 
         return updated;
       }),
@@ -394,7 +507,7 @@ export const tasksRouter = router({
         if (task === undefined) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Доп. работа не найдена' });
         }
-        if (task.status !== TaskStatus.OPEN) {
+        if (!isTaskActive(task.status)) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Доп. работа уже закрыта' });
         }
 
@@ -409,7 +522,7 @@ export const tasksRouter = router({
           action: 'task.cancelled',
           entityType: 'task',
           entityId: input.id,
-          details: { title: task.title, reason: input.reason },
+          details: { title: task.title, assigneeId: task.assigneeId, reason: input.reason },
           ipAddress: ctx.ipAddress,
         });
 

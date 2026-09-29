@@ -56,7 +56,8 @@ export function ManagementScreen(): ReactElement {
     year: now.getFullYear(),
     month: now.getMonth() + 1,
   });
-  const tasks = trpc.tasks.list.useQuery({ status: 'open' });
+  // Счётчик — сданные поручения: принять или вернуть их может только руководство.
+  const tasks = trpc.tasks.list.useQuery({ status: 'pending_review' });
 
   /*
     Расчёты, требующие внимания, — черновики и утверждённые.

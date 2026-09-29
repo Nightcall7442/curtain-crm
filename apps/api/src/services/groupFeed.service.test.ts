@@ -169,6 +169,69 @@ describe('describeForGroup', () => {
   });
 });
 
+describe('доп. работы в ленте', () => {
+  const taskContext: FeedContext = { ...context, order: null };
+  const taskEvent = (
+    input: Partial<RecordAuditInput> & Pick<RecordAuditInput, 'action'>,
+  ): RecordAuditInput => event({ entityType: 'task', entityId: 4, ...input });
+
+  it('выдача — что, кому, срок и кто выдал', () => {
+    const feed = describeForGroup(
+      taskEvent({
+        action: 'task.created',
+        details: { assigneeId: 23, title: 'Съездить за тканью', dueDate: '2026-10-01' },
+      }),
+      taskContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: "Yangi qo'shimcha ish",
+      body: '«Съездить за тканью»\nIjrochi: Karimova Nodira\nMuddat: 01.10.2026\nAdministrator: Rustamov Muzaffar',
+    });
+  });
+
+  it('сдача — исполнитель подписан своей ролью, без повтора строкой «Ijrochi»', () => {
+    const feed = describeForGroup(
+      taskEvent({ actorId: 23, action: 'task.submitted', details: { assigneeId: 23, title: 'Съездить за тканью' } }),
+      { ...taskContext, actorRoles: ['sewer'] },
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: "Qo'shimcha ish bajarildi — tasdiq kutilmoqda",
+      body: '«Съездить за тканью»\nTikuvchi: Karimova Nodira',
+    });
+  });
+
+  it('возврат — с причиной и тем, кто вернул', () => {
+    const feed = describeForGroup(
+      taskEvent({
+        action: 'task.returned',
+        details: { assigneeId: 23, title: 'Съездить за тканью', reason: 'Не тот цвет' },
+      }),
+      { ...taskContext, actorRoles: ['ceo'] },
+      'ru',
+    );
+
+    expect(feed).toEqual({
+      title: 'Доп. работа возвращена на доработку',
+      body: '«Съездить за тканью»\nИсполнитель: Karimova Nodira\nПричина: Не тот цвет\nДиректор: Rustamov Muzaffar',
+    });
+  });
+
+  it('приёмка', () => {
+    const feed = describeForGroup(
+      taskEvent({ action: 'task.approved', details: { assigneeId: 23, title: 'Съездить за тканью' } }),
+      taskContext,
+      'uz',
+    );
+
+    expect(feed?.title).toBe("Qo'shimcha ish qabul qilindi");
+    expect(feed?.body).toBe('«Съездить за тканью»\nIjrochi: Karimova Nodira\nAdministrator: Rustamov Muzaffar');
+  });
+});
+
 describe('фото заказа', () => {
   const photoOrder: FeedOrder = { ...order, label: 'DH-000009' };
   const photo = { body: new Uint8Array([1, 2, 3]), mimeType: 'image/jpeg' };
