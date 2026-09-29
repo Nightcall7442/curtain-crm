@@ -202,7 +202,10 @@ const FILE_EXTENSIONS: Readonly<Record<string, string>> = {
 
 function attachFile(form: FormData, field: string, photo: TelegramPhoto): void {
   const extension = FILE_EXTENSIONS[photo.mimeType] ?? 'bin';
-  form.set(field, new Blob([photo.body], { type: photo.mimeType }), `${field}.${extension}`);
+  // Копия в `Uint8Array` на обычном `ArrayBuffer`: DOM-типы `Blob` не
+  // принимают массив, который может лежать на `SharedArrayBuffer`.
+  const bytes = new Uint8Array(photo.body);
+  form.set(field, new Blob([bytes], { type: photo.mimeType }), `${field}.${extension}`);
 }
 
 function groupForm(chatId: string, fields: Readonly<Record<string, string>>): FormData {
