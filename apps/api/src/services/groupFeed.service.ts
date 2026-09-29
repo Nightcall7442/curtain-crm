@@ -1,13 +1,18 @@
-import { orders, users, type DbExecutor } from '@curtain-crm/db';
+import { orders, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
+  findTransition,
   isOrderStatus,
   isRole,
+  MANAGEMENT_ROLES,
   ORDER_STATUS_LABELS,
   ORDER_TYPE_LABELS,
   OrderStatus,
   OrderType,
   PHOTO_STAGE_LABELS,
+  PHOTO_STAGE_UPLOADER_ROLES,
+  Role,
   ROLE_LABELS,
+  ROLES,
   translate,
   type Locale,
   type OrderType as OrderTypeName,
@@ -135,12 +140,25 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
   },
 };
 
+/** Роли, на которые назначают в заказе, — в порядке хода заказа по цеху. */
+const ORDER_ASSIGNEE_ROLES = [
+  Role.MASTER,
+  Role.SEWER,
+  Role.QC,
+  Role.CORNICE_INSTALLER,
+  Role.INSTALLER,
+] as const;
+
+type OrderAssigneeRole = (typeof ORDER_ASSIGNEE_ROLES)[number];
+
 /** Заказ, о котором сообщение, — в том виде, в каком его знают в цехе. */
 export interface FeedOrder {
   /** `DH-000007`, а не id: по номеру заказ ищут в панели и называют вслух. */
   readonly label: string;
   readonly clientName: string;
   readonly orderType: OrderTypeName;
+  /** Кто на какой роли назначен — чтобы подписать автора его ролью в заказе. */
+  readonly assignees: Readonly<Record<OrderAssigneeRole, number | null>>;
 }
 
 export const feedOrder = (row: {
@@ -148,16 +166,64 @@ export const feedOrder = (row: {
   readonly orderNumber: string | null;
   readonly clientName: string;
   readonly orderType: OrderTypeName;
+  readonly masterId: number | null;
+  readonly sewerId: number | null;
+  readonly qcId: number | null;
+  readonly corniceInstallerId: number | null;
+  readonly installerId: number | null;
 }): FeedOrder => ({
   label: row.orderNumber ?? `#${row.id.toString()}`,
   clientName: row.clientName,
   orderType: row.orderType,
+  assignees: {
+    master: row.masterId,
+    sewer: row.sewerId,
+    qc: row.qcId,
+    cornice_installer: row.corniceInstallerId,
+    installer: row.installerId,
+  },
 });
 
 export interface FeedContext {
   readonly order: FeedOrder | null;
   /** Имена по id: автор действия и те, кого оно касается. */
   readonly names: ReadonlyMap<number, string>;
+  /** Должности автора действия. */
+  readonly actorRoles: readonly Role[];
+}
+
+/**
+ * Кем выступал автор действия — вместо безликого «Kim».
+ *
+ * Сначала роль, на которую он назначен в этом заказе, затем его должности:
+ * рабочие раньше руководящих — швея, взявшая заказ из общего пула, ещё не
+ * назначена, но действует как швея. `allowed` — роли, которым действие
+ * вообще доступно (переход статуса, загрузка фото этапа): админ, назначенный
+ * в заказе ОТК, при проверке админа подписывается админом, а не ОТК.
+ */
+export function actorRole(
+  actorId: number,
+  order: FeedOrder | null,
+  actorRoles: readonly Role[],
+  allowed?: readonly Role[],
+): Role | null {
+  const fits = (role: Role): boolean => allowed === undefined || allowed.includes(role);
+  const assigned =
+    order === null ? [] : ORDER_ASSIGNEE_ROLES.filter((role) => order.assignees[role] === actorId);
+  const isManagementRole = (role: Role): boolean => MANAGEMENT_ROLES.includes(role);
+  const held = [
+    ...ROLES.filter((role) => actorRoles.includes(role) && !isManagementRole(role)),
+    ...ROLES.filter((role) => actorRoles.includes(role) && isManagementRole(role)),
+  ];
+
+  return (
+    assigned.find(fits) ??
+    held.find(fits) ??
+    assigned[0] ??
+    // Ни одна роль не подошла к действию — старшая должность.
+    ROLES.find((role) => actorRoles.includes(role)) ??
+    null
+  );
 }
 
 export interface FeedMessage {
@@ -177,7 +243,8 @@ const line = (label: string, value: string | null): string | null =>
 
 const message = (title: string, lines: readonly (string | null)[]): FeedMessage => ({
   title,
-  body: lines.filter((part): part is string => part !== null).join('\n'),
+  // Повтор убирается: назначивший себя ОТК — это одна строка, а не две.
+  body: [...new Set(lines.filter((part): part is string => part !== null))].join('\n'),
 });
 
 /** Чей заказ: клиент, а у пошива для склада — тип (клиент там — заглушка «Склад»). */
@@ -202,7 +269,12 @@ export function describeForGroup(
   const details = input.details ?? {};
   const name = (id: unknown): string =>
     (typeof id === 'number' ? context.names.get(id) : undefined) ?? t.someone;
-  const actor = line(t.by, name(input.actorId));
+  /** Строка автора: «Tikuvchi: …», «Administrator: …»; без роли — «Kim: …». */
+  const actorLine = (allowed?: readonly Role[]): string | null => {
+    const role = actorRole(input.actorId, context.order, context.actorRoles, allowed);
+    return line(role === null ? t.by : translate(ROLE_LABELS, role, locale), name(input.actorId));
+  };
+  const actor = actorLine();
 
   if (input.action === 'ready_made_item.sold') {
     const model = text(details['model']);
@@ -238,6 +310,7 @@ export function describeForGroup(
       const to = details['toStatus'];
       if (!isOrderStatus(from) || !isOrderStatus(to)) return null;
       const status = translate(ORDER_STATUS_LABELS, to, locale);
+      const mover = actorLine(findTransition(from, to, order.orderType)?.roles);
 
       /*
         Создание заказа — это переход из «Нового»: он пишется в журнал сразу
@@ -250,7 +323,7 @@ export function describeForGroup(
           order.orderType === OrderType.READY_MADE ? typeLine : null,
           whose,
           line(t.status, status),
-          actor,
+          mover,
         ]);
       }
 
@@ -258,16 +331,22 @@ export function describeForGroup(
         whose,
         line(t.previousStatus, translate(ORDER_STATUS_LABELS, from, locale)),
         line(t.comment, text(details['comment'])),
-        actor,
+        mover,
       ]);
     }
 
-    case 'order.cancelled':
+    case 'order.cancelled': {
+      const from = details['fromStatus'];
       return message(t.orderCancelled(order.label), [
         whose,
         line(t.reason, text(details['comment'])),
-        actor,
+        actorLine(
+          isOrderStatus(from)
+            ? findTransition(from, OrderStatus.CANCELLED, order.orderType)?.roles
+            : undefined,
+        ),
       ]);
+    }
 
     case 'order.assignee_changed': {
       const role = details['role'];
@@ -275,15 +354,17 @@ export function describeForGroup(
       const roleName = translate(ROLE_LABELS, role, locale);
       const from = details['from'];
       const to = details['to'];
+      // Назначает руководство; исполнитель, взявший заказ сам, — своей ролью.
+      const assigner = actorLine(MANAGEMENT_ROLES);
 
       if (typeof to !== 'number') {
-        return message(t.unassigned(order.label), [whose, line(roleName, name(from)), actor]);
+        return message(t.unassigned(order.label), [whose, line(roleName, name(from)), assigner]);
       }
       return message(t.assigned(order.label), [
         whose,
         line(roleName, name(to)),
         typeof from === 'number' ? line(t.previousAssignee, name(from)) : null,
-        actor,
+        assigner,
       ]);
     }
 
@@ -340,6 +421,11 @@ export async function announceToGroup(executor: DbExecutor, input: RecordAuditIn
     .from(users)
     .where(inArray(users.id, userIds));
 
+  const actorRoles = await executor
+    .select({ role: userRoles.role })
+    .from(userRoles)
+    .where(eq(userRoles.userId, input.actorId));
+
   const [order] =
     typeof orderId === 'number'
       ? await executor
@@ -348,6 +434,11 @@ export async function announceToGroup(executor: DbExecutor, input: RecordAuditIn
             orderNumber: orders.orderNumber,
             clientName: orders.clientName,
             orderType: orders.orderType,
+            masterId: orders.masterId,
+            sewerId: orders.sewerId,
+            qcId: orders.qcId,
+            corniceInstallerId: orders.corniceInstallerId,
+            installerId: orders.installerId,
           })
           .from(orders)
           .where(eq(orders.id, orderId))
@@ -359,6 +450,7 @@ export async function announceToGroup(executor: DbExecutor, input: RecordAuditIn
     {
       order: order === undefined ? null : feedOrder(order),
       names: new Map(people.map((person) => [person.id, person.fullName])),
+      actorRoles: actorRoles.map((row) => row.role),
     },
     GROUP_FEED_LOCALE,
   );
@@ -375,14 +467,18 @@ export interface PhotoAlbum {
   readonly order: FeedOrder;
   readonly stage: PhotoStage;
   readonly uploaderName: string;
+  /** Кем снимал: роль в заказе или должность; `null` — подпишется «Kim». */
+  readonly uploaderRole: Role | null;
 }
 
 /** Подпись альбома: чей заказ, какой этап, кто снимал. */
 export function describePhotoAlbum(album: PhotoAlbum, locale: Locale): FeedMessage {
   const t = FEED_TEXT[locale];
+  const uploader =
+    album.uploaderRole === null ? t.by : translate(ROLE_LABELS, album.uploaderRole, locale);
   return message(t.photos(album.order.label, translate(PHOTO_STAGE_LABELS, album.stage, locale)), [
     whoseOrder(album.order, locale),
-    line(t.by, album.uploaderName),
+    line(uploader, album.uploaderName),
   ]);
 }
 
@@ -435,6 +531,7 @@ export function queueOrderPhotoForGroup(params: {
   readonly stage: PhotoStage;
   readonly uploaderId: number;
   readonly uploaderName: string;
+  readonly uploaderRoles: readonly Role[];
   readonly photo: TelegramPhoto;
 }): void {
   if (!isTelegramGroupEnabled()) return;
@@ -453,6 +550,12 @@ export function queueOrderPhotoForGroup(params: {
     order: params.order,
     stage: params.stage,
     uploaderName: params.uploaderName,
+    uploaderRole: actorRole(
+      params.uploaderId,
+      params.order,
+      params.uploaderRoles,
+      PHOTO_STAGE_UPLOADER_ROLES[params.stage],
+    ),
     photos: [params.photo],
     timer: scheduleFlush(key),
   });

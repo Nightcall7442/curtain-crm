@@ -182,6 +182,7 @@ export const orderPhotosRouter = router({
         stage: input.stage,
         uploaderId: ctx.user.id,
         uploaderName: ctx.user.fullName,
+        uploaderRoles: ctx.user.roles,
         photo: { body, mimeType: stored.mimeType },
       });
 
