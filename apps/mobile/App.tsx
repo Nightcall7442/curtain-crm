@@ -6,11 +6,11 @@ import {
   useFonts,
 } from '@expo-google-fonts/manrope';
 import { NavigationContainer } from '@react-navigation/native';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
@@ -20,6 +20,26 @@ import { authFetch, isUnauthorized, setSessionExpiredHandler } from './src/lib/a
 import { accountStorage, tokenStorage } from './src/lib/storage';
 import { resolveApiUrl, trpc } from './src/lib/trpc';
 import { RootNavigator } from './src/navigation/RootNavigator';
+
+/*
+  Вернулся в приложение — данные обновляются.
+
+  В браузере React Query сам слышит, что вкладка снова активна, и
+  перезапрашивает устаревшее. В приложении такого события нет: без этой
+  связки главная и касса показывали цифры с минуты, когда приложение
+  открыли, — свернул утром, развернул вечером, а «сегодня» всё утреннее.
+  PWA живёт в браузере и слушает вкладку сама — её не трогаем.
+*/
+if (Platform.OS !== 'web') {
+  focusManager.setEventListener((handleFocus) => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      handleFocus(state === 'active');
+    });
+    return () => {
+      subscription.remove();
+    };
+  });
+}
 
 /**
  * Корень приложения: провайдеры, клиент tRPC и состояние аутентификации.

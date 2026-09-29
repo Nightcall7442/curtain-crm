@@ -15,8 +15,8 @@ import {
   stageFeesOfOrderType,
   TransitionKind,
 } from '@curtain-crm/shared';
-import { BlurView } from 'expo-blur';
-import { useState, type ReactElement } from 'react';
+import { BlurTargetView, BlurView } from 'expo-blur';
+import { useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -73,6 +73,8 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
     открытый глаз ничего сверх этого не покажет.
   */
   const [feesShown, setFeesShown] = useState(false);
+  /** Что размывать на Android: там размытию нужна явная цель. */
+  const feesTarget = useRef<View>(null);
 
   const isManager = useIsManagement();
   const { user } = useAuth();
@@ -274,27 +276,36 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             </Pressable>
 
             <View>
-              {visibleStageFees.map(([stage, value]) => (
-                <Row
-                  key={stage}
-                  label={t(ORDER_STAGE_FEE_LABELS, stage)}
-                  value={
-                    Number.parseFloat(value) > 0 ? money(parseMoney(value)) : m('order.feeNotSet')
-                  }
-                />
-              ))}
+              <BlurTargetView ref={feesTarget}>
+                {visibleStageFees.map(([stage, value]) => (
+                  <Row
+                    key={stage}
+                    label={t(ORDER_STAGE_FEE_LABELS, stage)}
+                    value={
+                      Number.parseFloat(value) > 0 ? money(parseMoney(value)) : m('order.feeNotSet')
+                    }
+                  />
+                ))}
+              </BlurTargetView>
 
               {/*
                 Заслонка поверх сумм, а не `display: none`: строки остаются на
                 месте, и карточка не прыгает при каждом нажатии глаза.
-                Полупрозрачный слой под размытием обязателен — на Android до
-                12-й версии `expo-blur` почти не размывает, и без него суммы
-                читались бы сквозь «скрытие».
+
+                На Android `expo-blur` по умолчанию НЕ размывает — рисует
+                полупрозрачную плашку, и в APK суммы читались сквозь неё, а в
+                PWA размывал браузер. Настоящее размытие там включается
+                явно: способ `dimezisBlurView` и цель — `BlurTargetView`
+                вокруг строк. Делитель интенсивности 1 вместо 4 по умолчанию —
+                чтобы суммы не читались, а не слегка расплывались.
               */}
               {!feesShown && (
                 <BlurView
                   intensity={24}
                   tint="light"
+                  blurTarget={feesTarget}
+                  blurMethod="dimezisBlurView"
+                  blurReductionFactor={1}
                   pointerEvents="none"
                   style={[StyleSheet.absoluteFill, styles.feesVeil]}
                 />

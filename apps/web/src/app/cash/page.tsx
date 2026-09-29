@@ -10,7 +10,6 @@ import {
   PAYMENT_METHODS,
   PaymentKind,
   type PaymentKind as PaymentKindName,
-  todayIso,
 } from '@curtain-crm/shared';
 import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
@@ -21,6 +20,7 @@ import { Field, Input } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
+import { useToday } from '@/lib/useToday';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,8 +37,15 @@ import { cn } from '@/lib/utils';
  * «Финансах».
  */
 export default function CashPage(): ReactElement {
-  // Местный день, не UTC: до пяти утра по Ташкенту касса иначе показывала бы вчера.
-  const [day, setDay] = useState(() => todayIso());
+  /*
+    Местный день, не UTC: до пяти утра по Ташкенту касса иначе показывала бы
+    вчера. По умолчанию день катится вместе с календарём — вкладка, открытая
+    вчера, наутро показывает сегодня; выбранная вручную дата держится, пока
+    её не вернут на сегодня.
+  */
+  const today = useToday();
+  const [picked, setPicked] = useState<string | null>(null);
+  const day = picked ?? today;
 
   const summary = trpc.payments.summary.useQuery({ day });
   const list = trpc.payments.list.useQuery({ day });
@@ -62,7 +69,8 @@ export default function CashPage(): ReactElement {
             type="date"
             value={day}
             onChange={(event) => {
-              setDay(event.target.value);
+              const value = event.target.value;
+              setPicked(value === '' || value === today ? null : value);
             }}
           />
         </Field>
@@ -310,12 +318,12 @@ export default function CashPage(): ReactElement {
       </Card>
 
       <Card>
-        <CardHeader title="Все приходы за день" />
+        <CardHeader title="Все движения за день" />
         <DataTable
           isLoading={list.isLoading}
           rows={list.data ?? []}
           rowKey={(row) => row.id}
-          emptyMessage="Приходов нет"
+          emptyMessage="Движений нет"
           columns={[
             {
               key: 'time',

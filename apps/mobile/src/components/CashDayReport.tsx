@@ -5,15 +5,15 @@ import {
   PAYMENT_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
-  todayIso,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { type LocaleMoney, useLocale, type Translate } from '../hooks/useLocale';
+import { useToday } from '../hooks/useToday';
 import { trpc, type RouterOutputs } from '../lib/trpc';
 import { colors, hairline, spacing, typography } from '../theme';
-import { Card, CardTitle, Empty, Skeleton } from './Card';
+import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { DateField } from './DateField';
 import { Field } from './Field';
 
@@ -31,7 +31,15 @@ import { Field } from './Field';
  */
 export function CashDayReport(): ReactElement {
   const { m, t, money } = useLocale();
-  const [day, setDay] = useState(() => todayIso());
+  /*
+    День по умолчанию — сегодняшний и катится вместе с календарём; выбранная
+    вручную дата держится, пока её не вернут на сегодня. Раньше дата
+    запоминалась при открытии экрана, и касса, открытая вчера, наутро
+    показывала вчера.
+  */
+  const today = useToday();
+  const [picked, setPicked] = useState<string | null>(null);
+  const day = picked ?? today;
 
   const summary = trpc.payments.summary.useQuery({ day });
   const collections = trpc.payments.collections.useQuery({ day });
@@ -47,10 +55,22 @@ export function CashDayReport(): ReactElement {
         <CardTitle title={m('cashDay.title')} icon="paid" />
 
         <Field label={m('cashDay.day')}>
-          <DateField value={day} onChange={setDay} placeholder={m('cashDay.day')} />
+          <DateField
+            value={day}
+            onChange={(value) => {
+              setPicked(value === today ? null : value);
+            }}
+            placeholder={m('cashDay.day')}
+          />
         </Field>
 
-        {summary.isLoading ? (
+        {/*
+          Ошибка — ошибкой, а не нулями: пустая касса и касса, которая не
+          загрузилась, выглядели одинаково, и сбой читался как «денег нет».
+        */}
+        {summary.isError ? (
+          <ErrorState message={summary.error.message} />
+        ) : summary.isLoading ? (
           <Skeleton />
         ) : (
           <>
@@ -84,7 +104,9 @@ export function CashDayReport(): ReactElement {
       */}
       <Card>
         <CardTitle title={m('cashDay.totals')} icon="paid" />
-        {summary.isLoading ? (
+        {summary.isError ? (
+          <ErrorState message={summary.error.message} />
+        ) : summary.isLoading ? (
           <Skeleton />
         ) : (
           <>
@@ -119,7 +141,9 @@ export function CashDayReport(): ReactElement {
 
       <Card>
         <CardTitle title={m('cashDay.bySource')} icon="orders" />
-        {summary.isLoading ? (
+        {summary.isError ? (
+          <ErrorState message={summary.error.message} />
+        ) : summary.isLoading ? (
           <Skeleton />
         ) : data === undefined || data.rows.length === 0 ? (
           <Empty message={m('cashDay.noIncome')} />
