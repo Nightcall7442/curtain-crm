@@ -24,7 +24,6 @@ import { CashCollectionCard } from '../components/CashCollectionCard';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
-import { ShiftControl } from '../components/ShiftControl';
 import { ShiftInfoCard } from '../components/ShiftInfoCard';
 import { WeekAttendance, type WeekDay } from '../components/WeekAttendance';
 import { useAuth, useIsCeo, useIsManagement } from '../hooks/useAuth';
@@ -173,17 +172,14 @@ export function ProfileScreen(): ReactElement {
       */}
 
       {/*
-        Своя смена директора — здесь, а не на «Явке».
+        Смены у директора нет — ни здесь, ни на «Явке».
 
-        На «Явке» он смотрит цех: кто пришёл и чем занят. Карточка «Проведите,
-        чтобы начать смену» первой строкой там мешала, владелец её зачеркнул —
-        но отмечаться сам он всё же хочет, и в приложении это стало негде
-        сделать вовсе. Профиль для этого и есть: всё, что про себя.
-
-        Только директору: у админа та же карточка осталась на «Явке» — он
-        сотрудник цеха и отмечается вместе со всеми.
+        Карточка «Проведите, чтобы начать смену» стояла здесь, пока директор
+        собирался отмечаться сам; владелец решил, что начинать и завершать
+        смену директору не нужно. На «Явке» он смотрит цех, отметка — дело
+        сотрудников. Админ отмечается на «Явке» вместе со всеми: он работник
+        цеха.
       */}
-      {isCeo && <ShiftControl />}
 
       {/*
         Остальному руководству — без явки, зарплаты и «моих заказов»: заказы

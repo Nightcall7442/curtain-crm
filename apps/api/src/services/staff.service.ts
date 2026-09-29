@@ -1,4 +1,4 @@
-import { personalBreaks, shifts, users, type DbExecutor } from '@curtain-crm/db';
+import { personalBreaks, shifts, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
   ageBucket,
   ageInYears,
@@ -6,6 +6,7 @@ import {
   DEPARTMENTS,
   EMPLOYMENT_TYPES,
   PresenceStatus,
+  Role,
   tenureBucket,
   TENURE_BUCKETS,
   type AgeBucketKey,
@@ -146,6 +147,10 @@ export async function staffSummary(
       .select({
         total: count(),
         active: sql<string>`count(*) filter (where ${users.isActive})`,
+        // Смену открывают сотрудники; директор не отмечается и прогульщиком
+        // не считается.
+        expected: sql<string>`count(*) filter (where ${users.isActive} and not exists (
+          select 1 from ${userRoles} r where r.user_id = ${users.id} and r.role = ${Role.CEO}))`,
       })
       .from(users),
 
@@ -173,6 +178,7 @@ export async function staffSummary(
 
   const total = totals?.total ?? 0;
   const active = Number.parseInt(totals?.active ?? '0', 10);
+  const expected = Number.parseInt(totals?.expected ?? '0', 10);
   const atWorkToday = Number.parseInt(atWork?.value ?? '0', 10);
 
   return {
@@ -180,9 +186,9 @@ export async function staffSummary(
     active,
     inactive: total - active,
     atWorkToday,
-    // «Отсутствуют» считается от активных: уволенные не должны попадать
-    // в число прогульщиков.
-    absentToday: Math.max(0, active - atWorkToday),
+    // «Отсутствуют» считается от тех, кто должен отмечаться: уволенные и
+    // директор в число прогульщиков не попадают.
+    absentToday: Math.max(0, expected - atWorkToday),
     hiredThisMonth: hires?.value ?? 0,
     firedThisMonth: fires?.value ?? 0,
   };
