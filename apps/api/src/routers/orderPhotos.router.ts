@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
 import { base64FileSchema, idSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
+import { feedOrder, queueOrderPhotoForGroup } from '../services/groupFeed.service';
 import {
   assertCanAccessOrder,
   changeOrderStatus,
@@ -131,8 +132,9 @@ export const orderPhotosRouter = router({
       // на которой ломается галерея.
       const stored = await storage.upload({ key, body, mimeType: input.file.mimeType });
 
+      let saved;
       try {
-        return await ctx.db.transaction(async (tx) => {
+        saved = await ctx.db.transaction(async (tx) => {
           const [created] = await tx
             .insert(orderPhotos)
             .values({
@@ -172,6 +174,18 @@ export const orderPhotosRouter = router({
         await storage.delete(stored.key).catch(() => undefined);
         throw error;
       }
+
+      // Только после записи: откатившееся фото в группу не уходит.
+      queueOrderPhotoForGroup({
+        orderId: order.id,
+        order: feedOrder(order),
+        stage: input.stage,
+        uploaderId: ctx.user.id,
+        uploaderName: ctx.user.fullName,
+        photo: { body, mimeType: stored.mimeType },
+      });
+
+      return saved;
     }),
 
   /** Удаление фотографии: автором загрузки или руководством. */

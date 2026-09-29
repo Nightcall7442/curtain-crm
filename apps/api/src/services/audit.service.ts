@@ -1,12 +1,8 @@
-import { auditLog, users, type DbExecutor } from '@curtain-crm/db';
-import { eq } from 'drizzle-orm';
+import { auditLog, type DbExecutor } from '@curtain-crm/db';
 
-import { isOrderStatus, orderStatusLabel } from '@curtain-crm/shared';
-
-import { AUDIT_ACTION_LABELS } from '../lib/auditLabels';
 import type { AuditAction } from '../lib/constants';
 
-import { isTelegramGroupEnabled, sendTelegramGroupMessage } from './telegram.service';
+import { announceToGroup } from './groupFeed.service';
 
 /**
  * Журнал значимых действий.
@@ -66,109 +62,6 @@ export async function recordAudit(executor: DbExecutor, input: RecordAuditInput)
   });
 
   await announceToGroup(executor, input);
-}
-
-/* -------------------------------------------------------------------------- */
-/*                        Лента действий в Telegram                           */
-/* -------------------------------------------------------------------------- */
-
-/** Сколько знаков деталей уходит в группу: остальное — шум в ленте. */
-const DETAILS_LIMIT = 180;
-
-/** Значение детали строкой; объекты и массивы сюда не попадают. */
-const scalar = (value: unknown): string =>
-  typeof value === 'string'
-    ? value
-    : typeof value === 'number' || typeof value === 'boolean'
-      ? value.toString()
-      : '';
-
-/** Вложенный объект («было/стало») — одним уровнем: `workPrice=100, deposit=0`. */
-const flatten = (value: Record<string, unknown>): string =>
-  Object.entries(value)
-    .map(([key, inner]) => (scalar(inner) === '' ? '' : `${key}=${scalar(inner)}`))
-    .filter((part) => part !== '')
-    .join(', ');
-
-/**
- * Переход статуса заказа — человеческой строкой: «Проверка ОТК → Прошёл ОТК».
- *
- * fromStatus/toStatus в деталях — служебные слаги (pending_qc), не то, что
- * стоит показывать в ленте. systemInitiated тоже служебное: отличать
- * «переход поставил человек» от «случился сам» в общей ленте незачем —
- * там и так подписан исполнитель.
- */
-function describeStatusChange(details: Record<string, unknown> | undefined): string | null {
-  if (details === undefined) return null;
-
-  const from = details['fromStatus'];
-  const to = details['toStatus'];
-  if (!isOrderStatus(from) || !isOrderStatus(to)) return null;
-
-  const comment = typeof details['comment'] === 'string' ? details['comment'] : '';
-  const arrow = orderStatusLabel(from) + ' → ' + orderStatusLabel(to);
-  return comment === '' ? arrow : arrow + '\n' + comment;
-}
-
-/**
- * Короткая расшифровка деталей: «kind: late_15_30 · points: -1».
- *
- * Значения-объекты («было/стало») разворачиваются на один уровень, глубже
- * не лезем: лента читается с телефона одним взглядом и не заменяет журнал,
- * который открывается в панели целиком.
- */
-function describeDetails(details: Record<string, unknown> | undefined): string {
-  if (details === undefined) return '';
-
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(details)) {
-    if (value === null || value === undefined) continue;
-
-    const text =
-      typeof value === 'object' ? flatten(value as Record<string, unknown>) : scalar(value);
-
-    if (text === '') continue;
-    parts.push(`${key}: ${text}`);
-  }
-
-  const line = parts.join(' · ');
-  return line.length > DETAILS_LIMIT ? `${line.slice(0, DETAILS_LIMIT)}…` : line;
-}
-
-/**
- * Пишет действие в группу мастерской.
- *
- * Владелец попросил, чтобы бот сообщал в группу о каждом действии, — а
- * каждое значимое действие и так проходит через журнал. Поэтому лента
- * живёт здесь, а не на шестидесяти вызовах по роутерам.
- *
- * Отправка не ждётся: запрос к Telegram идёт изнутри транзакции действия, и
- * ждать его — значит сделать чужой сервис условием работы мастерской.
- * Ошибки гасит сам клиент Bot API.
- *
- * Плата за это: если транзакция потом откатится, сообщение уже уйдёт. Откат
- * случается на ошибке, то есть редко, и лишняя строка в ленте дешевле
- * задержки на каждом действии.
- */
-async function announceToGroup(executor: DbExecutor, input: RecordAuditInput): Promise<void> {
-  if (!isTelegramGroupEnabled()) return;
-
-  const [actor] = await executor
-    .select({ fullName: users.fullName })
-    .from(users)
-    .where(eq(users.id, input.actorId))
-    .limit(1);
-
-  const entity =
-    input.entityId === null || input.entityId === undefined ? '' : ` #${input.entityId.toString()}`;
-  const body = [
-    `${actor?.fullName ?? 'Сотрудник'} · ${input.entityType}${entity}`,
-    describeStatusChange(input.details) ?? describeDetails(input.details),
-  ]
-    .filter((line) => line !== '')
-    .join('\n');
-
-  void sendTelegramGroupMessage(AUDIT_ACTION_LABELS[input.action], body);
 }
 
 /**
