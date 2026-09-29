@@ -404,6 +404,76 @@ export async function dayReport(
   };
 }
 
+/**
+ * Выручка за отрезок — одна на всю систему.
+ *
+ * Все приходы от клиентов (предоплаты и остатки по заказам, готовые шторы,
+ * витрина и прочее) любым способом — наличные, карта, QR, Click — где бы
+ * деньги сейчас ни лежали: на руках, в кассе или на счёте. Минус возвраты
+ * клиентам. Не выручка: инкассация (перекладывание), зарплата, закупки,
+ * терминальные чеки (не деньги, а отметка) и перенос из старого учёта.
+ */
+export interface Revenue {
+  /** Принято от клиентов. */
+  readonly income: MoneyMinor;
+  /** Возвращено клиентам. */
+  readonly refunds: MoneyMinor;
+  /** Выручка: принято минус возвращено. */
+  readonly net: MoneyMinor;
+  /** Сколько было приходов. */
+  readonly payments: number;
+}
+
+export async function revenue(
+  executor: DbExecutor,
+  range: { readonly from: Date; readonly to: Date },
+  branchId?: number,
+): Promise<Revenue> {
+  const from = sql`${sqlTimestamp(range.from)}::timestamptz`;
+  const to = sql`${sqlTimestamp(range.to)}::timestamptz`;
+  const branch = branchId === undefined ? sql`` : sql`and p.branch_id = ${branchId}`;
+
+  const [row] = await executor.execute(sql`
+    select
+      coalesce(sum(p.amount) filter (where p.kind in (${INCOME})), 0) as income,
+      coalesce(sum(p.amount) filter (where p.kind = ${PaymentKind.REFUND}), 0) as refunds,
+      count(*) filter (where p.kind in (${INCOME})) as n
+    from ${payments} p
+    where not p.opening and p.received_at >= ${from} and p.received_at < ${to} ${branch}`);
+
+  const income = money(row?.['income']);
+  const refunds = money(row?.['refunds']);
+  return {
+    income,
+    refunds,
+    net: income - refunds,
+    payments: Number.parseInt(toText(row?.['n']), 10) || 0,
+  };
+}
+
+/** Выручка по дням отрезка: день по Ташкенту `YYYY-MM-DD` → принято минус возвращено. */
+export async function revenueByDay(
+  executor: DbExecutor,
+  range: { readonly from: Date; readonly to: Date },
+  branchId?: number,
+): Promise<ReadonlyMap<string, MoneyMinor>> {
+  const from = sql`${sqlTimestamp(range.from)}::timestamptz`;
+  const to = sql`${sqlTimestamp(range.to)}::timestamptz`;
+  const branch = branchId === undefined ? sql`` : sql`and p.branch_id = ${branchId}`;
+
+  const rows = await executor.execute(sql`
+    select (p.received_at at time zone 'Asia/Tashkent')::date::text as day,
+      coalesce(sum(case when p.kind in (${INCOME}) then p.amount else -p.amount end), 0) as net
+    from ${payments} p
+    where not p.opening and p.received_at >= ${from} and p.received_at < ${to} ${branch}
+      and (p.kind in (${INCOME}) or p.kind = ${PaymentKind.REFUND})
+    group by 1`);
+
+  return new Map(
+    [...(rows as Iterable<Record<string, unknown>>)].map((row) => [toText(row['day']), money(row['net'])]),
+  );
+}
+
 /** Сколько чеков пробито за отрезок — норма дня продавцов. */
 export async function terminalChecksCount(
   executor: DbExecutor,

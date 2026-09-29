@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney, formatMoneyShort, OrderStatus } from '@curtain-crm/shared';
+import { formatIsoDateShort, formatMoney, formatMoneyShort, OrderStatus } from '@curtain-crm/shared';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
@@ -45,6 +45,7 @@ export function ManagementDashboard(): ReactElement {
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
 
   const dashboard = trpc.reports.dashboard.useQuery({});
+  const revenue = trpc.reports.revenue.useQuery({});
   const attention = trpc.reports.attention.useQuery({});
   const topProducts = trpc.reports.topProducts.useQuery({ ...period, limit: 5 });
   const dynamics = trpc.reports.dynamics.useQuery(period);
@@ -145,21 +146,34 @@ export function ManagementDashboard(): ReactElement {
           )}
         </div>
         <div className="xl:col-span-4">
-          {dashboard.isLoading ? (
+          {/*
+            Выручка — деньги из книги проводок (`reports.revenue`): все
+            приходы от клиентов любым способом минус возвраты. Раньше здесь
+            стояла сумма работ закрытых за месяц заказов — без готовых штор,
+            витрины и предоплат, и с кассой она не сходилась. Процент к
+            прошлому месяцу убран: неполный месяц против полного — не
+            сравнение. Прошлый месяц — в подписи, целиком и так и названный.
+          */}
+          {dashboard.isLoading || revenue.isLoading ? (
             <Skeleton className="h-[260px]" />
-          ) : data === undefined ? null : (
+          ) : data === undefined || revenue.data === undefined ? null : (
             <HeroCard
               title="Выручка за месяц"
-              value={formatMoneyShort(data.revenueThisMonthMinor, { withoutCurrency: true })}
+              value={formatMoneyShort(revenue.data.month.net, { withoutCurrency: true })}
               unit="сум"
-              delta={data.revenueMonthDelta}
-              caption={`Точно: ${data.revenueThisMonthFormatted} · прошлый месяц: ${formatMoneyShort(data.revenuePrevMonthMinor)}`}
+              caption={
+                `Точно: ${formatMoney(revenue.data.month.net)} · с ${formatIsoDateShort(revenue.data.month.since)}` +
+                (revenue.data.month.refunds > 0
+                  ? ` · возвраты ${formatMoney(revenue.data.month.refunds)} вычтены`
+                  : '') +
+                ` · прошлый месяц целиком: ${formatMoneyShort(revenue.data.prevMonth.net)}`
+              }
               chips={[
-                { label: 'Заказов за месяц', value: data.ordersThisMonth.toString(), href: '/orders' },
+                { label: 'Сегодня', value: formatMoney(revenue.data.today.net), href: '/cash' },
                 {
-                  label: 'Выполнено',
-                  value: data.completedThisMonth.toString(),
-                  href: `/orders?status=${OrderStatus.COMPLETED}`,
+                  label: `Неделя, с пн ${formatIsoDateShort(revenue.data.week.since)}`,
+                  value: formatMoney(revenue.data.week.net),
+                  href: '/reports',
                 },
                 { label: 'На смене сейчас', value: data.employeesOnShift.toString(), href: '/employees/timesheet' },
               ]}
@@ -541,7 +555,8 @@ export function ManagementDashboard(): ReactElement {
             { key: 'orders', header: 'Заказы', align: 'right', render: (row) => row.ordersCount },
             {
               key: 'revenue',
-              header: 'Выручка',
+              // Сумма работ закрытых заказов продавца — не деньги кассы.
+              header: 'Сумма заказов',
               align: 'right',
               render: (row) => (
                 <span className="text-primary" title={formatMoney(row.revenueMinor)}>
