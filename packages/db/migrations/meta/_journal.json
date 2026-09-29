@@ -428,6 +428,13 @@
       "when": 1790693163191,
       "tag": "0060_task_pending_review",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1790709057365,
+      "tag": "0061_reset_before_launch",
+      "breakpoints": true
     }
   ]
 }
