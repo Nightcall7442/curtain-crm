@@ -1,6 +1,7 @@
 import {
   formatIsoDateShort,
   isOverdueDate,
+  isTaskActive,
   TASK_STATUS_LABELS,
   TaskStatus,
   type TaskStatus as TaskStatusName,
@@ -23,6 +24,9 @@ import { Icon } from './Icon';
  * Открытое поручение закрывается одной кнопкой-галочкой прямо из списка:
  * лишний переход отдалял бы «сделал» от «отметил», а это самое частое
  * действие.
+ *
+ * Галочка не закрывает работу, а сдаёт её: поручение ждёт подтверждения
+ * руководителя и до его решения остаётся в списке с пометкой.
  *
  * Нажатие на саму карточку открывает поручение целиком. Раньше оно только
  * разворачивало описание, и на этом всё заканчивалось: приложить фото или
@@ -57,6 +61,8 @@ export function TaskCard({
   });
 
   const isOpen = task.status === TaskStatus.OPEN;
+  /** Закрыто руководством — приглушаем; сданное на проверку ещё живое. */
+  const isClosed = !isTaskActive(task.status);
   const overdue = isOpen && task.dueDate !== null && isOverdueDate(task.dueDate);
 
   return (
@@ -66,10 +72,10 @@ export function TaskCard({
       }}
       accessibilityRole="button"
       accessibilityLabel={m('taskCard.open', { title: task.title })}
-      style={[styles.card, !isOpen && styles.cardClosed]}
+      style={[styles.card, isClosed && styles.cardClosed]}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, !isOpen && styles.titleClosed]}>{task.title}</Text>
+        <Text style={[styles.title, isClosed && styles.titleClosed]}>{task.title}</Text>
 
         {isOpen ? (
           <Pressable
@@ -90,7 +96,13 @@ export function TaskCard({
         ) : (
           <Pill
             text={t(TASK_STATUS_LABELS, task.status)}
-            tone={task.status === TaskStatus.DONE ? 'positive' : 'neutral'}
+            tone={
+              task.status === TaskStatus.DONE
+                ? 'positive'
+                : task.status === TaskStatus.PENDING_REVIEW
+                  ? 'info'
+                  : 'neutral'
+            }
           />
         )}
       </View>

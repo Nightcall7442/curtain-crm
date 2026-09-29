@@ -231,6 +231,10 @@ const EXACT: Readonly<Record<string, string>> = {
   'Доп. работа не найдена': "Qo'shimcha ish topilmadi",
   'Доп. работа закреплена за другим сотрудником': "Qo'shimcha ish boshqa xodimga biriktirilgan",
   'Доп. работа уже закрыта': "Qo'shimcha ish allaqachon yopilgan",
+  'Доп. работа уже сдана — ждёт подтверждения руководителя':
+    "Qo'shimcha ish topshirilgan — rahbar tasdig'ini kutmoqda",
+  'Вернуть можно только сданную работу, которая ждёт подтверждения':
+    "Faqat topshirilgan va tasdiq kutayotgan ishni qaytarish mumkin",
   'Это поручение выдано другому сотруднику': 'Bu topshiriq boshqa xodimga berilgan',
 
   // users

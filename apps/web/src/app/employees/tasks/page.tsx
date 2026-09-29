@@ -3,12 +3,13 @@
 import {
   formatIsoDateShort,
   isOverdueDate,
+  isTaskActive,
   TASK_STATUS_LABELS_RU,
   TASK_STATUSES,
   TaskStatus,
   type TaskStatus as TaskStatusName,
 } from '@curtain-crm/shared';
-import { Check, Plus } from 'lucide-react';
+import { Check, Plus, Undo2 } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { TaskCreateDialog } from '@/components/employees/TaskCreateDialog';
@@ -26,15 +27,28 @@ import { formatDate } from '@/lib/utils';
  * Руководитель видит здесь все поручения мастерской: кто, что и к какому
  * сроку. Выдать новое можно отсюда («+ Новая») или из строки сотрудника.
  * Отмена — только с причиной; адресат получает уведомление.
+ *
+ * Сданные сотрудником поручения стоят первыми и ждут решения: «Принять»
+ * закрывает работу, «Вернуть» отправляет её обратно с причиной — причина
+ * ложится в переписку поручения. Открытое поручение руководитель может
+ * закрыть и сам, без сдачи.
  */
 export default function EmployeeTasksPage(): ReactElement {
   const toast = useToast();
 
-  const [status, setStatus] = useState<TaskStatusName | ''>(TaskStatus.OPEN);
+  /*
+    По умолчанию — все статусы: сданные на проверку сортируются первыми,
+    за ними открытые. Фильтр «В работе» по умолчанию прятал бы как раз то,
+    что ждёт руководителя.
+  */
+  const [status, setStatus] = useState<TaskStatusName | ''>('');
   const [creating, setCreating] = useState(false);
   /** Доп. работа, ожидающее причину отмены. `null` — окно закрыто. */
   const [cancelling, setCancelling] = useState<{ id: number; title: string } | null>(null);
   const [reason, setReason] = useState('');
+  /** Сданная работа, которую возвращают, — ждёт причину. `null` — окно закрыто. */
+  const [returning, setReturning] = useState<{ id: number; title: string } | null>(null);
+  const [returnReason, setReturnReason] = useState('');
 
   const utils = trpc.useUtils();
   const query = trpc.tasks.list.useQuery(status === '' ? {} : { status });
@@ -44,12 +58,27 @@ export default function EmployeeTasksPage(): ReactElement {
   };
 
   const complete = trpc.tasks.complete.useMutation({
-    onSuccess() {
-      toast.success('Доп. работа закрыта');
+    onSuccess(_data, variables) {
+      const row = query.data?.items.find((item) => item.id === variables.id);
+      toast.success(
+        row?.status === TaskStatus.PENDING_REVIEW ? 'Доп. работа принята' : 'Доп. работа закрыта',
+      );
       refresh();
     },
     onError(error) {
       toast.error('Не удалось закрыть', error.message);
+    },
+  });
+
+  const sendBack = trpc.tasks.sendBack.useMutation({
+    onSuccess() {
+      setReturning(null);
+      setReturnReason('');
+      toast.success('Доп. работа возвращена', 'Сотрудник увидит причину в переписке');
+      refresh();
+    },
+    onError(error) {
+      toast.error('Не удалось вернуть', error.message);
     },
   });
 
@@ -163,6 +192,50 @@ export default function EmployeeTasksPage(): ReactElement {
         </div>
       </Modal>
 
+      <Modal
+        open={returning !== null}
+        title={returning === null ? '' : `Вернуть: «${returning.title}»`}
+        onClose={() => {
+          setReturning(null);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setReturning(null);
+              }}
+            >
+              Не возвращать
+            </Button>
+            <Button
+              loading={sendBack.isPending}
+              disabled={returnReason.trim().length < 3}
+              onClick={() => {
+                if (returning !== null) {
+                  sendBack.mutate({ id: returning.id, reason: returnReason.trim() });
+                }
+              }}
+            >
+              Вернуть в работу
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <FormError message={sendBack.error?.message ?? null} />
+          <textarea
+            value={returnReason}
+            onChange={(event) => {
+              setReturnReason(event.target.value);
+            }}
+            rows={2}
+            placeholder="Что доделать — сотрудник увидит это в переписке поручения"
+            className={controlClass('md')}
+          />
+        </div>
+      </Modal>
+
       <DataTable
         isLoading={query.isLoading}
         rows={query.data?.items ?? []}
@@ -170,7 +243,9 @@ export default function EmployeeTasksPage(): ReactElement {
         emptyMessage={
           status === TaskStatus.OPEN
             ? 'Открытых поручений нет'
-            : 'Доп. работ с таким статусом нет'
+            : status === TaskStatus.PENDING_REVIEW
+              ? 'Сданных на проверку поручений нет'
+              : 'Доп. работ с таким статусом нет'
         }
         columns={[
           {
@@ -232,7 +307,9 @@ export default function EmployeeTasksPage(): ReactElement {
                     ? 'positive'
                     : row.status === TaskStatus.CANCELLED
                       ? 'neutral'
-                      : 'warning'
+                      : row.status === TaskStatus.PENDING_REVIEW
+                        ? 'accent'
+                        : 'warning'
                 }
               >
                 {TASK_STATUS_LABELS_RU[row.status]}
@@ -251,7 +328,7 @@ export default function EmployeeTasksPage(): ReactElement {
             align: 'right',
             className: 'whitespace-nowrap',
             render: (row) =>
-              row.status === TaskStatus.OPEN ? (
+              isTaskActive(row.status) ? (
                 <span className="inline-flex items-center gap-1.5">
                   <button
                     type="button"
@@ -259,11 +336,29 @@ export default function EmployeeTasksPage(): ReactElement {
                     onClick={() => {
                       complete.mutate({ id: row.id });
                     }}
+                    title={
+                      row.status === TaskStatus.PENDING_REVIEW
+                        ? 'Сотрудник сдал работу — принять и закрыть'
+                        : 'Закрыть за сотрудника, не дожидаясь сдачи'
+                    }
                     className="inline-flex items-center gap-1 pressable rounded-full border border-positive/40 px-2 py-1 text-footnote font-medium text-positive hover:bg-positive/10 disabled:opacity-50"
                   >
                     <Check className="h-3 w-3" aria-hidden />
-                    Выполнено
+                    {row.status === TaskStatus.PENDING_REVIEW ? 'Принять' : 'Выполнено'}
                   </button>
+                  {row.status === TaskStatus.PENDING_REVIEW && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReturnReason('');
+                        setReturning({ id: row.id, title: row.title });
+                      }}
+                      className="inline-flex items-center gap-1 pressable rounded-full border border-warning/40 px-2 py-1 text-footnote font-medium text-warning hover:bg-warning/10"
+                    >
+                      <Undo2 className="h-3 w-3" aria-hidden />
+                      Вернуть
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {

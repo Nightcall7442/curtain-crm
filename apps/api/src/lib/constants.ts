@@ -206,6 +206,9 @@ export const AUDIT_ACTIONS = [
   'catalog.items_imported',
   'task.created',
   'task.completed',
+  'task.submitted',
+  'task.approved',
+  'task.returned',
   'task.cancelled',
 
   'dayoff.requested',
