@@ -5,6 +5,7 @@ import {
   parseMoney,
   MANAGEMENT_ROLES,
   paymentIncomeKindSchema,
+  PAYMENT_KINDS,
   PaymentKind,
   paymentMethodSchema,
   Role,
@@ -325,10 +326,22 @@ export const paymentsRouter = router({
       balance(ctx.db, { at: new Date(), branchId: input.branchId, managementIds: await managementIds(ctx.db) }),
     ),
 
-  /** Строки книги за день — кто, чем и за что; для сверки ящика вечером. */
+  /**
+   * Строки книги за день — кто, чем и за что; для сверки ящика вечером.
+   *
+   * Терминальные чеки сюда не входят: это не деньги кассы, а отметка о
+   * пробитом чеке, и в общем списке они стояли приходом со знаком «+»,
+   * хотя в итоги дня не попадают. У чеков своя таблица на той же странице.
+   */
   list: managementProcedure
     .input(z.object({ day: z.string().date(), branchId: idSchema.optional() }))
-    .query(({ ctx, input }) => entries(ctx.db, { range: dayRange(input.day), branchId: input.branchId })),
+    .query(({ ctx, input }) =>
+      entries(ctx.db, {
+        range: dayRange(input.day),
+        branchId: input.branchId,
+        kinds: PAYMENT_KINDS.filter((kind) => kind !== PaymentKind.TERMINAL_CHECK),
+      }),
+    ),
 
   /** Прочий приход руководством — без заказа и чека. */
   recordOther: managementProcedure

@@ -32,14 +32,16 @@ const NUMERIC_LOCALE = 'ru-RU';
 /**
  * Сегодняшняя дата в формате `YYYY-MM-DD` по ЛОКАЛЬНОМУ времени устройства.
  *
- * Через шведскую локаль: `toLocaleDateString('sv')` даёт ровно ISO-подобный
- * `2026-08-29`, но, в отличие от `toISOString()`, в местном поясе, а не в UTC.
- * Приём известный и держится на том, что шведский формат даты совпал с ISO;
- * альтернатива — вручную склеивать `getFullYear`/`getMonth`/`getDate` с
- * ведущими нулями, что длиннее и ошибается на единицу в месяце.
+ * Склеивается из частей даты, а не через `toLocaleDateString('sv')`, как
+ * раньше: шведский формат совпадает с ISO только там, где у движка есть
+ * данные локалей. Hermes в APK их не обещает — строка вида `9/29/2026`
+ * уходила бы на сервер, проверка даты её отклоняла, и касса дня молча
+ * оставалась пустой.
  */
 export function todayIso(now: Date = new Date()): string {
-  return now.toLocaleDateString('sv');
+  const pad = (value: number): string => value.toString().padStart(2, '0');
+  // getMonth() считает с нуля — отсюда +1.
+  return `${now.getFullYear().toString()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 /**

@@ -6,7 +6,6 @@ import {
   ORDER_STATUS_LABELS,
   parseMoney,
   RatingScope,
-  todayIso,
   yesterdayIso,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
@@ -16,12 +15,13 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 
 import { Avatar } from '../components/Avatar';
 import { EventsBoard } from '../components/EventsBoard';
-import { Card, CardTitle, Empty, Pill, Row, Skeleton } from '../components/Card';
+import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { useAuth, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
+import { useToday } from '../hooks/useToday';
 import type { MessageKey } from '../i18n/messages';
 import { trpc } from '../lib/trpc';
 import {
@@ -583,9 +583,19 @@ function WorkshopSummary(): ReactElement {
 function CashTodayCard(): ReactElement | null {
   const { m, money } = useLocale();
   const navigation = useNavigation();
-  const today = trpc.payments.summary.useQuery({ day: todayIso(new Date()) });
+  const day = useToday();
+  const today = trpc.payments.summary.useQuery({ day });
   const onHands = trpc.payments.onHands.useQuery();
 
+  // Не загрузилась — так и говорим: пропавшая карточка читалась как «денег нет».
+  if (today.isError) {
+    return (
+      <Card>
+        <CardTitle title={m('home.cashToday')} icon="paid" />
+        <ErrorState message={today.error.message} />
+      </Card>
+    );
+  }
   if (today.data === undefined) return null;
   const byUser = onHands.data?.byUser ?? [];
   const onHandsTotal = byUser.reduce((sum, row) => sum + parseMoney(row.onHands), 0);

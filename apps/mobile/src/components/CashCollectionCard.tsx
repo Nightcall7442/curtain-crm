@@ -1,9 +1,10 @@
-import { inputToMajor, parseMoney, Role, todayIso } from '@curtain-crm/shared';
+import { inputToMajor, parseMoney, Role } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
+import { useToday } from '../hooks/useToday';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
@@ -34,7 +35,7 @@ export function CashCollectionCard(): ReactElement | null {
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const handlesCash = (user?.roles ?? []).includes(Role.SELLER);
-  const today = todayIso();
+  const today = useToday();
   const onHands = trpc.payments.onHands.useQuery();
   const collections = trpc.payments.collections.useQuery({ day: today });
 

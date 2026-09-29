@@ -62,6 +62,30 @@ function tashkentRange(from: string, to: string): { readonly from: Date; readonl
   };
 }
 
+/**
+ * Начала суток, недели и месяцев по Ташкенту — как моменты UTC.
+ *
+ * Главная считала «сегодня» и «этот месяц» от полуночи по UTC, то есть с
+ * пяти утра по Ташкенту: заказ, принятый в полпервого ночи, числился
+ * вчерашним, а первые пять часов первого числа — прошлым месяцем.
+ */
+export function workshopPeriodStarts(now: Date): {
+  readonly today: Date;
+  readonly month: Date;
+  readonly prevMonth: Date;
+} {
+  const local = new Date(now.getTime() + TASHKENT_OFFSET_MS);
+  const year = local.getUTCFullYear();
+  const month = local.getUTCMonth();
+  const at = (utcMidnight: number): Date => new Date(utcMidnight - TASHKENT_OFFSET_MS);
+  return {
+    today: at(Date.UTC(year, month, local.getUTCDate())),
+    month: at(Date.UTC(year, month, 1)),
+    // Date.UTC сам переносит месяц −1 на декабрь прошлого года.
+    prevMonth: at(Date.UTC(year, month - 1, 1)),
+  };
+}
+
 export const reportsRouter = router({
   /** Показатели для главного экрана веб-панели. */
   dashboard: managementProcedure
@@ -72,14 +96,13 @@ export const reportsRouter = router({
       const now = new Date();
       const day = 24 * 60 * 60 * 1000;
 
-      const startOfToday = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-      );
+      const starts = workshopPeriodStarts(now);
+      const startOfToday = starts.today;
       const startOfYesterday = new Date(startOfToday.getTime() - day);
       const startOfWeek = new Date(startOfToday.getTime() - 6 * day);
       const startOfPrevWeek = new Date(startOfWeek.getTime() - 7 * day);
-      const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-      const startOfPrevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+      const startOfMonth = starts.month;
+      const startOfPrevMonth = starts.prevMonth;
 
       /** Заказы, созданные в интервале. */
       const countCreated = async (from: Date, to: Date): Promise<number> => {
