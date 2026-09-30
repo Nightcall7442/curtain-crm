@@ -138,7 +138,9 @@ describe('describeForGroup', () => {
       event({ action: 'user.role_granted', entityType: 'user', entityId: 23, details: { role: 'qc', viaOrderAssignment: true } }),
       event({ action: 'payment.received', details: { payment: '100000.00', method: 'cash' } }),
       event({ action: 'payroll.paid', entityType: 'payroll_record', details: { payment: '1000000.00' } }),
-      event({ action: 'discipline.recorded', entityType: 'discipline_event', details: { auto: true, kind: 'late_over_30', points: -2 } }),
+      // Дисциплина не про явку — разговор руководства с человеком, не новость для группы.
+      event({ action: 'discipline.recorded', entityType: 'discipline_event', details: { kind: 'client_complaint', userId: 23, points: -3 } }),
+      event({ action: 'discipline.recorded', entityType: 'discipline_event', details: { kind: 'helped_team', userId: 23, points: 1 } }),
     ];
 
     for (const input of hidden) {
@@ -166,6 +168,48 @@ describe('describeForGroup', () => {
       title: 'Tayyor parda sotildi',
       body: 'Blackout 2x2.6 — 2 dona\nQoldi: 5 dona\nBuyurtma: TDH-000009\nSotuvchi: Rustamov Muzaffar',
     });
+  });
+});
+
+describe('опоздания и прогулы в ленте', () => {
+  const lateContext: FeedContext = { ...context, order: null, actorRoles: ['sewer'] };
+  const disciplineEvent = (input: Partial<RecordAuditInput>): RecordAuditInput =>
+    event({ action: 'discipline.recorded', entityType: 'discipline_event', entityId: 28, ...input });
+
+  it('автозапись при отметке прихода: кто и на сколько, без баллов и служебных полей', () => {
+    const feed = describeForGroup(
+      disciplineEvent({
+        actorId: 23,
+        details: { auto: true, kind: 'late_over_30', points: -2, isRepeat: false, lateBy: 228, label: 'Опоздание больше 30 мин' },
+      }),
+      lateContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: 'Xodim ishga kechikdi',
+      body: 'Xodim: Karimova Nodira\nKechikish: 3 soat 48 daqiqa',
+    });
+  });
+
+  it('короткое опоздание — в минутах', () => {
+    const feed = describeForGroup(
+      disciplineEvent({ actorId: 23, details: { auto: true, kind: 'late_under_15', lateBy: 7 } }),
+      lateContext,
+      'ru',
+    );
+
+    expect(feed).toEqual({ title: 'Опоздание на работу', body: 'Сотрудник: Karimova Nodira\nОпоздание: 7 мин' });
+  });
+
+  it('ручная запись о прогуле: имя — из userId, а не автора (руководителя)', () => {
+    const feed = describeForGroup(
+      disciplineEvent({ actorId: 5, details: { userId: 23, kind: 'absence', points: -3, occurredOn: '2026-09-30' } }),
+      lateContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({ title: 'Ishga chiqmaslik', body: 'Xodim: Karimova Nodira' });
   });
 });
 
