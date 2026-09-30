@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 
+import { GOLD_LIGHT } from './theme';
+
 /**
  * Путь заказа — одним кадром, который листает прокрутка.
  *
@@ -18,9 +20,11 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
  *
  * Ролик сгенерирован в Higgsfield (Kling 3.0) по сценарию цеха: 10 секунд
  * мастерской (замер, раскрой, пошив, контроль) и 5 секунд установки,
- * склеены через затемнение; кадры — `ffmpeg`, 20 к/с: при 8 к/с соседние
- * кадры отличались слишком сильно, и листание дёргалось. Файлы лежат в
- * `public/process/`.
+ * склеены через затемнение; кадры нарезаны из исходника 1920×1080 с частотой
+ * 20 к/с: при 8 к/с соседние кадры отличались слишком сильно, и листание
+ * дёргалось. Кадры — 1440×810, webp: раньше они были 1024×576, и в момент,
+ * когда зритель начинал листать, чёткий ролик подменялся мыльной картинкой.
+ * Файлы лежат в `public/process/`.
  */
 
 export interface FilmStep {
@@ -32,6 +36,26 @@ const FRAME_COUNT = 288;
 const FRAME_URL = (index: number): string => `/process/frames/f_${index.toString().padStart(3, '0')}.webp`;
 const VIDEO_URL = '/process/process.mp4';
 const POSTER_URL = FRAME_URL(1);
+/** Сколько кадров тянется одновременно: остальные ждут очереди. */
+const LOAD_CONCURRENCY = 6;
+/**
+ * Порядок загрузки — от редких кадров к частым: сперва каждый 32-й, потом
+ * 16-й и так до последнего. Пока грузятся все двести восемьдесят восемь
+ * (это около семи мегабайт), листание уже работает по редким кадрам, а не
+ * упирается в пустой холст.
+ */
+const LOAD_ORDER: readonly number[] = (() => {
+  const seen = new Set<number>();
+  const order: number[] = [];
+  for (const stride of [32, 16, 8, 4, 2, 1]) {
+    for (let index = 1; index <= FRAME_COUNT; index += stride) {
+      if (seen.has(index)) continue;
+      seen.add(index);
+      order.push(index);
+    }
+  }
+  return order;
+})();
 /**
  * Высота прокрутки в экранах: чем больше, тем медленнее листается ролик.
  * Пять экранов владелец назвал «очень коротко» — ролик пролетал за два
@@ -81,28 +105,49 @@ export function ProcessFilm({
     };
   }, []);
 
-  /* Кадры подгружаются заранее, когда раздел на подходе, — иначе первый
-     же скролл показал бы пустой холст. */
+  /* Ролик и кадры подгружаются, когда раздел на подходе: файл ролика в пять
+     мегабайт не должен качаться у каждого, кто открыл страницу и не листал
+     дальше первого экрана, — а первый же скролл не должен показать пустой холст. */
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (wrapper === null || reduced) return;
     let started = false;
+    let cancelled = false;
+    let cursor = 0;
+    let active = 0;
+
+    const pump = (): void => {
+      while (!cancelled && active < LOAD_CONCURRENCY && cursor < LOAD_ORDER.length) {
+        const index = LOAD_ORDER[cursor];
+        cursor += 1;
+        if (index === undefined) continue;
+        active += 1;
+        const image = new Image();
+        image.decoding = 'async';
+        const done = (): void => {
+          active -= 1;
+          pump();
+        };
+        image.onload = done;
+        image.onerror = done;
+        image.src = FRAME_URL(index);
+        framesRef.current[index] = image;
+      }
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting) || started) return;
         started = true;
-        for (let index = 1; index <= FRAME_COUNT; index += 1) {
-          const image = new Image();
-          image.decoding = 'async';
-          image.src = FRAME_URL(index);
-          framesRef.current[index] = image;
-        }
+        if (videoRef.current !== null) videoRef.current.preload = 'auto';
+        pump();
         observer.disconnect();
       },
       { rootMargin: '100% 0px' },
     );
     observer.observe(wrapper);
     return () => {
+      cancelled = true;
       observer.disconnect();
     };
   }, [reduced]);
@@ -148,9 +193,24 @@ export function ProcessFilm({
     let raf = 0;
     let running = true;
 
-    const draw = (index: number): void => {
+    const loaded = (index: number): HTMLImageElement | null => {
       const image = framesRef.current[index];
-      if (image === null || image === undefined || !image.complete || image.naturalWidth === 0) return;
+      return image !== null && image !== undefined && image.complete && image.naturalWidth > 0 ? image : null;
+    };
+
+    /** Ближайший уже загруженный кадр — пока нужного нет, показываем соседний, а не пустоту. */
+    const nearest = (index: number): HTMLImageElement | null => {
+      for (let distance = 1; distance < FRAME_COUNT; distance += 1) {
+        const found = loaded(index - distance) ?? loaded(index + distance);
+        if (found !== null) return found;
+      }
+      return null;
+    };
+
+    const draw = (index: number): void => {
+      const exact = loaded(index);
+      const image = exact ?? nearest(index);
+      if (image === null) return;
       const context = canvas.getContext('2d');
       if (context === null) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -164,7 +224,8 @@ export function ProcessFilm({
       const drawWidth = image.naturalWidth * scale;
       const drawHeight = image.naturalHeight * scale;
       context.drawImage(image, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
-      drawnRef.current = index;
+      // Нарисован соседний кадр — нужный ещё грузится, и на следующем тике пробуем снова.
+      drawnRef.current = exact === null ? -1 : index;
     };
 
     const measure = (): void => {
@@ -222,7 +283,7 @@ export function ProcessFilm({
           poster={POSTER_URL}
           muted
           playsInline
-          preload="auto"
+          preload="none"
           onEnded={() => {
             setPhase('frames');
           }}
@@ -236,18 +297,21 @@ export function ProcessFilm({
           style={{ opacity: phase === 'frames' ? 1 : 0, transition: 'opacity 300ms' }}
         />
 
-        {/* Тёмная дымка снизу — под подписью; кадр остаётся кадром. */}
+        {/* Тёмная дымка снизу — под подписью, и сверху — под заголовком: первые кадры
+            ролика светлые (окно, дневной свет), и белые буквы на них не читались. */}
         <div
           aria-hidden
           className="absolute inset-0"
           style={{
             backgroundImage:
-              'linear-gradient(0deg, rgb(8 32 26 / 0.82) 0%, rgb(8 32 26 / 0.35) 32%, transparent 60%)',
+              'linear-gradient(0deg, rgb(8 32 26 / 0.82) 0%, rgb(8 32 26 / 0.35) 32%, transparent 60%), linear-gradient(180deg, rgb(8 32 26 / 0.78) 0%, rgb(8 32 26 / 0.4) 24%, transparent 46%)',
           }}
         />
 
         <div className="absolute left-6 top-24 flex flex-col gap-3 sm:left-10 lg:left-16 lg:top-28">
-          <span className="text-overline uppercase tracking-[0.42em] text-white/55">{eyebrow}</span>
+          <span className="text-overline font-semibold uppercase tracking-[0.42em]" style={{ color: GOLD_LIGHT }}>
+            {eyebrow}
+          </span>
           <h2 className="max-w-[16ch] font-hero text-[clamp(24px,3vw,36px)] font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white">
             {title}
           </h2>
@@ -267,7 +331,7 @@ export function ProcessFilm({
                 }}
                 aria-hidden={index !== activeStep}
               >
-                <span className="font-mono text-overline tracking-[0.3em] text-[#E4C77A]">
+                <span className="font-mono text-overline tracking-[0.3em]" style={{ color: GOLD_LIGHT }}>
                   {`0${(index + 1).toString()} / 0${steps.length.toString()}`}
                 </span>
                 <h3 className="font-hero text-[clamp(28px,4vw,52px)] font-extrabold uppercase leading-none tracking-[-0.02em] text-white">
@@ -287,8 +351,9 @@ export function ProcessFilm({
                 className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/20"
               >
                 <span
-                  className="block h-full rounded-full bg-[#E4C77A]"
+                  className="block h-full rounded-full"
                   style={{
+                    backgroundColor: GOLD_LIGHT,
                     width: `${(
                       Math.min(
                         1,
