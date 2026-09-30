@@ -1,5 +1,8 @@
 import { orders, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
+  DISCIPLINE_KIND_LABELS,
+  DisciplineKind,
+  disciplineKindSchema,
   findTransition,
   formatIsoDate,
   isOrderStatus,
@@ -36,7 +39,8 @@ import {
  *
  * Группа — общая для всех сотрудников, поэтому в неё идёт только ход работы:
  * по заказам — новый заказ, смена статуса, кто назначен, карниз, продажа,
- * фото этапов; по доп. работам — выдача, сдача, приёмка, возврат, отмена.
+ * фото этапов; по доп. работам — выдача, сдача, приёмка, возврат, отмена;
+ * по явке — опоздания и прогулы (`ATTENDANCE_KINDS`).
  * Деньги (цены, расценки, оплаты, зарплата), дисциплина, права и пароли
  * остаются в журнале панели — их видит руководство, а не двадцать человек
  * в чате. Сумм в ленте нет ни в каком виде.
@@ -63,6 +67,26 @@ const FEED_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
   'task.returned',
   'task.completed',
   'task.cancelled',
+  'discipline.recorded',
+]);
+
+/**
+ * Какие записи дисциплины уходят в группу — только про явку.
+ *
+ * Опоздание и прогул видны всем и так: рабочий день общий. Жалобы клиентов,
+ * грубость, ошибки замера и поощрения — разговор руководства с человеком, а
+ * не новость для двадцати коллег; они остаются в журнале и в карточке
+ * сотрудника. Баллов в ленте нет: это внутренний счёт рейтинга.
+ */
+const LATE_KINDS: ReadonlySet<string> = new Set([
+  DisciplineKind.LATE_UNDER_15,
+  DisciplineKind.LATE_15_30,
+  DisciplineKind.LATE_OVER_30,
+]);
+const ATTENDANCE_KINDS: ReadonlySet<string> = new Set([
+  ...LATE_KINDS,
+  DisciplineKind.ABSENCE,
+  DisciplineKind.NO_SHOW_NO_NOTICE,
 ]);
 
 interface FeedText {
@@ -80,6 +104,12 @@ interface FeedText {
   readonly taskReturned: string;
   readonly taskClosed: string;
   readonly taskCancelled: string;
+  readonly employeeLate: string;
+  readonly employee: string;
+  readonly lateFor: string;
+  readonly kind: string;
+  readonly minutes: string;
+  readonly hours: string;
   readonly assignee: string;
   readonly due: string;
   readonly readyMadeSold: string;
@@ -116,6 +146,12 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     taskReturned: 'Доп. работа возвращена на доработку',
     taskClosed: 'Доп. работа закрыта',
     taskCancelled: 'Доп. работа отменена',
+    employeeLate: 'Опоздание на работу',
+    employee: 'Сотрудник',
+    lateFor: 'Опоздание',
+    kind: 'Что записано',
+    minutes: 'мин',
+    hours: 'ч',
     assignee: 'Исполнитель',
     due: 'Срок',
     readyMadeSold: 'Продана готовая штора',
@@ -150,6 +186,12 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     taskReturned: "Qo'shimcha ish qayta ishlashga qaytarildi",
     taskClosed: "Qo'shimcha ish yopildi",
     taskCancelled: "Qo'shimcha ish bekor qilindi",
+    employeeLate: 'Xodim ishga kechikdi',
+    employee: 'Xodim',
+    lateFor: 'Kechikish',
+    kind: 'Yozuv',
+    minutes: 'daqiqa',
+    hours: 'soat',
     assignee: 'Ijrochi',
     due: 'Muddat',
     readyMadeSold: 'Tayyor parda sotildi',
@@ -286,6 +328,17 @@ function whoseOrder(order: FeedOrder, locale: Locale): string | null {
     : line(t.client, order.clientName);
 }
 
+/** «3 ч 48 мин» / «45 мин» — опоздание в минутах читается хуже, чем в часах. */
+function duration(totalMinutes: number, locale: Locale): string {
+  const t = FEED_TEXT[locale];
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes.toString()} ${t.minutes}`;
+  return minutes === 0
+    ? `${hours.toString()} ${t.hours}`
+    : `${hours.toString()} ${t.hours} ${minutes.toString()} ${t.minutes}`;
+}
+
 /**
  * Текст сообщения для группы или `null`, если действие туда не идёт.
  *
@@ -306,6 +359,27 @@ export function describeForGroup(
     return line(role === null ? t.by : translate(ROLE_LABELS, role, locale), name(input.actorId));
   };
   const actor = actorLine();
+
+  if (input.action === 'discipline.recorded') {
+    const parsed = disciplineKindSchema.safeParse(details['kind']);
+    if (!parsed.success || !ATTENDANCE_KINDS.has(parsed.data)) return null;
+    const kind = parsed.data;
+
+    // Автозапись при отметке прихода: автор — сам опоздавший. Ручная: автор — руководитель,
+    // а о ком запись, лежит в `userId`.
+    const subject = typeof details['userId'] === 'number' ? details['userId'] : input.actorId;
+    const lateBy = details['lateBy'];
+    const kindLabel = translate(DISCIPLINE_KIND_LABELS, kind, locale);
+
+    return message(LATE_KINDS.has(kind) ? t.employeeLate : kindLabel, [
+      line(t.employee, name(subject)),
+      typeof lateBy === 'number' && lateBy > 0
+        ? line(t.lateFor, duration(lateBy, locale))
+        : LATE_KINDS.has(kind)
+          ? line(t.kind, kindLabel)
+          : null,
+    ]);
+  }
 
   if (input.action === 'ready_made_item.sold') {
     const model = text(details['model']);
@@ -481,7 +555,9 @@ export async function announceToGroup(executor: DbExecutor, input: RecordAuditIn
         ? [details['corniceInstallerId']]
         : input.entityType === 'task'
           ? [details['assigneeId']]
-          : [];
+          : input.entityType === 'discipline_event'
+            ? [details['userId']]
+            : [];
   const userIds = [input.actorId, ...mentioned].filter((id): id is number => typeof id === 'number');
 
   const people = await executor
