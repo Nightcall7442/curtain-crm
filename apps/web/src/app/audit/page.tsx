@@ -93,7 +93,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'order.stage_fees_changed': 'Расценки по этапам изменены',
   'order.item_meters_changed': 'Метраж позиции изменён',
   'order.cornice_taken': 'Карниз взят в работу',
-  'order.cornice_done': 'Карниз повешен',
+  'order.cornice_done': 'Карниз отрезан',
 
   'fabric_stock.received': 'Приход ткани',
   'fabric_stock.counted': 'Ткань пересчитана',

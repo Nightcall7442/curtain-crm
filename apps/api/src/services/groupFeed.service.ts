@@ -138,7 +138,8 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     assigned: (order) => `Заказ ${order}: назначен исполнитель`,
     unassigned: (order) => `Заказ ${order}: исполнитель снят`,
     corniceTaken: (order) => `Заказ ${order}: карниз взят в работу`,
-    corniceDone: (order) => `Заказ ${order}: карниз повешен`,
+    // Карнизчик режет карниз под размер заказа — не вешает: вешает установщик со шторой.
+    corniceDone: (order) => `Заказ ${order}: карниз отрезан`,
     photos: (order, stage) => `Фото заказа ${order}: ${stage}`,
     taskNew: 'Новая доп. работа',
     taskSubmitted: 'Доп. работа выполнена — ждёт подтверждения',
@@ -178,7 +179,7 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     assigned: (order) => `${order} buyurtmasiga ijrochi tayinlandi`,
     unassigned: (order) => `${order} buyurtmasidan ijrochi olib tashlandi`,
     corniceTaken: (order) => `${order} buyurtmasi: karniz ishga olindi`,
-    corniceDone: (order) => `${order} buyurtmasi: karniz osildi`,
+    corniceDone: (order) => `${order} buyurtmasi: karniz kesildi`,
     photos: (order, stage) => `${order} buyurtmasi rasmlari: ${stage}`,
     taskNew: "Yangi qo'shimcha ish",
     taskSubmitted: "Qo'shimcha ish bajarildi — tasdiq kutilmoqda",

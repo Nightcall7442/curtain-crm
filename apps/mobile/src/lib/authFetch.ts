@@ -1,6 +1,7 @@
 import { DEFAULT_LOCALE, type Locale } from '@curtain-crm/shared';
 import { TRPCClientError } from '@trpc/client';
 
+import { ensureReadable, readableFailure } from './readableResponse';
 import { resolveApiUrl } from './trpc';
 import { tokenStorage } from './storage';
 
@@ -79,10 +80,30 @@ function extractTokens(payload: unknown): { accessToken: string; refreshToken: s
   return { accessToken, refreshToken };
 }
 
-export const authFetch: typeof fetch = async (input, init) => {
-  const response = await fetch(input, init);
+/* -------------------------------------------------------------------------- */
+/*                    Ответ, который клиент tRPC не разберёт                  */
+/* -------------------------------------------------------------------------- */
 
-  if (response.status !== 401) return response;
+const SERVER_UNAVAILABLE: Readonly<Record<Locale, string>> = {
+  ru: 'Сервер временно недоступен. Подождите минуту и повторите.',
+  uz: "Server vaqtincha mavjud emas. Bir daqiqa kutib, qayta urinib ko'ring.",
+};
+
+const NO_CONNECTION: Readonly<Record<Locale, string>> = {
+  ru: 'Нет связи с сервером. Проверьте интернет и повторите.',
+  uz: "Serverga ulanib bo'lmadi. Internetni tekshirib, qayta urinib ko'ring.",
+};
+
+export const authFetch: typeof fetch = async (input, init) => {
+  let response: Response;
+  try {
+    response = await fetch(input, init);
+  } catch (error) {
+    console.warn(`Нет связи с API: ${String(error)}`);
+    return readableFailure(input, NO_CONNECTION[requestLocale], 503);
+  }
+
+  if (response.status !== 401) return ensureReadable(input, response, SERVER_UNAVAILABLE[requestLocale]);
   if ((await tokenStorage.getRefreshToken()) === null) return response;
 
   refreshInFlight ??= refreshTokens().finally(() => {
@@ -102,7 +123,12 @@ export const authFetch: typeof fetch = async (input, init) => {
   if (token !== null) headers.set('authorization', `Bearer ${token}`);
   headers.set('x-locale', requestLocale);
 
-  return fetch(input, { ...init, headers });
+  try {
+    return await ensureReadable(input, await fetch(input, { ...init, headers }), SERVER_UNAVAILABLE[requestLocale]);
+  } catch (error) {
+    console.warn(`Нет связи с API после обновления токена: ${String(error)}`);
+    return readableFailure(input, NO_CONNECTION[requestLocale], 503);
+  }
 };
 
 /**

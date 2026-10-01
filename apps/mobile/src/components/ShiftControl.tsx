@@ -76,9 +76,15 @@ export function ShiftControl({
       setServerError(null);
       await refresh();
     },
-    onError: (error) => {
+    onError: async (error) => {
       notifyError();
       setServerError(error.message);
+      /*
+        Сбой мог прийти уже ПОСЛЕ того, как сервер закрыл смену: ответ потерялся
+        по дороге, а смена закрыта. Перечитываем её, чтобы экран не показывал
+        «Тугатиш учун суринг» над уже закрытой сменой.
+      */
+      await refresh();
     },
   });
 
