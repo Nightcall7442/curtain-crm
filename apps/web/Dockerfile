@@ -95,6 +95,12 @@ ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 
 RUN pnpm --filter @curtain-crm/web build
 
+# Сборка шла от root, и каталог кэша Next остался ему принадлежать. Работая
+# под `node`, оптимизатор картинок не мог создать `.next/cache/images`:
+# EACCES на каждой фотографии, ни одна не кэшировалась, и каждый показ
+# страницы заново прогонял картинки через оптимизатор.
+RUN mkdir -p apps/web/.next/cache && chown -R node:node apps/web/.next/cache
+
 USER node
 
 # Порт НЕ передаётся флагом `next start --port`, а берётся из окружения:

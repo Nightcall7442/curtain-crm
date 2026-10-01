@@ -171,6 +171,33 @@ describe('describeForGroup', () => {
   });
 });
 
+describe('карниз в ленте', () => {
+  const corniceContext: FeedContext = { ...context, actorRoles: ['cornice_installer'] };
+
+  it('карнизчик отрезал карниз — «kesildi», а не «osildi» (повешен)', () => {
+    const feed = describeForGroup(
+      event({ actorId: 23, action: 'order.cornice_done', details: { corniceInstallerId: 23 } }),
+      corniceContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: 'DH-000007 buyurtmasi: karniz kesildi',
+      body: 'Mijoz: Aliyev Vali\nKarnizchi: Karimova Nodira',
+    });
+  });
+
+  it('по-русски — «отрезан»', () => {
+    const feed = describeForGroup(
+      event({ actorId: 23, action: 'order.cornice_done', details: { corniceInstallerId: 23 } }),
+      corniceContext,
+      'ru',
+    );
+
+    expect(feed?.title).toBe('Заказ DH-000007: карниз отрезан');
+  });
+});
+
 describe('опоздания и прогулы в ленте', () => {
   const lateContext: FeedContext = { ...context, order: null, actorRoles: ['sewer'] };
   const disciplineEvent = (input: Partial<RecordAuditInput>): RecordAuditInput =>
