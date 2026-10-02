@@ -56,6 +56,7 @@ export const notificationsRouter = router({
             body: notifications.body,
             relatedOrderId: notifications.relatedOrderId,
             relatedPayrollRecordId: notifications.relatedPayrollRecordId,
+            relatedTaskId: notifications.relatedTaskId,
             payrollReceiptConfirmedAt: payrollRecords.receiptConfirmedAt,
             payrollStatus: payrollRecords.status,
             isRead: notifications.isRead,

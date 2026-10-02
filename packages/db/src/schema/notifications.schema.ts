@@ -13,6 +13,7 @@ import {
 import { notificationTypeEnum } from './enums';
 import { orders } from './orders.schema';
 import { payrollRecords } from './payroll.schema';
+import { tasks } from './tasks.schema';
 import { users } from './users.schema';
 
 /**
@@ -58,6 +59,17 @@ export const notifications = pgTable(
       () => payrollRecords.id,
       { onDelete: 'cascade' },
     ),
+
+    /**
+     * Поручение (доп. работа), о котором уведомление.
+     *
+     * Нужно для перехода: по «Новое поручение» приложение открывает само
+     * поручение, а не список, в котором его ещё надо найти. cascade — как у
+     * заказа: перейти к удалённому поручению некуда.
+     */
+    relatedTaskId: integer('related_task_id').references(() => tasks.id, {
+      onDelete: 'cascade',
+    }),
 
     isRead: boolean('is_read').notNull().default(false),
     readAt: timestamp('read_at', { withTimezone: true }),

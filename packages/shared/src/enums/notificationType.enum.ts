@@ -179,3 +179,76 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
 export function isImportantNotification(type: NotificationType): boolean {
   return IMPORTANT_NOTIFICATION_TYPES.includes(type);
 }
+
+/**
+ * Куда ведёт уведомление.
+ *
+ * Описывает назначение, а не экран: приложение и веб-панель сами решают, как
+ * его открыть. Решение вынесено сюда, чтобы оба клиента вели одинаково и
+ * новый тип уведомления нельзя было добавить, забыв, куда по нему идти.
+ *
+ * `null` — переходить некуда, уведомление только сообщает.
+ */
+export type NotificationDestination =
+  | { readonly kind: 'order'; readonly orderId: number }
+  | { readonly kind: 'task'; readonly taskId: number }
+  | { readonly kind: 'tasks' }
+  | { readonly kind: 'dayOffApprovals' }
+  | { readonly kind: 'dayOff' }
+  | { readonly kind: 'terminalChecks' }
+  | { readonly kind: 'cashDesk' }
+  | { readonly kind: 'attendance' }
+  | { readonly kind: 'rating' }
+  | { readonly kind: 'profile' };
+
+const ORDER_NOTIFICATIONS: ReadonlySet<NotificationType> = new Set([
+  'order_assigned',
+  'order_stage_awaiting',
+  'order_status_changed',
+  'order_rolled_back',
+  'order_rejected_to_ceo',
+  'order_qc_failed',
+  'order_cancelled',
+  'order_completed',
+  'order_comment_added',
+]);
+
+export function notificationDestination(
+  type: NotificationType,
+  related: { readonly orderId: number | null; readonly taskId: number | null },
+): NotificationDestination | null {
+  if (ORDER_NOTIFICATIONS.has(type)) {
+    return related.orderId === null ? null : { kind: 'order', orderId: related.orderId };
+  }
+
+  switch (type) {
+    case 'task_assigned':
+    case 'task_completed':
+    case 'task_replied':
+    case 'task_cancelled':
+      // Старые уведомления без ссылки на поручение ведут в общий список.
+      return related.taskId === null ? { kind: 'tasks' } : { kind: 'task', taskId: related.taskId };
+    // Запрос на выходные приходит только руководству — к очереди на решение.
+    case 'day_off_requested':
+      return { kind: 'dayOffApprovals' };
+    case 'day_off_approved':
+    case 'day_off_rejected':
+      return { kind: 'dayOff' };
+    case 'terminal_check_created':
+    case 'terminal_check_due':
+      return { kind: 'terminalChecks' };
+    case 'cash_collection_due':
+      return { kind: 'cashDesk' };
+    case 'shift_adjusted':
+      return { kind: 'attendance' };
+    case 'discipline_recorded':
+      return { kind: 'rating' };
+    // Расчёт зарплаты показан в профиле; роль меняет и сам профиль.
+    case 'payroll_approved':
+    case 'payroll_paid':
+    case 'role_changed':
+      return { kind: 'profile' };
+    default:
+      return null;
+  }
+}

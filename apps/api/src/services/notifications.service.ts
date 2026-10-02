@@ -42,6 +42,8 @@ export interface NotificationDraft {
   readonly relatedOrderId?: number | null;
   /** Расчёт зарплаты — по нему уведомление предлагает подтвердить получение. */
   readonly relatedPayrollRecordId?: number | null;
+  /** Поручение — по уведомлению приложение открывает его карточку. */
+  readonly relatedTaskId?: number | null;
 }
 
 /**
@@ -57,7 +59,7 @@ export async function createNotifications(
 ): Promise<number> {
   const seen = new Set<string>();
   const unique = drafts.filter((draft) => {
-    const key = `${draft.userId.toString()}|${draft.type}|${(draft.relatedOrderId ?? 0).toString()}|${draft.title}`;
+    const key = `${draft.userId.toString()}|${draft.type}|${(draft.relatedOrderId ?? 0).toString()}|${(draft.relatedTaskId ?? 0).toString()}|${draft.title}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -73,6 +75,7 @@ export async function createNotifications(
       body: draft.body,
       relatedOrderId: draft.relatedOrderId ?? null,
       relatedPayrollRecordId: draft.relatedPayrollRecordId ?? null,
+      relatedTaskId: draft.relatedTaskId ?? null,
     })),
   );
 
@@ -357,7 +360,12 @@ export async function notifyRoleChanged(
 export async function notifyTaskAssigned(
   executor: DbExecutor,
   assigneeId: number,
-  params: { readonly title: string; readonly creatorName: string; readonly dueDate: string | null },
+  params: {
+    readonly taskId: number;
+    readonly title: string;
+    readonly creatorName: string;
+    readonly dueDate: string | null;
+  },
 ): Promise<void> {
   await createNotification(executor, {
     userId: assigneeId,
@@ -366,6 +374,7 @@ export async function notifyTaskAssigned(
     body:
       `${params.creatorName}: «${params.title}»` +
       (params.dueDate === null ? '' : ` — срок до ${params.dueDate}`),
+    relatedTaskId: params.taskId,
   });
 }
 
@@ -373,13 +382,14 @@ export async function notifyTaskAssigned(
 export async function notifyTaskSubmitted(
   executor: DbExecutor,
   creatorId: number,
-  params: { readonly title: string; readonly assigneeName: string },
+  params: { readonly taskId: number; readonly title: string; readonly assigneeName: string },
 ): Promise<void> {
   await createNotification(executor, {
     userId: creatorId,
     type: NotificationType.TASK_COMPLETED,
     title: 'Доп. работа ждёт подтверждения',
     body: `${params.assigneeName}: «${params.title}»`,
+    relatedTaskId: params.taskId,
   });
 }
 
@@ -387,13 +397,14 @@ export async function notifyTaskSubmitted(
 export async function notifyTaskApproved(
   executor: DbExecutor,
   assigneeId: number,
-  params: { readonly title: string; readonly approverName: string },
+  params: { readonly taskId: number; readonly title: string; readonly approverName: string },
 ): Promise<void> {
   await createNotification(executor, {
     userId: assigneeId,
     type: NotificationType.TASK_COMPLETED,
     title: 'Доп. работа принята',
     body: `${params.approverName}: «${params.title}»`,
+    relatedTaskId: params.taskId,
   });
 }
 
@@ -406,13 +417,14 @@ export async function notifyTaskApproved(
 export async function notifyTaskReturned(
   executor: DbExecutor,
   assigneeId: number,
-  params: { readonly title: string; readonly reason: string },
+  params: { readonly taskId: number; readonly title: string; readonly reason: string },
 ): Promise<void> {
   await createNotification(executor, {
     userId: assigneeId,
     type: NotificationType.TASK_ASSIGNED,
     title: 'Доп. работа возвращена',
     body: `«${params.title}» — ${params.reason}`,
+    relatedTaskId: params.taskId,
   });
 }
 
@@ -420,13 +432,14 @@ export async function notifyTaskReturned(
 export async function notifyTaskCompleted(
   executor: DbExecutor,
   creatorId: number,
-  params: { readonly title: string; readonly assigneeName: string },
+  params: { readonly taskId: number; readonly title: string; readonly assigneeName: string },
 ): Promise<void> {
   await createNotification(executor, {
     userId: creatorId,
     type: NotificationType.TASK_COMPLETED,
     title: 'Доп. работа выполнена',
     body: `${params.assigneeName}: «${params.title}»`,
+    relatedTaskId: params.taskId,
   });
 }
 
@@ -451,6 +464,7 @@ export async function notifyTaskReplied(
     type: NotificationType.TASK_REPLIED,
     title: `Ответ по поручению «${params.taskTitle}»`,
     body: `${params.authorName}: ${params.preview}`,
+    relatedTaskId: params.taskId,
   });
 }
 
@@ -458,13 +472,14 @@ export async function notifyTaskReplied(
 export async function notifyTaskCancelled(
   executor: DbExecutor,
   assigneeId: number,
-  params: { readonly title: string; readonly reason: string },
+  params: { readonly taskId: number; readonly title: string; readonly reason: string },
 ): Promise<void> {
   await createNotification(executor, {
     userId: assigneeId,
     type: NotificationType.TASK_CANCELLED,
     title: 'Доп. работа отменена',
     body: `«${params.title}» — ${params.reason}`,
+    relatedTaskId: params.taskId,
   });
 }
 
