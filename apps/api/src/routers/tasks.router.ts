@@ -112,6 +112,7 @@ export const tasksRouter = router({
         });
 
         await notifyTaskAssigned(tx, input.assigneeId, {
+          taskId: created.id,
           title: input.title,
           creatorName: ctx.user.fullName,
           dueDate: input.dueDate ?? null,
@@ -400,6 +401,7 @@ export const tasksRouter = router({
           });
 
           await notifyTaskSubmitted(tx, task.createdBy, {
+            taskId: task.id,
             title: task.title,
             assigneeName: task.assignee.fullName,
           });
@@ -428,6 +430,7 @@ export const tasksRouter = router({
           // Исполнитель узнаёт, что работу приняли, — если принял не он сам.
           if (task.assigneeId !== ctx.user.id) {
             await notifyTaskApproved(tx, task.assigneeId, {
+              taskId: task.id,
               title: task.title,
               approverName: ctx.user.fullName,
             });
@@ -435,6 +438,7 @@ export const tasksRouter = router({
         } else if (task.createdBy !== ctx.user.id) {
           // Закрыли за сотрудника — автор узнаёт, кроме случая, когда сам и закрыл.
           await notifyTaskCompleted(tx, task.createdBy, {
+            taskId: task.id,
             title: task.title,
             assigneeName: task.assignee.fullName,
           });
@@ -489,6 +493,7 @@ export const tasksRouter = router({
         });
 
         await notifyTaskReturned(tx, task.assigneeId, {
+          taskId: task.id,
           title: task.title,
           reason: input.reason,
         });
@@ -527,6 +532,7 @@ export const tasksRouter = router({
         });
 
         await notifyTaskCancelled(tx, task.assigneeId, {
+          taskId: task.id,
           title: task.title,
           reason: input.reason,
         });

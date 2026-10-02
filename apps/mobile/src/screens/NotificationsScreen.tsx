@@ -3,6 +3,8 @@ import {
   formatTime,
   isImportantNotification,
   NOTIFICATION_TONES,
+  notificationDestination,
+  type NotificationDestination,
   type NotificationTone,
   type NotificationType,
   PayrollRecordStatus,
@@ -42,9 +44,10 @@ import type { MessageKey } from '../i18n/messages';
  * Лента всегда собственная: адресат берётся из контекста запроса на сервере,
  * поэтому чужие уведомления сюда не попадут даже при подмене параметров.
  *
- * Нажатие открывает связанный заказ и одновременно отмечает уведомление
- * прочитанным: отдельная кнопка «прочитано» на маленьком экране только
- * добавляет промахов пальцем.
+ * Нажатие открывает то, о чём уведомление, — заказ, поручение, очередь
+ * выходных, терминальные чеки (см. `notificationDestination`), — и
+ * одновременно отмечает его прочитанным: отдельная кнопка «прочитано» на
+ * маленьком экране только добавляет промахов пальцем.
  *
  * Фильтры считаются НА КЛИЕНТЕ по уже полученной странице, а не запросом на
  * сервер: лента сотрудника короткая, а переключение вкладки, которое ждёт
@@ -91,6 +94,42 @@ export function NotificationsScreen(): ReactElement {
       Alert.alert(m('notif.confirmError'), error.message);
     },
   });
+
+  /** Открывает экран, к которому относится уведомление. */
+  const open = (destination: NotificationDestination): void => {
+    switch (destination.kind) {
+      case 'order':
+        navigation.navigate('OrderDetail', { orderId: destination.orderId });
+        return;
+      case 'task':
+        navigation.navigate('TaskDetail', { taskId: destination.taskId });
+        return;
+      case 'tasks':
+        navigation.navigate('TaskList');
+        return;
+      case 'dayOffApprovals':
+        navigation.navigate('DayOffApprovals');
+        return;
+      case 'dayOff':
+        navigation.navigate('DayOff');
+        return;
+      case 'terminalChecks':
+        navigation.navigate('TerminalChecks');
+        return;
+      case 'cashDesk':
+        navigation.navigate('CashDesk');
+        return;
+      case 'attendance':
+        navigation.navigate('CheckInOut');
+        return;
+      case 'rating':
+        navigation.navigate('Rating');
+        return;
+      case 'profile':
+        navigation.navigate('Profile');
+        return;
+    }
+  };
 
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
 
@@ -170,9 +209,11 @@ export function NotificationsScreen(): ReactElement {
             <Pressable
               onPress={() => {
                 if (!item.isRead) markAsRead.mutate({ id: item.id });
-                if (item.relatedOrderId !== null) {
-                  navigation.navigate('OrderDetail', { orderId: item.relatedOrderId });
-                }
+                const destination = notificationDestination(item.type, {
+                  orderId: item.relatedOrderId,
+                  taskId: item.relatedTaskId,
+                });
+                if (destination !== null) open(destination);
               }}
               style={({ pressed }) => [styles.card, pressed ? styles.pressed : null]}
               accessibilityRole="button"
