@@ -119,6 +119,7 @@ interface FeedText {
   readonly client: string;
   readonly type: string;
   readonly status: string;
+  readonly createdBy: string;
   readonly previousStatus: string;
   readonly previousAssignee: string;
   readonly reason: string;
@@ -162,6 +163,7 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     client: 'Клиент',
     type: 'Тип',
     status: 'Статус',
+    createdBy: 'Создал',
     previousStatus: 'Был статус',
     previousAssignee: 'Был',
     reason: 'Причина',
@@ -202,6 +204,7 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     client: 'Mijoz',
     type: 'Turi',
     status: 'Holat',
+    createdBy: 'Yaratdi',
     previousStatus: 'Oldingi holat',
     previousAssignee: 'Oldingi',
     reason: 'Sabab',
@@ -460,11 +463,23 @@ export function describeForGroup(
         каждый заказ приходило бы два сообщения подряд.
       */
       if (from === OrderStatus.NEW) {
+        // Заказ заводит тот, кто его отправил на проверку: подпись «Создал» понятнее
+        // безликой роли — по ней видно, у кого спрашивать про заказ.
+        const role = actorRole(
+          input.actorId,
+          order,
+          context.actorRoles,
+          findTransition(from, to, order.orderType)?.roles,
+        );
+        const creator =
+          role === null
+            ? name(input.actorId)
+            : `${name(input.actorId)} (${translate(ROLE_LABELS, role, locale)})`;
         return message(t.newOrder(order.label), [
           order.orderType === OrderType.READY_MADE ? typeLine : null,
           whose,
           line(t.status, status),
-          mover,
+          line(t.createdBy, creator),
         ]);
       }
 

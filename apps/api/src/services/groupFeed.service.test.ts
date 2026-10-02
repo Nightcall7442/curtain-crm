@@ -103,7 +103,20 @@ describe('describeForGroup', () => {
     );
 
     expect(feed?.title).toBe('Новый заказ DH-000007');
-    expect(feed?.body).toBe('Клиент: Aliyev Vali\nСтатус: Ждёт проверки админа\nАдминистратор: Rustamov Muzaffar');
+    expect(feed?.body).toBe(
+      'Клиент: Aliyev Vali\nСтатус: Ждёт проверки админа\nСоздал: Rustamov Muzaffar (Администратор)',
+    );
+  });
+
+  it('в новом заказе по-узбекски создатель подписан «Yaratdi»', () => {
+    const feed = describeForGroup(
+      event({ action: 'order.status_changed', details: { fromStatus: 'new', toStatus: 'pending_admin_review' } }),
+      context,
+      'uz',
+    );
+
+    expect(feed?.title).toBe('Yangi buyurtma DH-000007');
+    expect(feed?.body.split('\n').at(-1)).toBe('Yaratdi: Rustamov Muzaffar (Administrator)');
   });
 
   it('назначение — имя исполнителя и роль, а не id', () => {

@@ -240,6 +240,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             </>
           )}
           <Row label={m('order.branch')} value={data.branch.name} />
+          <Row label={m('order.createdBy')} value={data.creator.fullName} />
         </View>
         {data.workPrice !== null && (
           <OrderPayments
