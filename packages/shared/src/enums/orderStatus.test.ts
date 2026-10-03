@@ -203,6 +203,33 @@ describe('права на переходы', () => {
       expect(availableTransitions(status, [Role.SMM])).toHaveLength(0);
     }
   });
+
+  describe('менеджер', () => {
+    const targets = (from: OrderStatus): OrderStatus[] =>
+      availableTransitions(from, [Role.MANAGER]).map((transition) => transition.to);
+
+    it('назначает исполнителей и передаёт заказ по этапам, как администратор', () => {
+      expect(targets(OrderStatus.PENDING_ADMIN_REVIEW)).toEqual(
+        expect.arrayContaining([OrderStatus.MEASUREMENT_ASSIGNED, OrderStatus.PENDING_SEWING_ASSIGNMENT]),
+      );
+      expect(targets(OrderStatus.PENDING_INSTALLATION_ASSIGNMENT)).toContain(OrderStatus.INSTALLATION_ASSIGNED);
+      expect(targets(OrderStatus.INSTALLATION_DONE)).toContain(OrderStatus.COMPLETED);
+    });
+
+    it('не отменяет заказы — отмена остаётся у руководства', () => {
+      for (const status of ORDER_STATUSES) {
+        expect(targets(status)).not.toContain(OrderStatus.CANCELLED);
+      }
+      expect(availableTransitions(OrderStatus.NEW, [Role.ADMIN]).map((t) => t.to)).toContain(
+        OrderStatus.CANCELLED,
+      );
+    });
+
+    it('не отклоняет заказ директору и не решает за него', () => {
+      expect(targets(OrderStatus.PENDING_ADMIN_REVIEW)).not.toContain(OrderStatus.REJECTED_TO_CEO);
+      expect(targets(OrderStatus.REJECTED_TO_CEO)).toHaveLength(0);
+    });
+  });
 });
 
 /**

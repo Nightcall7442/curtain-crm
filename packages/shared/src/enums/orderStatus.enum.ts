@@ -678,9 +678,22 @@ const CANCEL_TRANSITIONS: readonly OrderTransition[] = ORDER_STATUSES.filter(
   label: 'Отменить заказ',
 }));
 
+/**
+ * Менеджер ведёт заказ по тем же переходам, что и администратор.
+ *
+ * Не повторяем его в каждой из тридцати строк таблицы: роль «ведёт заказ как
+ * админ» и так выражается одним правилом. Два исключения: отмена (остаётся у
+ * руководства, она ниже) и «Отклонить, передать директору» — решение админа
+ * как лица, отвечающего перед директором.
+ */
+const withManager = (transition: OrderTransition): OrderTransition =>
+  transition.roles.includes(Role.ADMIN) && transition.to !== OrderStatus.REJECTED_TO_CEO
+    ? { ...transition, roles: [...transition.roles, Role.MANAGER] }
+    : transition;
+
 /** Полная таблица допустимых переходов статуса заказа. */
 export const ORDER_TRANSITIONS: readonly OrderTransition[] = [
-  ...EXPLICIT_TRANSITIONS,
+  ...EXPLICIT_TRANSITIONS.map(withManager),
   ...CANCEL_TRANSITIONS,
 ];
 

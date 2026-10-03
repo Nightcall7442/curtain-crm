@@ -24,10 +24,11 @@ import { StageFeesFields, toStageFeesInput, type StageFeesDraft } from './StageF
 /**
  * Управление заказом: назначение исполнителей, цена и расценки.
  *
- * Панель показывается только руководству — но, как везде, это лишь удобство:
- * `orders.assign`, `orders.setPrice` и `orders.setStageFees` объявлены как
- * `managementProcedure`, и продавец получит `FORBIDDEN`, даже если доберётся
- * до кнопки.
+ * Панель показывается руководству и менеджеру — но, как везде, это лишь
+ * удобство: `orders.assign` и `orders.setPrice` закрыты `orderDispatchProcedure`,
+ * а `orders.setStageFees` — `managementProcedure`, и продавец получит
+ * `FORBIDDEN`, даже если доберётся до кнопки. Менеджеру расценки исполнителям
+ * не показываются (`canSetFees`): это зарплатная часть, она у руководства.
  *
  * Отмены здесь нет: она живёт среди переходов статуса в «Действиях по
  * заказу» — там же, где остальные способы сдвинуть заказ, и с той же
@@ -51,7 +52,10 @@ export function OrderManagePanel({
   orderType,
   status,
   isClosed,
+  canSetFees,
 }: {
+  /** Править расценки исполнителям вправе только руководство, не менеджер. */
+  readonly canSetFees: boolean;
   readonly orderId: number;
   readonly current: Readonly<Record<AssignableRole, number | null>>;
   readonly workPrice: string;
@@ -106,15 +110,17 @@ export function OrderManagePanel({
               остался бы без денег из-за того, что кто-то поторопился нажать
               «выполнено».
             */}
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setNextFees(stageFees);
-                setFeesOpen(true);
-              }}
-            >
-              Расценки
-            </Button>
+            {canSetFees && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setNextFees(stageFees);
+                  setFeesOpen(true);
+                }}
+              >
+                Расценки
+              </Button>
+            )}
 
             {!isClosed && (
               <>

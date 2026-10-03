@@ -81,6 +81,7 @@ export const DEFAULT_DEPARTMENT_BY_ROLE: Readonly<Record<RoleName, Department>> 
   qc: Department.QUALITY,
   installer: Department.INSTALLATION,
   cornice_installer: Department.INSTALLATION,
+  manager: Department.ADMINISTRATION,
   smm: Department.OTHER,
 };
 

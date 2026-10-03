@@ -56,7 +56,7 @@ export default function OrderDetailPage(): ReactElement {
   const params = useParams<{ id: string }>();
   const orderId = Number.parseInt(params.id, 10);
 
-  const { isManagement, hasRole, user } = useAuth();
+  const { isManagement, canDispatch, hasRole, user } = useAuth();
   const utils = trpc.useUtils();
   const isCorniceInstaller = hasRole(Role.CORNICE_INSTALLER);
   const [comment, setComment] = useState('');
@@ -428,9 +428,10 @@ export default function OrderDetailPage(): ReactElement {
             </CardBody>
           </Card>
 
-          {/* --- Управление (только руководство) -------------------------------- */}
-          {isManagement && (
+          {/* --- Управление (руководство и менеджер) ---------------------------- */}
+          {canDispatch && (
             <OrderManagePanel
+              canSetFees={isManagement}
               orderId={orderId}
               current={{
                 master: data.masterId,
@@ -534,11 +535,11 @@ export default function OrderDetailPage(): ReactElement {
           )}
 
           {/*
-        Руководителю карточка «Исполнители» не показывается: те же четыре роли
-        стоят в «Управлении заказом», уже выпадающими списками. Читать их
-        дважды незачем.
+        Руководителю и менеджеру карточка «Исполнители» не показывается: те же
+        четыре роли стоят в «Управлении заказом», уже выпадающими списками.
+        Читать их дважды незачем.
       */}
-          {!isManagement && (
+          {!canDispatch && (
             <Card>
               <CardHeader title="Исполнители" />
               <CardBody>
@@ -703,7 +704,7 @@ export default function OrderDetailPage(): ReactElement {
                       Метраж проставляет руководство: продавец у клиента дома
                       его не считает, а «на глазок» всплывает потом в раскрое.
                     */}
-                        {isManagement && <ItemMeters orderId={orderId} item={item} />}
+                        {canDispatch && <ItemMeters orderId={orderId} item={item} />}
                       </li>
                     ))}
                   </ul>

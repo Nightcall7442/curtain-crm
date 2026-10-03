@@ -347,12 +347,17 @@ export async function sewerOutput(
   const sewerRole = (entry: Awaited<ReturnType<typeof employeeRating>>[number]) =>
     entry.byRole.find((role) => role.role === Role.SEWER);
 
-  const [current, categories, ...past] = await Promise.all([
-    employeeRating(db, employees, periodBounds(period)),
-    sewerCategories(db, employees, period),
-    ...Array.from({ length: HISTORY_MONTHS - 1 }, (_, index) => employeeRating(db, employees, periodBounds(monthOf(index + 1)))),
-  ]);
+  // Категории — первыми: от них зависит вес комплекта в балле. Прошлые
+  // месяцы считаются с категориями выбранного: прежних категорий нигде не
+  // хранится, а сравнивать месяцы надо по одним и тем же весам.
+  const categories = await sewerCategories(db, employees, period);
   const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
+  const [current, ...past] = await Promise.all([
+    employeeRating(db, employees, periodBounds(period), undefined, categoryOf),
+    ...Array.from({ length: HISTORY_MONTHS - 1 }, (_, index) =>
+      employeeRating(db, employees, periodBounds(monthOf(index + 1)), undefined, categoryOf),
+    ),
+  ]);
 
   const rows = current
     .map((entry) => {
