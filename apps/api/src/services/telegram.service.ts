@@ -166,8 +166,16 @@ export function isTelegramGroupEnabled(): boolean {
  * владелец и админы видели происходящее, не открывая журнал. Текст уже
  * собран вызывающим; экранирование — здесь, чтобы имя клиента с «<» не
  * ломало разметку.
+ *
+ * Лента по умолчанию беззвучная: событий много, и звонок на каждое делал бы
+ * из группы шум. Напоминание, которое должны услышать (`silent: false`,
+ * например «пробейте терминальный чек»), — со звуком: ради этого его и шлют.
  */
-export async function sendTelegramGroupMessage(title: string, body: string): Promise<void> {
+export async function sendTelegramGroupMessage(
+  title: string,
+  body: string,
+  options: { readonly silent?: boolean } = {},
+): Promise<void> {
   const chatId = groupChatId();
   if (chatId === null) return;
 
@@ -176,7 +184,7 @@ export async function sendTelegramGroupMessage(title: string, body: string): Pro
     text: formatHtml(title, body),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
-    disable_notification: true,
+    disable_notification: options.silent ?? true,
   });
 }
 

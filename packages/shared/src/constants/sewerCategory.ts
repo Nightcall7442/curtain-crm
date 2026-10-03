@@ -36,6 +36,25 @@ export const SEWER_CATEGORY_FEE_PERCENT: Readonly<Record<SewerCategory, number>>
   3: 60,
 };
 
+/**
+ * Баллов рейтинга за один сшитый комплект — по категории швеи.
+ *
+ * Решение владельца: 1-я категория — 2 балла, 2-я — 1,5, 3-я — 1. Сама
+ * категория при этом выводится из балла прошлого месяца, посчитанного по
+ * единице за комплект (`ratingScore`), — иначе категория зависела бы от
+ * собственных весов и сама себя повышала.
+ */
+export const SEWER_POINTS_PER_PIECE: Readonly<Record<SewerCategory, number>> = {
+  1: 2,
+  2: 1.5,
+  3: 1,
+};
+
+/** Балл швеи за период: число сшитых комплектов на вес её категории. */
+export function sewerPiecesScore(pieces: number, category: SewerCategory): number {
+  return pieces * SEWER_POINTS_PER_PIECE[category];
+}
+
 /** Подписи по числу, а не по строке: категория везде ходит числом 1–3. */
 export const SEWER_CATEGORY_LABELS: Readonly<Record<Locale, Readonly<Record<SewerCategory, string>>>> = {
   ru: { 1: '1-я категория', 2: '2-я категория', 3: '3-я категория' },

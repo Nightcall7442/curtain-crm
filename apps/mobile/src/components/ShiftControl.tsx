@@ -1,7 +1,9 @@
-import { formatTime } from '@curtain-crm/shared';
+import { formatTime, Role } from '@curtain-crm/shared';
+import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '../hooks/useAuth';
 import { useLocation } from '../hooks/useLocation';
 import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -43,7 +45,10 @@ export function ShiftControl({
 
   const utils = trpc.useUtils();
   const { m } = useLocale();
+  const { user } = useAuth();
   const { requestPosition, isRequesting, error: locationError } = useLocation();
+  /** Швея закрывает смену со снимком рабочего стола; остальным он не нужен. */
+  const needsDeskPhoto = (user?.roles ?? []).includes(Role.SEWER);
 
   const current = trpc.shifts.current.useQuery();
 
@@ -100,14 +105,60 @@ export function ShiftControl({
     })();
   };
 
-  const handleCheckOut = (): void => {
-    setServerError(null);
+  /**
+   * Снимок рабочего стола — только с камеры, без галереи: смысл в том, что
+   * стол сфотографирован сейчас, а не взят из старых снимков.
+   */
+  const captureDeskPhoto = async (): Promise<{ content: string; mimeType: string } | null> => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(m('photo.noAccess'), m('photo.allowCamera'));
+      return null;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.6,
+      base64: true,
+      exif: false,
+    });
+    if (result.canceled) return null;
+    const asset = result.assets[0];
+    if (asset?.base64 == null) {
+      Alert.alert(m('photo.readError'), m('common.tryAgain'));
+      return null;
+    }
+    return { content: asset.base64, mimeType: asset.mimeType ?? 'image/jpeg' };
+  };
+
+  const finishShift = (photo: { content: string; mimeType: string } | null): void => {
     void (async () => {
       // Координаты при закрытии необязательны: если отказали в доступе,
       // смену всё равно нужно дать закрыть.
       const position = await requestPosition();
-      checkOut.mutate(position ?? {});
+      checkOut.mutate({ ...(position ?? {}), ...(photo === null ? {} : { photo }) });
     })();
+  };
+
+  const handleCheckOut = (): void => {
+    setServerError(null);
+    if (!needsDeskPhoto) {
+      finishShift(null);
+      return;
+    }
+    // Швее — сначала просьба и снимок: «убедитесь, что всё убрано и чисто».
+    // Отмена в любой точке оставляет смену открытой.
+    Alert.alert(m('shift.deskTitle'), m('shift.deskText'), [
+      { text: m('common.cancel'), style: 'cancel' },
+      {
+        text: m('shift.deskTake'),
+        onPress: () => {
+          void (async () => {
+            const photo = await captureDeskPhoto();
+            if (photo !== null) finishShift(photo);
+          })();
+        },
+      },
+    ]);
   };
 
   const startedAt = shift === null ? null : new Date(shift.startedAt);

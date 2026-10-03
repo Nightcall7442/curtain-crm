@@ -1,0 +1,1 @@
+ALTER TABLE "shifts" ADD COLUMN "end_photo_key" text;

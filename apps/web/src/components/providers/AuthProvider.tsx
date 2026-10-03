@@ -1,6 +1,6 @@
 'use client';
 
-import { isManagement, type Role } from '@curtain-crm/shared';
+import { canDispatchOrders, isManagement, type Role } from '@curtain-crm/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode, type ReactElement } from 'react';
@@ -33,6 +33,8 @@ interface AuthContextValue {
   readonly user: AuthUser | null;
   readonly isLoading: boolean;
   readonly isManagement: boolean;
+  /** Ведёт ли заказы целиком: руководство или менеджер. Уже, чем `isManagement`. */
+  readonly canDispatch: boolean;
   readonly hasRole: (...roles: readonly Role[]) => boolean;
   readonly logout: () => void;
 }
@@ -111,6 +113,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }): Re
       user,
       isLoading: !isPublicPage && meQuery.isLoading,
       isManagement: isManagement(roles),
+      canDispatch: canDispatchOrders(roles),
       hasRole: (...required: readonly Role[]) => required.some((role) => roles.includes(role)),
       logout,
     };

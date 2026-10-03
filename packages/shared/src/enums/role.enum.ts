@@ -28,6 +28,15 @@ export const ROLES = [
     нельзя было понять, кто что делает.
   */
   'cornice_installer',
+  /*
+    Менеджер — «чистая» роль ведения заказов. Сам ничего не шьёт и не
+    продаёт: назначает исполнителей, проверяет и передаёт заказ по этапам.
+    Это та часть работы администратора, которую продавцам приходилось
+    делать самим (и из-за этого вносить заказы ради премии). Финансов,
+    зарплаты, сотрудников и отмены заказов у него нет — см.
+    `ORDER_DISPATCH_ROLES`.
+  */
+  'manager',
   'smm',
 ] as const;
 
@@ -43,6 +52,7 @@ export const Role = {
   QC: 'qc',
   INSTALLER: 'installer',
   CORNICE_INSTALLER: 'cornice_installer',
+  MANAGER: 'manager',
   SMM: 'smm',
 } as const satisfies Record<string, Role>;
 
@@ -60,6 +70,7 @@ export const ROLE_LABELS: Translated<Role> = {
     qc: 'Контроль качества',
     installer: 'Установщик',
     cornice_installer: 'Карнизчик',
+    manager: 'Менеджер',
     smm: 'SMM',
   },
   uz: {
@@ -71,6 +82,7 @@ export const ROLE_LABELS: Translated<Role> = {
     qc: 'Sifat nazorati',
     installer: "O'rnatuvchi",
     cornice_installer: 'Karnizchi',
+    manager: 'Menejer',
     smm: 'SMM',
   },
 };
@@ -90,6 +102,17 @@ export const ROLE_MANAGER_ROLES: readonly Role[] = [Role.CEO];
  * могут отменять заказы и корректировать смены.
  */
 export const MANAGEMENT_ROLES: readonly Role[] = [Role.CEO, Role.ADMIN];
+
+/**
+ * Роли, которые ведут заказ целиком: видят все заказы, назначают исполнителей,
+ * ставят цену, проверяют и передают заказ по этапам.
+ *
+ * Уже, чем `MANAGEMENT_ROLES`, намеренно: менеджеру не нужны ни финансы, ни
+ * зарплата, ни сотрудники, ни отмена заказов — это остаётся у руководства.
+ * Серверные процедуры по заказам и клиенты проверяют этот список, а не
+ * `MANAGEMENT_ROLES`.
+ */
+export const ORDER_DISPATCH_ROLES: readonly Role[] = [Role.CEO, Role.ADMIN, Role.MANAGER];
 
 /**
  * Производственные роли — сотрудники, которые физически работают в цехе
@@ -162,6 +185,11 @@ export function hasAnyRole(userRoles: readonly Role[], required: readonly Role[]
 /** Входит ли пользователь в руководство (CEO или админ). */
 export function isManagement(userRoles: readonly Role[]): boolean {
   return hasAnyRole(userRoles, MANAGEMENT_ROLES);
+}
+
+/** Ведёт ли пользователь заказы целиком: руководство или менеджер. */
+export function canDispatchOrders(userRoles: readonly Role[]): boolean {
+  return hasAnyRole(userRoles, ORDER_DISPATCH_ROLES);
 }
 
 /** Название роли для интерфейса; для неизвестного значения возвращает его как есть. */

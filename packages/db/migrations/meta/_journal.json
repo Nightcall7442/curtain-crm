@@ -442,6 +442,20 @@
       "when": 1790921452061,
       "tag": "0062_notification_task_link",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791058280275,
+      "tag": "0063_manager_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791059064814,
+      "tag": "0064_shift_end_photo",
+      "breakpoints": true
     }
   ]
 }

@@ -316,6 +316,24 @@ export default function TimesheetPage(): ReactElement {
                 ),
             },
             {
+              // Снимок рабочего стола при закрытии смены — его делают швеи.
+              key: 'desk',
+              header: 'Фото стола',
+              render: (row) =>
+                row.endPhotoUrl === null ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <a
+                    href={row.endPhotoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    Открыть
+                  </a>
+                ),
+            },
+            {
               key: 'distance',
               header: 'До филиала',
               align: 'right',

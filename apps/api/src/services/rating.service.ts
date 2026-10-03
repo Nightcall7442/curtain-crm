@@ -6,10 +6,13 @@ import {
   RATED_ROLES,
   ratingScore,
   RatingScope,
+  Role,
+  sewerPiecesScore,
   unratedReason,
   type RatedRole,
   type RatingScope as RatingScopeName,
   type Role as RoleName,
+  type SewerCategory,
 } from '@curtain-crm/shared';
 import { sql, type SQL } from 'drizzle-orm';
 
@@ -34,7 +37,12 @@ import { periodBounds, sqlTimestamp, type Period, type PeriodBounds } from './sh
  * сделана, карниз готов. Раньше балл шёл только за заказ со статусом
  * `completed`, и швея, отшившая за месяц десять заказов, до их установки
  * стояла с нулём — «баллы не считаются». Дата задачи — запись истории
- * статусов, продавцу задача — оформленный заказ.
+ * статусов, продавцу задача — заказ, дошедший до «Выполнен» (дата закрытия).
+ *
+ * У швеи и карнизчика единица балла — не заказ, а изделие: швее комплект
+ * (позиция × количество), карнизчику вырезка. Заказ на шесть комплектов
+ * раньше давал швее один балл, и она, отшив шесть, видела в рейтинге один.
+ * Швее балл за комплект ещё и зависит от категории (`SEWER_POINTS_PER_PIECE`).
  *
  * КАЧЕСТВО — через возвраты на переделку, единственный объективный след,
  * который есть в системе (см. `performance.service.ts`, там же разобрано,
@@ -56,6 +64,8 @@ export interface RatingRoleEntry {
   readonly role: RatedRole;
   /** Закрытых за период заказов, где сотрудник исполнял эту роль. */
   readonly ordersCount: number;
+  /** Сшитых комплектов за период — только у швеи, у остальных ролей `null`. */
+  readonly piecesCount: number | null;
   /** Сырое значение метрики роли: выручка (в минорных), м², число заказов. */
   readonly volumeValue: number;
   /** Тот же объём после нормировки на лучший результат в роли, 0–100. */
@@ -176,6 +186,7 @@ const punctualityColumns = (at: SQL): SQL => sql`
 interface RoleRow {
   readonly userId: number;
   readonly ordersCount: number;
+  readonly piecesCount: number | null;
   readonly volumeValue: number;
   readonly qualityPercent: number | null;
   readonly punctualityPercent: number | null;
@@ -188,6 +199,7 @@ const toRoleRow = (
 ): RoleRow => ({
   userId: asInt(row['user_id']),
   ordersCount: asInt(row['orders_count']),
+  piecesCount: row['pieces_count'] === undefined ? null : asInt(row['pieces_count']),
   volumeValue: volume(row),
   qualityPercent: quality(row),
   punctualityPercent: percent(row['on_time'], row['with_deadline']),
@@ -208,16 +220,20 @@ async function collectRoleRows(
   const doneAt = sql`done.at`;
   const scope = inPeriod(doneAt, bounds, branchId);
 
-  const [sellerRows, masterRows, sewerRows, qcRows, installerRows, corniceRows] =
+  const [sellerRows, masterRows, sewerRows, qcRows, installerRows, corniceRows, managerRows] =
     await Promise.all([
-    // Продавцу задача — оформленный заказ; срок у него — закрытие заказа.
+    // Продавцу задача — заказ, дошедший до «Выполнен», в месяц закрытия.
+    // Раньше шёл балл за оформление: заказ вносили ради премии и тут же
+    // отменяли или бросали на полпути, а балл оставался. Отменённый не
+    // считается (`inPeriod`), незакрытый — тоже, пока не дойдёт до конца.
     db.execute(sql`
       select o.created_by as user_id,
              count(*) as orders_count,
              coalesce(sum(o.work_price), 0) as revenue,
              ${punctualityColumns(sql`o.completed_at`)}
       from orders o
-      where ${inPeriod(sql`o.created_at`, bounds, branchId)}
+      where ${inPeriod(sql`o.completed_at`, bounds, branchId)}
+        and o.status = ${OrderStatus.COMPLETED}
       group by o.created_by`),
 
     db.execute(sql`
@@ -238,9 +254,13 @@ async function collectRoleRows(
       where ${scope} and o.master_id is not null
       group by o.master_id`),
 
+    // Балл швее — за каждый сшитый комплект (позиция × количество), а не за
+    // заказ: заказ на шесть комплектов раньше давал один балл. Заказ без
+    // позиций (старые данные) считается за один, как и у карнизчика.
     db.execute(sql`
       select o.sewer_id as user_id,
              count(*) as orders_count,
+             coalesce(sum(greatest(coalesce(area.pieces, 0), 1)), 0) as pieces_count,
              count(*) filter (where failed.n = 0) as clean_orders,
              coalesce(sum(area.total), 0) as area_m2,
              ${punctualityColumns(doneAt)}
@@ -251,7 +271,8 @@ async function collectRoleRows(
         where h.order_id = o.id and h.to_status = ${OrderStatus.QC_FAILED}
       ) failed on true
       left join lateral (
-        select sum(oi.area_m2 * oi.quantity) as total
+        select sum(oi.area_m2 * oi.quantity) as total,
+               sum(oi.quantity) as pieces
         from order_items oi where oi.order_id = o.id
       ) area on true
       where ${scope} and o.sewer_id is not null
@@ -310,6 +331,32 @@ async function collectRoleRows(
       ) cuts on true
       where ${corniceDoneInPeriod(bounds, branchId)}
       group by o.cornice_installer_id`),
+
+    // Менеджеру задача — заказ, на который он назначил исполнителя: один
+    // балл за заказ, как решил владелец. Назначение пишется в журнал
+    // (order.assignee_changed) и когда назначают отдельно, и когда вместе с
+    // переходом статуса. Снятие исполнителя (`to` пуст) не считается, а заказ
+    // считается один раз, сколько бы раз менеджер его ни переназначал: иначе
+    // балл рос бы от лишних нажатий, а не от работы. Дата — первое назначение;
+    // закрытия заказа менеджер не ждёт.
+    db.execute(sql`
+      select led.user_id,
+             count(*) as orders_count
+      from (
+        select a.actor_id as user_id, a.entity_id as order_id, min(a.created_at) as at
+        from audit_log a
+        -- Роль сравнивается как текст: пока миграция с ролью manager не
+        -- применена, сравнение с enum роняло бы весь рейтинг, а так — просто
+        -- пустая выборка.
+        join user_roles ur on ur.user_id = a.actor_id and ur.role::text = ${Role.MANAGER}
+        where a.action = 'order.assignee_changed'
+          and a.entity_type = 'order'
+          and a.details ->> 'to' is not null
+        group by a.actor_id, a.entity_id
+      ) led
+      join orders o on o.id = led.order_id
+      where ${inPeriod(sql`led.at`, bounds, branchId)}
+      group by led.user_id`),
   ]);
 
   const cleanQuality = (row: Record<string, unknown>): number | null =>
@@ -329,9 +376,11 @@ async function collectRoleRows(
     installer: installerRows.map((row) =>
       toRoleRow(row, (r) => asInt(r['orders_count']), cleanQuality),
     ),
+    manager: managerRows.map((row) => toRoleRow(row, (r) => asInt(r['orders_count']), () => null)),
     cornice_installer: corniceRows.map((row) => ({
       userId: asInt(row['user_id']),
       ordersCount: asInt(row['orders_count']),
+      piecesCount: null,
       volumeValue: asInt(row['orders_count']),
       qualityPercent: null,
       punctualityPercent: null,
@@ -378,6 +427,13 @@ export async function employeeRating(
   employees: readonly RatedEmployee[],
   bounds: PeriodBounds,
   branchId?: number,
+  /**
+   * Категории швей — от них зависит вес комплекта в балле. Без карты балл
+   * швеи считается по единице за комплект: так категории и выводятся
+   * (`sewerCategories`), и карту оттуда брать нельзя — получился бы цикл.
+   * Всем остальным показывающим балл вызовам карту надо передавать.
+   */
+  sewerCategoryOf?: ReadonlyMap<number, SewerCategory>,
 ): Promise<RatingEntry[]> {
   const [byRole, discipline] = await Promise.all([collectRoleRows(db, bounds, branchId), disciplineByUser(db, bounds)]);
 
@@ -398,11 +454,12 @@ export async function employeeRating(
       const entry: RatingRoleEntry = {
         role,
         ordersCount: row.ordersCount,
+        piecesCount: row.piecesCount,
         volumeValue: row.volumeValue,
         volumeScore,
         qualityPercent: row.qualityPercent,
         punctualityPercent: row.punctualityPercent,
-        score: ratingScore(row.ordersCount),
+        score: roleScore(row, sewerCategoryOf?.get(row.userId)),
       };
 
       const existing = rowsByUser.get(row.userId);
@@ -434,6 +491,16 @@ export async function employeeRating(
   });
 
   return rankEntries(entries);
+}
+
+/**
+ * Балл в одной роли. Швея — по комплектам и весу своей категории; остальные
+ * роли — по `ordersCount`, который у карнизчика уже и есть число вырезок.
+ * Категории нет (карту не передали) — вес единица, как у третьей.
+ */
+function roleScore(row: RoleRow, category: SewerCategory | undefined): number {
+  if (row.piecesCount === null) return ratingScore(row.ordersCount);
+  return category === undefined ? ratingScore(row.piecesCount) : sewerPiecesScore(row.piecesCount, category);
 }
 
 /**

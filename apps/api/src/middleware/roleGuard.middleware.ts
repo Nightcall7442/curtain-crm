@@ -1,6 +1,7 @@
 import {
   hasAnyRole,
   MANAGEMENT_ROLES,
+  ORDER_DISPATCH_ROLES,
   ORDER_INTAKE_ROLES,
   ROLE_LABELS_RU,
   ROLE_MANAGER_ROLES,
@@ -57,6 +58,13 @@ export const ceoProcedure = protectedProcedure.use(roleGuard(ROLE_MANAGER_ROLES)
 
 /** Процедура для руководства: директор и администратор. */
 export const managementProcedure = protectedProcedure.use(roleGuard(MANAGEMENT_ROLES));
+
+/**
+ * Процедура для тех, кто ведёт заказы целиком: руководство и менеджер.
+ * Назначение исполнителей, цена, команда заказа — но не финансы, не зарплата
+ * и не отмена: они остаются за `managementProcedure`.
+ */
+export const orderDispatchProcedure = protectedProcedure.use(roleGuard(ORDER_DISPATCH_ROLES));
 
 /** Процедура для тех, кто заводит заказы: продавец, админ, директор. */
 export const orderIntakeProcedure = protectedProcedure.use(roleGuard(ORDER_INTAKE_ROLES));

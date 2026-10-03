@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sewerCategoryFor, suggestedStageFee } from './sewerCategory';
+import { sewerCategoryFor, sewerPiecesScore, suggestedStageFee } from './sewerCategory';
 
 describe('категории швей', () => {
   it('лидер и близкие к нему — первая, половина — вторая, остальные — третья', () => {
@@ -21,5 +21,18 @@ describe('категории швей', () => {
     expect(suggestedStageFee(50_000, 1)).toBe(50_000);
     expect(suggestedStageFee(50_000, 2)).toBe(40_000);
     expect(suggestedStageFee(50_000, 3)).toBe(30_000);
+  });
+
+  it('балл за комплект: 1-я — 2, 2-я — 1,5, 3-я — 1', () => {
+    expect(sewerPiecesScore(1, 1)).toBe(2);
+    expect(sewerPiecesScore(1, 2)).toBe(1.5);
+    expect(sewerPiecesScore(1, 3)).toBe(1);
+  });
+
+  it('шесть комплектов считаются все шесть, а не как один заказ', () => {
+    expect(sewerPiecesScore(6, 1)).toBe(12);
+    expect(sewerPiecesScore(6, 2)).toBe(9);
+    expect(sewerPiecesScore(6, 3)).toBe(6);
+    expect(sewerPiecesScore(0, 1)).toBe(0);
   });
 });

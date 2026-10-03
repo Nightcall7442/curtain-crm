@@ -122,14 +122,19 @@ export const ratingRouter = router({
     const bounds = ratingPeriodBounds(input.scope, input);
     const employees = await loadEmployees(ctx);
 
+    // Категории — первыми: от них зависит вес комплекта в балле швеи. Прошлый
+    // период считается с теми же категориями, чтобы «изменение места» не
+    // сдвигалось от смены весов, а показывало только работу.
+    const categories = await sewerCategories(ctx.db, employees);
+    const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
+
     const [current, previous] = await Promise.all([
-      employeeRating(ctx.db, employees, bounds.current, input.branchId),
-      employeeRating(ctx.db, employees, bounds.previous, input.branchId),
+      employeeRating(ctx.db, employees, bounds.current, input.branchId, categoryOf),
+      employeeRating(ctx.db, employees, bounds.previous, input.branchId, categoryOf),
     ]);
 
     const previousPlaces = new Map(previous.map((entry) => [entry.userId, entry.place]));
-    const [avatars, categories] = await Promise.all([resolveAvatars(current), sewerCategories(ctx.db, employees)]);
-    const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
+    const avatars = await resolveAvatars(current);
 
     const rows = current.map((entry) => ({
       ...entry,
@@ -223,16 +228,19 @@ export const ratingRouter = router({
 
       const employees = await loadEmployees(ctx);
 
+      const categories = await sewerCategories(ctx.db, employees);
+      const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
+
       const [current, previous] = await Promise.all([
-        employeeRating(ctx.db, employees, bounds.current),
-        employeeRating(ctx.db, employees, bounds.previous),
+        employeeRating(ctx.db, employees, bounds.current, undefined, categoryOf),
+        employeeRating(ctx.db, employees, bounds.previous, undefined, categoryOf),
       ]);
 
       const previousPlaces = new Map(previous.map((entry) => [entry.userId, entry.place]));
       const ranked = current.filter((entry) => entry.place !== null);
 
       const mine = current.find((entry) => entry.userId === ctx.user.id) ?? null;
-      const myCategory = (await sewerCategories(ctx.db, employees)).find((row) => row.userId === ctx.user.id) ?? null;
+      const myCategory = categories.find((row) => row.userId === ctx.user.id) ?? null;
 
       return {
         period: {

@@ -18,7 +18,10 @@ import { and, eq, inArray } from 'drizzle-orm';
 
 import { translateNotificationText } from '../lib/notificationTranslations';
 
-import { isTelegramEnabled, sendTelegramMessage } from './telegram.service';
+import { isTelegramEnabled, sendTelegramGroupMessage, sendTelegramMessage } from './telegram.service';
+
+/** Язык группы мастерской — тот же, что у ленты действий (`groupFeed.service`). */
+const GROUP_LOCALE = 'uz';
 
 /**
  * Внутренние уведомления сотрудников.
@@ -573,17 +576,27 @@ export async function notifyTerminalCheckCreated(
   params: { readonly byName: string; readonly count: number; readonly target: number },
 ): Promise<void> {
   const remaining = Math.max(0, params.target - params.count);
+  const title = 'Терминальный чек пробит';
+  const body =
+    remaining === 0
+      ? `${params.byName}: сегодня ${params.count.toString()} из ${params.target.toString()} — цель выполнена`
+      : `${params.byName}: сегодня ${params.count.toString()} из ${params.target.toString()}, осталось ${remaining.toString()}`;
+
   await createNotifications(
     executor,
     recipients.map((userId) => ({
       userId,
       type: NotificationType.TERMINAL_CHECK_CREATED,
-      title: 'Терминальный чек пробит',
-      body:
-        remaining === 0
-          ? `${params.byName}: сегодня ${params.count.toString()} из ${params.target.toString()} — цель выполнена`
-          : `${params.byName}: сегодня ${params.count.toString()} из ${params.target.toString()}, осталось ${remaining.toString()}`,
+      title,
+      body,
     })),
+  );
+
+  // И в группу: личное уведомление получают только продавцы с привязанным
+  // Telegram, а остальным и руководству видно, что чек пробит, — только тут.
+  void sendTelegramGroupMessage(
+    translateNotificationText(title, GROUP_LOCALE),
+    translateNotificationText(body, GROUP_LOCALE),
   );
 }
 
@@ -593,14 +606,26 @@ export async function notifyTerminalCheckDue(
   recipients: readonly number[],
   params: { readonly count: number; readonly target: number },
 ): Promise<void> {
+  const title = 'Пробейте терминальный чек';
+  const body = `Сегодня ${params.count.toString()} из ${params.target.toString()} — осталось ${(params.target - params.count).toString()}`;
+
   await createNotifications(
     executor,
     recipients.map((userId) => ({
       userId,
       type: NotificationType.TERMINAL_CHECK_DUE,
-      title: 'Пробейте терминальный чек',
-      body: `Сегодня ${params.count.toString()} из ${params.target.toString()} — осталось ${(params.target - params.count).toString()}`,
+      title,
+      body,
     })),
+  );
+
+  // То же напоминание — в группу и со звуком: о нём забывают именно те, кто
+  // не открывает приложение, а группу читают все. Беззвучное сообщение
+  // потерялось бы среди ленты действий, ради которой группа заведена.
+  void sendTelegramGroupMessage(
+    translateNotificationText(title, GROUP_LOCALE),
+    translateNotificationText(body, GROUP_LOCALE),
+    { silent: false },
   );
 }
 

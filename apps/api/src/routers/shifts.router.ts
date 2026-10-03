@@ -1,10 +1,18 @@
 import { branches, installationTrips, orders, personalBreaks, shifts, users } from '@curtain-crm/db';
-import { MAX_PERSONAL_BREAK_MINUTES, SHIFT_FORGOTTEN_AFTER_HOURS, type ShiftActivity } from '@curtain-crm/shared';
+import {
+  MAX_PERSONAL_BREAK_MINUTES,
+  Role,
+  ROLE_LABELS,
+  SHIFT_FORGOTTEN_AFTER_HOURS,
+  type ShiftActivity,
+} from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, count, desc, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
+import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
 import {
+  base64FileSchema,
   geoPointSchema,
   idSchema,
   paginationSchema,
@@ -21,6 +29,8 @@ import {
 } from '../services/geolocation.service';
 import { notifyShiftAdjusted } from '../services/notifications.service';
 import { calculateWorkedHours, periodBounds, workedSecondsExpression } from '../services/shifts.service';
+import { buildStorageKey, decodeBase64Payload, getStorage } from '../services/storage.service';
+import { sendTelegramGroupPhotos } from '../services/telegram.service';
 import { buildTimesheet } from '../services/timesheet.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
@@ -193,11 +203,53 @@ export const shiftsRouter = router({
    * Расстояние до филиала сохраняется, но НЕ блокирует действие: сотрудник мог
    * уехать на объект, а незакрытая смена ломает расчёт часов сильнее, чем
    * неточная геометка.
+   *
+   * Швея закрывает смену только со снимком рабочего стола: владелец просил,
+   * чтобы уходя, она убеждалась, что всё убрано и чисто, и показывала это.
+   * Фото грузится ДО транзакции, как у терминальных чеков: запрос к
+   * хранилищу не должен держать открытой блокировку смены. У остальных
+   * ролей снимок не требуется, но принимается, если его прислали.
    */
   checkOut: protectedProcedure
-    .input(geoPointSchema.partial().optional())
-    .mutation(async ({ ctx, input }) =>
-      ctx.db.transaction(async (tx) => {
+    .input(geoPointSchema.partial().extend({ photo: base64FileSchema.optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      const photo = input?.photo;
+
+      if (photo === undefined && ctx.user.roles.includes(Role.SEWER)) {
+        // Нет открытой смены — об этом и скажем, а не про снимок: иначе
+        // повторное нажатие после успешного закрытия сбивало бы с толку.
+        const [open] = await ctx.db
+          .select({ id: shifts.id })
+          .from(shifts)
+          .where(findOpenShift(ctx.user.id))
+          .limit(1);
+        if (open === undefined) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Открытая смена не найдена' });
+        }
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message:
+            'Сфотографируйте рабочий стол и убедитесь, что всё убрано и чисто — без снимка смена не закрывается',
+        });
+      }
+
+      const bytes =
+        photo === undefined
+          ? null
+          : decodeBase64Payload(photo, {
+              allowedMimeTypes: ALLOWED_IMAGE_MIME_TYPES,
+              maxBytes: getEnv().MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+            });
+      const stored =
+        photo === undefined || bytes === null
+          ? null
+          : await getStorage().upload({
+              key: buildStorageKey(['shift-end', ctx.user.id.toString()], photo.mimeType),
+              body: bytes,
+              mimeType: photo.mimeType,
+            });
+
+      const closed = await ctx.db.transaction(async (tx) => {
         const [openShift] = await tx
           .select()
           .from(shifts)
@@ -223,6 +275,7 @@ export const shiftsRouter = router({
             endLatitude: position?.latitude ?? null,
             endLongitude: position?.longitude ?? null,
             endDistanceMeters: distance,
+            endPhotoKey: stored?.key ?? null,
           })
           .where(eq(shifts.id, openShift.id))
           .returning();
@@ -235,8 +288,25 @@ export const shiftsRouter = router({
         }
 
         return updated;
-      }),
-    ),
+      });
+
+      /*
+        Снимок стола — в группу мастерской, как фото по заказам: владелец
+        просил видеть, что оставлено после смены, не заходя в веб-панель.
+        ПОСЛЕ транзакции: смена, которая не закрылась, в группу не попадёт.
+        Не ждём ответа Telegram — закрытая смена важнее сообщения, а сбой
+        сети до Telegram не должен её откатывать. Подпись — на языке группы.
+      */
+      if (bytes !== null && photo !== undefined) {
+        void sendTelegramGroupPhotos(
+          'Smena yopildi — ish stoli',
+          `${ROLE_LABELS.uz.sewer}: ${ctx.user.fullName}`,
+          [{ body: bytes, mimeType: photo.mimeType }],
+        );
+      }
+
+      return closed;
+    }),
 
   /**
    * Начать личную отлучку.
@@ -710,6 +780,7 @@ export const shiftsRouter = router({
             startedAt: shifts.startedAt,
             endedAt: shifts.endedAt,
             startDistanceMeters: shifts.startDistanceMeters,
+            endPhotoKey: shifts.endPhotoKey,
             isManuallyAdjusted: shifts.isManuallyAdjusted,
             adjustmentReason: shifts.adjustmentReason,
           })
@@ -723,7 +794,17 @@ export const shiftsRouter = router({
         ctx.db.select({ value: count() }).from(shifts).where(where),
       ]);
 
-      return toPage(items, totalRow?.value ?? 0, input);
+      // Снимок рабочего стола при закрытии смены: ключ хранилища наружу не
+      // отдаём, только готовую ссылку — руководству, которое это и проверяет.
+      const storage = getStorage();
+      const withPhotos = await Promise.all(
+        items.map(async ({ endPhotoKey, ...shift }) => ({
+          ...shift,
+          endPhotoUrl: endPhotoKey === null ? null : await storage.getUrl(endPhotoKey),
+        })),
+      );
+
+      return toPage(withPhotos, totalRow?.value ?? 0, input);
     }),
 
   /**

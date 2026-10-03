@@ -72,6 +72,10 @@ describe('unratedReason', () => {
     expect(unratedReason([Role.ADMIN, Role.SELLER])).toBeNull();
   });
 
+  it('менеджер участвует в конкурсе: назначения исполнителей измеримы', () => {
+    expect(unratedReason([Role.MANAGER])).toBeNull();
+  });
+
   it('объясняет, почему директор и SMM вне конкурса', () => {
     expect(unratedReason([Role.CEO])).toContain('Директор');
     expect(unratedReason([Role.SMM])).toContain('SMM');

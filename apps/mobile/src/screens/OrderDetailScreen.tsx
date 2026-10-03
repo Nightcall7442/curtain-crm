@@ -40,7 +40,7 @@ import { Field, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { Stepper } from '../components/Stepper';
-import { useAuth, useIsManagement } from '../hooks/useAuth';
+import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -77,6 +77,8 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
   const feesTarget = useRef<View>(null);
 
   const isManager = useIsManagement();
+  /** Менеджер: назначает и ставит цену, но без расценок и экономики. */
+  const canDispatch = useCanDispatchOrders();
   const { user } = useAuth();
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
@@ -493,7 +495,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
       </Card>
 
       {/* --- Позиции ------------------------------------------------------ */}
-      <OrderItemsCard orderId={orderId} items={data.items} isManager={isManager} />
+      <OrderItemsCard orderId={orderId} items={data.items} isManager={canDispatch} />
 
       {/*
         --- Сбор на выезд -----------------------------------------------------
@@ -527,14 +529,16 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
       </Card>
 
       {/*
-        Управление заказом — только руководству.
+        Управление заказом — руководству и менеджеру.
 
         Стоит после «Исполнителей» и перед комментариями: сначала админ
         видит, кто на заказе и что с ним, и только потом меняет назначение,
         цену и расценки. Обратный порядок звал бы править не глядя.
+        Менеджеру расценки и экономика не показываются (`isFullAccess`).
       */}
-      {isManager && (
+      {canDispatch && (
         <OrderManagement
+          isFullAccess={isManager}
           orderId={orderId}
           orderType={data.orderType}
           status={data.status}

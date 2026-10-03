@@ -1,8 +1,8 @@
 import {
   groupDigits,
   ORDER_STAGE_FEE_LABELS,
+  canDispatchOrders,
   isAssignableRole,
-  isManagement,
   ORDER_STAGE_FEE_ROLE,
   parseMoney,
   ROLE_LABELS,
@@ -34,9 +34,11 @@ import { Field, MoneyInput } from './Field';
  * клиента и сколько получит исполнитель. До этого блока делать это можно
  * было только в веб-панели, хотя решают такое, стоя над раскроечным столом.
  *
- * Блок показывается только руководству. Это удобство, а не защита: все
- * четыре процедуры закрыты `managementProcedure` и откажут любому другому,
- * даже если он доберётся до них в обход интерфейса.
+ * Блок показывается руководству и менеджеру. Это удобство, а не защита:
+ * назначение и цена закрыты `orderDispatchProcedure`, расценки —
+ * `managementProcedure`, и сервер откажет любому другому, даже если он
+ * доберётся до них в обход интерфейса. Менеджеру экономика и расценки не
+ * показываются (`isFullAccess` ложен): это деньги фирмы и зарплата цеха.
  *
  * Этапы берутся из `stageFeesOfOrderType`, а не перечисляются здесь: у
  * готовых штор нет ни замера, ни пошива, и четыре пустых поля вместо
@@ -54,6 +56,7 @@ const FEE_FIELD = {
 } as const satisfies Readonly<Record<OrderStageFee, string>>;
 
 export function OrderManagement({
+  isFullAccess,
   orderId,
   orderType,
   status,
@@ -62,6 +65,8 @@ export function OrderManagement({
   fees,
   assignees,
 }: {
+  /** Руководство: видит экономику и правит расценки. Менеджер — нет. */
+  readonly isFullAccess: boolean;
   readonly orderId: number;
   readonly orderType: OrderType;
   /** Нужен вместе с типом: готовая штора в переделке проходит цех как обычный заказ. */
@@ -100,10 +105,9 @@ export function OrderManagement({
     ...new Set(stages.map((stage) => ORDER_STAGE_FEE_ROLE[stage]).filter(isAssignableRole)),
   ];
 
-  const people = trpc.users.list.useQuery(
-    { page: 1, pageSize: 100, isActive: true },
-    { enabled: assigning !== null },
-  );
+  // `assignable`, а не `list`: менеджеру закрыт список полных карточек, а для
+  // выбора исполнителя нужны только имя и роли.
+  const people = trpc.users.assignable.useQuery(undefined, { enabled: assigning !== null });
 
   const refresh = async (): Promise<void> => {
     await Promise.all([
@@ -160,11 +164,12 @@ export function OrderManagement({
     Управленческие цифры он отдаёт только руководству — здесь блок и так
     показывается лишь ему, но решает это `purchases.orderCost`, а не экран.
   */
-  const economics = trpc.purchases.orderCost.useQuery({ orderId });
+  const economics = trpc.purchases.orderCost.useQuery({ orderId }, { enabled: isFullAccess });
 
   return (
     <>
-      {/* --- Деньги по заказу ------------------------------------------------ */}
+      {/* --- Деньги по заказу (только руководству) --------------------------- */}
+      {isFullAccess && (
       <Card>
         <CardTitle title={m('manage.economics')} icon="payroll" />
 
@@ -199,6 +204,7 @@ export function OrderManagement({
           </>
         )}
       </Card>
+      )}
 
       {/* --- Исполнители ---------------------------------------------------- */}
       <Card>
@@ -233,18 +239,19 @@ export function OrderManagement({
                       /*
                         Как в панели: сначала свои — у кого роль есть, это
                         обычный короткий список. По «Ещё» — все активные,
-                        кроме директора и админа: швея, которая сегодня едет
-                        на установку, — подработка, а не ошибка, роль ей
-                        выдаст сам API при назначении.
+                        кроме тех, кто ведёт заказы (директор, админ,
+                        менеджер): швея, которая сегодня едет на установку, —
+                        подработка, а не ошибка, роль ей выдаст сам API при
+                        назначении.
 
                         Кнопки переносятся строками, а не едут лентой:
                         горизонтальная лента внутри экрана-ленты глотала
                         нажатия и прятала половину имён за краем.
                       */
-                      const items = people.data?.items ?? [];
+                      const items = people.data ?? [];
                       const own = items.filter((person) => person.roles.includes(role));
                       const others = items.filter(
-                        (person) => !person.roles.includes(role) && !isManagement(person.roles),
+                        (person) => !person.roles.includes(role) && !canDispatchOrders(person.roles),
                       );
                       const pool = showOthers ? [...own, ...others] : own;
                       if (current !== null && !pool.some((person) => person.id === current.id)) {
@@ -369,7 +376,8 @@ export function OrderManagement({
         </Pressable>
       </Card>
 
-      {/* --- Расценки по этапам ---------------------------------------------- */}
+      {/* --- Расценки по этапам (только руководству) ------------------------- */}
+      {isFullAccess && (
       <Card>
         <CardTitle title={m('manage.feesTitle')} icon="payroll" />
         <Text style={styles.hint}>{m('manage.feesHint')}</Text>
@@ -450,6 +458,7 @@ export function OrderManagement({
           )}
         </Pressable>
       </Card>
+      )}
     </>
   );
 }

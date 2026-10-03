@@ -202,6 +202,8 @@ const EXACT: Readonly<Record<string, string>> = {
   'Смена уже открыта. Сначала завершите текущую смену': 'Smena allaqachon ochiq. Avval joriy smenani tugating',
   'Не удалось открыть смену': "Smenani ochib bo'lmadi",
   'Открытая смена не найдена': 'Ochiq smena topilmadi',
+  'Сфотографируйте рабочий стол и убедитесь, что всё убрано и чисто — без снимка смена не закрывается':
+    "Ish stolingizni suratga oling va hammasi yig'ishtirilgan, toza ekaniga ishonch hosil qiling — suratsiz smena yopilmaydi",
   'Не удалось закрыть смену': "Smenani yopib bo'lmadi",
   'Сначала откройте смену — отлучаться не от чего': "Avval smenani oching — tanaffusga chiqadigan narsa yo'q",
   'Отлучка уже начата': 'Tanaffus allaqachon boshlangan',
@@ -256,7 +258,7 @@ const EXACT: Readonly<Record<string, string>> = {
 
   // orderWorkflow
   'Заказ недоступен: вы не участвуете в его выполнении': 'Buyurtma mavjud emas: siz uning bajarilishida ishtirok etmaysiz',
-  'Назначать исполнителей вправе только администратор или директор': 'Ijrochilarni faqat administrator yoki direktor tayinlay oladi',
+  'Назначать исполнителей вправе только менеджер, администратор или директор': 'Ijrochilarni faqat menejer, administrator yoki direktor tayinlay oladi',
   'Не удалось обновить заказ': "Buyurtmani yangilab bo'lmadi",
   'Нельзя назначить деактивированного сотрудника': "O'chirilgan xodimni tayinlab bo'lmaydi",
 

@@ -14,6 +14,7 @@ import {
   ARCHIVED_ORDER_STATUSES,
   assignableRoleSchema,
   availableTransitions,
+  canDispatchOrders,
   corniceRotationSchema,
   CorniceStatus,
   isManagement,
@@ -58,7 +59,11 @@ import {
   reasonSchema,
 } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
-import { managementProcedure, orderIntakeProcedure } from '../middleware/roleGuard.middleware';
+import {
+  managementProcedure,
+  orderDispatchProcedure,
+  orderIntakeProcedure,
+} from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import {
   assertCanAccessOrder,
@@ -358,8 +363,13 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   user: { readonly id: number; readonly roles: readonly Role[] },
 ): OrderWithVisibleFees<T> {
   const seesEverything = isManagement(user.roles);
+  // Менеджеру цена и платежи клиента нужны (он ставит цену), а расценки
+  // исполнителям — нет: это зарплатная часть, она остаётся у руководства.
   const seesClientMoney =
-    seesEverything || user.roles.includes(Role.SELLER) || order.installerId === user.id;
+    seesEverything ||
+    canDispatchOrders(user.roles) ||
+    user.roles.includes(Role.SELLER) ||
+    order.installerId === user.id;
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
@@ -384,12 +394,12 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
 /**
  * Ограничение выборки заказов для рядового сотрудника.
  *
- * Возвращает `undefined` для руководства — оно видит все заказы.
+ * Возвращает `undefined` для руководства и менеджера — они видят все заказы.
  * Условие повторяет `canUserAccessOrder()`, но в виде SQL: фильтровать
  * в приложении означало бы выгружать чужие заказы из базы.
  */
 function visibilityFilter(user: { id: number; roles: readonly Role[] }) {
-  if (isManagement(user.roles)) return undefined;
+  if (canDispatchOrders(user.roles)) return undefined;
 
   return or(
     eq(orders.createdBy, user.id),
@@ -1136,7 +1146,7 @@ export const ordersRouter = router({
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const order = await loadOrderForUpdate(tx, input.id);
-        if (!isManagement(ctx.user.roles)) {
+        if (!canDispatchOrders(ctx.user.roles)) {
           if (order.createdBy !== ctx.user.id) {
             throw new TRPCError({
               code: 'FORBIDDEN',
@@ -1196,7 +1206,7 @@ export const ordersRouter = router({
     ),
 
   /** Изменение суммы работ и предоплаты. Остаток пересчитывается самой БД. */
-  setPrice: managementProcedure
+  setPrice: orderDispatchProcedure
     .input(
       z.object({
         id: idSchema,
@@ -1326,7 +1336,7 @@ export const ordersRouter = router({
    * `null` в поле снимает ранее проставленный метраж, отсутствующее поле не
    * трогает его вовсе: это разные вещи, и `??` их бы склеил.
    */
-  setItemMeters: managementProcedure
+  setItemMeters: orderDispatchProcedure
     .input(
       z.object({
         itemId: idSchema,
@@ -1533,7 +1543,7 @@ export const ordersRouter = router({
     }),
 
   /** Назначение или снятие исполнителя. */
-  assign: managementProcedure
+  assign: orderDispatchProcedure
     .input(
       z.object({
         id: idSchema,
@@ -1670,7 +1680,7 @@ export const ordersRouter = router({
       return loadPackList(ctx.db, input.id);
     }),
 
-  addTeamMember: managementProcedure
+  addTeamMember: orderDispatchProcedure
     .input(z.object({ id: idSchema, userId: idSchema }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
@@ -1681,7 +1691,7 @@ export const ordersRouter = router({
       return { success: true } as const;
     }),
 
-  removeTeamMember: managementProcedure
+  removeTeamMember: orderDispatchProcedure
     .input(z.object({ id: idSchema, userId: idSchema }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
@@ -1724,7 +1734,7 @@ export const ordersRouter = router({
    * установщика, а здесь имя — половина смысла. Порядок — по сроку: что
    * горит, то сверху; без срока — в конец.
    */
-  installationQueue: managementProcedure.query(async ({ ctx }) => {
+  installationQueue: orderDispatchProcedure.query(async ({ ctx }) => {
     return ctx.db
       .select({
         id: orders.id,

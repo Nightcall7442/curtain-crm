@@ -57,6 +57,16 @@ export const shifts = pgTable(
     endLongitude: doublePrecision('end_longitude'),
     endDistanceMeters: integer('end_distance_meters'),
 
+    /**
+     * Фото рабочего места при закрытии смены — ключ в хранилище.
+     *
+     * Обязательно для швей: владелец просил, чтобы уходя, они снимали
+     * рабочий стол и убеждались, что всё убрано и чисто. Nullable: у
+     * остальных ролей фото не требуется, а у смен, которые закрыла система
+     * или правил руководитель, снимка нет и быть не может.
+     */
+    endPhotoKey: text('end_photo_key'),
+
     /* --- Ручная корректировка ---------------------------------------------- */
 
     isManuallyAdjusted: boolean('is_manually_adjusted').notNull().default(false),

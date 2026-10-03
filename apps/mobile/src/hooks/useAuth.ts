@@ -1,4 +1,4 @@
-import { isManagement, Role } from '@curtain-crm/shared';
+import { canDispatchOrders, isManagement, Role } from '@curtain-crm/shared';
 import { createContext, useContext } from 'react';
 
 /**
@@ -75,6 +75,18 @@ export function useAuth(): AuthState {
 export function useIsManagement(): boolean {
   const { user } = useAuth();
   return isManagement(user?.roles ?? []);
+}
+
+/**
+ * Ведёт ли сотрудник заказы целиком: директор, администратор или менеджер.
+ *
+ * Уже, чем `useIsManagement`: менеджер назначает исполнителей и ставит цену,
+ * но не видит расценок, экономики и не отменяет заказы. Как и везде, это
+ * удобство: сервер закрывает `orderDispatchProcedure` и откажет остальным.
+ */
+export function useCanDispatchOrders(): boolean {
+  const { user } = useAuth();
+  return canDispatchOrders(user?.roles ?? []);
 }
 
 /**

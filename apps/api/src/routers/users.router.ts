@@ -34,7 +34,11 @@ import {
   phoneSchema,
 } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
-import { ceoProcedure, managementProcedure } from '../middleware/roleGuard.middleware';
+import {
+  ceoProcedure,
+  managementProcedure,
+  orderDispatchProcedure,
+} from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import { resetPasswordByManager, revokeAllSessions } from '../services/auth.service';
 import { notifyRoleChanged } from '../services/notifications.service';
@@ -365,6 +369,29 @@ export const usersRouter = router({
       const items = await loadUsers(ctx.db, idRows.map((row) => row.id));
       return toPage(items, totalRow?.value ?? 0, input);
     }),
+
+  /**
+   * Кандидаты в исполнители заказа — для руководства и менеджера.
+   *
+   * `list` отдаёт полные карточки (телефон, подразделение, ставки) и закрыт
+   * для руководства. Менеджеру, который назначает исполнителей, нужны только
+   * имя и роли — их и отдаём, и больше ничего: назначать можно, а читать
+   * чужие карточки незачем.
+   */
+  assignable: orderDispatchProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db.query.users.findMany({
+      where: eq(users.isActive, true),
+      columns: { id: true, fullName: true },
+      with: { roles: { columns: { role: true } } },
+      orderBy: (user, { asc: ascending }) => [ascending(user.fullName)],
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      fullName: row.fullName,
+      roles: row.roles.map((entry) => entry.role),
+    }));
+  }),
 
   /**
    * Компактный список сотрудников с указанной ролью.

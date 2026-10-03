@@ -8,10 +8,10 @@ import {
   type Order,
 } from '@curtain-crm/db';
 import {
+  canDispatchOrders,
   CorniceStatus,
   findTransition,
   isRollback,
-  isManagement,
   ORDER_STATUS_LABELS_RU,
   ORDER_STATUS_REQUIRED_ASSIGNEE,
   OrderStatus,
@@ -103,9 +103,9 @@ const STATUS_OWNER: Readonly<Partial<Record<OrderStatusName, AssignableRole>>> =
     как раз по этой таблице) и не могли даже открыть такой заказ, чтобы
     посмотреть адрес и объём.
 
-    Двигать заказ дальше по-прежнему вправе только руководство: переход
-    «Назначить установщика» назван в `ORDER_TRANSITIONS` ролями админа и
-    директора, и эта строка на него не влияет.
+    Двигать заказ дальше по-прежнему вправе только руководство и менеджер:
+    переход «Назначить установщика» назван в `ORDER_TRANSITIONS` ролями
+    админа, директора и менеджера, и эта строка на него не влияет.
   */
   [OrderStatus.PENDING_INSTALLATION_ASSIGNMENT]: Role.INSTALLER,
   [OrderStatus.INSTALLATION_ASSIGNED]: Role.INSTALLER,
@@ -136,7 +136,7 @@ export function collectOrderParticipants(order: Order): number[] {
  * Используется для чтения заказа, комментариев и фотографий.
  */
 export function canUserAccessOrder(order: Order, user: AuthenticatedUser): boolean {
-  if (isManagement(user.roles)) return true;
+  if (canDispatchOrders(user.roles)) return true;
   /*
     Карниз — общая работа карнизчиков: пока он не повешен, заказ принадлежит
     не конкретному человеку, а всей бригаде. Без этого исключения карнизчик
@@ -268,7 +268,7 @@ export interface ChangeOrderStatusParams {
    * прислать не тот, и появилась бы вторая, расходящаяся с таблицей,
    * трактовка того, кого назначают.
    *
-   * Назначать вправе только руководство — ровно как в `orders.assign`.
+   * Назначать вправе только руководство и менеджер — ровно как в `orders.assign`.
    */
   readonly assigneeId?: number | null;
   readonly ipAddress?: string | null;
@@ -399,13 +399,13 @@ export async function changeOrderStatus(
       });
     }
 
-    // Право назначать — только у руководства, как и в `orders.assign`.
+    // Право назначать — у руководства и менеджера, как и в `orders.assign`.
     // Без этой проверки любой участник заказа, которому переход разрешён,
-    // назначал бы исполнителей в обход `managementProcedure`.
-    if (!isManagement(actor.roles)) {
+    // назначал бы исполнителей в обход `orderDispatchProcedure`.
+    if (!canDispatchOrders(actor.roles)) {
       throw new TRPCError({
         code: 'FORBIDDEN',
-        message: 'Назначать исполнителей вправе только администратор или директор',
+        message: 'Назначать исполнителей вправе только менеджер, администратор или директор',
       });
     }
 
@@ -463,8 +463,14 @@ export async function changeOrderStatus(
     Готовые шторы проверку админом минуют: продажа уходит из «Новый» сразу
     на назначение установщика. Карниз к такой продаже раньше терялся —
     карнизчики о нём не узнавали. Поэтому для них точка отправки — этот
-    первый переход; продажа без установки (сразу «Выполнен») карниз не
-    запускает: клиент увозит его сам.
+    первый переход.
+
+    Продажа без установки (сразу «Выполнен») карниз ЗАПУСКАЕТ, если он в
+    ней есть. Раньше не запускала («клиент увозит его сам»), но карниз к
+    готовой шторе режет карнизчик, и без этапа его работа не оставляла
+    следа: ни балла в рейтинге, ни сдельной — карнизчики жаловались, что
+    «срезал карниз, а балл не засчитан». Заказ остаётся закрытым, а карниз
+    ждёт в очереди карнизчика, как обычно, и закрывается его отметкой.
   */
   const leavesIntake =
     fromStatus === OrderStatus.PENDING_ADMIN_REVIEW ||
@@ -475,7 +481,7 @@ export async function changeOrderStatus(
     leavesIntake &&
     !wasRollback &&
     toStatus !== OrderStatus.CANCELLED &&
-    toStatus !== OrderStatus.COMPLETED &&
+    (toStatus !== OrderStatus.COMPLETED || order.orderType === OrderType.READY_MADE) &&
     (await orderNeedsCornice(executor, order.id));
 
   const [updated] = await executor
@@ -634,7 +640,7 @@ function assertActorOwnsOrder(
   actor: AuthenticatedUser,
   fromStatus: OrderStatusName,
 ): void {
-  if (isManagement(actor.roles)) return;
+  if (canDispatchOrders(actor.roles)) return;
 
   const ownerRole = STATUS_OWNER[fromStatus];
   if (ownerRole === undefined) return;
