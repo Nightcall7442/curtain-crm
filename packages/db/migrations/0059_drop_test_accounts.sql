@@ -34,6 +34,13 @@ DELETE FROM "retail_items";--> statement-breakpoint
   выданная роль, условия оплаты), не удаляются, а переписываются на
   директора: сами эти записи настоящие и нужны. Там, где автор может
   отсутствовать, ставится NULL — врать про авторство незачем.
+
+  Директор нужен только когда есть кого удалять. Раньше его отсутствие
+  роняло миграцию сразу, и на пустой базе (CI накатывает схему с нуля, а
+  новая установка тоже начинается без людей) она не выполнялась вовсе,
+  хотя удалять там нечего. Теперь сначала ищутся тестовые учётки: нет их —
+  миграция ничего не делает; есть, а директора нет — падает, как и прежде,
+  чтобы не удалить людей, не передав записи.
 */
 DO $$
 DECLARE
@@ -46,19 +53,19 @@ BEGIN
    ORDER BY u.id
    LIMIT 1;
 
-  IF boss IS NULL THEN
-    RAISE EXCEPTION 'Директор не найден: некому передать авторство записей';
-  END IF;
-
   SELECT array_agg(id) INTO victims
     FROM "users"
    WHERE ("job_title" = 'Тестовая учётка (удалить после проверки)'
           OR "phone" LIKE '+99890000000%')
-     AND id <> boss
+     AND id IS DISTINCT FROM boss
      AND id NOT IN (SELECT "user_id" FROM "user_roles" WHERE "role" = 'ceo');
 
   IF victims IS NULL THEN
     RETURN;
+  END IF;
+
+  IF boss IS NULL THEN
+    RAISE EXCEPTION 'Директор не найден: некому передать авторство записей';
   END IF;
 
   UPDATE "catalog_items"     SET "created_by"  = NULL WHERE "created_by"  = ANY(victims);
