@@ -1184,13 +1184,15 @@ async function run(db: Database): Promise<void> {
   const depositRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_DEPOSIT);
   const balanceRow = cash.rows.find((row) => row.kind === PaymentKind.ORDER_BALANCE);
   check(
-    'касса: приходы разложены по источнику и способу, чек по карте посчитан в норму',
+    'касса: приходы разложены по источнику и способу, оплата картой в норму терминальных чеков не идёт',
     depositRow?.byMethod.cash === parseMoney('2300000') &&
       balanceRow?.byMethod.cash === parseMoney('500000') &&
       balanceRow.byMethod.card === parseMoney('200000') &&
       // 1 000 000 по этому заказу + 2 000 000 первой оплаты заказа из раздела 2.
       cash.total === parseMoney('3000000') &&
-      cash.terminalChecks === 1 &&
+      // Касса и терминал разведены: приход по карте — не чек, чеком его делает
+      // только отдельная запись (см. ниже), так что здесь их ноль.
+      cash.terminalChecks === 0 &&
       cash.out.refunds === parseMoney('50000') &&
       cash.collected === parseMoney('400000'),
     `итого ${moneyToDecimalString(cash.total)}, чеков ${cash.terminalChecks.toString()}, возвратов ${moneyToDecimalString(cash.out.refunds)}`,
@@ -1214,10 +1216,11 @@ async function run(db: Database): Promise<void> {
   // и чужие дни, поэтому сверяются слагаемые и то, что сегодняшнее попало.
   const till = await balance(db, { at: cashRange.to, branchId: branch.id, managementIds: [admin.id] });
   check(
-    'касса: в кассе — сдано и принято руководством минус выплаты, закупки и возвраты; на счёте — безнал',
+    'касса: в кассе — сдано и принято руководством минус закупки и возвраты (зарплата — отдельно); на счёте — безнал',
     till.cash.collected >= parseMoney('400000') &&
       till.cash.refunds >= parseMoney('50000') &&
-      till.cash.total === till.cash.collected + till.cash.byManagement - till.cash.payroll - till.cash.purchases - till.cash.refunds &&
+      // Выплаты зарплаты из кассы не вычитаются: владелец ведёт их отдельным учётом.
+      till.cash.total === till.cash.collected + till.cash.byManagement - till.cash.purchases - till.cash.refunds &&
       till.cashless.card >= parseMoney('200000') &&
       till.cashless.total === till.cashless.card + till.cashless.qr + till.cashless.click,
     `в кассе ${moneyToDecimalString(till.cash.total)}, на счёте ${moneyToDecimalString(till.cashless.total)}`,
