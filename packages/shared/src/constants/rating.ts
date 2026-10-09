@@ -176,8 +176,8 @@ export const RATING_ROLE_METRICS: Readonly<Record<RatedRole, RoleMetric>> = {
   qc: { label: 'Проверок', unit: 'зак.', hasQuality: true, hasPunctuality: true },
   installer: { label: 'Установок', unit: 'зак.', hasQuality: true, hasPunctuality: true },
   // Карниз — вне цепочки статусов: ни возвратов, ни срока у него нет,
-  // считается число вырезок — по позициям заказа, а не по заказам.
-  cornice_installer: { label: 'Вырезок', unit: 'шт', hasQuality: false, hasPunctuality: false },
+  // считаются заказы, где он поставил карниз («заказ (резка)» — один балл).
+  cornice_installer: { label: 'Заказов (резка)', unit: 'зак.', hasQuality: false, hasPunctuality: false },
   // Менеджер назначает исполнителей: задача — заказ, на который назначен
   // исполнитель, и закрытия заказа он не ждёт. Ни срока, ни возвратов у
   // этой работы нет — их отвечает цепочка, а не тот, кто назначил.

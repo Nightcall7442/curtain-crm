@@ -907,15 +907,20 @@ async function run(db: Database): Promise<void> {
     [{ id: sewer.id, fullName: sewer.fullName, avatarStorageKey: null, roles: [Role.SEWER] }],
     bounds,
   );
-  const sewerTasks = sewerRating?.byRole.find((entry) => entry.role === Role.SEWER)?.ordersCount ?? 0;
+  const sewerEntry = sewerRating?.byRole.find((entry) => entry.role === Role.SEWER);
+  const sewerTasks = sewerEntry?.ordersCount ?? 0;
+  // Швее балл — за комплект (позиция × количество), без карты категорий — по
+  // единице: заказов не меньше двух, комплектов не меньше, чем заказов.
+  const sewerPieces = sewerEntry?.piecesCount ?? 0;
   check(
-    'rating: сданный пошив идёт в балл до закрытия заказа',
-    sewerTasks >= 2 && sewerRating?.score === sewerTasks,
-    `задач ${sewerTasks.toString()}, балл ${String(sewerRating?.score ?? null)}`,
+    'rating: сданный пошив идёт в балл до закрытия заказа, за каждый комплект',
+    sewerTasks >= 2 && sewerPieces >= sewerTasks && sewerRating?.score === sewerPieces,
+    `заказов ${sewerTasks.toString()}, комплектов ${sewerPieces.toString()}, балл ${String(sewerRating?.score ?? null)}`,
   );
 
-  // Карнизчику — балл за каждую вырезку: позиция с карнизом на три окна
-  // (quantity 3) плюс позиция с трубой — четыре, а не «один заказ».
+  // Карнизчику — один балл за заказ («заказ (резка) = 1 балл»), сколько бы
+  // карнизов в нём ни было: позиция с карнизом на три окна (quantity 3) плюс
+  // позиция с трубой — это всё равно один заказ.
   await db.insert(orderItems).values([
     {
       orderId: sewnOpen.id,
@@ -945,11 +950,11 @@ async function run(db: Database): Promise<void> {
     [{ id: corniceMan.id, fullName: corniceMan.fullName, avatarStorageKey: null, roles: [Role.CORNICE_INSTALLER] }],
     bounds,
   );
-  const cuts = corniceRating?.byRole.find((entry) => entry.role === Role.CORNICE_INSTALLER)?.ordersCount ?? 0;
+  const corniceOrders = corniceRating?.byRole.find((entry) => entry.role === Role.CORNICE_INSTALLER)?.ordersCount ?? 0;
   check(
-    'rating: карнизчику балл за каждую вырезку, а не за заказ',
-    cuts === 4 && corniceRating?.score === 4,
-    `вырезок ${cuts.toString()}, балл ${String(corniceRating?.score ?? null)}`,
+    'rating: карнизчику один балл за заказ, сколько бы карнизов в нём ни было',
+    corniceOrders === 1 && corniceRating?.score === 1,
+    `заказов ${corniceOrders.toString()}, балл ${String(corniceRating?.score ?? null)}`,
   );
 
   // И в зарплату: сдельная за сданный пошив — в месяц сдачи, не закрытия.
