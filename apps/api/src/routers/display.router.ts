@@ -21,7 +21,10 @@ export const displayRouter = router({
     .query(async ({ ctx, input }) => {
       const link = await findActiveDisplayLink(ctx.db, input.token);
       if (link === null) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Ссылка недействительна' });
+        // NOT_FOUND, а не UNAUTHORIZED: на 401 клиент панели обновляет токен и, получив
+        // 401 снова, выходит из сессии. Руководитель, открывший отозванную ссылку у себя,
+        // вылетел бы из панели. Ссылки нет — значит «не найдено».
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Ссылка недействительна' });
       }
 
       const shown = input.group === MonitorGroup.WORKSHOP ? link.showWorkshop : link.showInstallation;

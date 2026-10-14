@@ -1542,6 +1542,15 @@ async function run(db: Database): Promise<void> {
     () => tvCaller.display.board({ token: `${tvLink.token.slice(0, -4)}AAAA`, group: MonitorGroup.WORKSHOP }),
     (message) => message === 'Ссылка недействительна',
   );
+  // 404, а не 401: на 401 панель обновляет токен и выходит из сессии, и руководитель,
+  // открывший отозванную ссылку у себя в браузере, вылетел бы из панели.
+  const unknownCode = await tvCaller.display
+    .board({ token: `${tvLink.token.slice(0, -4)}AAAA`, group: MonitorGroup.WORKSHOP })
+    .then(
+      () => null,
+      (error: unknown) => (error instanceof TRPCError ? error.code : String(error)),
+    );
+  check('ТВ: неизвестная ссылка — NOT_FOUND, а не UNAUTHORIZED', unknownCode === 'NOT_FOUND', String(unknownCode));
   await ceoCaller.displayLinks.revoke({ id: tvLink.id });
   await expectRejectedWith(
     'ТВ: отозванная ссылка гаснет',
