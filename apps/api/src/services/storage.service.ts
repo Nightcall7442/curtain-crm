@@ -10,7 +10,7 @@ import {
   S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, relative, sep } from 'node:path';
 
 import { TRPCError } from '@trpc/server';
@@ -48,11 +48,23 @@ export interface StoredObject {
 export interface GetUrlOptions {
   /** Срок жизни ссылки, секунды. Игнорируется disk-драйвером. */
   readonly expiresInSeconds?: number;
+  /**
+   * Один и тот же адрес в пределах часа.
+   *
+   * Обычная ссылка подписывается от текущей секунды, и табло, которое
+   * опрашивает сервер раз в 20 секунд, каждый раз получало бы новый адрес
+   * каждого фото — браузер скачивал бы их заново. Здесь срок округляется
+   * до конца следующего часа: адрес меняется раз в час, а живёт ссылка
+   * не меньше часа с момента выдачи.
+   */
+  readonly stableWithinHour?: boolean;
 }
 
 export interface StorageDriver {
   upload(input: UploadInput): Promise<StoredObject>;
   getUrl(key: string, options?: GetUrlOptions): Promise<string>;
+  /** Содержимое объекта. Нужно служебным скриптам, а не раздаче. */
+  read(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
 }
@@ -132,6 +144,8 @@ const MIME_EXTENSIONS: Readonly<Record<string, string>> = {
 const fileSignature = (key: string, expiresAt: number, secret: string): string =>
   createHmac('sha256', secret).update(`files:${key}:${expiresAt.toString()}`).digest('hex');
 
+const HOUR_SECONDS = 3600;
+
 /** Имена параметров в подписанном адресе. */
 export const FILE_EXPIRES_PARAM = 'expires';
 export const FILE_SIGNATURE_PARAM = 'sig';
@@ -207,14 +221,21 @@ export class DiskStorageDriver implements StorageDriver {
   getUrl(key: string, options?: GetUrlOptions): Promise<string> {
     assertValidStorageKey(key);
 
-    const ttl = options?.expiresInSeconds ?? FILE_URL_TTL_SECONDS;
-    const expiresAt = Math.floor(Date.now() / 1000) + ttl;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const expiresAt =
+      options?.stableWithinHour === true
+        ? (Math.floor(nowSeconds / HOUR_SECONDS) + 2) * HOUR_SECONDS
+        : nowSeconds + (options?.expiresInSeconds ?? FILE_URL_TTL_SECONDS);
     const signature = fileSignature(key, expiresAt, this.signingSecret);
 
     const base = `${this.publicBaseUrl.replace(/\/$/, '')}/${key}`;
     return Promise.resolve(
       `${base}?${FILE_EXPIRES_PARAM}=${expiresAt.toString()}&${FILE_SIGNATURE_PARAM}=${signature}`,
     );
+  }
+
+  read(key: string): Promise<Buffer> {
+    return readFile(this.resolvePath(key));
   }
 
   async delete(key: string): Promise<void> {
@@ -292,11 +313,27 @@ export class S3StorageDriver implements StorageDriver {
   async getUrl(key: string, options?: GetUrlOptions): Promise<string> {
     assertValidStorageKey(key);
 
-    return getSignedUrl(
-      this.client,
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-      { expiresIn: options?.expiresInSeconds ?? FILE_URL_TTL_SECONDS },
-    );
+    // Та же стабильность, что у disk-драйвера: подпись от начала часа и
+    // срок в два часа — адрес один в пределах часа и живёт не меньше часа.
+    const presign =
+      options?.stableWithinHour === true
+        ? {
+            expiresIn: 2 * HOUR_SECONDS,
+            signingDate: new Date(Math.floor(Date.now() / (HOUR_SECONDS * 1000)) * HOUR_SECONDS * 1000),
+          }
+        : { expiresIn: options?.expiresInSeconds ?? FILE_URL_TTL_SECONDS };
+
+    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), presign);
+  }
+
+  async read(key: string): Promise<Buffer> {
+    assertValidStorageKey(key);
+
+    const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    if (response.Body === undefined) {
+      throw new Error(`Объект ${key} пуст или не найден`);
+    }
+    return Buffer.from(await response.Body.transformToByteArray());
   }
 
   async delete(key: string): Promise<void> {

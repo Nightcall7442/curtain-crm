@@ -57,7 +57,7 @@ async function main(): Promise<void> {
 
   try {
     /* --- Все ключи, на которые кто-то ссылается ---------------------------- */
-    const [photos, voices, avatars] = await Promise.all([
+    const [photos, voices, avatars, avatarPreviews] = await Promise.all([
       db.select({ key: orderPhotos.storageKey }).from(orderPhotos),
       db
         .select({ key: orderComments.voiceStorageKey })
@@ -67,10 +67,15 @@ async function main(): Promise<void> {
         .select({ key: users.avatarStorageKey })
         .from(users)
         .where(isNotNull(users.avatarStorageKey)),
+      // Превью фото для табло — такой же живой файл, как сам оригинал.
+      db
+        .select({ key: users.avatarPreviewKey })
+        .from(users)
+        .where(isNotNull(users.avatarPreviewKey)),
     ]);
 
     const referenced = new Set<string>();
-    for (const row of [...photos, ...voices, ...avatars]) {
+    for (const row of [...photos, ...voices, ...avatars, ...avatarPreviews]) {
       if (row.key !== null) referenced.add(row.key);
     }
 

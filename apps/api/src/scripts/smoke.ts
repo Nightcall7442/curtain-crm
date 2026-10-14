@@ -1273,6 +1273,39 @@ async function run(db: Database): Promise<void> {
     `чеков ${beforeStandalone.toString()} → ${afterStandalone.toString()}, приходов по карте с фото на ${cardOtherAmount}`,
   );
 
+  /* ------------------ 6d. Фото сотрудника: превью для табло --------------- */
+
+  const avatarKeys = async (userId: number) => {
+    const [row] = await db
+      .select({ original: users.avatarStorageKey, preview: users.avatarPreviewKey })
+      .from(users)
+      .where(eq(users.id, userId));
+    return row ?? { original: null, preview: null };
+  };
+  await caller.users.setAvatar({ userId: sewer.id, file: pixel });
+  const withPreview = await avatarKeys(sewer.id);
+  check(
+    'фото: к оригиналу сохраняется превью',
+    withPreview.original !== null && withPreview.preview !== null,
+    JSON.stringify(withPreview),
+  );
+  // Сервер проверяет только заявленный тип: мусор под видом PNG раньше
+  // сохранялся как есть, и превью не должно делать такую загрузку ошибкой.
+  await caller.users.setAvatar({
+    userId: sewer.id,
+    file: { mimeType: 'image/png', content: Buffer.from('not an image').toString('base64') },
+  });
+  const broken = await avatarKeys(sewer.id);
+  check(
+    'фото: нечитаемый файл сохранён без превью',
+    broken.original !== null && broken.preview === null,
+    JSON.stringify(broken),
+  );
+  await caller.users.setAvatar({ userId: sewer.id, file: pixel });
+  await caller.users.removeAvatar({ userId: sewer.id });
+  const removed = await avatarKeys(sewer.id);
+  check('фото: удаление снимает и оригинал, и превью', removed.original === null && removed.preview === null);
+
   /* ---------------------------- 7. Отчёты -------------------------------- */
 
   const [revenue] = await db

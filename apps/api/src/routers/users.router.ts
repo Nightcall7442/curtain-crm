@@ -40,6 +40,7 @@ import {
   orderDispatchProcedure,
 } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { makeAvatarPreview } from '../services/avatarPreview.service';
 import { resetPasswordByManager, revokeAllSessions } from '../services/auth.service';
 import { notifyRoleChanged } from '../services/notifications.service';
 import { calculateCompletedOrders } from '../services/payroll.service';
@@ -230,7 +231,7 @@ async function replaceAvatar(
   });
 
   const [before] = await executor
-    .select({ avatarStorageKey: users.avatarStorageKey })
+    .select({ avatarStorageKey: users.avatarStorageKey, avatarPreviewKey: users.avatarPreviewKey })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -242,21 +243,44 @@ async function replaceAvatar(
     mimeType: file.mimeType,
   });
 
+  // Превью для табло. Не вышло прочитать картинку — сохраняем как раньше,
+  // без превью: табло возьмёт оригинал.
+  const previewBody = await makeAvatarPreview(body);
+  const preview =
+    previewBody === null
+      ? null
+      : await storage
+          .upload({
+            key: buildStorageKey(["avatars", userId.toString(), "preview"], "image/webp"),
+            body: previewBody,
+            mimeType: "image/webp",
+          })
+          .catch(async (error: unknown) => {
+            await storage.delete(stored.key).catch(() => undefined);
+            throw error;
+          });
+
   try {
     await executor
       .update(users)
-      .set({ avatarStorageKey: stored.key, updatedAt: new Date() })
+      .set({
+        avatarStorageKey: stored.key,
+        avatarPreviewKey: preview?.key ?? null,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId));
   } catch (error) {
-    // Ссылку в БД поставить не удалось — убираем загруженный файл,
-    // иначе он останется в хранилище навсегда и ничем не будет виден.
+    // Ссылку в БД поставить не удалось — убираем загруженные файлы,
+    // иначе они останутся в хранилище навсегда и ничем не будут видны.
     await storage.delete(stored.key).catch(() => undefined);
+    if (preview !== null) await storage.delete(preview.key).catch(() => undefined);
     throw error;
   }
 
-  const previousKey = before?.avatarStorageKey ?? null;
-  if (previousKey !== null && previousKey !== stored.key) {
-    await storage.delete(previousKey).catch(() => undefined);
+  for (const previousKey of [before?.avatarStorageKey ?? null, before?.avatarPreviewKey ?? null]) {
+    if (previousKey !== null && previousKey !== stored.key && previousKey !== preview?.key) {
+      await storage.delete(previousKey).catch(() => undefined);
+    }
   }
 }
 
@@ -470,20 +494,21 @@ export const usersRouter = router({
       const target = await loadUserOrThrow(ctx.db, input.userId);
 
       const [before] = await ctx.db
-        .select({ avatarStorageKey: users.avatarStorageKey })
+        .select({ avatarStorageKey: users.avatarStorageKey, avatarPreviewKey: users.avatarPreviewKey })
         .from(users)
         .where(eq(users.id, input.userId))
         .limit(1);
 
       await ctx.db
         .update(users)
-        .set({ avatarStorageKey: null, updatedAt: new Date() })
+        .set({ avatarStorageKey: null, avatarPreviewKey: null, updatedAt: new Date() })
         .where(eq(users.id, input.userId));
 
-      const key = before?.avatarStorageKey ?? null;
-      // Файл удаляем ПОСЛЕ снятия ссылки: обратный порядок оставил бы в БД
+      // Файлы удаляем ПОСЛЕ снятия ссылки: обратный порядок оставил бы в БД
       // ключ на уже удалённый объект, и профиль отдавал бы битую ссылку.
-      if (key !== null) await getStorage().delete(key).catch(() => undefined);
+      for (const key of [before?.avatarStorageKey ?? null, before?.avatarPreviewKey ?? null]) {
+        if (key !== null) await getStorage().delete(key).catch(() => undefined);
+      }
 
       await recordAudit(ctx.db, {
         actorId: ctx.user.id,

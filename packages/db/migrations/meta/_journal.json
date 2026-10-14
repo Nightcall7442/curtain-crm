@@ -456,6 +456,13 @@
       "when": 1791059064814,
       "tag": "0064_shift_end_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1792003727754,
+      "tag": "0065_avatar_preview",
+      "breakpoints": true
     }
   ]
 }
