@@ -4,6 +4,7 @@ import { authRouter } from './auth.router';
 import { branchesRouter } from './branches.router';
 import { catalogRouter } from './catalog.router';
 import { dayOffRouter } from './dayOff.router';
+import { displayRouter } from './display.router';
 import { displayLinksRouter } from './displayLinks.router';
 import { disciplineRouter } from './discipline.router';
 import { eventsRouter } from './events.router';
@@ -66,6 +67,8 @@ export const appRouter = router({
   terminalChecks: terminalChecksRouter,
   displayLinks: displayLinksRouter,
   monitor: monitorRouter,
+  /* Табло для ТВ по секретной ссылке — единственное открытое без входа, кроме auth. */
+  display: displayRouter,
 });
 
 export type AppRouter = typeof appRouter;

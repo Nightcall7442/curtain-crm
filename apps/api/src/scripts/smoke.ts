@@ -18,6 +18,7 @@ import {
   catalogItems,
   closeDatabase,
   createDatabase,
+  displayLinks,
   hashPassword,
   notifications,
   orderComments,
@@ -201,8 +202,9 @@ async function cleanup(db: Database): Promise<void> {
   }
 
   if (userIds.length > 0) {
-    // audit_log — restrict: без явного удаления сотрудника не убрать.
+    // audit_log и ссылки для ТВ — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
+    await db.delete(displayLinks).where(inArray(displayLinks.createdBy, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -1486,6 +1488,65 @@ async function run(db: Database): Promise<void> {
     'табло: продавца на табло нет',
     () => managerCaller.monitor.person({ userId: seller.id }),
     (message) => message === 'Сотрудника нет на табло',
+  );
+
+  /* ---------------------- 8a. Табло для ТВ по ссылке ---------------------- */
+
+  const ceo = await makeUser('Директор', Role.CEO, '+998900000125');
+  const ceoCaller = createCallerFactory(appRouter)({
+    db,
+    user: await actorOf(ceo.id),
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const tvCaller = createCallerFactory(appRouter)({
+    db,
+    user: null,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+
+  const tvLink = await ceoCaller.displayLinks.create({
+    label: 'ТВ в цеху',
+    branchId: branch.id,
+    showWorkshop: true,
+    showInstallation: false,
+    locale: 'ru',
+  });
+  const tvBoard = await tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.WORKSHOP });
+  const tvJson = JSON.stringify(tvBoard);
+  check(
+    'ТВ: по ссылке видно цех своего филиала',
+    tvBoard.people.some((person) => person.userId === sewerA.id) &&
+      !tvBoard.people.some((person) => person.userId === sewerC.id),
+    `людей ${tvBoard.people.length.toString()}`,
+  );
+  check(
+    'ТВ: номер заказа есть, клиента и id заказа нет',
+    tvBoard.people.find((person) => person.userId === sewerA.id)?.current[0]?.orderNumber ===
+      sewingNow.orderNumber &&
+      !tvJson.includes(`${PREFIX} Табло`) &&
+      !tvJson.includes('"orderId"'),
+  );
+  await expectRejectedWith(
+    'ТВ: выключенная группа закрыта',
+    () => tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.INSTALLATION }),
+    (message) => message === 'Эта группа на ссылке не показывается',
+  );
+  await expectRejectedWith(
+    'ТВ: чужой токен не подходит',
+    () => tvCaller.display.board({ token: `${tvLink.token.slice(0, -4)}AAAA`, group: MonitorGroup.WORKSHOP }),
+    (message) => message === 'Ссылка недействительна',
+  );
+  await ceoCaller.displayLinks.revoke({ id: tvLink.id });
+  await expectRejectedWith(
+    'ТВ: отозванная ссылка гаснет',
+    () => tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.WORKSHOP }),
+    (message) => message === 'Ссылка недействительна',
   );
 }
 

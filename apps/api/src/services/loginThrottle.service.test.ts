@@ -10,6 +10,7 @@ import {
 import {
   assertLoginAllowed,
   consumeAuthRequestBudget,
+  isIpLimitedCall,
   loginRetryAfterSeconds,
   registerLoginFailure,
   resetLoginAttempts,
@@ -147,5 +148,30 @@ describe('ограничение обращений по адресу', () => {
     for (let i = 0; i <= AUTH_IP_REQUESTS_PER_MINUTE * 2; i += 1) {
       expect(consumeAuthRequestBudget(null, T0)).toBe(0);
     }
+  });
+});
+
+describe('какие вызовы считаются по адресу', () => {
+  it('вход и табло для ТВ', () => {
+    expect(isIpLimitedCall('/trpc/auth.login')).toBe(true);
+    expect(isIpLimitedCall('/trpc/display.board')).toBe(true);
+  });
+
+  it('остальные процедуры — нет', () => {
+    expect(isIpLimitedCall('/trpc/orders.list')).toBe(false);
+    expect(isIpLimitedCall('/trpc/displayLinks.list')).toBe(false);
+  });
+
+  it('пакетный вызов, в котором вход стоит не первым', () => {
+    expect(isIpLimitedCall('/trpc/health,auth.login')).toBe(true);
+    expect(isIpLimitedCall('/trpc/health,display.board')).toBe(true);
+  });
+
+  it('запятая, закодированная в адресе', () => {
+    expect(isIpLimitedCall('/trpc/health%2Cauth.login')).toBe(true);
+  });
+
+  it('битая кодировка не пропускает мимо ограничителя', () => {
+    expect(isIpLimitedCall('/trpc/health,%E0%A4%A,auth.login')).toBe(true);
   });
 });

@@ -69,6 +69,8 @@ const EXACT: Readonly<Record<string, string>> = {
 
   // monitor
   'Сотрудника нет на табло': "Xodim tabloda yo'q",
+  'Ссылка недействительна': 'Havola yaroqsiz',
+  'Эта группа на ссылке не показывается': "Bu guruh havolada ko'rsatilmaydi",
 
   // displayLinks
   'Выберите хотя бы одно табло': 'Kamida bitta tabloni tanlang',

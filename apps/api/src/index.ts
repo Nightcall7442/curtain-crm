@@ -14,7 +14,7 @@ import { installRussianZodMessages } from './lib/zodMessages';
 import { appRouter } from './routers';
 import { startCollectionReminders } from './services/reminders.service';
 import { startTelegramPolling } from './services/telegram.service';
-import { consumeAuthRequestBudget } from './services/loginThrottle.service';
+import { consumeAuthRequestBudget, isIpLimitedCall } from './services/loginThrottle.service';
 import {
   FILE_EXPIRES_PARAM,
   FILE_SIGNATURE_PARAM,
@@ -107,7 +107,8 @@ const rateLimitKey = (headers: Headers, socketAddress: string | null): string | 
 };
 
 /**
- * Потолок обращений к `auth.*` с одного адреса.
+ * Потолок обращений к `auth.*` и `display.*` с одного адреса: обе группы
+ * открыты без токена.
  *
  * Ставится ДО tRPC намеренно: смысл ограничителя в том, чтобы отбитый запрос
  * не дошёл ни до базы, ни до проверки пароля — именно они и стоят дорого.
@@ -121,9 +122,7 @@ const rateLimitKey = (headers: Headers, socketAddress: string | null): string | 
  * в `loginThrottle.service.ts`; здесь — защита процессора.
  */
 app.use('/trpc/*', async (c, next) => {
-  // Пакетный запрос tRPC складывает процедуры в путь через запятую
-  // (`/trpc/auth.login,auth.me`), поэтому сравниваем по префиксу.
-  if (!c.req.path.startsWith('/trpc/auth.')) return next();
+  if (!isIpLimitedCall(c.req.path)) return next();
 
   const retryAfter = consumeAuthRequestBudget(
     rateLimitKey(c.req.raw.headers, c.env.incoming.socket.remoteAddress ?? null),
