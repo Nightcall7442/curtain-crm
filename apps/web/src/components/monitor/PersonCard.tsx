@@ -280,16 +280,34 @@ export function PersonCard({
   person,
   group,
   now,
+  onSelect,
 }: {
   readonly person: BoardPerson;
   readonly group: MonitorGroupName;
   /** Время снимка: длительности считаются от него, а не от часов браузера. */
   readonly now: Date;
+  /** Открыть боковую панель человека. */
+  readonly onSelect?: (userId: number) => void;
 }): ReactElement {
   const away = AWAY_STATUSES.has(person.status);
 
   return (
-    <article className="surface-card flex flex-col overflow-hidden rounded-[20px]">
+    <article className="surface-card group/card flex flex-col overflow-hidden rounded-[20px] transition-transform duration-200 hover:-translate-y-0.5">
+      {/*
+        Вся карточка — одна кнопка: растянутая поверх содержимого, а не обёртка
+        вокруг него. Внутри кнопки нельзя держать блоки и заголовки, а программа
+        чтения экрана прочитала бы всю карточку как подпись кнопки.
+      */}
+      {onSelect !== undefined && (
+        <button
+          type="button"
+          aria-label={`Открыть: ${person.fullName}`}
+          onClick={() => {
+            onSelect(person.userId);
+          }}
+          className="!absolute inset-0 z-[2] rounded-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        />
+      )}
       <div className="relative h-[150px] shrink-0">
         <PersonPhoto
           name={person.fullName}

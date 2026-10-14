@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 
 import { LiveIndicator } from './LiveIndicator';
 import { PersonCard } from './PersonCard';
+import { PersonDrawer } from './PersonDrawer';
 import { Podium } from './Podium';
 import { StatusChips, type StatusFilter } from './StatusChips';
 import { SummaryPanel } from './SummaryPanel';
@@ -69,6 +70,8 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
   const status = parseStatus(params.get('status'));
   const sort = parseSort(params.get('sort'));
   const query = params.get('q') ?? '';
+  const personParam = Number.parseInt(params.get('person') ?? '', 10);
+  const personId = Number.isSafeInteger(personParam) && personParam > 0 ? personParam : null;
 
   const [branchId, setBranchId] = useState<number | null>(null);
   const branches = trpc.branches.list.useQuery();
@@ -191,6 +194,9 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
                 status={status}
                 sort={sort}
                 query={query}
+                onSelect={(userId) => {
+                  setParams({ person: userId.toString() });
+                }}
                 onReset={() => {
                   setSearch('');
                   setParams({ status: null, q: null });
@@ -201,6 +207,13 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
           </section>
         </>
       )}
+
+      <PersonDrawer
+        userId={personId}
+        onClose={() => {
+          setParams({ person: null });
+        }}
+      />
     </div>
   );
 }
@@ -211,6 +224,7 @@ function PeopleGrid({
   status,
   sort,
   query,
+  onSelect,
   onReset,
 }: {
   readonly group: MonitorGroupName;
@@ -218,6 +232,7 @@ function PeopleGrid({
   readonly status: StatusFilter;
   readonly sort: MonitorSort;
   readonly query: string;
+  readonly onSelect: (userId: number) => void;
   readonly onReset: () => void;
 }): ReactElement {
   const people = sortPeople(filterPeople(board.people, status, query), sort);
@@ -241,7 +256,7 @@ function PeopleGrid({
   return (
     <div className={GRID}>
       {people.map((person) => (
-        <PersonCard key={person.userId} person={person} group={group} now={board.generatedAt} />
+        <PersonCard key={person.userId} person={person} group={group} now={board.generatedAt} onSelect={onSelect} />
       ))}
     </div>
   );

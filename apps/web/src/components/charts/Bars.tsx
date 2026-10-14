@@ -1,5 +1,6 @@
 'use client';
 
+import { formatIsoDateShort } from '@curtain-crm/shared';
 import { Fragment, type ReactElement } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -119,6 +120,66 @@ export function ColumnChart({
           <span className="truncate text-overline text-muted">{item.label}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Ряд дней столбиками: «выработка за 30 дней».
+ *
+ * Не `ColumnChart`: тридцать чисел над тридцатью столбиками сливаются в
+ * строку нулей. Значение дня — во всплывающей подсказке, подписаны каждый
+ * пятый день от последнего и сам последний, он же выделен цветом.
+ */
+export function DailyBars({
+  days,
+  unit,
+  className,
+}: {
+  /** Календарные дни `YYYY-MM-DD`, последний — сегодня. */
+  readonly days: readonly { readonly day: string; readonly value: number }[];
+  readonly unit: string;
+  readonly className?: string;
+}): ReactElement {
+  const max = days.reduce((value, entry) => Math.max(value, entry.value), 0);
+  const last = days.length - 1;
+  const labelled = (index: number): boolean => (last - index) % 5 === 0;
+
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      <ol className="flex min-h-0 flex-1 items-end gap-[3px]">
+        {days.map((entry, index) => (
+          <li
+            key={entry.day}
+            className="flex h-full min-w-0 flex-1 items-end"
+            title={`${formatIsoDateShort(entry.day)}: ${entry.value.toString()} ${unit}`}
+          >
+            <span className="sr-only">{`${formatIsoDateShort(entry.day)}: ${entry.value.toString()} ${unit}`}</span>
+            <span
+              aria-hidden
+              className={cn('block w-full rounded-t-[3px]', index === last ? 'bg-accent' : 'bg-accent/40')}
+              style={{ height: max === 0 ? '2px' : `max(2px, ${((entry.value / max) * 100).toFixed(1)}%)` }}
+            />
+          </li>
+        ))}
+      </ol>
+      {/* Подписи — под центром своего столбика; последняя прижата вправо, чтобы не срезаться краем. */}
+      <div aria-hidden className="relative h-3.5">
+        {days.map((entry, index) =>
+          labelled(index) ? (
+            <span
+              key={entry.day}
+              className={cn(
+                'absolute top-0 whitespace-nowrap text-overline text-muted',
+                index === last ? 'right-0' : '-translate-x-1/2',
+              )}
+              style={index === last ? undefined : { left: `${(((index + 0.5) / days.length) * 100).toFixed(2)}%` }}
+            >
+              {formatIsoDateShort(entry.day)}
+            </span>
+          ) : null,
+        )}
+      </div>
     </div>
   );
 }
