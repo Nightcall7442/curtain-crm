@@ -26,6 +26,7 @@ export * from './enums/task.enum';
 export * from './enums/personalWork.enum';
 export * from './enums/dayOff.enum';
 export * from './enums/discipline.enum';
+export * from './enums/monitor.enum';
 
 /* Константы */
 export * from './constants/calendar';
@@ -38,6 +39,13 @@ export * from './constants/discipline';
 export * from './constants/terminalCheck';
 export * from './constants/shift';
 export * from './constants/sewerCategory';
+export * from './constants/monitor';
+
+/* Табло */
+export * from './monitor/liveStatus';
+export * from './monitor/dayOff';
+export * from './monitor/items';
+export * from './monitor/board';
 
 /* Типы */
 export * from './types/orderItemAccessory';
