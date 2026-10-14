@@ -4,6 +4,7 @@ import { authRouter } from './auth.router';
 import { branchesRouter } from './branches.router';
 import { catalogRouter } from './catalog.router';
 import { dayOffRouter } from './dayOff.router';
+import { displayLinksRouter } from './displayLinks.router';
 import { disciplineRouter } from './discipline.router';
 import { eventsRouter } from './events.router';
 import { terminalChecksRouter } from './terminalChecks.router';
@@ -62,6 +63,7 @@ export const appRouter = router({
   discipline: disciplineRouter,
   events: eventsRouter,
   terminalChecks: terminalChecksRouter,
+  displayLinks: displayLinksRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -226,6 +226,9 @@ export const AUDIT_ACTIONS = [
   'event.removed',
 
   'terminal_check.created',
+
+  'display_link.created',
+  'display_link.revoked',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

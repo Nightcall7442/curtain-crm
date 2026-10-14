@@ -31,6 +31,7 @@ export const AUDIT_ENTITY_TYPES = [
   'discipline_event',
   'event',
   'payment',
+  'display_link',
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
