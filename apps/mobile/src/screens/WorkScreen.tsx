@@ -448,8 +448,14 @@ const styles = StyleSheet.create({
   },
   // `flexGrow: 0` обязателен: без него ScrollView займёт всю оставшуюся
   // высоту экрана и список заказов окажется под ним.
+  //
+  // `flexShrink: 0` тоже обязателен. У ScrollView по умолчанию
+  // `flexShrink: 1` — и в React Native, и в react-native-web, — и когда
+  // кнопки и список не влезают в экран, ряд сжимался с 34 до 15 px и
+  // обрезался: выглядело так, будто чипы ушли под шапку.
   filtersScroll: {
     flexGrow: 0,
+    flexShrink: 0,
   },
   filters: {
     flexDirection: 'row',
