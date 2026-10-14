@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deltaPercent, filterPeople, sortPeople } from './board';
+import { deltaPercent, filterPeople, formatElapsed, shortName, sortPeople } from './board';
 import { isDayOffOn } from './dayOff';
 import { summarizeItems } from './items';
 import { deriveLiveStatus } from './liveStatus';
@@ -136,5 +136,32 @@ describe('сводка и список', () => {
       'Каримова Гулнора',
       'Фёдорова Зарина',
     ]);
+  });
+});
+
+describe('короткое имя для пьедестала', () => {
+  it('имя и первая буква фамилии', () => {
+    expect(shortName('Зухра Нормуродова')).toBe('Зухра Н.');
+  });
+
+  it('одно слово и лишние пробелы', () => {
+    expect(shortName('  Зухра  ')).toBe('Зухра');
+    expect(shortName('Бекзод   Эргашев  угли')).toBe('Бекзод Э.');
+  });
+});
+
+describe('сколько длится работа', () => {
+  const minutes = (value: number): number => value * 60_000;
+
+  it('минуты, часы с минутами, сутки с часами', () => {
+    expect(formatElapsed(minutes(45))).toBe('45 мин');
+    expect(formatElapsed(minutes(135))).toBe('2 ч 15 мин');
+    expect(formatElapsed(minutes(120))).toBe('2 ч');
+    expect(formatElapsed(minutes(60 * 129 + 57))).toBe('5 дн 9 ч');
+    expect(formatElapsed(minutes(60 * 48))).toBe('2 дн');
+  });
+
+  it('отрицательное — ноль: часы браузера и сервера расходятся', () => {
+    expect(formatElapsed(-5000)).toBe('0 мин');
   });
 });

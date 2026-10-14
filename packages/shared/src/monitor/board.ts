@@ -34,3 +34,29 @@ export function sortPeople<T extends { readonly fullName: string; readonly place
 ): T[] {
   return [...people].sort((a, b) => (sort === 'place' ? a.place - b.place || byName(a, b) : byName(a, b)));
 }
+
+/** Имя на пьедестале и в ленте выездов: «Зухра Н.» — полное имя туда не помещается. */
+export function shortName(fullName: string): string {
+  const [first, second] = fullName.trim().split(/\s+/);
+  if (first === undefined) return '';
+  return second === undefined ? first : `${first} ${second.charAt(0)}.`;
+}
+
+/**
+ * Сколько длится работа или выезд: «45 мин», «2 ч 15 мин», «5 дн 9 ч».
+ * Дольше суток минуты уже ничего не говорят, а «129 ч» приходится делить в уме.
+ */
+export function formatElapsed(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes.toString()} мин`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rest = minutes % 60;
+    return rest === 0 ? `${hours.toString()} ч` : `${hours.toString()} ч ${rest.toString()} мин`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  return rest === 0 ? `${days.toString()} дн` : `${days.toString()} дн ${rest.toString()} ч`;
+}
