@@ -39,6 +39,8 @@ import {
 } from '@curtain-crm/db';
 import {
   CorniceStatus,
+  LiveStatus,
+  MonitorGroup,
   moneyToDecimalString,
   ORDER_STATUS_LABELS_RU,
   OrderItemKind,
@@ -74,6 +76,7 @@ import { appRouter } from '../routers';
 import { terminalChecksToday } from '../routers/terminalChecks.router';
 import { createCallerFactory } from '../trpc';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
+import { workshopPeriodStarts } from '../services/periods';
 import {
   attendanceByDay,
   presenceToday,
@@ -1338,6 +1341,135 @@ async function run(db: Database): Promise<void> {
     'reports: выработка сотрудников (filter + in)',
     performance.length >= 1,
     `${performance.length.toString()} строк`,
+  );
+
+  /* ----------------------------- 8. Табло -------------------------------- */
+
+  const [otherBranch] = await db
+    .insert(branches)
+    .values({ name: `${PREFIX} Второй цех`, latitude: 41.3, longitude: 69.25, radiusMeters: 100 })
+    .returning();
+  if (otherBranch === undefined) throw new Error('второй филиал не создан');
+
+  const manager = await makeUser('Менеджер', Role.MANAGER, '+998900000120');
+  const sewerA = await makeUser('Швея с заказом', Role.SEWER, '+998900000121');
+  const sewerB = await makeUser('Швея ушла', Role.SEWER, '+998900000122');
+  const sewerC = await makeUser('Швея другого цеха', Role.SEWER, '+998900000123');
+  await db.delete(userBranches).where(eq(userBranches.userId, sewerC.id));
+  await db.insert(userBranches).values({ userId: sewerC.id, branchId: otherBranch.id, isPrimary: true });
+  const both = await makeUser('Установщик-карнизчик', Role.INSTALLER, '+998900000124');
+  await db.insert(userRoles).values({ userId: both.id, role: Role.CORNICE_INSTALLER, grantedBy: both.id });
+
+  const hoursAgo = (hours: number): Date => new Date(Date.now() - hours * 60 * 60 * 1000);
+  const point = { startLatitude: 41.2995, startLongitude: 69.2401, startDistanceMeters: 5 };
+  const closedStart = new Date(Math.max(workshopPeriodStarts(new Date()).today.getTime(), hoursAgo(2).getTime()));
+  const closedEnd = new Date((closedStart.getTime() + Date.now()) / 2);
+  await db.insert(shifts).values([
+    { userId: sewerA.id, branchId: branch.id, startedAt: hoursAgo(1), ...point },
+    // Смена сегодняшняя по Ташкенту, даже если смоук запущен сразу после
+    // полуночи: вчерашняя закрытая смена на табло — уже «нет отметки».
+    { userId: sewerB.id, branchId: branch.id, startedAt: closedStart, endedAt: closedEnd, ...point },
+    { userId: both.id, branchId: branch.id, startedAt: hoursAgo(2), ...point },
+  ]);
+
+  const [sewingNow] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Табло: шьётся`,
+      clientPhone: '+998901112291',
+      createdBy: seller.id,
+      status: OrderStatus.SEWING_IN_PROGRESS,
+      sewerId: sewerA.id,
+    })
+    .returning();
+  if (sewingNow === undefined) throw new Error('заказ в пошиве не создан');
+  await db.insert(orderItems).values([
+    { orderId: sewingNow.id, position: 0, kind: OrderItemKind.WINDOW, quantity: 1 },
+    { orderId: sewingNow.id, position: 1, kind: OrderItemKind.WINDOW, quantity: 1 },
+  ]);
+  await db.insert(orderStatusHistory).values({
+    orderId: sewingNow.id,
+    fromStatus: OrderStatus.PENDING_SEWING_ASSIGNMENT,
+    toStatus: OrderStatus.SEWING_IN_PROGRESS,
+    changedBy: admin.id,
+  });
+
+  // Человеку с двумя ролями сегодня засчитаны установка и карниз — разными заказами.
+  const [installedToday] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Табло: установлено`,
+      clientPhone: '+998901112292',
+      createdBy: seller.id,
+      status: OrderStatus.INSTALLATION_DONE,
+      installerId: both.id,
+    })
+    .returning();
+  if (installedToday === undefined) throw new Error('установленный заказ не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: installedToday.id,
+    fromStatus: OrderStatus.INSTALLATION_IN_PROGRESS,
+    toStatus: OrderStatus.INSTALLATION_DONE,
+    changedBy: both.id,
+  });
+  await db.insert(orders).values({
+    branchId: branch.id,
+    clientName: `${PREFIX} Табло: карниз`,
+    clientPhone: '+998901112293',
+    createdBy: seller.id,
+    status: OrderStatus.SEWING_IN_PROGRESS,
+    corniceStatus: CorniceStatus.DONE,
+    corniceInstallerId: both.id,
+    corniceDoneAt: new Date(),
+  });
+
+  const managerCaller = createCallerFactory(appRouter)({
+    db,
+    user: await actorOf(manager.id),
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const sewerCaller = createCallerFactory(appRouter)({
+    db,
+    user: sewerActor,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+
+  const workshopStarted = Date.now();
+  const workshopBoard = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP, branchId: branch.id });
+  const workshopMs = Date.now() - workshopStarted;
+  const personA = workshopBoard.people.find((person) => person.userId === sewerA.id);
+  check(
+    'табло: швея с заказом — работает, заказ и состав',
+    personA?.status === LiveStatus.WORKING && personA.current[0]?.items.text === 'Окно ×2',
+    `${String(personA?.status)} / ${String(personA?.current[0]?.items.text)} · снимок ${workshopMs.toString()} мс`,
+  );
+  const personB = workshopBoard.people.find((person) => person.userId === sewerB.id);
+  check('табло: закрытая смена — смена закрыта', personB?.status === LiveStatus.FINISHED, String(personB?.status));
+  check(
+    'табло: швея другого филиала не видна',
+    !workshopBoard.people.some((person) => person.userId === sewerC.id),
+  );
+
+  const installationBoard = await managerCaller.monitor.board({
+    group: MonitorGroup.INSTALLATION,
+    branchId: branch.id,
+  });
+  const bothCards = installationBoard.people.filter((person) => person.userId === both.id);
+  check(
+    'табло: две роли — одна карточка, выработка сложена',
+    bothCards.length === 1 && bothCards[0]?.counts.today === 2,
+    `карточек ${bothCards.length.toString()}, сегодня ${String(bothCards[0]?.counts.today)}`,
+  );
+  await expectRejected('табло: швее закрыто', () =>
+    sewerCaller.monitor.board({ group: MonitorGroup.WORKSHOP }),
   );
 }
 

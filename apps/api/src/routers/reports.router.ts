@@ -41,6 +41,7 @@ import { revenue as ledgerRevenue, revenueByDay } from '../services/ledger.servi
 import { topPerformers } from '../services/performance.service';
 import { cashByDay, deadlinesReport, payrollBreakdown, sewerOutput } from '../services/reports.service';
 import { periodBounds, workedSecondsExpression } from '../services/shifts.service';
+import { TASHKENT_OFFSET_MS, workshopDay, workshopPeriodStarts } from '../services/periods';
 import { router } from '../trpc';
 
 /**
@@ -53,7 +54,6 @@ import { router } from '../trpc';
  * Агрегация выполняется в SQL, а не в приложении: выгружать все заказы,
  * чтобы посчитать их количество, недопустимо уже на нескольких тысячах строк.
  */
-const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 /** Отрезок календарных дней по Ташкенту: с 00:00 `from` до 00:00 дня после `to`. */
 function tashkentRange(from: string, to: string): { readonly from: Date; readonly to: Date } {
@@ -62,43 +62,6 @@ function tashkentRange(from: string, to: string): { readonly from: Date; readonl
     to: new Date(new Date(`${to}T00:00:00Z`).getTime() - TASHKENT_OFFSET_MS + 24 * 60 * 60 * 1000),
   };
 }
-
-/**
- * Начала суток, недели и месяцев по Ташкенту — как моменты UTC.
- *
- * Главная считала «сегодня» и «этот месяц» от полуночи по UTC, то есть с
- * пяти утра по Ташкенту: заказ, принятый в полпервого ночи, числился
- * вчерашним, а первые пять часов первого числа — прошлым месяцем.
- *
- * Неделя — календарная, с понедельника: так её считают в мастерской.
- */
-export function workshopPeriodStarts(now: Date): {
-  readonly today: Date;
-  readonly tomorrow: Date;
-  readonly week: Date;
-  readonly month: Date;
-  readonly prevMonth: Date;
-} {
-  const local = new Date(now.getTime() + TASHKENT_OFFSET_MS);
-  const year = local.getUTCFullYear();
-  const month = local.getUTCMonth();
-  const date = local.getUTCDate();
-  // getUTCDay: воскресенье — 0; сколько дней прошло с понедельника.
-  const sinceMonday = (local.getUTCDay() + 6) % 7;
-  const at = (utcMidnight: number): Date => new Date(utcMidnight - TASHKENT_OFFSET_MS);
-  return {
-    today: at(Date.UTC(year, month, date)),
-    tomorrow: at(Date.UTC(year, month, date + 1)),
-    // Date.UTC сам переносит отрицательные дни и месяцы через границу.
-    week: at(Date.UTC(year, month, date - sinceMonday)),
-    month: at(Date.UTC(year, month, 1)),
-    prevMonth: at(Date.UTC(year, month - 1, 1)),
-  };
-}
-
-/** Календарный день по Ташкенту `YYYY-MM-DD` для момента начала периода. */
-const workshopDay = (at: Date): string =>
-  new Date(at.getTime() + TASHKENT_OFFSET_MS).toISOString().slice(0, 10);
 
 /** Месяц по Ташкенту как отрезок моментов UTC. */
 const workshopMonth = (period: { readonly year: number; readonly month: number }) => ({

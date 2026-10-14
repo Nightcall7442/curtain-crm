@@ -9,6 +9,7 @@ import { disciplineRouter } from './discipline.router';
 import { eventsRouter } from './events.router';
 import { terminalChecksRouter } from './terminalChecks.router';
 import { notificationsRouter } from './notifications.router';
+import { monitorRouter } from './monitor.router';
 import { orderCommentsRouter } from './orderComments.router';
 import { orderPhotosRouter } from './orderPhotos.router';
 import { ordersRouter } from './orders.router';
@@ -64,6 +65,7 @@ export const appRouter = router({
   events: eventsRouter,
   terminalChecks: terminalChecksRouter,
   displayLinks: displayLinksRouter,
+  monitor: monitorRouter,
 });
 
 export type AppRouter = typeof appRouter;
