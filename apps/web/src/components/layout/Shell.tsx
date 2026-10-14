@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { isPublicPath } from '@/lib/publicRoutes';
+import { isBarePath } from '@/lib/publicRoutes';
 
 import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
@@ -18,7 +18,7 @@ import { Sidebar } from './Sidebar';
  * группой маршрутов: страницы уже разложены по каталогам `app/*`, и заводить
  * route group пришлось бы ценой переноса всех файлов. Исключения — экран
  * входа, публичный лендинг в корне и табло для ТВ: у них своя разметка
- * (`isPublicPath`).
+ * (`isBarePath`).
  */
 
 /**
@@ -63,7 +63,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
     };
   }, []);
 
-  if (isPublicPath(pathname)) {
+  if (isBarePath(pathname)) {
     return <>{children}</>;
   }
 

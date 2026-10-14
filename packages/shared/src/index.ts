@@ -46,6 +46,7 @@ export * from './monitor/liveStatus';
 export * from './monitor/dayOff';
 export * from './monitor/items';
 export * from './monitor/board';
+export * from './monitor/tvLayout';
 
 /* Типы */
 export * from './types/orderItemAccessory';

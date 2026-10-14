@@ -12,8 +12,8 @@ import {
   type MonitorGroup as MonitorGroupName,
   type MonitorSort,
 } from '@curtain-crm/shared';
-import { Search } from 'lucide-react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { Maximize, Search } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type ReactElement } from 'react';
 
 import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
@@ -67,6 +67,7 @@ export function MonitorBoardPage({ group }: { readonly group: MonitorGroupName }
 function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactElement {
   const params = useSearchParams();
   const pathname = usePathname();
+  const router = useRouter();
   const status = parseStatus(params.get('status'));
   const sort = parseSort(params.get('sort'));
   const query = params.get('q') ?? '';
@@ -103,19 +104,35 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
         <h1 className="text-title font-semibold text-primary">{MONITOR_GROUP_LABELS.ru[group]}</h1>
         {/* Отказ без данных — не «подключение…»: связь есть, табло закрыто. */}
         {!(board === null && isError) && <LiveIndicator lastSuccessAt={lastSuccessAt} stale={stale} />}
-        {branchOptions.length > 1 && (
-          <Select
-            aria-label="Филиал"
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {branchOptions.length > 1 && (
+            <Select
+              aria-label="Филиал"
+              size="sm"
+              className="w-auto min-w-[180px]"
+              value={branchId === null ? '' : branchId.toString()}
+              onChange={(event) => {
+                setBranchId(event.target.value === '' ? null : Number(event.target.value));
+              }}
+              placeholder="Все филиалы"
+              options={branchOptions.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
+            />
+          )}
+          {/*
+            Полный экран просим здесь, на нажатии: браузер разрешает его только
+            в ответ на действие человека, а не после перехода на страницу ТВ.
+          */}
+          <Button
             size="sm"
-            className="ml-auto w-auto min-w-[180px]"
-            value={branchId === null ? '' : branchId.toString()}
-            onChange={(event) => {
-              setBranchId(event.target.value === '' ? null : Number(event.target.value));
+            icon={<Maximize aria-hidden className="h-3.5 w-3.5" />}
+            onClick={() => {
+              if (document.fullscreenEnabled) void document.documentElement.requestFullscreen().catch(() => undefined);
+              router.push(`/monitor/tv?group=${group}`);
             }}
-            placeholder="Все филиалы"
-            options={branchOptions.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
-          />
-        )}
+          >
+            На весь экран
+          </Button>
+        </div>
       </header>
 
       {board === null ? (

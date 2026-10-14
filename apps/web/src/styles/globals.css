@@ -639,6 +639,16 @@
     );
   }
 
+  /** Полоса таймера ТВ-табло: заполняется до смены группы. Длительность задаёт разметка. */
+  @keyframes tv-progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
   .section-title {
     @apply flex items-center gap-2 text-subhead font-semibold tracking-[-0.01em] text-primary;
   }

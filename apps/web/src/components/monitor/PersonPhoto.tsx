@@ -11,7 +11,8 @@ export type PersonPhotoVariant = 'card' | 'podium' | 'tv' | 'drawer';
 const MONOGRAM: Readonly<Record<PersonPhotoVariant, string>> = {
   card: 'h-14 w-14 text-heading',
   podium: 'h-12 w-12 text-subhead',
-  tv: 'h-[clamp(44px,4.2vw,104px)] w-[clamp(44px,4.2vw,104px)] text-[clamp(16px,1.6vw,38px)]',
+  // На ТВ всё в em: карточка масштабируется под экран размером шрифта.
+  tv: 'h-[2.6em] w-[2.6em] text-[1.4em]',
   drawer: 'h-20 w-20 text-title',
 };
 
@@ -33,6 +34,7 @@ export function PersonPhoto({
   photoUrl,
   variant,
   dimmed = false,
+  noPhotoLabel = 'Фото не загружено',
   className,
 }: {
   readonly name: string;
@@ -40,6 +42,8 @@ export function PersonPhoto({
   readonly variant: PersonPhotoVariant;
   /** Человек не на работе: фото приглушено. */
   readonly dimmed?: boolean;
+  /** Подпись без фото: на ТВ — на языке ссылки. */
+  readonly noPhotoLabel?: string;
   readonly className?: string;
 }): ReactElement {
   // Запоминаем адрес, который не открылся: новый адрес (фото заменили) пробуем заново.
@@ -75,8 +79,12 @@ export function PersonPhoto({
       ) : (
         <div
           role="img"
-          aria-label={`${name}: фото не загружено`}
-          className="photo-hatch flex h-full w-full flex-col items-center justify-center gap-2"
+          aria-label={`${name}: ${noPhotoLabel.toLowerCase()}`}
+          className={cn(
+            'photo-hatch flex h-full w-full flex-col items-center justify-center',
+            // На ТВ низ полосы занят именем поверх фото — монограмма поднимается выше него.
+            variant === 'tv' ? 'gap-[0.35em] pb-[3em]' : 'gap-2',
+          )}
         >
           <span
             className={cn(
@@ -90,11 +98,11 @@ export function PersonPhoto({
             <span
               className={cn(
                 'inline-flex items-center gap-1.5 text-muted',
-                variant === 'tv' ? 'text-[clamp(11px,0.75vw,18px)]' : 'text-footnote',
+                variant === 'tv' ? 'text-[0.78em]' : 'text-footnote',
               )}
             >
-              <Camera aria-hidden className="h-3.5 w-3.5" />
-              Фото не загружено
+              <Camera aria-hidden className={variant === 'tv' ? 'h-[1.1em] w-[1.1em]' : 'h-3.5 w-3.5'} />
+              {noPhotoLabel}
             </span>
           )}
         </div>
