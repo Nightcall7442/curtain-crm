@@ -1,9 +1,10 @@
 import { monitorGroupSchema } from '@curtain-crm/shared';
+import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { idSchema } from '../lib/schemas';
 import { orderDispatchProcedure } from '../middleware/roleGuard.middleware';
-import { buildBoard } from '../services/monitor.service';
+import { buildBoard, buildPerson } from '../services/monitor.service';
 import { router } from '../trpc';
 
 /**
@@ -22,4 +23,15 @@ export const monitorRouter = router({
         locale: ctx.locale,
       }),
     ),
+
+  /** Карточка человека: вся очередь, 30 дней выработки, смена сегодня, фото. */
+  person: orderDispatchProcedure
+    .input(z.object({ userId: idSchema }))
+    .query(async ({ ctx, input }) => {
+      const detail = await buildPerson(ctx.db, { userId: input.userId, now: new Date(), locale: ctx.locale });
+      if (detail === null) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудника нет на табло' });
+      }
+      return detail;
+    }),
 });

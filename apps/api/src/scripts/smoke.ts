@@ -1471,6 +1471,22 @@ async function run(db: Database): Promise<void> {
   await expectRejected('табло: швее закрыто', () =>
     sewerCaller.monitor.board({ group: MonitorGroup.WORKSHOP }),
   );
+
+  const detail = await managerCaller.monitor.person({ userId: sewerA.id });
+  check(
+    'табло: карточка человека — 30 дней, сегодня последним',
+    detail.daily.length === 30 && detail.daily[29]?.value === detail.counts.today,
+    `${detail.daily.length.toString()} дней`,
+  );
+  check(
+    'табло: карточка человека — смена сегодня',
+    detail.shiftToday !== null && detail.shiftToday.endedAt === null,
+  );
+  await expectRejectedWith(
+    'табло: продавца на табло нет',
+    () => managerCaller.monitor.person({ userId: seller.id }),
+    (message) => message === 'Сотрудника нет на табло',
+  );
 }
 
 main().catch((error: unknown) => {

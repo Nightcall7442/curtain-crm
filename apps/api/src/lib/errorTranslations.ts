@@ -67,6 +67,9 @@ const EXACT: Readonly<Record<string, string>> = {
   'Филиал не найден': 'Filial topilmadi',
   'Укажите название филиала': "Filial nomini ko'rsating",
 
+  // monitor
+  'Сотрудника нет на табло': "Xodim tabloda yo'q",
+
   // displayLinks
   'Выберите хотя бы одно табло': 'Kamida bitta tabloni tanlang',
   'Ссылка не создана': 'Havola yaratilmadi',

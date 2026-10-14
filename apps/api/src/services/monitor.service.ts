@@ -25,9 +25,12 @@ import {
 import {
   countPendingCornices,
   loadApprovedDaysOff,
+  loadDailyOutput,
   loadGroupPeople,
   loadOutput,
   loadPresence,
+  loadRecentPhotos,
+  loadShiftDetail,
   loadTripsToday,
   loadWorkOrders,
   type GroupPersonRow,
@@ -393,5 +396,100 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
             orderNumber: trip.orderNumber,
             address: trip.address,
           })),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Карточка человека                                                         */
+/* -------------------------------------------------------------------------- */
+
+export interface MonitorPersonDetail extends MonitorPerson {
+  readonly group: MonitorGroupName;
+  readonly unit: 'pieces' | 'orders';
+  readonly queueAll: readonly MonitorWork[];
+  /** 30 дней по Ташкенту, сегодня последним; пустые дни — 0. */
+  readonly daily: readonly { readonly day: string; readonly value: number }[];
+  readonly shiftToday: {
+    readonly startedAt: Date;
+    readonly endedAt: Date | null;
+    readonly breaks: readonly { startedAt: Date; returnedAt: Date | null; plannedMinutes: number }[];
+    readonly trips: readonly { startedAt: Date; returnedAt: Date | null; orderNumber: string | null }[];
+  } | null;
+  /** У выездных — последние фото с объектов, загруженные ими; у цеха пусто. */
+  readonly photos: readonly { id: number; url: string; orderNumber: string | null; createdAt: Date }[];
+}
+
+const DAILY_DAYS = 30;
+const RECENT_PHOTOS = 8;
+
+/** Группа человека на табло: швея — цех, выездные — установщики. */
+export function monitorGroupOf(roles: readonly RoleName[]): MonitorGroupName | null {
+  if (roles.some((role) => MONITOR_GROUP_ROLES.workshop.includes(role))) return MonitorGroup.WORKSHOP;
+  if (roles.some((role) => MONITOR_GROUP_ROLES.installation.includes(role))) return MonitorGroup.INSTALLATION;
+  return null;
+}
+
+/**
+ * Карточка человека для боковой панели и экрана в приложении.
+ *
+ * Сама карточка берётся из снимка его группы без фильтра филиала — одно
+ * правило для табло и для карточки, цифры не могут разойтись.
+ */
+export async function buildPerson(
+  db: Database,
+  params: { readonly userId: number; readonly now: Date; readonly locale: Locale },
+): Promise<MonitorPersonDetail | null> {
+  const { userId, now, locale } = params;
+  const [row] = await loadGroupPeople(db, [...MONITOR_GROUP_ROLES.workshop, ...MONITOR_GROUP_ROLES.installation], null).then(
+    (rows) => rows.filter((person) => person.id === userId),
+  );
+  const group = row === undefined ? null : monitorGroupOf(row.roles);
+  if (row === undefined || group === null) return null;
+
+  const board = await buildBoard(db, { group, branchId: null, now, locale });
+  const card = board.people.find((person) => person.userId === userId);
+  if (card === undefined) return null;
+
+  const starts = workshopPeriodStarts(now);
+  const todayIso = workshopDay(starts.today);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const from = new Date(starts.today.getTime() - (DAILY_DAYS - 1) * dayMs);
+
+  const presence = await loadPresence(db, [userId], starts.today, now);
+  const seen = presence.get(userId);
+  const shift = seen?.shift ?? null;
+
+  const [work, daily, shiftDetail, photoRows] = await Promise.all([
+    loadWorkOrders(db, [userId], seen?.openTrip?.orderId == null ? [] : [seen.openTrip.orderId]),
+    loadDailyOutput(db, userId, card.roles, from),
+    shift === null ? Promise.resolve(null) : loadShiftDetail(db, shift.id),
+    group === MonitorGroup.INSTALLATION ? loadRecentPhotos(db, userId, RECENT_PHOTOS) : Promise.resolve([]),
+  ]);
+  const { queue } = splitWork(userId, group, work, seen?.openTrip?.orderId ?? null);
+
+  const storage = getStorage();
+  const photos = await Promise.all(
+    photoRows.map(async (photo) => ({
+      id: photo.id,
+      url: await storage.getUrl(photo.storageKey, { stableWithinHour: true }),
+      orderNumber: photo.orderNumber,
+      createdAt: photo.createdAt,
+    })),
+  );
+
+  return {
+    ...card,
+    group,
+    unit: board.unit,
+    queueAll: queue.map((order) => toWork(order, todayIso, false, locale)),
+    daily: Array.from({ length: DAILY_DAYS }, (_, index) => {
+      const day = workshopDay(new Date(from.getTime() + index * dayMs));
+      return { day, value: daily.get(day) ?? 0 };
+    }),
+    shiftToday:
+      shift === null || shiftDetail === null
+        ? null
+        : { startedAt: shift.startedAt, endedAt: shift.endedAt, ...shiftDetail },
+    photos,
   };
 }

@@ -2,6 +2,7 @@ import {
   dayOffRequests,
   installationTrips,
   orderItems,
+  orderPhotos,
   orders,
   orderStatusHistory,
   personalBreaks,
@@ -451,4 +452,119 @@ export async function loadTripsToday(
     .leftJoin(orders, eq(orders.id, installationTrips.orderId))
     .where(and(inArray(shifts.userId, [...userIds]), gte(installationTrips.startedAt, todayStart)))
     .orderBy(asc(installationTrips.startedAt));
+}
+
+/**
+ * Выработка одного человека по дням Ташкента начиная с `from` — для
+ * столбиков в карточке. Те же определения, что у `loadOutput`.
+ */
+export async function loadDailyOutput(
+  db: Database,
+  userId: number,
+  roles: readonly RoleName[],
+  from: Date,
+): Promise<Map<string, number>> {
+  const day = (at: SQL): SQL => sql`to_char((${at} at time zone 'Asia/Tashkent')::date, 'YYYY-MM-DD')`;
+  const queries: ReturnType<Database['execute']>[] = [];
+
+  if (roles.includes(Role.SEWER)) {
+    queries.push(
+      db.execute(sql`
+        select ${day(sql`done.at`)} as day, sum(p.pieces)::int as value
+        from orders o
+        join lateral (
+          select max(h.created_at) as at from order_status_history h
+          where h.order_id = o.id and h.to_status = ${OrderStatus.SEWING_DONE}
+        ) done on true
+        join lateral (
+          select greatest(coalesce(sum(oi.quantity), 0), 1) as pieces
+          from order_items oi where oi.order_id = o.id
+        ) p on true
+        where o.sewer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED} and done.at >= ${ts(from)}
+        group by 1`),
+    );
+  }
+  if (roles.includes(Role.INSTALLER)) {
+    queries.push(
+      db.execute(sql`
+        select ${day(sql`done.at`)} as day, count(*)::int as value
+        from orders o
+        join lateral (
+          select max(h.created_at) as at from order_status_history h
+          where h.order_id = o.id and h.to_status = ${OrderStatus.INSTALLATION_DONE}
+        ) done on true
+        where o.installer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED} and done.at >= ${ts(from)}
+        group by 1`),
+    );
+  }
+  if (roles.includes(Role.CORNICE_INSTALLER)) {
+    queries.push(
+      db.execute(sql`
+        select ${day(sql`o.cornice_done_at`)} as day, count(*)::int as value
+        from orders o
+        where o.cornice_installer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED}
+          and o.cornice_done_at >= ${ts(from)}
+        group by 1`),
+    );
+  }
+
+  const result = new Map<string, number>();
+  for (const rows of await Promise.all(queries)) {
+    for (const row of rows) {
+      const key = String(row['day']);
+      result.set(key, (result.get(key) ?? 0) + Number(row['value']));
+    }
+  }
+  return result;
+}
+
+export interface ShiftDetailRow {
+  readonly breaks: { startedAt: Date; returnedAt: Date | null; plannedMinutes: number }[];
+  readonly trips: { startedAt: Date; returnedAt: Date | null; orderNumber: string | null }[];
+}
+
+/** Все отлучки и выезды смены — открытые и закрытые. */
+export async function loadShiftDetail(db: Database, shiftId: number): Promise<ShiftDetailRow> {
+  const [breaks, trips] = await Promise.all([
+    db
+      .select({
+        startedAt: personalBreaks.startedAt,
+        returnedAt: personalBreaks.returnedAt,
+        plannedMinutes: personalBreaks.plannedMinutes,
+      })
+      .from(personalBreaks)
+      .where(eq(personalBreaks.shiftId, shiftId))
+      .orderBy(asc(personalBreaks.startedAt)),
+    db
+      .select({
+        startedAt: installationTrips.startedAt,
+        returnedAt: installationTrips.returnedAt,
+        orderNumber: orders.orderNumber,
+      })
+      .from(installationTrips)
+      .leftJoin(orders, eq(orders.id, installationTrips.orderId))
+      .where(eq(installationTrips.shiftId, shiftId))
+      .orderBy(asc(installationTrips.startedAt)),
+  ]);
+  return { breaks, trips };
+}
+
+/** Последние фото с объектов, которые человек загрузил сам. */
+export async function loadRecentPhotos(
+  db: Database,
+  userId: number,
+  limit: number,
+): Promise<{ id: number; storageKey: string; orderNumber: string | null; createdAt: Date }[]> {
+  return db
+    .select({
+      id: orderPhotos.id,
+      storageKey: orderPhotos.storageKey,
+      orderNumber: orders.orderNumber,
+      createdAt: orderPhotos.createdAt,
+    })
+    .from(orderPhotos)
+    .innerJoin(orders, eq(orders.id, orderPhotos.orderId))
+    .where(eq(orderPhotos.uploadedBy, userId))
+    .orderBy(desc(orderPhotos.createdAt), desc(orderPhotos.id))
+    .limit(limit);
 }
