@@ -180,7 +180,7 @@ function TvPodium({ board, locale, text }: { readonly board: TvBoardData; readon
           const place = index + 1;
           return (
             <li
-              key={entry?.userId ?? `free-${place.toString()}`}
+              key={place}
               className={cn(
                 'flex min-w-0 items-center gap-[0.7vw] rounded-[0.9vw] border px-[0.8vw] py-[0.6vw]',
                 place === 1
@@ -443,8 +443,9 @@ function TvGrid({
             gap,
           }}
         >
-          {visible.map((person) => (
-            <TvCard key={person.userId} person={person} group={group} locale={locale} text={text} fontSize={16 * fit.scale} />
+          {/* Внутренних id на ТВ нет — ключ по месту в списке и имени. */}
+          {visible.map((person, index) => (
+            <TvCard key={`${index.toString()}-${person.fullName}`} person={person} group={group} locale={locale} text={text} fontSize={16 * fit.scale} />
           ))}
         </div>
       )}

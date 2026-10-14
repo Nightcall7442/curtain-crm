@@ -6,6 +6,9 @@ import { useEffect, useState } from 'react';
 /** Через сколько без движения мыши прятать курсор: на телевизоре он висит посреди табло. */
 const CURSOR_HIDE_MS = 3000;
 
+/** Сайт не ответил к плановой перезагрузке — когда пробовать снова. */
+const RELOAD_RETRY_MS = 60_000;
+
 /**
  * Всё, что нужно экрану, который неделями висит на стене.
  *
@@ -15,6 +18,7 @@ const CURSOR_HIDE_MS = 3000;
  * - Курсор прячется через 3 секунды без движения.
  * - Раз в 6 часов страница перезагружается целиком: так табло само
  *   подхватывает новую версию сайта и не копит утечки памяти браузера ТВ.
+ *   Только если сайт в этот момент отвечает — иначе ждём минуту и пробуем снова.
  *
  * Возвращает `idle` — мышь давно не двигалась: кнопки поверх табло прячутся вместе с курсором.
  */
@@ -76,9 +80,25 @@ export function useTvRuntime(): { readonly idle: boolean } {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      window.location.reload();
-    }, TV_RELOAD_MS);
+    let timer = 0;
+    /*
+      Перезагружаемся, только если сайт сейчас отвечает. Иначе (обрыв связи,
+      502 во время выкладки) телевизор остался бы на странице ошибки браузера,
+      а она сама не оживает — к экрану пришлось бы идти. Пока сайт лежит,
+      табло работает со старыми данными и пробует снова через минуту.
+    */
+    const attempt = (): void => {
+      void fetch(window.location.href, { cache: 'no-store' }).then(
+        (response) => {
+          if (response.ok) window.location.reload();
+          else timer = window.setTimeout(attempt, RELOAD_RETRY_MS);
+        },
+        () => {
+          timer = window.setTimeout(attempt, RELOAD_RETRY_MS);
+        },
+      );
+    };
+    timer = window.setTimeout(attempt, TV_RELOAD_MS);
     return () => {
       window.clearTimeout(timer);
     };

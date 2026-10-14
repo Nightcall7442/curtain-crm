@@ -135,6 +135,12 @@ export interface BuildBoardParams {
   readonly branchId: number | null;
   readonly now: Date;
   readonly locale: Locale;
+  /**
+   * Только превью фото, без отката на оригинал — для публичного ТВ. Оригинал
+   * с телефона несёт метаданные (в том числе место съёмки) и весит мегабайты;
+   * без превью ТВ покажет монограмму.
+   */
+  readonly previewOnly?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -148,8 +154,11 @@ function sameMomentPreviousMonth(now: Date, monthStart: Date, prevMonthStart: Da
   return new Date(Math.min(prevMonthStart.getTime() + (now.getTime() - monthStart.getTime()), monthStart.getTime()));
 }
 
-const photoUrlOf = async (person: Pick<GroupPersonRow, 'avatarStorageKey' | 'avatarPreviewKey'>): Promise<string | null> => {
-  const key = person.avatarPreviewKey ?? person.avatarStorageKey;
+const photoUrlOf = async (
+  person: Pick<GroupPersonRow, 'avatarStorageKey' | 'avatarPreviewKey'>,
+  previewOnly: boolean,
+): Promise<string | null> => {
+  const key = previewOnly ? person.avatarPreviewKey : (person.avatarPreviewKey ?? person.avatarStorageKey);
   return key === null ? null : getStorage().getUrl(key, { stableWithinHour: true });
 };
 
@@ -224,13 +233,29 @@ function loadSlowParts(
   return value;
 }
 
-function toWork(row: WorkOrderRow, todayIso: string, withSince: boolean, locale: Locale): MonitorWork {
+/**
+ * С какого момента заказ в руках у этого человека.
+ *
+ * Время статуса заказа годится, только если статус — его собственная работа:
+ * пошив у швеи, установка у установщика. Карниз в работе при заказе, который
+ * ещё шьётся, — со взятия карниза; заказ выезда, который ещё «назначен», —
+ * без времени: время выезда показывает статус человека, а выдумывать цифру
+ * из чужого статуса нельзя.
+ */
+function workSince(row: WorkOrderRow, personId: number): Date | null {
+  if (row.sewerId === personId && row.status === OrderStatus.SEWING_IN_PROGRESS) return row.since;
+  if (row.installerId === personId && row.status === OrderStatus.INSTALLATION_IN_PROGRESS) return row.since;
+  if (row.corniceInstallerId === personId && row.corniceStatus === CorniceStatus.IN_PROGRESS) return row.corniceSince;
+  return null;
+}
+
+function toWork(row: WorkOrderRow, todayIso: string, since: Date | null, locale: Locale): MonitorWork {
   return {
     orderId: row.id,
     orderNumber: row.orderNumber,
     items: summarizeItems(row.items, locale),
     deadline: row.deadline,
-    since: withSince ? row.since : null,
+    since,
     overdue: row.deadline !== null && row.deadline < todayIso,
     rework: row.status === OrderStatus.QC_FAILED,
     address: row.installAddress,
@@ -300,7 +325,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     group === MonitorGroup.INSTALLATION ? countPendingCornices(db, branchId) : Promise.resolve(0),
     loadSlowParts(db, people, group, branchId, starts.month, now),
     group === MonitorGroup.INSTALLATION ? loadTripsToday(db, ids, starts.today) : Promise.resolve(null),
-    Promise.all(people.map(photoUrlOf)),
+    Promise.all(people.map((person) => photoUrlOf(person, params.previewOnly === true))),
   ]);
 
   const ratingById = new Map(slow.rating.map((entry) => [entry.userId, entry]));
@@ -331,8 +356,8 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       status: live.status,
       statusSince: live.since,
       statusUntil: live.until,
-      current: current.map((row) => toWork(row, todayIso, true, locale)),
-      queue: queue.slice(0, MONITOR_QUEUE_PREVIEW).map((row) => toWork(row, todayIso, false, locale)),
+      current: current.map((row) => toWork(row, todayIso, workSince(row, person.id), locale)),
+      queue: queue.slice(0, MONITOR_QUEUE_PREVIEW).map((row) => toWork(row, todayIso, null, locale)),
       queueTotal: queue.length,
       cornicePool: person.roles.includes(Role.CORNICE_INSTALLER) ? pool : null,
       counts: { today: counts.today, week: counts.week, month: counts.month },
@@ -432,21 +457,22 @@ export function monitorGroupOf(roles: readonly RoleName[]): MonitorGroupName | n
 /**
  * Карточка человека для боковой панели и экрана в приложении.
  *
- * Сама карточка берётся из снимка его группы без фильтра филиала — одно
- * правило для табло и для карточки, цифры не могут разойтись.
+ * Сама карточка берётся из снимка его группы с тем же фильтром филиала, что
+ * у табло, с которого её открыли, — одно правило для табло и для карточки,
+ * цифры не могут разойтись. 30 дней выработки — по тому же филиалу.
  */
 export async function buildPerson(
   db: Database,
-  params: { readonly userId: number; readonly now: Date; readonly locale: Locale },
+  params: { readonly userId: number; readonly branchId: number | null; readonly now: Date; readonly locale: Locale },
 ): Promise<MonitorPersonDetail | null> {
-  const { userId, now, locale } = params;
+  const { userId, branchId, now, locale } = params;
   const [row] = await loadGroupPeople(db, [...MONITOR_GROUP_ROLES.workshop, ...MONITOR_GROUP_ROLES.installation], null).then(
     (rows) => rows.filter((person) => person.id === userId),
   );
   const group = row === undefined ? null : monitorGroupOf(row.roles);
   if (row === undefined || group === null) return null;
 
-  const board = await buildBoard(db, { group, branchId: null, now, locale });
+  const board = await buildBoard(db, { group, branchId, now, locale });
   const card = board.people.find((person) => person.userId === userId);
   if (card === undefined) return null;
 
@@ -461,7 +487,7 @@ export async function buildPerson(
 
   const [work, daily, shiftDetail, photoRows] = await Promise.all([
     loadWorkOrders(db, [userId], seen?.openTrip?.orderId == null ? [] : [seen.openTrip.orderId]),
-    loadDailyOutput(db, userId, card.roles, from),
+    loadDailyOutput(db, userId, card.roles, from, branchId),
     shift === null ? Promise.resolve(null) : loadShiftDetail(db, shift.id),
     group === MonitorGroup.INSTALLATION ? loadRecentPhotos(db, userId, RECENT_PHOTOS) : Promise.resolve([]),
   ]);
@@ -481,7 +507,7 @@ export async function buildPerson(
     ...card,
     group,
     unit: board.unit,
-    queueAll: queue.map((order) => toWork(order, todayIso, false, locale)),
+    queueAll: queue.map((order) => toWork(order, todayIso, null, locale)),
     daily: Array.from({ length: DAILY_DAYS }, (_, index) => {
       const day = workshopDay(new Date(from.getTime() + index * dayMs));
       return { day, value: daily.get(day) ?? 0 };

@@ -10,7 +10,7 @@ import {
 import {
   assertLoginAllowed,
   consumeAuthRequestBudget,
-  isIpLimitedCall,
+  ipLimitedCalls,
   loginRetryAfterSeconds,
   registerLoginFailure,
   resetLoginAttempts,
@@ -152,26 +152,39 @@ describe('ограничение обращений по адресу', () => {
 });
 
 describe('какие вызовы считаются по адресу', () => {
-  it('вход и табло для ТВ', () => {
-    expect(isIpLimitedCall('/trpc/auth.login')).toBe(true);
-    expect(isIpLimitedCall('/trpc/display.board')).toBe(true);
+  it('вход и табло для ТВ — по одному', () => {
+    expect(ipLimitedCalls('/trpc/auth.login')).toBe(1);
+    expect(ipLimitedCalls('/trpc/display.board')).toBe(1);
   });
 
   it('остальные процедуры — нет', () => {
-    expect(isIpLimitedCall('/trpc/orders.list')).toBe(false);
-    expect(isIpLimitedCall('/trpc/displayLinks.list')).toBe(false);
+    expect(ipLimitedCalls('/trpc/orders.list')).toBe(0);
+    expect(ipLimitedCalls('/trpc/displayLinks.list')).toBe(0);
   });
 
-  it('пакетный вызов, в котором вход стоит не первым', () => {
-    expect(isIpLimitedCall('/trpc/health,auth.login')).toBe(true);
-    expect(isIpLimitedCall('/trpc/health,display.board')).toBe(true);
+  it('пакетный вызов считается по числу ограниченных процедур в нём', () => {
+    expect(ipLimitedCalls('/trpc/health,auth.login')).toBe(1);
+    expect(ipLimitedCalls('/trpc/auth.login,auth.login,health,display.board')).toBe(3);
   });
 
   it('запятая, закодированная в адресе', () => {
-    expect(isIpLimitedCall('/trpc/health%2Cauth.login')).toBe(true);
+    expect(ipLimitedCalls('/trpc/health%2Cauth.login%2Cauth.login')).toBe(2);
   });
 
   it('битая кодировка не пропускает мимо ограничителя', () => {
-    expect(isIpLimitedCall('/trpc/health,%E0%A4%A,auth.login')).toBe(true);
+    expect(ipLimitedCalls('/trpc/health,%E0%A4%A,auth.login')).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('пакет списывает из потолка столько, сколько в нём вызовов', () => {
+  const IP = '203.0.113.20';
+
+  it('пакет из потолка входов исчерпывает его одним запросом', () => {
+    expect(consumeAuthRequestBudget(IP, T0, AUTH_IP_REQUESTS_PER_MINUTE)).toBe(0);
+    expect(consumeAuthRequestBudget(IP, T0)).toBeGreaterThan(0);
+  });
+
+  it('пакет больше потолка отбивается сразу', () => {
+    expect(consumeAuthRequestBudget('203.0.113.21', T0, AUTH_IP_REQUESTS_PER_MINUTE + 1)).toBeGreaterThan(0);
   });
 });

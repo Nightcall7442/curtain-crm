@@ -136,28 +136,31 @@ export function resetLoginAttempts(phone: string): void {
 const IP_LIMITED_PREFIXES = ['auth.', 'display.'] as const;
 
 /**
- * Попадает ли вызов под потолок по адресу.
+ * Сколько вызовов запроса попадает под потолок по адресу; 0 — запрос не наш.
  *
  * Пакетный запрос tRPC перечисляет процедуры через запятую, и вход может стоять
- * не первым (`/trpc/health,auth.login`), — поэтому проверяется каждая.
+ * не первым (`/trpc/health,auth.login`), — поэтому проверяется каждая. И
+ * считается каждая: иначе сотня входов в одном запросе стоила бы потолку
+ * одну единицу, а серверу — сотню проверок пароля.
  * tRPC раскодирует путь целиком, так что `%2C` для него тоже запятая.
  * Путь, который не раскодировать, tRPC отвергнет сам, но до этого он прошёл
- * бы мимо счётчика — такой считаем, это дешевле, чем разбираться.
+ * бы мимо счётчика — такой считаем по числу частей, это дешевле, чем разбираться.
  */
-export function isIpLimitedCall(path: string): boolean {
+export function ipLimitedCalls(path: string): number {
+  const raw = path.replace(/^\/trpc\//, '');
   let procedures: string;
   try {
-    procedures = decodeURIComponent(path.replace(/^\/trpc\//, ''));
+    procedures = decodeURIComponent(raw);
   } catch {
-    return true;
+    return Math.max(1, raw.split(',').length);
   }
   return procedures
     .split(',')
-    .some((procedure) => IP_LIMITED_PREFIXES.some((prefix) => procedure.startsWith(prefix)));
+    .filter((procedure) => IP_LIMITED_PREFIXES.some((prefix) => procedure.startsWith(prefix))).length;
 }
 
 /**
- * Списывает одно обращение к `auth.*` или `display.*` из минутного лимита адреса.
+ * Списывает `calls` обращений к `auth.*` или `display.*` из минутного лимита адреса.
  * Возвращает секунды до сброса окна, если лимит исчерпан, иначе `0`.
  *
  * Запрос без определяемого адреса (прямое подключение без прокси-заголовков)
@@ -167,6 +170,7 @@ export function isIpLimitedCall(path: string): boolean {
 export function consumeAuthRequestBudget(
   ipAddress: string | null,
   now: number = Date.now(),
+  calls = 1,
 ): number {
   if (ipAddress === null || ipAddress.length === 0) return 0;
 
@@ -176,7 +180,7 @@ export function consumeAuthRequestBudget(
       ? { count: 0, windowStartedAt: now }
       : existing;
 
-  window.count += 1;
+  window.count += calls;
   ipWindows.set(ipAddress, window);
 
   if (ipWindows.size > LOGIN_THROTTLE_MAX_TRACKED) {

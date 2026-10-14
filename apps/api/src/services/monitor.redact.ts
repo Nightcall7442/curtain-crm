@@ -21,9 +21,23 @@ export interface DisplayWork {
   readonly rework: boolean;
 }
 
-export interface DisplayPerson extends Omit<MonitorPerson, 'current' | 'queue'> {
+/**
+ * Человек на ТВ — только то, что экран показывает (спецификация, §3.4): имя,
+ * фото, статус, роль или категория для подписи, текущий заказ, выработка и
+ * место. Стажа, внутренних id, личных процентов качества и очереди здесь нет.
+ */
+export interface DisplayPerson
+  extends Pick<
+    MonitorPerson,
+    'fullName' | 'photoUrl' | 'roles' | 'sewerCategory' | 'status' | 'statusSince' | 'statusUntil' | 'counts' | 'place'
+  > {
   readonly current: readonly DisplayWork[];
-  readonly queue: readonly DisplayWork[];
+}
+
+export interface DisplayPodiumEntry {
+  readonly fullName: string;
+  readonly photoUrl: string | null;
+  readonly value: number;
 }
 
 export interface DisplayTrip {
@@ -41,8 +55,9 @@ export interface DisplayLinkInfo {
   readonly locale: Locale;
 }
 
-export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'trips'> {
+export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'trips' | 'podium'> {
   readonly people: readonly DisplayPerson[];
+  readonly podium: { readonly month: string; readonly entries: readonly DisplayPodiumEntry[] };
   readonly trips: readonly DisplayTrip[] | null;
   readonly link: DisplayLinkInfo;
 }
@@ -60,23 +75,16 @@ function toDisplayWork(work: MonitorWork): DisplayWork {
 
 function toDisplayPerson(person: MonitorPerson): DisplayPerson {
   return {
-    userId: person.userId,
     fullName: person.fullName,
     photoUrl: person.photoUrl,
     roles: person.roles,
-    hiredAt: person.hiredAt,
     sewerCategory: person.sewerCategory,
     status: person.status,
     statusSince: person.statusSince,
     statusUntil: person.statusUntil,
     current: person.current.map(toDisplayWork),
-    queue: person.queue.map(toDisplayWork),
-    queueTotal: person.queueTotal,
-    cornicePool: person.cornicePool,
     counts: { today: person.counts.today, week: person.counts.week, month: person.counts.month },
     place: person.place,
-    qualityPercent: person.qualityPercent,
-    onTimePercent: person.onTimePercent,
   };
 }
 
@@ -99,7 +107,6 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
     podium: {
       month: board.podium.month,
       entries: board.podium.entries.map((entry) => ({
-        userId: entry.userId,
         fullName: entry.fullName,
         photoUrl: entry.photoUrl,
         value: entry.value,

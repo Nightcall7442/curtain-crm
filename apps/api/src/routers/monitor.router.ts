@@ -24,11 +24,19 @@ export const monitorRouter = router({
       }),
     ),
 
-  /** Карточка человека: вся очередь, 30 дней выработки, смена сегодня, фото. */
+  /**
+   * Карточка человека: вся очередь, 30 дней выработки, смена сегодня, фото.
+   * `branchId` — филиал табло, с которого её открыли: цифры те же, что на карточке.
+   */
   person: orderDispatchProcedure
-    .input(z.object({ userId: idSchema }))
+    .input(z.object({ userId: idSchema, branchId: idSchema.optional() }))
     .query(async ({ ctx, input }) => {
-      const detail = await buildPerson(ctx.db, { userId: input.userId, now: new Date(), locale: ctx.locale });
+      const detail = await buildPerson(ctx.db, {
+        userId: input.userId,
+        branchId: input.branchId ?? null,
+        now: new Date(),
+        locale: ctx.locale,
+      });
       if (detail === null) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудника нет на табло' });
       }

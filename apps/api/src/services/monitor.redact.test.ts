@@ -49,7 +49,7 @@ function boardWith(leak: { readonly address: string; readonly clientName: string
         onTimePercent: 90,
       },
     ],
-    podium: { month: '2026-09', entries: [] },
+    podium: { month: '2026-09', entries: [{ userId: 7, fullName: 'Бекзод Эргашев', photoUrl: null, value: 9 }] },
     summary: {
       monthTotal: 9,
       monthDeltaPercent: 10,
@@ -91,5 +91,17 @@ describe('табло для ТВ', () => {
     expect(out.people[0]?.counts.month).toBe(9);
     expect(out.trips?.[0]?.orderNumber).toBe('DH-000041');
     expect(out.link.label).toBe('ТВ в цеху');
+  });
+});
+
+describe('на ТВ только то, что экран показывает', () => {
+  it('у человека нет стажа, внутренних id, личных процентов и очереди', () => {
+    const out = toDisplayBoard(boardWith({ address: 'x', clientName: 'y' }), link);
+    const keys = Object.keys(out.people[0] ?? {});
+
+    for (const hidden of ['userId', 'hiredAt', 'qualityPercent', 'onTimePercent', 'queue', 'queueTotal', 'cornicePool']) {
+      expect(keys).not.toContain(hidden);
+    }
+    expect(Object.keys(out.podium.entries[0] ?? {})).not.toContain('userId');
   });
 });

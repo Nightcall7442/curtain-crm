@@ -1,4 +1,5 @@
 import {
+  auditLog,
   dayOffRequests,
   installationTrips,
   orderItems,
@@ -26,6 +27,7 @@ import {
 } from '@curtain-crm/shared';
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 
+import type { AuditAction } from '../lib/constants';
 import { sqlTimestamp } from './shifts.service';
 
 /**
@@ -201,9 +203,14 @@ export interface WorkOrderRow {
   readonly corniceInstallerId: number | null;
   readonly corniceStatus: string;
   readonly items: readonly { kind: OrderItemKind; quantity: number; areaM2: number | null }[];
-  /** Когда заказ вошёл в текущий статус; у карниза `null` — история его не пишет. */
+  /** Когда заказ вошёл в свой текущий статус. */
   readonly since: Date | null;
+  /** Когда карнизчик взял карниз — из журнала действий; история статусов карниз не пишет. */
+  readonly corniceSince: Date | null;
 }
+
+/** Действие «карниз взят» в журнале: имя проверяет компилятор по списку действий аудита. */
+const CORNICE_TAKEN: AuditAction = 'order.cornice_taken';
 
 /**
  * Заказы людей группы: текущие и очередь.
@@ -258,7 +265,7 @@ export async function loadWorkOrders(
   if (rows.length === 0) return [];
 
   const orderIds = rows.map((row) => row.id);
-  const [itemRows, sinceRows] = await Promise.all([
+  const [itemRows, sinceRows, corniceRows] = await Promise.all([
     db
       .select({
         orderId: orderItems.orderId,
@@ -278,6 +285,20 @@ export async function loadWorkOrders(
       .from(orderStatusHistory)
       .where(inArray(orderStatusHistory.orderId, orderIds))
       .groupBy(orderStatusHistory.orderId, orderStatusHistory.toStatus),
+    db
+      .select({
+        orderId: auditLog.entityId,
+        at: sql<Date>`max(${auditLog.createdAt})`.mapWith((value: string | Date) => new Date(value)),
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, CORNICE_TAKEN),
+          eq(auditLog.entityType, 'order'),
+          inArray(auditLog.entityId, orderIds),
+        ),
+      )
+      .groupBy(auditLog.entityId),
   ]);
 
   const itemsByOrder = new Map<number, WorkOrderRow['items'][number][]>();
@@ -291,12 +312,14 @@ export async function loadWorkOrders(
     itemsByOrder.set(item.orderId, list);
   }
   const sinceByKey = new Map(sinceRows.map((row) => [`${row.orderId.toString()}:${row.toStatus}`, row.at]));
+  const corniceSince = new Map(corniceRows.map((row) => [row.orderId, row.at]));
 
   return rows.map((row) => ({
     ...row,
     orderNumber: row.orderNumber ?? `#${row.id.toString()}`,
     items: itemsByOrder.get(row.id) ?? [],
     since: sinceByKey.get(`${row.id.toString()}:${row.status}`) ?? null,
+    corniceSince: corniceSince.get(row.id) ?? null,
   }));
 }
 
@@ -463,8 +486,11 @@ export async function loadDailyOutput(
   userId: number,
   roles: readonly RoleName[],
   from: Date,
+  branchId: number | null,
 ): Promise<Map<string, number>> {
   const day = (at: SQL): SQL => sql`to_char((${at} at time zone 'Asia/Tashkent')::date, 'YYYY-MM-DD')`;
+  // Как в `loadOutput`: табло филиала считает только заказы этого филиала.
+  const inBranch = branchId === null ? sql`` : sql` and o.branch_id = ${branchId}`;
   const queries: ReturnType<Database['execute']>[] = [];
 
   if (roles.includes(Role.SEWER)) {
@@ -480,7 +506,7 @@ export async function loadDailyOutput(
           select greatest(coalesce(sum(oi.quantity), 0), 1) as pieces
           from order_items oi where oi.order_id = o.id
         ) p on true
-        where o.sewer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED} and done.at >= ${ts(from)}
+        where o.sewer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED} and done.at >= ${ts(from)}${inBranch}
         group by 1`),
     );
   }
@@ -493,7 +519,7 @@ export async function loadDailyOutput(
           select max(h.created_at) as at from order_status_history h
           where h.order_id = o.id and h.to_status = ${OrderStatus.INSTALLATION_DONE}
         ) done on true
-        where o.installer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED} and done.at >= ${ts(from)}
+        where o.installer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED} and done.at >= ${ts(from)}${inBranch}
         group by 1`),
     );
   }
@@ -503,7 +529,7 @@ export async function loadDailyOutput(
         select ${day(sql`o.cornice_done_at`)} as day, count(*)::int as value
         from orders o
         where o.cornice_installer_id = ${userId} and o.status <> ${OrderStatus.CANCELLED}
-          and o.cornice_done_at >= ${ts(from)}
+          and o.cornice_done_at >= ${ts(from)}${inBranch}
         group by 1`),
     );
   }

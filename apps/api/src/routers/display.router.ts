@@ -36,7 +36,13 @@ export const displayRouter = router({
       // Язык в базе ограничен `display_links_locale`, но строка об этом не знает.
       const locale = resolveLocale(link.locale);
       await touchDisplayLinkSeen(ctx.db, link, now);
-      const board = await buildBoard(ctx.db, { group: input.group, branchId: link.branchId, now, locale });
+      const board = await buildBoard(ctx.db, {
+        group: input.group,
+        branchId: link.branchId,
+        now,
+        locale,
+        previewOnly: true,
+      });
       return toDisplayBoard(board, { ...link, locale });
     }),
 });

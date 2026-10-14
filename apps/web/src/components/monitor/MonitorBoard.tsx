@@ -227,6 +227,7 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
 
       <PersonDrawer
         userId={personId}
+        branchId={branchId}
         onClose={() => {
           setParams({ person: null });
         }}

@@ -218,9 +218,12 @@ function DrawerBody({ detail }: { readonly detail: PersonDetail }): ReactElement
  */
 export function PersonDrawer({
   userId,
+  branchId,
   onClose,
 }: {
   readonly userId: number | null;
+  /** Филиал табло: панель считает те же цифры, что карточка. */
+  readonly branchId: number | null;
   readonly onClose: () => void;
 }): ReactElement | null {
   const open = userId !== null;
@@ -230,7 +233,7 @@ export function PersonDrawer({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const detail = trpc.monitor.person.useQuery(
-    { userId: userId ?? 0 },
+    branchId === null ? { userId: userId ?? 0 } : { userId: userId ?? 0, branchId },
     { enabled: open, refetchInterval: MONITOR_POLL_MS, refetchIntervalInBackground: false },
   );
 
