@@ -22,13 +22,16 @@ import {
   closeDatabase,
   createDatabase,
   hashPassword,
+  installationTrips,
   notifications,
   orderComments,
   orderItems,
+  orderPackChecks,
   orderPhotos,
   orders,
   orderStatusHistory,
   payrollRecords,
+  personalBreaks,
   purchaseItems,
   purchases,
   refreshTokens,
@@ -60,6 +63,8 @@ import { loadAuthenticatedUser } from '../context';
 import { post } from '../services/ledger.service';
 import { calculateForUserRole, payableRoles, saveDraft } from '../services/payroll.service';
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
+import { loadPackList } from '../services/packList.service';
+import { workshopDay, workshopPeriodStarts } from '../services/periods';
 import type { AuthenticatedUser } from '../types';
 
 loadEnv({ path: ['.env', '../../.env'] });
@@ -371,22 +376,7 @@ async function build(db: Database): Promise<void> {
     await db.insert(shifts).values(shiftRows.slice(offset, offset + 200));
   }
 
-  // Пара открытых смен «прямо сейчас», чтобы дашборд показывал людей на работе.
-  const onShiftNow = workers.slice(0, 4);
-  for (const worker of onShiftNow) {
-    const start = new Date();
-    start.setHours(start.getHours() - between(1, 5));
-    await db.insert(shifts).values({
-      userId: worker.id,
-      branchId: mainBranch.id,
-      startedAt: start,
-      startLatitude: 41.2995,
-      startLongitude: 69.2401,
-      startDistanceMeters: between(5, 60),
-    });
-  }
-
-  log(`Смены: ${shiftCount.toString()} закрытых + ${onShiftNow.length.toString()} открытых`);
+  log(`Смены: ${shiftCount.toString()} закрытых за прошлые дни`);
 
   /* --- Заказы ------------------------------------------------------------ */
 
@@ -437,6 +427,7 @@ async function build(db: Database): Promise<void> {
 
   const catalogRows = await db.select().from(purchaseItems);
   const completedOrderIds: number[] = [];
+  const installingOrderIds: number[] = [];
   let created = 0;
 
   for (const target of TARGETS) {
@@ -518,6 +509,7 @@ async function build(db: Database): Promise<void> {
       await spreadHistoryOverTime(db, order.id, createdAt);
 
       if (target.status === OrderStatus.COMPLETED) completedOrderIds.push(order.id);
+      if (target.status === OrderStatus.INSTALLATION_IN_PROGRESS) installingOrderIds.push(order.id);
 
       // Закупки по части заказов — чтобы считалась себестоимость и маржа
       if (catalogRows.length > 0 && random() < 0.7) {
@@ -553,6 +545,10 @@ async function build(db: Database): Promise<void> {
   }
 
   log(`Заказы: ${created.toString()} (в том числе ${completedOrderIds.length.toString()} закрытых)`);
+
+  /* --- Сегодня: живая картина для табло ------------------------------------ */
+
+  log(await seedToday(db, { branchId: mainBranch.id, roleUsers, installingOrderIds }));
 
   /* --- Зарплата за два месяца -------------------------------------------- */
 
@@ -597,6 +593,124 @@ async function build(db: Database): Promise<void> {
   log('');
   log('Готово. Демо-сотрудники входят по паролю Demo2026!');
   log('Например: Малика Юсупова — +998931000000, Дилшод Мирзаев — +998931000018');
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Сегодняшний день для табло                         */
+/* -------------------------------------------------------------------------- */
+
+interface TodayParams {
+  readonly branchId: number;
+  readonly roleUsers: (role: RoleName) => { id: number; fullName: string }[];
+  /** Заказы, доведённые до «идёт установка»: по ним установщики сейчас в дороге. */
+  readonly installingOrderIds: readonly number[];
+}
+
+/**
+ * Смены, отлучка, выезд и выходной на сегодня — чтобы на табло был виден
+ * каждый статус: работает, без заказа, отлучка, выезд, выходной, смена
+ * закрыта, нет отметки. История за прошлые дни сегодняшний день не трогает.
+ */
+async function seedToday(db: Database, params: TodayParams): Promise<string> {
+  const now = new Date();
+  // Всё — сегодня по Ташкенту, даже если скрипт запущен сразу после полуночи:
+  // вчерашний выезд в «Выезды сегодня» не попадёт, вчерашняя смена — «нет отметки».
+  const todayStart = workshopPeriodStarts(now).today.getTime();
+  const minutesAgo = (minutes: number): Date => new Date(Math.max(todayStart, now.getTime() - minutes * 60 * 1000));
+  const point = { startLatitude: 41.2995, startLongitude: 69.2401 };
+
+  const openShift = async (userId: number, startedAt: Date): Promise<number> => {
+    const [row] = await db
+      .insert(shifts)
+      .values({ userId, branchId: params.branchId, startedAt, ...point, startDistanceMeters: between(5, 60) })
+      .returning({ id: shifts.id });
+    if (row === undefined) throw new Error('смена не открыта');
+    return row.id;
+  };
+
+  const sewers = params.roleUsers(Role.SEWER);
+  const installers = params.roleUsers(Role.INSTALLER);
+  const corniceInstallers = params.roleUsers(Role.CORNICE_INSTALLER);
+
+  // Установщик в дороге — тот, на ком заказ «идёт установка». Один выезд на смену.
+  const installing =
+    params.installingOrderIds.length === 0
+      ? []
+      : await db
+          .select({ id: orders.id, installerId: orders.installerId })
+          .from(orders)
+          .where(inArray(orders.id, [...params.installingOrderIds]));
+  const tripOrderOf = new Map<number, number>();
+  for (const row of installing) {
+    if (row.installerId !== null && !tripOrderOf.has(row.installerId)) tripOrderOf.set(row.installerId, row.id);
+  }
+
+  // Из каждой группы один не отметился. У выездных — тот, кто не в дороге.
+  const absent = new Set<number>();
+  const lastSewer = sewers.at(-1);
+  if (lastSewer !== undefined) absent.add(lastSewer.id);
+  const idleOutside = [...installers, ...corniceInstallers].find((person) => !tripOrderOf.has(person.id));
+  if (idleOutside !== undefined) absent.add(idleOutside.id);
+
+  // Постоянный выходной в сегодняшний день недели (1 — понедельник … 7 — воскресенье).
+  const dayOffSewer = sewers.at(-2);
+  if (dayOffSewer !== undefined) {
+    const weekday = new Date(`${workshopDay(now)}T00:00:00Z`).getUTCDay() || 7;
+    await db.update(users).set({ weeklyDayOff: weekday }).where(eq(users.id, dayOffSewer.id));
+    absent.add(dayOffSewer.id);
+  }
+
+  const finishedSewer = sewers.at(-3);
+  if (finishedSewer !== undefined) {
+    const startedAt = minutesAgo(4 * 60);
+    await db.insert(shifts).values({
+      userId: finishedSewer.id,
+      branchId: params.branchId,
+      startedAt,
+      endedAt: new Date((startedAt.getTime() + now.getTime()) / 2),
+      ...point,
+      startDistanceMeters: between(5, 60),
+    });
+    absent.add(finishedSewer.id);
+  }
+
+  let opened = 0;
+  let trips = 0;
+  let onBreak = 0;
+  const onShift = [
+    ...sewers,
+    ...installers,
+    ...corniceInstallers,
+    ...params.roleUsers(Role.MASTER),
+    ...params.roleUsers(Role.QC),
+  ].filter((person) => !absent.has(person.id));
+
+  for (const person of onShift) {
+    const shiftId = await openShift(person.id, minutesAgo(between(1, 5) * 60));
+    opened += 1;
+
+    const tripOrderId = tripOrderOf.get(person.id);
+    if (tripOrderId !== undefined) {
+      await db.insert(installationTrips).values({
+        shiftId,
+        orderId: tripOrderId,
+        startedAt: minutesAgo(40),
+        ...point,
+        startDistanceMeters: between(5, 60),
+      });
+      trips += 1;
+    }
+
+    // Одна швея отошла на полчаса — на табло «Отлучка до HH:MM».
+    if (person.id === sewers[0]?.id) {
+      await db
+        .insert(personalBreaks)
+        .values({ shiftId, plannedMinutes: 30, startedAt: minutesAgo(10) });
+      onBreak += 1;
+    }
+  }
+
+  return `Сегодня: ${opened.toString()} открытых смен, выездов ${trips.toString()}, отлучек ${onBreak.toString()}, не на смене ${absent.size.toString()} (нет отметки, выходной, смена закрыта)`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -775,6 +889,13 @@ async function advanceTo(
   await move(OrderStatus.INSTALLATION_ASSIGNED, admin);
   if (target === OrderStatus.INSTALLATION_ASSIGNED) return;
 
+  // Без отмеченного листа сборов выезд не начать — установщик собирается сам.
+  const packList = await loadPackList(db, orderId);
+  if (packList.length > 0) {
+    await db
+      .insert(orderPackChecks)
+      .values(packList.map((row) => ({ orderId, key: row.key, checkedBy: installer.id })));
+  }
   await move(OrderStatus.INSTALLATION_IN_PROGRESS, installer);
   if (target === OrderStatus.INSTALLATION_IN_PROGRESS) return;
 
