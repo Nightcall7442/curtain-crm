@@ -82,24 +82,40 @@ function latestRow(
 }
 
 /**
- * Выработка за месяц по одной роли — тем же запросом, что у табло
+ * Выработка за месяц `YYYY-MM` по ролям плана — тем же запросом, что у табло
  * (`loadOutput`): месяц подставляется в его окно «прошлого месяца»,
  * `[start, end)`. Отдельный SQL дал бы второе определение «сделано».
+ * Человеку с двумя ролями выработка складывается, как на табло.
  */
-async function monthOutput(
+export async function loadMonthOutput(
   db: Database,
-  userIds: readonly number[],
-  role: PlanRole,
+  people: readonly { readonly id: number; readonly roles: readonly PlanRole[] }[],
   month: string,
 ): Promise<Map<number, number>> {
+  if (people.length === 0) return new Map();
   const { start, end } = workshopMonthBounds(month);
   const output = await loadOutput(
     db,
-    userIds.map((id) => ({ id, roles: [role] })),
+    people,
     { today: end, week: end, month: end, prevMonth: start, prevMonthToDate: end },
     null,
   );
   return new Map([...output].map(([userId, row]) => [userId, row.prevMonth]));
+}
+
+/** План человека с несколькими ролями — сумма действующих планов; ни одного — `null`. */
+export function totalPlan(
+  rows: readonly WorkPlanRow[],
+  userId: number,
+  roles: readonly PlanRole[],
+  month: string,
+): number | null {
+  let total: number | null = null;
+  for (const role of roles) {
+    const plan = resolvePlan(rows, userId, role, month);
+    if (plan !== null) total = (total ?? 0) + plan.target;
+  }
+  return total;
 }
 
 /** Страница «Планы»: по каждой роли — норма и люди с планом и выработкой месяца. */
@@ -118,10 +134,9 @@ export async function listPlans(db: Database, month: string): Promise<PlansOverv
   const roles = await Promise.all(
     PLAN_ROLES.map(async (role): Promise<PlansRole> => {
       const ofRole = people.filter((person) => person.role === role);
-      const output = await monthOutput(
+      const output = await loadMonthOutput(
         db,
-        ofRole.map((person) => person.id),
-        role,
+        ofRole.map((person) => ({ id: person.id, roles: [role] })),
         month,
       );
       const norm = latestRow(rows, role, null, since);

@@ -54,6 +54,7 @@ import {
   PayrollRecordStatus,
   PayrollSchemeType,
   Role,
+  workshopToday,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { config as loadEnv } from 'dotenv';
@@ -1725,6 +1726,36 @@ async function run(db: Database): Promise<void> {
     'план: норма роли без цели отбита',
     () => db.insert(workPlans).values({ ...planRow, userId: null, effectiveFrom: '2098-04-01', target: null }),
     (message) => message.includes('work_plans_norm_has_target'),
+  );
+
+  /* ------------------ 8d. «Рабочие»: план из work_plans ------------------- */
+
+  // Личный план — только у одной швеи и только её строкой: норму текущего
+  // месяца смоук не трогает, вторая швея получает ту, что действует в базе.
+  const planToday = workshopToday();
+  const currentMonth = `${planToday.year.toString()}-${planToday.month.toString().padStart(2, '0')}`;
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewer.id, role: Role.SEWER, month: currentMonth, target: 77 });
+  const currentNorm =
+    (await ceoCaller.monitor.plans.list({ month: currentMonth })).roles.find((entry) => entry.role === Role.SEWER)
+      ?.norm?.target ?? null;
+  const performanceRows = await ceoCaller.users.performance({
+    year: planToday.year,
+    month: planToday.month,
+    userIds: [sewer.id, sewerB.id],
+  });
+  const performanceOf = (userId: number) => performanceRows.find((row) => row.userId === userId);
+  check(
+    'рабочие: у каждой швеи свой план — личный или норма роли',
+    performanceOf(sewer.id)?.plan === 77 && performanceOf(sewerB.id)?.plan === currentNorm,
+    `личный ${String(performanceOf(sewer.id)?.plan)}, норма ${String(performanceOf(sewerB.id)?.plan)} (ждали ${String(currentNorm)})`,
+  );
+  const sewerOnBoard = (await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP })).people.find(
+    (person) => person.userId === sewer.id,
+  );
+  check(
+    'рабочие: «сделано» швеи совпадает с выработкой месяца на табло',
+    sewerOnBoard !== undefined && performanceOf(sewer.id)?.completed === sewerOnBoard.counts.month,
+    `рабочие ${String(performanceOf(sewer.id)?.completed)}, табло ${String(sewerOnBoard?.counts.month)}`,
   );
 }
 
