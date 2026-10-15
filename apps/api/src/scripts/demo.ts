@@ -39,6 +39,7 @@ import {
   userBranches,
   userRoles,
   users,
+  workPlans,
   type Database,
   payments,
 } from '@curtain-crm/db';
@@ -65,6 +66,7 @@ import { calculateForUserRole, payableRoles, saveDraft } from '../services/payro
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
 import { workshopDay, workshopPeriodStarts } from '../services/periods';
+import { setWorkPlan } from '../services/workPlans.service';
 import type { AuthenticatedUser } from '../types';
 
 loadEnv({ path: ['.env', '../../.env'] });
@@ -239,6 +241,9 @@ async function cleanup(db: Database): Promise<void> {
   }
   await db.delete(payrollRecords);
 
+  // Планы держат и людей, и автора (restrict); демо задаёт их заново целиком.
+  await db.delete(workPlans);
+
   if (userIds.length > 0) {
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
     await db.delete(refreshTokens).where(inArray(refreshTokens.userId, userIds));
@@ -411,7 +416,7 @@ async function build(db: Database): Promise<void> {
     { status: OrderStatus.QC_FAILED, count: 2 },
     { status: OrderStatus.QC_PASSED, count: 3 },
     { status: OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, count: 4 },
-    { status: OrderStatus.INSTALLATION_ASSIGNED, count: 3 },
+    { status: OrderStatus.INSTALLATION_ASSIGNED, count: 4 },
     { status: OrderStatus.INSTALLATION_IN_PROGRESS, count: 2 },
     { status: OrderStatus.COMPLETED, count: 14 },
     { status: OrderStatus.CANCELLED, count: 3 },
@@ -428,6 +433,7 @@ async function build(db: Database): Promise<void> {
   const catalogRows = await db.select().from(purchaseItems);
   const completedOrderIds: number[] = [];
   const installingOrderIds: number[] = [];
+  const assignedOrderIds: number[] = [];
   let created = 0;
 
   for (const target of TARGETS) {
@@ -510,6 +516,7 @@ async function build(db: Database): Promise<void> {
 
       if (target.status === OrderStatus.COMPLETED) completedOrderIds.push(order.id);
       if (target.status === OrderStatus.INSTALLATION_IN_PROGRESS) installingOrderIds.push(order.id);
+      if (target.status === OrderStatus.INSTALLATION_ASSIGNED) assignedOrderIds.push(order.id);
 
       // Закупки по части заказов — чтобы считалась себестоимость и маржа
       if (catalogRows.length > 0 && random() < 0.7) {
@@ -549,6 +556,18 @@ async function build(db: Database): Promise<void> {
   /* --- Сегодня: живая картина для табло ------------------------------------ */
 
   log(await seedToday(db, { branchId: mainBranch.id, roleUsers, installingOrderIds }));
+
+  /* --- Машинки, планы и время установки --------------------------------- */
+
+  log(
+    await seedPlansAndSchedule(db, {
+      ceoId: ceo.id,
+      roleUsers,
+      completedOrderIds,
+      installingOrderIds,
+      assignedOrderIds,
+    }),
+  );
 
   /* --- Зарплата за два месяца -------------------------------------------- */
 
@@ -711,6 +730,87 @@ async function seedToday(db: Database, params: TodayParams): Promise<string> {
   }
 
   return `Сегодня: ${opened.toString()} открытых смен, выездов ${trips.toString()}, отлучек ${onBreak.toString()}, не на смене ${absent.size.toString()} (нет отметки, выходной, смена закрыта)`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                   Машинки, планы и время установки для табло               */
+/* -------------------------------------------------------------------------- */
+
+interface PlansParams {
+  readonly ceoId: number;
+  readonly roleUsers: (role: RoleName) => { id: number; fullName: string }[];
+  readonly completedOrderIds: readonly number[];
+  readonly installingOrderIds: readonly number[];
+  readonly assignedOrderIds: readonly number[];
+}
+
+/**
+ * Машинки швеям, нормы ролей на этот и прошлый месяц (под объём демо), два
+ * личных плана и время установки так, чтобы в «Установках сегодня» были все
+ * четыре состояния: идёт, сделано, опаздывает, впереди.
+ */
+async function seedPlansAndSchedule(db: Database, params: PlansParams): Promise<string> {
+  const sewers = params.roleUsers(Role.SEWER);
+  for (const [index, sewer] of sewers.entries()) {
+    await db.update(users).set({ workstation: index + 1 }).where(eq(users.id, sewer.id));
+  }
+
+  const now = new Date();
+  const starts = workshopPeriodStarts(now);
+  const months = [workshopDay(starts.prevMonth).slice(0, 7), workshopDay(starts.month).slice(0, 7)];
+  // Под объём демо: за месяц швея сдаёт 10–20 штук, установщик — до десятка
+  // заказов. Норма выше этого покрасила бы всё табло в «отстаёт».
+  const norms = [
+    { role: Role.SEWER, target: 12 },
+    { role: Role.INSTALLER, target: 8 },
+    { role: Role.CORNICE_INSTALLER, target: 4 },
+  ] as const;
+  for (const month of months) {
+    for (const norm of norms) {
+      await setWorkPlan(db, { role: norm.role, userId: null, month, target: norm.target, actorId: params.ceoId });
+    }
+  }
+  const currentMonth = months[1] ?? '';
+  const personal = [
+    { person: sewers[0], role: Role.SEWER, target: 15 },
+    { person: params.roleUsers(Role.INSTALLER)[0], role: Role.INSTALLER, target: 6 },
+  ];
+  for (const plan of personal) {
+    if (plan.person === undefined) continue;
+    await setWorkPlan(db, {
+      role: plan.role,
+      userId: plan.person.id,
+      month: currentMonth,
+      target: plan.target,
+      actorId: params.ceoId,
+    });
+  }
+
+  // Время — в сегодняшних ташкентских сутках, даже сразу после полуночи.
+  const todayStart = starts.today.getTime();
+  const todayAgo = (minutes: number): Date => new Date(Math.max(todayStart, now.getTime() - minutes * 60_000));
+  const todayLater = new Date(Math.min(now.getTime() + 2 * 60 * 60_000, starts.tomorrow.getTime() - 15 * 60_000));
+  const tomorrowMorning = new Date(starts.tomorrow.getTime() + 11 * 60 * 60_000);
+  const [late, later, tomorrow] = params.assignedOrderIds;
+  const times: { orderId: number | undefined; at: Date }[] = [
+    // Идёт установка: начали утром.
+    ...params.installingOrderIds.map((orderId, index) => ({ orderId, at: todayAgo(90 - index * 30) })),
+    // Две сегодняшние — уже сделаны.
+    ...params.completedOrderIds.slice(0, 2).map((orderId, index) => ({ orderId, at: todayAgo(5 * 60 - index * 60) })),
+    // Назначена на два часа назад, выезда нет — опаздывает.
+    { orderId: late, at: todayAgo(120) },
+    { orderId: later, at: todayLater },
+    { orderId: tomorrow, at: tomorrowMorning },
+    // Четвёртая назначенная остаётся без времени — счётчик «Без времени».
+  ];
+  let scheduled = 0;
+  for (const { orderId, at } of times) {
+    if (orderId === undefined) continue;
+    await db.update(orders).set({ installationAt: at }).where(eq(orders.id, orderId));
+    scheduled += 1;
+  }
+
+  return `Табло: машинки у ${sewers.length.toString()} швей, нормы на ${months.join(' и ')}, личных планов ${personal.length.toString()}, установок со временем ${scheduled.toString()}`;
 }
 
 /* -------------------------------------------------------------------------- */
