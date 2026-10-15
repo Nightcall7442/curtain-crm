@@ -44,3 +44,13 @@ export function workshopPeriodStarts(now: Date): {
 /** Календарный день по Ташкенту `YYYY-MM-DD` для момента начала периода. */
 export const workshopDay = (at: Date): string =>
   new Date(at.getTime() + TASHKENT_OFFSET_MS).toISOString().slice(0, 10);
+
+/**
+ * Границы месяца `YYYY-MM` по Ташкенту: `[start, end)` — моменты UTC.
+ * Для планов: выработка месяца считается в тех же сутках, что и табло.
+ */
+export function workshopMonthBounds(month: string): { readonly start: Date; readonly end: Date } {
+  const [year = 1970, monthNumber = 1] = month.split('-').map((part) => Number.parseInt(part, 10));
+  const at = (utcMidnight: number): Date => new Date(utcMidnight - TASHKENT_OFFSET_MS);
+  return { start: at(Date.UTC(year, monthNumber - 1, 1)), end: at(Date.UTC(year, monthNumber, 1)) };
+}

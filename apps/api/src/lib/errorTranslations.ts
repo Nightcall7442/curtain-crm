@@ -72,6 +72,12 @@ const EXACT: Readonly<Record<string, string>> = {
   'Ссылка недействительна': 'Havola yaroqsiz',
   'Эта группа на ссылке не показывается': "Bu guruh havolada ko'rsatilmaydi",
 
+  // workPlans
+  'Месяц в формате ГГГГ-ММ': 'Oy YYYY-OO formatida',
+  'План должен быть больше нуля': "Reja noldan katta bo'lishi kerak",
+  'План слишком большой': 'Reja juda katta',
+  'У сотрудника нет этой роли': "Xodimda bu rol yo'q",
+
   // displayLinks
   'Выберите хотя бы одно табло': 'Kamida bitta tabloni tanlang',
   'Ссылка не создана': 'Havola yaratilmadi',

@@ -477,6 +477,13 @@
       "when": 1792067055922,
       "tag": "0067_workstation",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1792067347665,
+      "tag": "0068_work_plans",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,7 @@ import {
   userBranches,
   userRoles,
   users,
+  workPlans,
   type Database,
 } from '@curtain-crm/db';
 import {
@@ -56,7 +57,7 @@ import {
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { config as loadEnv } from 'dotenv';
-import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 
 import { loadAuthenticatedUser } from '../context';
 import { login, refreshSession } from '../services/auth.service';
@@ -205,6 +206,7 @@ async function cleanup(db: Database): Promise<void> {
     // audit_log и ссылки для ТВ — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
     await db.delete(displayLinks).where(inArray(displayLinks.createdBy, userIds));
+    await db.delete(workPlans).where(or(inArray(workPlans.userId, userIds), inArray(workPlans.createdBy, userIds)));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -1656,6 +1658,73 @@ async function run(db: Database): Promise<void> {
     'машинка: check-ограничение отбивает 100 мимо API',
     () => db.execute(sql`update users set workstation = 100 where id = ${sewer.id}`),
     (message) => message.includes('users_workstation_range'),
+  );
+
+  /* ------------------------- 8c. План на месяц --------------------------- */
+
+  // Месяц далеко впереди: норма роли общая на всех, и смоук не должен
+  // переписать настоящую норму текущего месяца в базе разработчика.
+  const planMonth = '2098-03';
+  const sewerPlans = async () =>
+    (await ceoCaller.monitor.plans.list({ month: planMonth })).roles.find((entry) => entry.role === Role.SEWER);
+  const planOf = async (userId: number) =>
+    (await sewerPlans())?.people.find((person) => person.userId === userId)?.plan ?? null;
+
+  // Дважды в один месяц: вторая запись обновляет строку нормы (user_id null).
+  await ceoCaller.monitor.plans.setRoleNorm({ role: Role.SEWER, month: planMonth, target: 35 });
+  await ceoCaller.monitor.plans.setRoleNorm({ role: Role.SEWER, month: planMonth, target: 40 });
+  const normPlans = await sewerPlans();
+  check(
+    'план: норма роли достаётся всем швеям смоука',
+    normPlans?.norm?.target === 40 &&
+      [sewer.id, sewerA.id, sewerB.id, sewerC.id].every((id) => {
+        const plan = normPlans.people.find((person) => person.userId === id)?.plan;
+        return plan?.target === 40 && plan.source === 'role';
+      }),
+    JSON.stringify(normPlans?.norm),
+  );
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.SEWER, month: planMonth, target: 55 });
+  const personalPlan = await planOf(sewerA.id);
+  check(
+    'план: личный план важнее нормы',
+    personalPlan?.target === 55 && personalPlan.source === 'personal',
+    JSON.stringify(personalPlan),
+  );
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.SEWER, month: planMonth, target: null });
+  const backToNorm = await planOf(sewerA.id);
+  check(
+    'план: личный null с того же месяца — снова норма',
+    backToNorm?.target === 40 && backToNorm.source === 'role',
+    JSON.stringify(backToNorm),
+  );
+  const [planAudit] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.actorId, ceo.id), eq(auditLog.action, 'work_plan.personal_set')))
+    .orderBy(desc(auditLog.id))
+    .limit(1);
+  check('план: правка личного плана в журнале', JSON.stringify(planAudit?.details ?? null).includes('"to":null'));
+  await expectRejectedWith(
+    'план: личный план по роли, которой у человека нет',
+    () => ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.INSTALLER, month: planMonth, target: 10 }),
+    (message) => message === 'У сотрудника нет этой роли',
+  );
+  await expectRejected('план: менеджеру планы закрыты', () => managerCaller.monitor.plans.list({ month: planMonth }));
+  const planRow = { role: Role.SEWER, userId: sewerA.id, target: 10, createdBy: ceo.id };
+  await expectRejectedWith(
+    'план: check отбивает не первое число месяца',
+    () => db.insert(workPlans).values({ ...planRow, effectiveFrom: '2098-04-15' }),
+    (message) => message.includes('work_plans_effective_from_first_day'),
+  );
+  await expectRejectedWith(
+    'план: check отбивает нулевой план',
+    () => db.insert(workPlans).values({ ...planRow, effectiveFrom: '2098-04-01', target: 0 }),
+    (message) => message.includes('work_plans_target_positive'),
+  );
+  await expectRejectedWith(
+    'план: норма роли без цели отбита',
+    () => db.insert(workPlans).values({ ...planRow, userId: null, effectiveFrom: '2098-04-01', target: null }),
+    (message) => message.includes('work_plans_norm_has_target'),
   );
 }
 

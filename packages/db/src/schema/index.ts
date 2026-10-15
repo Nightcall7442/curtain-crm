@@ -33,5 +33,6 @@ export * from './payroll.schema';
 export * from './notifications.schema';
 export * from './auditLog.schema';
 export * from './displayLinks.schema';
+export * from './workPlans.schema';
 
 export * from './relations';
