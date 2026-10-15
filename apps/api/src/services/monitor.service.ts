@@ -4,6 +4,7 @@ import {
   CorniceStatus,
   deltaPercent,
   deriveLiveStatus,
+  installSlotState,
   isDayOffOn,
   isPlanRole,
   LIVE_STATUSES,
@@ -20,6 +21,7 @@ import {
   Role,
   summarizeItems,
   workdaysInMonth,
+  type InstallSlotState,
   type ItemsSummary,
   type Locale,
   type LiveStatus as LiveStatusName,
@@ -31,13 +33,14 @@ import {
 } from '@curtain-crm/shared';
 
 import {
-  countPendingCornices,
   loadApprovedDaysOff,
   loadDailyOutput,
   loadGroupPeople,
+  loadInstallationsToday,
   loadOutput,
   loadPresence,
   loadRecentPhotos,
+  loadScheduleCounts,
   loadShiftDetail,
   loadTripsToday,
   loadWorkOrders,
@@ -132,6 +135,25 @@ export interface MonitorPodiumEntry {
   readonly planPercent: number | null;
 }
 
+export interface MonitorInstallSlot {
+  readonly orderId: number;
+  readonly orderNumber: string;
+  readonly at: Date;
+  readonly state: InstallSlotState;
+  readonly installerName: string | null;
+  /** На ТВ не уходит: расписание с адресами — только руководству. */
+  readonly address: string | null;
+}
+
+/** «Установки сегодня» — только у «Установщиков». */
+export interface MonitorSchedule {
+  /** Установки с временем в сегодняшних ташкентских сутках, по времени. */
+  readonly slots: readonly MonitorInstallSlot[];
+  /** Установщик назначен, времени нет. */
+  readonly unscheduled: number;
+  readonly cornices: { readonly pending: number; readonly inProgress: number };
+}
+
 export interface MonitorBoard {
   readonly group: MonitorGroupName;
   readonly unit: 'pieces' | 'orders';
@@ -160,6 +182,8 @@ export interface MonitorBoard {
   readonly statusCounts: Readonly<Record<LiveStatusName, number>>;
   /** Только у выездных: выезды, начатые сегодня. */
   readonly trips: readonly MonitorTrip[] | null;
+  /** Только у выездных; у цеха `null`. */
+  readonly schedule: MonitorSchedule | null;
 }
 
 export interface BuildBoardParams {
@@ -319,9 +343,14 @@ function splitWork(
   // Заказ открытого выезда — то, где человек сейчас физически: он первым.
   const trip = tripOrderId === null ? undefined : rows.find((row) => row.id === tripOrderId);
   const withTrip = trip === undefined ? current : [trip, ...current.filter((row) => row.id !== trip.id)];
+  // Очередь установщика — по времени установки, без времени в конце; внутри
+  // равных остаётся порядок запроса: срочность, затем срок.
+  const byTime = (row: WorkOrderRow): number => row.installationAt?.getTime() ?? Number.POSITIVE_INFINITY;
   return {
     current: withTrip,
-    queue: rows.filter((row) => row.installerId === personId && row.status === OrderStatus.INSTALLATION_ASSIGNED),
+    queue: rows
+      .filter((row) => row.installerId === personId && row.status === OrderStatus.INSTALLATION_ASSIGNED)
+      .sort((a, b) => byTime(a) - byTime(b) || 0),
   };
 }
 
@@ -361,7 +390,8 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     .map((row) => row.openTrip?.orderId ?? null)
     .filter((id): id is number => id !== null);
 
-  const [daysOff, work, output, pool, slow, tripRows, photos, planRows] = await Promise.all([
+  const installation = group === MonitorGroup.INSTALLATION;
+  const [daysOff, work, output, scheduleCounts, slow, tripRows, photos, planRows, slotRows] = await Promise.all([
     loadApprovedDaysOff(db, ids, todayIso),
     loadWorkOrders(db, ids, tripOrderIds),
     loadOutput(
@@ -376,12 +406,14 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       },
       branchId,
     ),
-    group === MonitorGroup.INSTALLATION ? countPendingCornices(db, branchId) : Promise.resolve(0),
+    installation ? loadScheduleCounts(db, branchId) : Promise.resolve(null),
     loadSlowParts(db, people, group, branchId, starts.month, now),
     group === MonitorGroup.INSTALLATION ? loadTripsToday(db, ids, starts.today) : Promise.resolve(null),
     Promise.all(people.map((person) => photoUrlOf(person, params.previewOnly === true))),
     loadWorkPlans(db, roles.filter(isPlanRole)),
+    installation ? loadInstallationsToday(db, starts.today, starts.tomorrow, branchId) : Promise.resolve([]),
   ]);
+  const pool = scheduleCounts?.cornicesPending ?? 0;
 
   const ratingById = new Map(slow.rating.map((entry) => [entry.userId, entry]));
   const empty: OutputRow = { today: 0, week: 0, month: 0, prevMonth: 0, prevMonthToDate: 0 };
@@ -497,6 +529,26 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
             orderNumber: trip.orderNumber,
             address: trip.address,
           })),
+    schedule:
+      scheduleCounts === null
+        ? null
+        : {
+            slots: slotRows.map((slot) => ({
+              orderId: slot.orderId,
+              orderNumber: slot.orderNumber,
+              at: slot.at,
+              state: installSlotState({
+                status: slot.status,
+                installationAt: slot.at,
+                tripInProgress: tripOrderIds.includes(slot.orderId),
+                now,
+              }),
+              installerName: slot.installerName,
+              address: slot.address,
+            })),
+            unscheduled: scheduleCounts.unscheduled,
+            cornices: { pending: scheduleCounts.cornicesPending, inProgress: scheduleCounts.cornicesInProgress },
+          },
   };
 }
 

@@ -20,6 +20,7 @@ import {
   createDatabase,
   displayLinks,
   hashPassword,
+  installationTrips,
   notifications,
   orderComments,
   orderItems,
@@ -1902,6 +1903,83 @@ async function run(db: Database): Promise<void> {
       viaTypes.includes(NotificationType.INSTALLATION_SCHEDULED),
     viaTypes.join(', '),
   );
+
+  /* ------------------- 8g. «Установки сегодня» на табло ------------------ */
+
+  const slotDayStart = workshopPeriodStarts(new Date()).today;
+  const minutesAfterDayStart = (minutes: number): Date => new Date(slotDayStart.getTime() + minutes * 60_000);
+  const slotOrder = async (label: string, status: OrderStatus, installerId: number, at: Date | null) => {
+    const row = await makeInstallOrder(label, status, installerId);
+    await db.update(orders).set({ installationAt: at }).where(eq(orders.id, row.id));
+    return row;
+  };
+  // 00:30 по Ташкенту — это 19:30 UTC предыдущего дня: сутки считаются по Ташкенту.
+  const afterMidnight = await slotOrder('Слот 00:30', OrderStatus.INSTALLATION_ASSIGNED, installer.id, minutesAfterDayStart(30));
+  const lateYesterday = await slotOrder('Слот вчера 23:30', OrderStatus.INSTALLATION_ASSIGNED, installer.id, minutesAfterDayStart(-30));
+  const cancelledSlot = await slotOrder('Слот отменён', OrderStatus.INSTALLATION_ASSIGNED, installer.id, minutesAfterDayStart(60));
+  await db
+    .update(orders)
+    .set({ status: OrderStatus.CANCELLED, cancelledAt: new Date(), cancellationReason: 'Смоук: клиент передумал' })
+    .where(eq(orders.id, cancelledSlot.id));
+  const onTheWay = await slotOrder('Слот в пути', OrderStatus.INSTALLATION_ASSIGNED, both.id, minutesAfterDayStart(20));
+  const doneSlot = await slotOrder('Слот сделан', OrderStatus.INSTALLATION_DONE, installer.id, minutesAfterDayStart(45));
+  const [bothShift] = await db
+    .select({ id: shifts.id })
+    .from(shifts)
+    .where(and(eq(shifts.userId, both.id), isNull(shifts.endedAt)));
+  if (bothShift === undefined) throw new Error('открытой смены установщика-карнизчика нет');
+  await db.insert(installationTrips).values({
+    shiftId: bothShift.id,
+    orderId: onTheWay.id,
+    startedAt: new Date(Date.now() - 10 * 60_000),
+    startLatitude: 41.2995,
+    startLongitude: 69.2401,
+  });
+
+  const installBoard = await managerCaller.monitor.board({ group: MonitorGroup.INSTALLATION, branchId: branch.id });
+  const slots = installBoard.schedule?.slots ?? [];
+  const slotOf = (orderId: number) => slots.find((slot) => slot.orderId === orderId);
+  check(
+    'расписание: 00:30 по Ташкенту — сегодня, вчерашние 23:30 — нет',
+    slotOf(afterMidnight.id) !== undefined && slotOf(lateYesterday.id) === undefined,
+    slots.map((slot) => slot.orderNumber).join(', '),
+  );
+  check('расписание: отменённый заказ не в ленте', slotOf(cancelledSlot.id) === undefined);
+  check('расписание: открытый выезд по заказу — идёт', slotOf(onTheWay.id)?.state === 'in_progress', String(slotOf(onTheWay.id)?.state));
+  check('расписание: выполненная установка — сделано', slotOf(doneSlot.id)?.state === 'done', String(slotOf(doneSlot.id)?.state));
+  check(
+    'расписание: лента по времени',
+    slots.every((slot, index) => index === 0 || (slots[index - 1]?.at.getTime() ?? 0) <= slot.at.getTime()),
+  );
+  const [unscheduledRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.branchId, branch.id),
+        eq(orders.status, OrderStatus.INSTALLATION_ASSIGNED),
+        isNull(orders.installationAt),
+      ),
+    );
+  check(
+    'расписание: «без времени» — назначенные без времени',
+    installBoard.schedule?.unscheduled === unscheduledRow?.count && (unscheduledRow?.count ?? 0) >= 1,
+    `табло ${String(installBoard.schedule?.unscheduled)}, база ${String(unscheduledRow?.count)}`,
+  );
+  check(
+    'расписание: у цеха расписания нет',
+    (await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP, branchId: branch.id })).schedule === null,
+  );
+  const installTv = await ceoCaller.displayLinks.create({
+    label: `${PREFIX} ТВ установщиков`,
+    branchId: branch.id,
+    showWorkshop: false,
+    showInstallation: true,
+  });
+  const installTvJson = JSON.stringify(
+    await tvCaller.display.board({ token: installTv.token, group: MonitorGroup.INSTALLATION }),
+  );
+  check('расписание: на ТВ не уходит', !installTvJson.includes('"schedule"') && !installTvJson.includes('Смоука'));
 }
 
 main().catch((error: unknown) => {

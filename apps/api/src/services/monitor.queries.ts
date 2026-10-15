@@ -25,7 +25,7 @@ import {
   type OrderStatus as OrderStatusName,
   type Role as RoleName,
 } from '@curtain-crm/shared';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import type { AuditAction } from '../lib/constants';
 import { sqlTimestamp } from './shifts.service';
@@ -200,6 +200,8 @@ export interface WorkOrderRow {
   readonly priority: string;
   readonly deadline: string | null;
   readonly installAddress: string | null;
+  /** Время установки; очередь установщика идёт по нему. */
+  readonly installationAt: Date | null;
   readonly sewerId: number | null;
   readonly installerId: number | null;
   readonly corniceInstallerId: number | null;
@@ -252,6 +254,7 @@ export async function loadWorkOrders(
       priority: orders.priority,
       deadline: orders.deadline,
       installAddress: orders.installAddress,
+      installationAt: orders.installationAt,
       sewerId: orders.sewerId,
       installerId: orders.installerId,
       corniceInstallerId: orders.corniceInstallerId,
@@ -326,18 +329,79 @@ export async function loadWorkOrders(
 }
 
 /** Карнизы, ждущие карнизчика: общая очередь, личной у них нет. */
-export async function countPendingCornices(db: Database, branchId: number | null): Promise<number> {
+export interface ScheduleCounts {
+  /** Установщик назначен, времени нет. */
+  readonly unscheduled: number;
+  /** Карнизы, ждущие карнизчика; у карнизчика на карточке — общий пул. */
+  readonly cornicesPending: number;
+  readonly cornicesInProgress: number;
+}
+
+/** Счётчики «Установщиков» одним запросом; филиал — по заказу. */
+export async function loadScheduleCounts(db: Database, branchId: number | null): Promise<ScheduleCounts> {
   const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({
+      unscheduled: sql<number>`count(*) filter (where ${orders.status} = ${OrderStatus.INSTALLATION_ASSIGNED} and ${orders.installationAt} is null)::int`,
+      cornicesPending: sql<number>`count(*) filter (where ${orders.corniceStatus} = ${CorniceStatus.PENDING})::int`,
+      cornicesInProgress: sql<number>`count(*) filter (where ${orders.corniceStatus} = ${CorniceStatus.IN_PROGRESS})::int`,
+    })
     .from(orders)
     .where(
       and(
-        eq(orders.corniceStatus, CorniceStatus.PENDING),
         sql`${orders.status} <> ${OrderStatus.CANCELLED}`,
         branchId === null ? undefined : eq(orders.branchId, branchId),
       ),
     );
-  return row?.count ?? 0;
+  return {
+    unscheduled: row?.unscheduled ?? 0,
+    cornicesPending: row?.cornicesPending ?? 0,
+    cornicesInProgress: row?.cornicesInProgress ?? 0,
+  };
+}
+
+export interface InstallationSlotRow {
+  readonly orderId: number;
+  readonly orderNumber: string;
+  readonly status: OrderStatusName;
+  readonly at: Date;
+  readonly installerName: string | null;
+  readonly address: string | null;
+}
+
+/**
+ * Установки с временем в сутках `[dayStart, dayEnd)` по Ташкенту, кроме
+ * отменённых, по времени. Филиал — по заказу: установщик чужого филиала,
+ * поехавший сюда, всё равно в расписании этого цеха.
+ */
+export async function loadInstallationsToday(
+  db: Database,
+  dayStart: Date,
+  dayEnd: Date,
+  branchId: number | null,
+): Promise<InstallationSlotRow[]> {
+  const rows = await db
+    .select({
+      orderId: orders.id,
+      orderNumber: orders.orderNumber,
+      status: orders.status,
+      at: orders.installationAt,
+      installerName: users.fullName,
+      address: orders.installAddress,
+    })
+    .from(orders)
+    .leftJoin(users, eq(users.id, orders.installerId))
+    .where(
+      and(
+        gte(orders.installationAt, dayStart),
+        lt(orders.installationAt, dayEnd),
+        sql`${orders.status} <> ${OrderStatus.CANCELLED}`,
+        branchId === null ? undefined : eq(orders.branchId, branchId),
+      ),
+    )
+    .orderBy(asc(orders.installationAt), asc(orders.id));
+  return rows.flatMap((row) =>
+    row.at === null ? [] : [{ ...row, at: row.at, orderNumber: row.orderNumber ?? `#${row.orderId.toString()}` }],
+  );
 }
 
 export interface OutputStarts {

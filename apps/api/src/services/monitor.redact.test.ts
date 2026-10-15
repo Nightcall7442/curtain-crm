@@ -77,6 +77,20 @@ function boardWith(leak: { readonly address: string; readonly clientName: string
         address: leak.address,
       },
     ],
+    schedule: {
+      slots: [
+        {
+          orderId: 41,
+          orderNumber: 'DH-000041',
+          at: new Date('2026-10-14T05:30:00Z'),
+          state: 'upcoming',
+          installerName: 'Бекзод Эргашев',
+          address: leak.address,
+        },
+      ],
+      unscheduled: 1,
+      cornices: { pending: 2, inProgress: 1 },
+    },
   };
 }
 
@@ -89,6 +103,7 @@ describe('табло для ТВ', () => {
     expect(json).not.toContain('Иванов');
     expect(json).not.toContain('"orderId"');
     expect(json).not.toContain('"address"');
+    expect(json).not.toContain('"schedule"');
   });
 
   it('люди, сводка и подпись ссылки на месте', () => {

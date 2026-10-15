@@ -66,7 +66,8 @@ export interface DisplayLinkInfo {
   readonly locale: Locale;
 }
 
-export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'trips' | 'podium'> {
+/** Расписания установок с адресами на ТВ нет: `schedule` в список не входит. */
+export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'trips' | 'podium' | 'schedule'> {
   readonly people: readonly DisplayPerson[];
   readonly podium: { readonly month: string; readonly entries: readonly DisplayPodiumEntry[] };
   readonly trips: readonly DisplayTrip[] | null;
