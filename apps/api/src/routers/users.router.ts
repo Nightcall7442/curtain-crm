@@ -15,6 +15,7 @@ import {
   Role,
   ROLE_LABELS_RU,
   isPlanRole,
+  MONITOR_GROUP_ROLES,
   PLAN_ROLES,
   resolveCombinedPlan,
   roleSchema,
@@ -50,6 +51,7 @@ import { resetPasswordByManager, revokeAllSessions } from '../services/auth.serv
 import { notifyRoleChanged } from '../services/notifications.service';
 import { calculateCompletedOrders } from '../services/payroll.service';
 import { periodBounds } from '../services/shifts.service';
+import { monitorGroupOf } from '../services/monitor.service';
 import { loadMonthOutput, loadWorkPlans } from '../services/workPlans.service';
 import {
   buildStorageKey,
@@ -1048,10 +1050,18 @@ export const usersRouter = router({
         );
 
       const planMonth = `${period.year.toString()}-${period.month.toString().padStart(2, '0')}`;
-      const planRolesByUser = new Map<number, PlanRole[]>();
+      // Роли плана — только группы табло человека: швее с подработкой
+      // установщика план не складывается из штук и заказов.
+      const rolesByUser = new Map<number, Role[]>();
       for (const entry of staff) {
-        if (!isPlanRole(entry.role)) continue;
-        planRolesByUser.set(entry.userId, [...(planRolesByUser.get(entry.userId) ?? []), entry.role]);
+        rolesByUser.set(entry.userId, [...(rolesByUser.get(entry.userId) ?? []), entry.role]);
+      }
+      const planRolesByUser = new Map<number, PlanRole[]>();
+      for (const [userId, roles] of rolesByUser) {
+        const group = monitorGroupOf(roles);
+        if (group === null) continue;
+        const planRoles = roles.filter(isPlanRole).filter((role) => MONITOR_GROUP_ROLES[group].includes(role));
+        if (planRoles.length > 0) planRolesByUser.set(userId, planRoles);
       }
       const [planRows, planOutput] = await Promise.all([
         loadWorkPlans(ctx.db, PLAN_ROLES),

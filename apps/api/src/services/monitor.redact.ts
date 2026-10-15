@@ -1,6 +1,6 @@
 import { LIVE_STATUSES, type Locale, type LiveStatus } from '@curtain-crm/shared';
 
-import type { MonitorBoard, MonitorPerson, MonitorWork } from './monitor.service';
+import type { MonitorBoard, MonitorPerson, MonitorPlan, MonitorWork } from './monitor.service';
 
 /**
  * Табло для ТВ в цеху.
@@ -34,7 +34,6 @@ export interface DisplayPerson
     | 'roles'
     | 'sewerCategory'
     | 'workstation'
-    | 'plan'
     | 'status'
     | 'statusSince'
     | 'statusUntil'
@@ -42,6 +41,8 @@ export interface DisplayPerson
     | 'place'
   > {
   readonly current: readonly DisplayWork[];
+  /** Только то, что рисует полоса: источник и дата плана экрану не нужны. */
+  readonly plan: Pick<MonitorPlan, 'target' | 'percent' | 'pace' | 'expectedPercent'> | null;
 }
 
 export interface DisplayPodiumEntry {
@@ -91,8 +92,6 @@ function toDisplayPerson(person: MonitorPerson): DisplayPerson {
             target: person.plan.target,
             percent: person.plan.percent,
             pace: person.plan.pace,
-            source: person.plan.source,
-            effectiveFrom: person.plan.effectiveFrom,
             expectedPercent: person.plan.expectedPercent,
           },
     status: person.status,

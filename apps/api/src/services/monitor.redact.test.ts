@@ -125,4 +125,13 @@ describe('на ТВ только то, что экран показывает', 
     }
     expect(Object.keys(out.podium.entries[0] ?? {})).not.toContain('userId');
   });
+
+  it('из плана — только то, что рисует полоса: без источника и даты', () => {
+    const out = toDisplayBoard(boardWith({ address: 'x', clientName: 'y' }), link);
+    const keys = Object.keys(out.people[0]?.plan ?? {});
+
+    expect(keys).not.toContain('source');
+    expect(keys).not.toContain('effectiveFrom');
+    expect(keys).toContain('expectedPercent');
+  });
 });

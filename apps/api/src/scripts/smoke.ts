@@ -1993,6 +1993,67 @@ async function run(db: Database): Promise<void> {
     await tvCaller.display.board({ token: installTv.token, group: MonitorGroup.INSTALLATION }),
   );
   check('расписание: на ТВ не уходит', !installTvJson.includes('"schedule"') && !installTvJson.includes('Смоука'));
+
+  /* ------------- 8h. Время доходит до установщика при назначении ---------- */
+
+  const timedFirst = await makeInstallOrder('Время до назначения', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  await db
+    .update(orders)
+    .set({ sewingFee: '50000.00', installationFee: '70000.00' })
+    .where(eq(orders.id, timedFirst.id));
+  await ceoCaller.orders.scheduleInstallation({ orderId: timedFirst.id, at: slotAt });
+  await ceoCaller.orders.changeStatus({
+    id: timedFirst.id,
+    toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+    assigneeId: installer.id,
+  });
+  const timedNotes = (await scheduleNotes(timedFirst.id)).filter(
+    (note) => note.type === NotificationType.INSTALLATION_SCHEDULED,
+  );
+  check(
+    'установка: назначенный после времени получает время',
+    timedNotes.length === 1 && timedNotes[0]?.title.endsWith('в 10:30') === true,
+    JSON.stringify(timedNotes),
+  );
+  await ceoCaller.orders.assign({ id: timedFirst.id, role: Role.INSTALLER, assigneeId: both.id });
+  const reassignedNotes = await db
+    .select({ title: notifications.title })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, both.id),
+        eq(notifications.relatedOrderId, timedFirst.id),
+        eq(notifications.type, NotificationType.INSTALLATION_SCHEDULED),
+      ),
+    );
+  check(
+    'установка: новый установщик при переназначении получает время',
+    reassignedNotes.length === 1,
+    JSON.stringify(reassignedNotes),
+  );
+  // Мутации заказов идут только при открытой смене.
+  await db.insert(shifts).values({ userId: manager.id, branchId: branch.id, startedAt: hoursAgo(1), ...point });
+  const managerAssign = await managerCaller.orders.assign({ id: timedFirst.id, role: Role.INSTALLER, assigneeId: both.id });
+  check(
+    'заказ: менеджеру ответ assign без расценок исполнителей',
+    managerAssign.sewingFee === null && managerAssign.installationFee === null,
+    `${String(managerAssign.sewingFee)} / ${String(managerAssign.installationFee)}`,
+  );
+
+  // Подработка: швее при назначении на установку выдаётся роль установщика.
+  // План в «Рабочих» — по группе её табло (цех), а не сумма штук и заказов.
+  await db.insert(userRoles).values({ userId: sewerB.id, role: Role.INSTALLER, grantedBy: sewerB.id });
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerB.id, role: Role.INSTALLER, month: currentMonth, target: 5 });
+  const [mixed] = await ceoCaller.users.performance({
+    year: planToday.year,
+    month: planToday.month,
+    userIds: [sewerB.id],
+  });
+  check(
+    'рабочие: у швеи с подработкой установщика — план швеи',
+    mixed?.plan === currentNorm,
+    `${String(mixed?.plan)} (ждали ${String(currentNorm)})`,
+  );
 }
 
 main().catch((error: unknown) => {

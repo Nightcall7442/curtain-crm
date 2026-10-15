@@ -45,7 +45,8 @@ export function PlanBar({
   text,
   className,
 }: {
-  readonly plan: BoardPerson['plan'];
+  /** Полосе хватает цели, процента, темпа и риски — так её кормит и ТВ. */
+  readonly plan: Pick<NonNullable<BoardPerson['plan']>, 'target' | 'percent' | 'pace' | 'expectedPercent'> | null;
   readonly unit: BoardUnit;
   /** Выработка месяца. */
   readonly done: number;

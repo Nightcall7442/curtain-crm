@@ -74,7 +74,8 @@ export async function setInstallationTime(
     ipAddress: params.ipAddress ?? null,
   });
 
-  // Без установщика сообщать некому: время дойдёт до него вместе с назначением.
+  // Без установщика сообщать некому: время уйдёт ему вместе с назначением
+  // (`assignExecutor`).
   if (at !== null && updated.installerId !== null) {
     await notifyInstallationScheduled(
       executor,

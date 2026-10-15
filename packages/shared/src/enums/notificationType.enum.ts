@@ -160,6 +160,17 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
 };
 
 /**
+ * Тон по типу — и для типа, которого клиент ещё не знает.
+ *
+ * Сервер добавляет типы раньше, чем у всех обновится приложение: старая
+ * сборка, получив незнакомый тип, не должна ронять ленту. Рисуем его как
+ * рядовое событие.
+ */
+export function notificationTone(type: string): NotificationTone {
+  return isNotificationType(type) ? NOTIFICATION_TONES[type] : 'info';
+}
+
+/**
  * Важные уведомления.
  *
  * Отдельного признака «важное» у уведомления НЕТ и заводить его не стали:

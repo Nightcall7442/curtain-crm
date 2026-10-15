@@ -29,9 +29,12 @@ export function InstallationTimeDialog({
   const utils = trpc.useUtils();
   const [value, setValue] = useState('');
 
+  // Зависимость — момент, а не объект: после перезапроса карточки `Date`
+  // приходит новым объектом, и поле сбрасывало бы введённое время.
+  const currentMs = current?.getTime() ?? null;
   useEffect(() => {
-    if (open) setValue(current === null ? '' : installSlotInputValue(current));
-  }, [open, current]);
+    if (open) setValue(currentMs === null ? '' : installSlotInputValue(new Date(currentMs)));
+  }, [open, currentMs]);
 
   const schedule = trpc.orders.scheduleInstallation.useMutation({
     async onSuccess(order) {

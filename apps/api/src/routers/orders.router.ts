@@ -94,7 +94,10 @@ import { toOffset, toPage } from '../types';
  *    разрешён только ролям из таблицы `ORDER_TRANSITIONS` и только
  *    «владельцу» заказа на этом этапе. Вся проверка — в
  *    `orderWorkflow.service.ts`;
- *  - `assign`, `setPrice`, `addTeamMember`, `removeTeamMember` — руководство.
+ *  - `assign`, `setPrice`, `addTeamMember`, `removeTeamMember`,
+ *    `scheduleInstallation` — те, кто ведёт заказы: директор, админ, менеджер
+ *    (`orderDispatchProcedure`). Время установки вместе с `changeStatus` и
+ *    `changeStatusBatch` — тоже только им (проверка в `setInstallationTime`).
  *
  * Статус НИКОГДА не пишется здесь напрямую — только через
  * `changeOrderStatus()`, которая ведёт историю и рассылает уведомления.
@@ -1588,15 +1591,18 @@ export const ordersRouter = router({
           actor: ctx.user,
           ipAddress: ctx.ipAddress,
         });
+        // Ответ — через `maskStageFees`, как у остальных: менеджеру расценки
+        // исполнителей не положены.
         if (input.installationAt === undefined || input.role !== Role.INSTALLER || input.assigneeId === null) {
-          return order;
+          return maskStageFees(order, ctx.user);
         }
-        return setInstallationTime(tx, {
+        const timed = await setInstallationTime(tx, {
           orderId: input.id,
           at: input.installationAt,
           actor: ctx.user,
           ipAddress: ctx.ipAddress,
         });
+        return maskStageFees(timed, ctx.user);
       }),
     ),
 

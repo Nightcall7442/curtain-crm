@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { notificationTone } from '../enums/notificationType.enum';
 import { OrderStatus } from '../enums/orderStatus.enum';
 import { Role } from '../enums/role.enum';
 import { sortPeople } from './board';
@@ -121,6 +122,12 @@ describe('поле времени установки — по Ташкенту, 
     expect(parseInstallSlotInput('')).toBeNull();
     expect(parseInstallSlotInput('15.10 10:30')).toBeNull();
   });
+});
+
+describe('уведомление нового типа в старом приложении', () => {
+  it('известный тип — свой тон', () => expect(notificationTone('order_qc_failed')).toBe('danger'));
+  it('незнакомый тип — нейтральный тон, а не падение экрана', () =>
+    expect(notificationTone('type_from_the_future')).toBe('info'));
 });
 
 describe('сортировка с планом и машинкой', () => {
