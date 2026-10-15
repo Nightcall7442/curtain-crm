@@ -116,3 +116,30 @@ export function planPercent(done: number, target: number): number {
   if (target <= 0) return 0;
   return Math.round((done / target) * 100);
 }
+
+/**
+ * План человека с несколькими ролями (установщик и карнизчик) — сумма
+ * действующих планов этих ролей. Источник «личный», если личный хотя бы
+ * у одной роли; дата — самая поздняя из действующих строк: с неё план
+ * в этом виде и действует. Ни одного плана — `null`.
+ */
+export function resolveCombinedPlan(
+  rows: readonly WorkPlanRow[],
+  userId: number,
+  roles: readonly PlanRole[],
+  month: string,
+): ResolvedPlan | null {
+  const plans = roles
+    .map((role) => resolvePlan(rows, userId, role, month))
+    .filter((plan): plan is ResolvedPlan => plan !== null);
+  const [first, ...rest] = plans;
+  if (first === undefined) return null;
+  return rest.reduce<ResolvedPlan>(
+    (sum, plan) => ({
+      target: sum.target + plan.target,
+      source: sum.source === 'personal' || plan.source === 'personal' ? 'personal' : 'role',
+      effectiveFrom: plan.effectiveFrom > sum.effectiveFrom ? plan.effectiveFrom : sum.effectiveFrom,
+    }),
+    first,
+  );
+}

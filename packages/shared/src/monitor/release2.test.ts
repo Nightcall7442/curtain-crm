@@ -4,7 +4,14 @@ import { OrderStatus } from '../enums/orderStatus.enum';
 import { Role } from '../enums/role.enum';
 import { sortPeople } from './board';
 import { formatInstallSlot, installSlotState } from './installSlot';
-import { planPace, planPercent, resolvePlan, workdaysInMonth, type WorkPlanRow } from './plan';
+import {
+  planPace,
+  planPercent,
+  resolveCombinedPlan,
+  resolvePlan,
+  workdaysInMonth,
+  type WorkPlanRow,
+} from './plan';
 
 describe('resolvePlan', () => {
   const rows: WorkPlanRow[] = [
@@ -35,6 +42,29 @@ describe('resolvePlan', () => {
     }));
   it('будущий месяц не действует', () => expect(resolvePlan(rows, 9, Role.SEWER, '2026-10')?.target).toBe(180));
   it('плана нет', () => expect(resolvePlan(rows, 1, Role.INSTALLER, '2026-10')).toBeNull());
+});
+
+describe('план человека с двумя ролями', () => {
+  const rows: WorkPlanRow[] = [
+    { role: Role.INSTALLER, userId: null, effectiveFrom: '2026-09-01', target: 10 },
+    { role: Role.CORNICE_INSTALLER, userId: null, effectiveFrom: '2026-09-01', target: 6 },
+    { role: Role.CORNICE_INSTALLER, userId: 5, effectiveFrom: '2026-10-01', target: 8 },
+  ];
+  const roles = [Role.INSTALLER, Role.CORNICE_INSTALLER];
+
+  it('сумма норм обеих ролей', () =>
+    expect(resolveCombinedPlan(rows, 4, roles, '2026-10')).toEqual({
+      target: 16,
+      source: 'role',
+      effectiveFrom: '2026-09-01',
+    }));
+  it('личный план одной роли — источник личный, дата — самая поздняя', () =>
+    expect(resolveCombinedPlan(rows, 5, roles, '2026-10')).toEqual({
+      target: 18,
+      source: 'personal',
+      effectiveFrom: '2026-10-01',
+    }));
+  it('без плана по ролям — null', () => expect(resolveCombinedPlan(rows, 4, roles, '2026-08')).toBeNull());
 });
 
 describe('темп плана', () => {

@@ -5,6 +5,7 @@ import {
   deltaPercent,
   deriveLiveStatus,
   isDayOffOn,
+  isPlanRole,
   LIVE_STATUSES,
   LiveStatus,
   MONITOR_GROUP_ROLES,
@@ -13,13 +14,20 @@ import {
   MONITOR_UNIT,
   MonitorGroup,
   OrderStatus,
+  planPace,
+  planPercent,
+  resolveCombinedPlan,
   Role,
   summarizeItems,
+  workdaysInMonth,
   type ItemsSummary,
   type Locale,
   type LiveStatus as LiveStatusName,
   type MonitorGroup as MonitorGroupName,
+  type PlanPace,
+  type PlanSource,
   type Role as RoleName,
+  type WorkPlanRow,
 } from '@curtain-crm/shared';
 
 import {
@@ -41,6 +49,7 @@ import { workshopDay, workshopPeriodStarts } from './periods';
 import { employeeRating, type RatingEntry } from './rating.service';
 import { sewerCategories } from './sewerCategory.service';
 import { getStorage } from './storage.service';
+import { loadWorkPlans } from './workPlans.service';
 
 /* -------------------------------------------------------------------------- */
 /*  Контракт табло                                                            */
@@ -62,6 +71,19 @@ export interface MonitorWork {
   readonly address: string | null;
 }
 
+/** План месяца на карточке: сумма действующих планов ролей группы у человека. */
+export interface MonitorPlan {
+  readonly target: number;
+  /** Выработка месяца к плану, целые проценты. */
+  readonly percent: number;
+  readonly pace: PlanPace;
+  readonly source: PlanSource;
+  /** `YYYY-MM-01`, с которого план действует. */
+  readonly effectiveFrom: string;
+  /** Доля прошедших рабочих дней месяца, % — риска «где надо быть сегодня». */
+  readonly expectedPercent: number;
+}
+
 export interface MonitorPerson {
   readonly userId: number;
   readonly fullName: string;
@@ -72,6 +94,10 @@ export interface MonitorPerson {
   readonly hiredAt: string | null;
   /** Ручная категория швеи, иначе расчётная; у выездных `null`. */
   readonly sewerCategory: number | null;
+  /** Номер машинки швеи; у выездных `null`. */
+  readonly workstation: number | null;
+  /** `null` — плана на этот месяц нет ни по одной роли группы. */
+  readonly plan: MonitorPlan | null;
   readonly status: LiveStatusName;
   readonly statusSince: Date | null;
   readonly statusUntil: Date | null;
@@ -102,6 +128,8 @@ export interface MonitorPodiumEntry {
   readonly fullName: string;
   readonly photoUrl: string | null;
   readonly value: number;
+  /** Выработка прошлого месяца к плану прошлого месяца; плана не было — `null`. */
+  readonly planPercent: number | null;
 }
 
 export interface MonitorBoard {
@@ -124,6 +152,10 @@ export interface MonitorBoard {
     readonly qualityPercent: number | null;
     /** Выездные. */
     readonly onTimePercent: number | null;
+    /** Сумма планов месяца у тех, у кого план есть; ни у кого — `null`. */
+    readonly planTotal: number | null;
+    /** Их выработка месяца к этой сумме. */
+    readonly planPercent: number | null;
   };
   readonly statusCounts: Readonly<Record<LiveStatusName, number>>;
   /** Только у выездных: выезды, начатые сегодня. */
@@ -293,11 +325,33 @@ function splitWork(
   };
 }
 
+/** План месяца на карточке: процент, темп по рабочим дням человека и риска. */
+function monitorPlan(
+  rows: readonly WorkPlanRow[],
+  person: Pick<GroupPersonRow, 'id' | 'roles' | 'weeklyDayOff'>,
+  done: number,
+  todayIso: string,
+): MonitorPlan | null {
+  const month = todayIso.slice(0, 7);
+  const plan = resolveCombinedPlan(rows, person.id, person.roles.filter(isPlanRole), month);
+  if (plan === null) return null;
+  const days = workdaysInMonth(month, person.weeklyDayOff, todayIso);
+  return {
+    target: plan.target,
+    percent: planPercent(done, plan.target),
+    pace: planPace({ done, target: plan.target, elapsed: days.elapsed, total: days.total }),
+    source: plan.source,
+    effectiveFrom: plan.effectiveFrom,
+    expectedPercent: days.total === 0 ? 0 : Math.round((days.elapsed / days.total) * 100),
+  };
+}
+
 export async function buildBoard(db: Database, params: BuildBoardParams): Promise<MonitorBoard> {
   const { group, branchId, now, locale } = params;
   const roles = MONITOR_GROUP_ROLES[group];
   const starts = workshopPeriodStarts(now);
   const todayIso = workshopDay(starts.today);
+  const prevMonthKey = workshopDay(starts.prevMonth).slice(0, 7);
 
   const people = await loadGroupPeople(db, roles, branchId);
   const ids = people.map((person) => person.id);
@@ -307,7 +361,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     .map((row) => row.openTrip?.orderId ?? null)
     .filter((id): id is number => id !== null);
 
-  const [daysOff, work, output, pool, slow, tripRows, photos] = await Promise.all([
+  const [daysOff, work, output, pool, slow, tripRows, photos, planRows] = await Promise.all([
     loadApprovedDaysOff(db, ids, todayIso),
     loadWorkOrders(db, ids, tripOrderIds),
     loadOutput(
@@ -326,6 +380,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     loadSlowParts(db, people, group, branchId, starts.month, now),
     group === MonitorGroup.INSTALLATION ? loadTripsToday(db, ids, starts.today) : Promise.resolve(null),
     Promise.all(people.map((person) => photoUrlOf(person, params.previewOnly === true))),
+    loadWorkPlans(db, roles.filter(isPlanRole)),
   ]);
 
   const ratingById = new Map(slow.rating.map((entry) => [entry.userId, entry]));
@@ -344,6 +399,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     });
     const counts = output.get(person.id) ?? empty;
     const entry = ratingById.get(person.id);
+    const prevPlan = resolveCombinedPlan(planRows, person.id, person.roles.filter(isPlanRole), prevMonthKey);
 
     return {
       userId: person.id,
@@ -353,6 +409,8 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       hiredAt: person.hiredAt,
       sewerCategory:
         group === MonitorGroup.WORKSHOP ? (person.sewerCategory ?? slow.categories.get(person.id) ?? null) : null,
+      workstation: group === MonitorGroup.WORKSHOP ? person.workstation : null,
+      plan: monitorPlan(planRows, person, counts.month, todayIso),
       status: live.status,
       statusSince: live.since,
       statusUntil: live.until,
@@ -365,6 +423,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       onTimePercent: personPercent(entry, person.roles, 'punctualityPercent'),
       prevMonth: counts.prevMonth,
       prevMonthToDate: counts.prevMonthToDate,
+      prevPlanPercent: prevPlan === null ? null : planPercent(counts.prevMonth, prevPlan.target),
     };
   });
 
@@ -373,18 +432,33 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     (a, b) => a.counts.month === b.counts.month,
   );
 
-  const peopleOut: MonitorPerson[] = ranked.map(({ prevMonth: _prev, prevMonthToDate: _toDate, ...person }) => person);
+  const peopleOut: MonitorPerson[] = ranked.map(
+    ({ prevMonth: _prev, prevMonthToDate: _toDate, prevPlanPercent: _prevPlan, ...person }) => person,
+  );
 
+  // Топ по объёму; при равном объёме выше тот, кто больше сделал к своему плану.
   const podiumEntries = [...unplaced]
     .filter((person) => person.prevMonth > 0)
-    .sort((a, b) => b.prevMonth - a.prevMonth || a.fullName.localeCompare(b.fullName, 'ru'))
+    .sort(
+      (a, b) =>
+        b.prevMonth - a.prevMonth ||
+        (b.prevPlanPercent ?? -1) - (a.prevPlanPercent ?? -1) ||
+        a.fullName.localeCompare(b.fullName, 'ru'),
+    )
     .slice(0, MONITOR_PODIUM_SIZE)
     .map((person) => ({
       userId: person.userId,
       fullName: person.fullName,
       photoUrl: person.photoUrl,
       value: person.prevMonth,
+      planPercent: person.prevPlanPercent,
     }));
+
+  // План цеха — только по людям с планом: выработка тех, кому план не
+  // поставлен, к чужой сумме не прибавляется.
+  const planned = unplaced.filter((person) => person.plan !== null);
+  const planTotal = planned.length === 0 ? null : planned.reduce((sum, person) => sum + (person.plan?.target ?? 0), 0);
+  const plannedDone = planned.reduce((sum, person) => sum + person.counts.month, 0);
 
   const monthTotal = unplaced.reduce((sum, person) => sum + person.counts.month, 0);
   const prevToDate = unplaced.reduce((sum, person) => sum + person.prevMonthToDate, 0);
@@ -408,6 +482,8 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       qualityPercent: group === MonitorGroup.WORKSHOP ? weightedPercent(slow.rating, roles, 'qualityPercent') : null,
       onTimePercent:
         group === MonitorGroup.INSTALLATION ? weightedPercent(slow.rating, roles, 'punctualityPercent') : null,
+      planTotal,
+      planPercent: planTotal === null ? null : planPercent(plannedDone, planTotal),
     },
     statusCounts,
     trips:

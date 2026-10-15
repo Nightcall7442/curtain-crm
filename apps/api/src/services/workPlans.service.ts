@@ -103,21 +103,6 @@ export async function loadMonthOutput(
   return new Map([...output].map(([userId, row]) => [userId, row.prevMonth]));
 }
 
-/** План человека с несколькими ролями — сумма действующих планов; ни одного — `null`. */
-export function totalPlan(
-  rows: readonly WorkPlanRow[],
-  userId: number,
-  roles: readonly PlanRole[],
-  month: string,
-): number | null {
-  let total: number | null = null;
-  for (const role of roles) {
-    const plan = resolvePlan(rows, userId, role, month);
-    if (plan !== null) total = (total ?? 0) + plan.target;
-  }
-  return total;
-}
-
 /** Страница «Планы»: по каждой роли — норма и люди с планом и выработкой месяца. */
 export async function listPlans(db: Database, month: string): Promise<PlansOverview> {
   const [rows, people] = await Promise.all([

@@ -29,7 +29,17 @@ export interface DisplayWork {
 export interface DisplayPerson
   extends Pick<
     MonitorPerson,
-    'fullName' | 'photoUrl' | 'roles' | 'sewerCategory' | 'status' | 'statusSince' | 'statusUntil' | 'counts' | 'place'
+    | 'fullName'
+    | 'photoUrl'
+    | 'roles'
+    | 'sewerCategory'
+    | 'workstation'
+    | 'plan'
+    | 'status'
+    | 'statusSince'
+    | 'statusUntil'
+    | 'counts'
+    | 'place'
   > {
   readonly current: readonly DisplayWork[];
 }
@@ -38,6 +48,7 @@ export interface DisplayPodiumEntry {
   readonly fullName: string;
   readonly photoUrl: string | null;
   readonly value: number;
+  readonly planPercent: number | null;
 }
 
 export interface DisplayTrip {
@@ -79,6 +90,18 @@ function toDisplayPerson(person: MonitorPerson): DisplayPerson {
     photoUrl: person.photoUrl,
     roles: person.roles,
     sewerCategory: person.sewerCategory,
+    workstation: person.workstation,
+    plan:
+      person.plan === null
+        ? null
+        : {
+            target: person.plan.target,
+            percent: person.plan.percent,
+            pace: person.plan.pace,
+            source: person.plan.source,
+            effectiveFrom: person.plan.effectiveFrom,
+            expectedPercent: person.plan.expectedPercent,
+          },
     status: person.status,
     statusSince: person.statusSince,
     statusUntil: person.statusUntil,
@@ -110,6 +133,7 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
         fullName: entry.fullName,
         photoUrl: entry.photoUrl,
         value: entry.value,
+        planPercent: entry.planPercent,
       })),
     },
     summary: {
@@ -120,6 +144,8 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
       averagePerPerson: summary.averagePerPerson,
       qualityPercent: summary.qualityPercent,
       onTimePercent: summary.onTimePercent,
+      planTotal: summary.planTotal,
+      planPercent: summary.planPercent,
     },
     statusCounts: Object.fromEntries(
       LIVE_STATUSES.map((status) => [status, board.statusCounts[status]]),

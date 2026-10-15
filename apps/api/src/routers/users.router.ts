@@ -16,6 +16,7 @@ import {
   ROLE_LABELS_RU,
   isPlanRole,
   PLAN_ROLES,
+  resolveCombinedPlan,
   roleSchema,
   WORKSTATION_MAX,
   WORKSTATION_MIN,
@@ -49,7 +50,7 @@ import { resetPasswordByManager, revokeAllSessions } from '../services/auth.serv
 import { notifyRoleChanged } from '../services/notifications.service';
 import { calculateCompletedOrders } from '../services/payroll.service';
 import { periodBounds } from '../services/shifts.service';
-import { loadMonthOutput, loadWorkPlans, totalPlan } from '../services/workPlans.service';
+import { loadMonthOutput, loadWorkPlans } from '../services/workPlans.service';
 import {
   buildStorageKey,
   decodeBase64Payload,
@@ -1080,7 +1081,7 @@ export const usersRouter = router({
       const byUser = new Map<number, { plan: number | null; completed: number }>();
       for (const [userId, roles] of planRolesByUser) {
         byUser.set(userId, {
-          plan: totalPlan(planRows, userId, roles, planMonth),
+          plan: resolveCombinedPlan(planRows, userId, roles, planMonth)?.target ?? null,
           completed: planOutput.get(userId) ?? 0,
         });
       }

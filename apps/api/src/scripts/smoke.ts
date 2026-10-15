@@ -53,6 +53,7 @@ import {
   PaymentMethod,
   PayrollRecordStatus,
   PayrollSchemeType,
+  planPercent,
   Role,
   workshopToday,
   type Role as RoleName,
@@ -1756,6 +1757,54 @@ async function run(db: Database): Promise<void> {
     'рабочие: «сделано» швеи совпадает с выработкой месяца на табло',
     sewerOnBoard !== undefined && performanceOf(sewer.id)?.completed === sewerOnBoard.counts.month,
     `рабочие ${String(performanceOf(sewer.id)?.completed)}, табло ${String(sewerOnBoard?.counts.month)}`,
+  );
+
+  /* ------------------- 8e. План и машинка в снимке табло ----------------- */
+
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.SEWER, month: currentMonth, target: 55 });
+  const workshopNow = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP });
+  const sewerACard = workshopNow.people.find((person) => person.userId === sewerA.id);
+  check(
+    'табло: процент личного плана швеи',
+    sewerACard?.plan?.target === 55 &&
+      sewerACard.plan.source === 'personal' &&
+      sewerACard.plan.percent === planPercent(sewerACard.counts.month, 55),
+    JSON.stringify(sewerACard?.plan ?? null),
+  );
+  check(
+    'табло: машинка швеи на карточке',
+    workshopNow.people.find((person) => person.userId === sewer.id)?.workstation === 3,
+  );
+  // Две роли: план — сумма планов ролей. Личные строки, а не нормы: нормы
+  // текущего месяца общие, и смоук не должен их переписывать.
+  await ceoCaller.monitor.plans.setPersonal({ userId: both.id, role: Role.INSTALLER, month: currentMonth, target: 10 });
+  await ceoCaller.monitor.plans.setPersonal({
+    userId: both.id,
+    role: Role.CORNICE_INSTALLER,
+    month: currentMonth,
+    target: 6,
+  });
+  const bothPlan = async () =>
+    (await managerCaller.monitor.board({ group: MonitorGroup.INSTALLATION })).people.find(
+      (person) => person.userId === both.id,
+    )?.plan ?? null;
+  const summed = await bothPlan();
+  check('табло: две роли — план суммой', summed?.target === 16, JSON.stringify(summed));
+  await ceoCaller.monitor.plans.setPersonal({
+    userId: both.id,
+    role: Role.CORNICE_INSTALLER,
+    month: currentMonth,
+    target: null,
+  });
+  const corniceNorm =
+    (await ceoCaller.monitor.plans.list({ month: currentMonth })).roles.find(
+      (entry) => entry.role === Role.CORNICE_INSTALLER,
+    )?.norm?.target ?? 0;
+  const afterReset = await bothPlan();
+  check(
+    'табло: без плана карнизчика остаётся план установщика',
+    afterReset?.target === 10 + corniceNorm,
+    `${JSON.stringify(afterReset)}, норма карнизчика ${corniceNorm.toString()}`,
   );
 }
 

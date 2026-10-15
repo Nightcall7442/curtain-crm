@@ -44,6 +44,7 @@ export interface GroupPersonRow {
   readonly hiredAt: string | null;
   readonly sewerCategory: number | null;
   readonly weeklyDayOff: number | null;
+  readonly workstation: number | null;
   readonly roles: readonly RoleName[];
 }
 
@@ -62,6 +63,7 @@ export async function loadGroupPeople(
       hiredAt: users.hiredAt,
       sewerCategory: users.sewerCategory,
       weeklyDayOff: users.weeklyDayOff,
+      workstation: users.workstation,
       role: userRoles.role,
     })
     .from(users)
