@@ -1,4 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { MonitorGroup } from '@curtain-crm/shared';
 
 /**
  * Карты маршрутов навигации.
@@ -41,6 +42,9 @@ export type RootStackParamList = {
   TaskAssign: undefined;
   ReadyMadeStock: undefined;
   TerminalChecks: undefined;
+  /** Табло группы — руководству и менеджеру. */
+  MonitorBoard: { group: MonitorGroup };
+  MonitorPerson: { userId: number };
 };
 
 export type RootStackScreenProps<TRoute extends keyof RootStackParamList> =

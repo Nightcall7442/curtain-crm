@@ -2,7 +2,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Card } from '../components/Card';
+import { Card, SectionHeader } from '../components/Card';
+import { MonitorTiles } from '../components/monitor/MonitorTiles';
 import { Icon, type IconName } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -113,6 +114,10 @@ export function ManagementScreen(): ReactElement {
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
+      {/* Табло — кто чем занят сейчас: с этого руководитель начинает обход цеха. */}
+      <SectionHeader title={m('monitor.title')} />
+      <MonitorTiles />
+      <View style={styles.gap} />
       <Card>
         {entries.map((entry, index) => (
           <Pressable
@@ -164,6 +169,9 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: tabBarSpace,
+  },
+  gap: {
+    height: spacing.lg,
   },
   row: {
     flexDirection: 'row',
