@@ -42,7 +42,6 @@ import {
   loadRecentPhotos,
   loadScheduleCounts,
   loadShiftDetail,
-  loadTripsToday,
   loadWorkOrders,
   type GroupPersonRow,
   type OutputRow,
@@ -117,15 +116,6 @@ export interface MonitorPerson {
   readonly onTimePercent: number | null;
 }
 
-export interface MonitorTrip {
-  readonly userId: number;
-  readonly fullName: string;
-  readonly startedAt: Date;
-  readonly returnedAt: Date | null;
-  readonly orderNumber: string | null;
-  readonly address: string | null;
-}
-
 export interface MonitorPodiumEntry {
   readonly userId: number;
   readonly fullName: string;
@@ -180,8 +170,6 @@ export interface MonitorBoard {
     readonly planPercent: number | null;
   };
   readonly statusCounts: Readonly<Record<LiveStatusName, number>>;
-  /** Только у выездных: выезды, начатые сегодня. */
-  readonly trips: readonly MonitorTrip[] | null;
   /** Только у выездных; у цеха `null`. */
   readonly schedule: MonitorSchedule | null;
 }
@@ -391,7 +379,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     .filter((id): id is number => id !== null);
 
   const installation = group === MonitorGroup.INSTALLATION;
-  const [daysOff, work, output, scheduleCounts, slow, tripRows, photos, planRows, slotRows] = await Promise.all([
+  const [daysOff, work, output, scheduleCounts, slow, photos, planRows, slotRows] = await Promise.all([
     loadApprovedDaysOff(db, ids, todayIso),
     loadWorkOrders(db, ids, tripOrderIds),
     loadOutput(
@@ -408,7 +396,6 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     ),
     installation ? loadScheduleCounts(db, branchId) : Promise.resolve(null),
     loadSlowParts(db, people, group, branchId, starts.month, now),
-    group === MonitorGroup.INSTALLATION ? loadTripsToday(db, ids, starts.today) : Promise.resolve(null),
     Promise.all(people.map((person) => photoUrlOf(person, params.previewOnly === true))),
     loadWorkPlans(db, roles.filter(isPlanRole)),
     installation ? loadInstallationsToday(db, starts.today, starts.tomorrow, branchId) : Promise.resolve([]),
@@ -497,7 +484,6 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
   const statusCounts = Object.fromEntries(
     LIVE_STATUSES.map((status) => [status, peopleOut.filter((person) => person.status === status).length]),
   ) as Record<LiveStatusName, number>;
-  const nameOf = new Map(people.map((person) => [person.id, person.fullName]));
 
   return {
     group,
@@ -518,17 +504,6 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       planPercent: planTotal === null ? null : planPercent(plannedDone, planTotal),
     },
     statusCounts,
-    trips:
-      tripRows === null
-        ? null
-        : tripRows.map((trip) => ({
-            userId: trip.userId,
-            fullName: nameOf.get(trip.userId) ?? '',
-            startedAt: trip.startedAt,
-            returnedAt: trip.returnedAt,
-            orderNumber: trip.orderNumber,
-            address: trip.address,
-          })),
     schedule:
       scheduleCounts === null
         ? null

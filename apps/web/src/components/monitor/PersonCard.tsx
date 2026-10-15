@@ -30,10 +30,14 @@ import type { ReactElement, ReactNode } from 'react';
 
 import { cn, formatNumber } from '@/lib/utils';
 
-import { AWAY_STATUSES, STATUS_DOT, statusLabel, type BoardPerson, type BoardWork } from './labels';
+import { AWAY_STATUSES, STATUS_DOT, statusLabel, type BoardPerson, type BoardUnit, type BoardWork } from './labels';
 import { PersonPhoto } from './PersonPhoto';
+import { PlanBar } from './PlanBar';
 
-/** Подпись под именем: категория швеи или роли, и стаж. */
+/**
+ * Подпись под именем: у швеи — «Машинка №3 · 2-я категория» (по машинке её
+ * ищут в цехе), без машинки — категория и стаж; у выездных — роли и стаж.
+ */
 function subtitle(person: BoardPerson, group: MonitorGroupName, now: Date): string {
   const category = SEWER_CATEGORIES.find((value) => value === person.sewerCategory);
   const primary =
@@ -43,6 +47,7 @@ function subtitle(person: BoardPerson, group: MonitorGroupName, now: Date): stri
           .filter((role) => MONITOR_GROUP_ROLES[group].includes(role))
           .map((role) => ROLE_LABELS_RU[role])
           .join(', ');
+  if (person.workstation !== null) return `Машинка №${person.workstation.toString()} · ${primary}`;
   return person.hiredAt === null ? primary : `${primary} · стаж ${formatTenure(person.hiredAt, now)}`;
 }
 
@@ -279,11 +284,13 @@ function QueueLine({ person }: { readonly person: BoardPerson }): ReactElement {
 export function PersonCard({
   person,
   group,
+  unit,
   now,
   onSelect,
 }: {
   readonly person: BoardPerson;
   readonly group: MonitorGroupName;
+  readonly unit: BoardUnit;
   /** Время снимка: длительности считаются от него, а не от часов браузера. */
   readonly now: Date;
   /** Открыть боковую панель человека. */
@@ -334,6 +341,7 @@ export function PersonCard({
           <p className="truncate text-footnote text-muted">{subtitle(person, group, now)}</p>
         </div>
         <WorkArea person={person} group={group} now={now} />
+        <PlanBar plan={person.plan} unit={unit} done={person.counts.month} />
         <Counts counts={person.counts} />
         <QueueLine person={person} />
       </div>

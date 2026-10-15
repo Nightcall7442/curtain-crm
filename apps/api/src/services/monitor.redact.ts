@@ -1,6 +1,6 @@
 import { LIVE_STATUSES, type Locale, type LiveStatus } from '@curtain-crm/shared';
 
-import type { MonitorBoard, MonitorPerson, MonitorTrip, MonitorWork } from './monitor.service';
+import type { MonitorBoard, MonitorPerson, MonitorWork } from './monitor.service';
 
 /**
  * Табло для ТВ в цеху.
@@ -51,13 +51,6 @@ export interface DisplayPodiumEntry {
   readonly planPercent: number | null;
 }
 
-export interface DisplayTrip {
-  readonly fullName: string;
-  readonly startedAt: Date;
-  readonly returnedAt: Date | null;
-  readonly orderNumber: string | null;
-}
-
 export interface DisplayLinkInfo {
   readonly label: string;
   readonly branchName: string | null;
@@ -67,10 +60,9 @@ export interface DisplayLinkInfo {
 }
 
 /** Расписания установок с адресами на ТВ нет: `schedule` в список не входит. */
-export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'trips' | 'podium' | 'schedule'> {
+export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'podium' | 'schedule'> {
   readonly people: readonly DisplayPerson[];
   readonly podium: { readonly month: string; readonly entries: readonly DisplayPodiumEntry[] };
-  readonly trips: readonly DisplayTrip[] | null;
   readonly link: DisplayLinkInfo;
 }
 
@@ -112,15 +104,6 @@ function toDisplayPerson(person: MonitorPerson): DisplayPerson {
   };
 }
 
-function toDisplayTrip(trip: MonitorTrip): DisplayTrip {
-  return {
-    fullName: trip.fullName,
-    startedAt: trip.startedAt,
-    returnedAt: trip.returnedAt,
-    orderNumber: trip.orderNumber,
-  };
-}
-
 export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): DisplayBoard {
   const { summary } = board;
   return {
@@ -151,7 +134,6 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
     statusCounts: Object.fromEntries(
       LIVE_STATUSES.map((status) => [status, board.statusCounts[status]]),
     ) as Record<LiveStatus, number>,
-    trips: board.trips === null ? null : board.trips.map(toDisplayTrip),
     link: {
       label: link.label,
       branchName: link.branchName,

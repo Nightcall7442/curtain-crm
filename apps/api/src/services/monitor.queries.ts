@@ -513,36 +513,6 @@ export async function loadOutput(
   return result;
 }
 
-export interface TripRow {
-  readonly userId: number;
-  readonly startedAt: Date;
-  readonly returnedAt: Date | null;
-  readonly orderNumber: string | null;
-  readonly address: string | null;
-}
-
-/** Выезды, начатые сегодня, — колонка «Выезды сегодня» у установщиков. */
-export async function loadTripsToday(
-  db: Database,
-  userIds: readonly number[],
-  todayStart: Date,
-): Promise<TripRow[]> {
-  if (userIds.length === 0) return [];
-  return db
-    .select({
-      userId: shifts.userId,
-      startedAt: installationTrips.startedAt,
-      returnedAt: installationTrips.returnedAt,
-      orderNumber: orders.orderNumber,
-      address: orders.installAddress,
-    })
-    .from(installationTrips)
-    .innerJoin(shifts, eq(shifts.id, installationTrips.shiftId))
-    .leftJoin(orders, eq(orders.id, installationTrips.orderId))
-    .where(and(inArray(shifts.userId, [...userIds]), gte(installationTrips.startedAt, todayStart)))
-    .orderBy(asc(installationTrips.startedAt));
-}
-
 /**
  * Выработка одного человека по дням Ташкента начиная с `from` — для
  * столбиков в карточке. Те же определения, что у `loadOutput`.

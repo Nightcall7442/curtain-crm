@@ -67,16 +67,6 @@ function boardWith(leak: { readonly address: string; readonly clientName: string
       planPercent: 75,
     },
     statusCounts: { trip: 1, break: 0, working: 0, idle: 0, finished: 0, day_off: 0, absent: 0 },
-    trips: [
-      {
-        userId: 7,
-        fullName: 'Бекзод Эргашев',
-        startedAt: new Date('2026-10-14T06:00:00Z'),
-        returnedAt: null,
-        orderNumber: 'DH-000041',
-        address: leak.address,
-      },
-    ],
     schedule: {
       slots: [
         {
@@ -111,7 +101,6 @@ describe('табло для ТВ', () => {
 
     expect(out.people[0]?.current[0]?.orderNumber).toBe('DH-000041');
     expect(out.people[0]?.counts.month).toBe(9);
-    expect(out.trips?.[0]?.orderNumber).toBe('DH-000041');
     expect(out.link.label).toBe('ТВ в цеху');
   });
 
