@@ -38,6 +38,10 @@ export interface TvText {
   readonly invalidTitle: string;
   readonly invalidHint: string;
   readonly emptyGroup: string;
+  readonly planTitle: string;
+  readonly noPlan: string;
+  readonly workstation: (number: number) => string;
+  readonly planPercent: (percent: number) => string;
 }
 
 export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
@@ -70,6 +74,10 @@ export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
     invalidTitle: 'Ссылка недействительна',
     invalidHint: 'Попросите новую ссылку у руководителя',
     emptyGroup: 'На табло пока никого нет',
+    planTitle: 'План месяца',
+    noPlan: 'план не задан',
+    workstation: (number) => `Машинка №${number.toString()}`,
+    planPercent: (percent) => `${percent.toString()}% плана`,
   },
   uz: {
     unit: { pieces: 'dona', orders: 'buyurtma' },
@@ -100,5 +108,9 @@ export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
     invalidTitle: 'Havola yaroqsiz',
     invalidHint: 'Rahbardan yangi havola so‘rang',
     emptyGroup: 'Tabloda hozircha hech kim yo‘q',
+    planTitle: 'Oylik reja',
+    noPlan: 'reja belgilanmagan',
+    workstation: (number) => `${number.toString()}-mashina`,
+    planPercent: (percent) => `${percent.toString()}% reja`,
   },
 };

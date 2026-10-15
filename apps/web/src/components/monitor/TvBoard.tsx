@@ -29,8 +29,9 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 import type { RouterOutputs } from '@/lib/trpc';
 import { cn, formatNumber } from '@/lib/utils';
 
-import { AWAY_STATUSES, STATUS_DOT } from './labels';
+import { AWAY_STATUSES, STATUS_DOT, type BoardUnit } from './labels';
 import { PersonPhoto } from './PersonPhoto';
+import { PlanBar } from './PlanBar';
 import { TV_TEXT, type TvText } from './tvLabels';
 
 /** Снимок для ТВ: и `display.board` по ссылке, и `monitor.board` руководителя — у второго лишь больше полей. */
@@ -230,6 +231,9 @@ function TvPodium({ board, locale, text }: { readonly board: TvBoardData; readon
                     {text.unit[board.unit]}
                   </span>
                 </p>
+                <p className="mt-[0.15vw] truncate text-[clamp(9px,0.68vw,20px)] text-secondary">
+                  {entry === null || entry.planPercent === null ? '\u00a0' : text.planPercent(entry.planPercent)}
+                </p>
               </div>
             </li>
           );
@@ -263,7 +267,9 @@ function Tile({ icon, value, unit, label, extra }: {
 /*                                  Карточка                                  */
 /* -------------------------------------------------------------------------- */
 
-function subtitle(person: TvPerson, group: MonitorGroupName, locale: Locale): string {
+/** Под именем: у швеи — машинка (по ней её находят в цехе), иначе категория или роль. */
+function subtitle(person: TvPerson, group: MonitorGroupName, locale: Locale, text: TvText): string {
+  if (group === MonitorGroup.WORKSHOP && person.workstation !== null) return text.workstation(person.workstation);
   const category = SEWER_CATEGORIES.find((value) => value === person.sewerCategory);
   if (group === MonitorGroup.WORKSHOP && category !== undefined) return SEWER_CATEGORY_LABELS[locale][category];
   return person.roles
@@ -315,12 +321,14 @@ function WorkLines({ person, locale, text }: { readonly person: TvPerson; readon
 function TvCard({
   person,
   group,
+  unit,
   locale,
   text,
   fontSize,
 }: {
   readonly person: TvPerson;
   readonly group: MonitorGroupName;
+  readonly unit: BoardUnit;
   readonly locale: Locale;
   readonly text: TvText;
   readonly fontSize: number;
@@ -337,7 +345,7 @@ function TvCard({
       className="surface-card flex h-full min-h-0 flex-col overflow-hidden rounded-[1.1em]"
       style={{ fontSize: `${fontSize.toFixed(2)}px` }}
     >
-      <div className="relative h-[8.4em] shrink-0">
+      <div className="relative h-[7.6em] shrink-0">
         <PersonPhoto
           name={person.fullName}
           photoUrl={person.photoUrl}
@@ -358,20 +366,31 @@ function TvCard({
             {shortName(person.fullName)}
           </p>
           <p className="truncate text-[0.8em] text-white/75 [text-shadow:0_1px_6px_rgb(0_0_0/0.6)]">
-            {subtitle(person, group, locale)}
+            {subtitle(person, group, locale, text)}
           </p>
         </div>
       </div>
-      <div className={cn('flex min-h-0 flex-1 flex-col justify-between gap-[0.6em] px-[1em] pb-[0.75em] pt-[0.7em]', away && 'opacity-60')}>
+      <div className={cn('flex min-h-0 flex-1 flex-col justify-between gap-[0.5em] px-[1em] pb-[0.7em] pt-[0.65em]', away && 'opacity-60')}>
         <WorkLines person={person} locale={locale} text={text} />
-        <dl className="grid grid-cols-3 border-t border-ink/[0.08] pt-[0.5em]">
-          {counts.map((cell) => (
-            <div key={cell.label} className="flex flex-col-reverse items-center">
-              <dt className="text-[0.75em] text-muted">{cell.label}</dt>
-              <dd className="text-[2.1em] font-bold leading-none tabular-nums text-primary">{formatNumber(cell.value, 0)}</dd>
-            </div>
-          ))}
-        </dl>
+        {/* План и счётчики — одним блоком внизу: в высокой ячейке полоса не повисает посередине. */}
+        <div className="space-y-[0.5em]">
+          <PlanBar
+            plan={person.plan}
+            unit={unit}
+            done={person.counts.month}
+            variant="tv"
+            locale={locale}
+            text={{ title: text.planTitle, noPlan: text.noPlan, unit: text.unit[unit] }}
+          />
+          <dl className="grid grid-cols-3 border-t border-ink/[0.08] pt-[0.5em]">
+            {counts.map((cell) => (
+              <div key={cell.label} className="flex flex-col-reverse items-center">
+                <dt className="text-[0.75em] text-muted">{cell.label}</dt>
+                <dd className="text-[1.95em] font-bold leading-none tabular-nums text-primary">{formatNumber(cell.value, 0)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
     </article>
   );
@@ -385,12 +404,14 @@ function TvCard({
 function TvGrid({
   people,
   group,
+  unit,
   locale,
   text,
   onPage,
 }: {
   readonly people: readonly TvPerson[];
   readonly group: MonitorGroupName;
+  readonly unit: BoardUnit;
   readonly locale: Locale;
   readonly text: TvText;
   readonly onPage: (page: { readonly current: number; readonly total: number }) => void;
@@ -445,7 +466,15 @@ function TvGrid({
         >
           {/* Внутренних id на ТВ нет — ключ по месту в списке и имени. */}
           {visible.map((person, index) => (
-            <TvCard key={`${index.toString()}-${person.fullName}`} person={person} group={group} locale={locale} text={text} fontSize={16 * fit.scale} />
+            <TvCard
+              key={`${index.toString()}-${person.fullName}`}
+              person={person}
+              group={group}
+              unit={unit}
+              locale={locale}
+              text={text}
+              fontSize={16 * fit.scale}
+            />
           ))}
         </div>
       )}
@@ -561,7 +590,7 @@ export function TvBoard({
           {people.length === 0 ? (
             <div className="grid flex-1 place-items-center text-[clamp(18px,1.6vw,48px)] text-muted">{text.emptyGroup}</div>
           ) : (
-            <TvGrid key={group} people={people} group={group} locale={locale} text={text} onPage={setPage} />
+            <TvGrid key={group} people={people} group={group} unit={board.unit} locale={locale} text={text} onPage={setPage} />
           )}
         </>
       )}
