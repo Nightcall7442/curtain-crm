@@ -1,4 +1,6 @@
-import type { MonitorGroup } from '../enums/monitor.enum';
+import type { MonitorGroup, PlanRole } from '../enums/monitor.enum';
+import { Role } from '../enums/role.enum';
+import type { Translated } from '../i18n/locale';
 
 /**
  * Опрос табло. 20 секунд — достаточно, чтобы статус «ушёл на выезд»
@@ -37,6 +39,32 @@ export const MONITOR_UNIT: Readonly<Record<MonitorGroup, 'pieces' | 'orders'>> =
 /** Длинная сторона превью фото сотрудника для табло, px. */
 export const AVATAR_PREVIEW_MAX_PX = 640;
 
-export const MONITOR_SORTS = ['place', 'name'] as const;
+/** В чём меряется план роли — в тех же единицах, что и выработка на табло. */
+export const PLAN_UNIT: Readonly<Record<PlanRole, 'pieces' | 'orders'>> = {
+  [Role.SEWER]: 'pieces',
+  [Role.INSTALLER]: 'orders',
+  [Role.CORNICE_INSTALLER]: 'orders',
+};
+
+/** Верхняя граница плана месяца: защищает от лишнего нуля при вводе. */
+export const PLAN_TARGET_MAX = 100_000;
+
+/** Номер швейной машинки за швеёй. */
+export const WORKSTATION_MIN = 1;
+export const WORKSTATION_MAX = 99;
+
+/**
+ * Сколько минут после назначенного времени установка ещё считается «впереди».
+ * Пробки и поиск подъезда — обычное дело; красить установку раньше значит
+ * приучить руководителя не смотреть на красный.
+ */
+export const INSTALLATION_LATE_GRACE_MINUTES = 30;
+
+export const MONITOR_SORTS = ['place', 'plan', 'name', 'workstation'] as const;
 
 export type MonitorSort = (typeof MONITOR_SORTS)[number];
+
+export const MONITOR_SORT_LABELS: Translated<MonitorSort> = {
+  ru: { place: 'По месту', plan: 'По плану', name: 'По имени', workstation: 'По машинке' },
+  uz: { place: 'O‘rin bo‘yicha', plan: 'Reja bo‘yicha', name: 'Ism bo‘yicha', workstation: 'Mashina bo‘yicha' },
+};
