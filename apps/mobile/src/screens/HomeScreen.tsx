@@ -364,6 +364,7 @@ export function HomeScreen(): ReactElement {
               deadline={order.deadline}
               workPrice={order.workPrice}
               remaining={order.remainingPayment}
+              installationAt={order.installationAt}
               onPress={() => {
                 navigation.navigate('OrderDetail', { orderId: order.id });
               }}

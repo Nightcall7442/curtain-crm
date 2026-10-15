@@ -2,9 +2,11 @@ import {
   groupDigits,
   ORDER_STAGE_FEE_LABELS,
   canDispatchOrders,
+  INSTALLATION_SCHEDULABLE_STATUSES,
   isAssignableRole,
   ORDER_STAGE_FEE_ROLE,
   parseMoney,
+  Role as RoleValue,
   ROLE_LABELS,
   SEWER_CATEGORY_FEE_PERCENT,
   SEWER_CATEGORY_LABELS,
@@ -25,6 +27,7 @@ import { colors, hairline, opacity, radius, spacing, typography } from '../theme
 
 import { Card, CardTitle, Row, Skeleton } from './Card';
 import { Field, MoneyInput } from './Field';
+import { InstallationTimeRow } from './order/InstallationTimeRow';
 
 /**
  * Управление заказом: назначение, цена, расценки, отмена.
@@ -64,6 +67,7 @@ export function OrderManagement({
   paidAmount,
   fees,
   assignees,
+  installationAt,
 }: {
   /** Руководство: видит экономику и правит расценки. Менеджер — нет. */
   readonly isFullAccess: boolean;
@@ -79,6 +83,8 @@ export function OrderManagement({
   readonly assignees: Readonly<
     Partial<Record<Role, { readonly id: number; readonly fullName: string } | null>>
   >;
+  /** Дата и время установки; `null` — не назначены. */
+  readonly installationAt: Date | null;
 }): ReactElement {
   const { t, m, locale, money } = useLocale();
   const utils = trpc.useUtils();
@@ -229,6 +235,16 @@ export function OrderManagement({
                   {current?.fullName ?? m('order.notAssignedM')}
                 </Text>
               </Pressable>
+
+              {/* Время установки — под установщиком: назначают их вместе. */}
+              {role === RoleValue.INSTALLER &&
+                (installationAt !== null || INSTALLATION_SCHEDULABLE_STATUSES.includes(status)) && (
+                  <InstallationTimeRow
+                    orderId={orderId}
+                    installationAt={installationAt}
+                    editable={INSTALLATION_SCHEDULABLE_STATUSES.includes(status)}
+                  />
+                )}
 
               {assigning === role && (
                 <View style={styles.pickerBox}>

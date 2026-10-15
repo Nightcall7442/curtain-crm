@@ -429,6 +429,7 @@ export function WorkScreen(): ReactElement {
             deadline={item.deadline}
             workPrice={item.workPrice}
             remaining={item.remainingPayment}
+            installationAt={item.installationAt}
             onPress={() => {
               navigation.navigate('OrderDetail', { orderId: item.id });
             }}
