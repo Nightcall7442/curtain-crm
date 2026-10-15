@@ -18,6 +18,7 @@ import {
   catalogItems,
   closeDatabase,
   createDatabase,
+  displayLinks,
   hashPassword,
   notifications,
   orderComments,
@@ -39,6 +40,8 @@ import {
 } from '@curtain-crm/db';
 import {
   CorniceStatus,
+  LiveStatus,
+  MonitorGroup,
   moneyToDecimalString,
   ORDER_STATUS_LABELS_RU,
   OrderItemKind,
@@ -74,6 +77,7 @@ import { appRouter } from '../routers';
 import { terminalChecksToday } from '../routers/terminalChecks.router';
 import { createCallerFactory } from '../trpc';
 import { calculateWorkedHours, periodBounds } from '../services/shifts.service';
+import { workshopPeriodStarts } from '../services/periods';
 import {
   attendanceByDay,
   presenceToday,
@@ -198,8 +202,9 @@ async function cleanup(db: Database): Promise<void> {
   }
 
   if (userIds.length > 0) {
-    // audit_log — restrict: без явного удаления сотрудника не убрать.
+    // audit_log и ссылки для ТВ — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
+    await db.delete(displayLinks).where(inArray(displayLinks.createdBy, userIds));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -1273,6 +1278,39 @@ async function run(db: Database): Promise<void> {
     `чеков ${beforeStandalone.toString()} → ${afterStandalone.toString()}, приходов по карте с фото на ${cardOtherAmount}`,
   );
 
+  /* ------------------ 6d. Фото сотрудника: превью для табло --------------- */
+
+  const avatarKeys = async (userId: number) => {
+    const [row] = await db
+      .select({ original: users.avatarStorageKey, preview: users.avatarPreviewKey })
+      .from(users)
+      .where(eq(users.id, userId));
+    return row ?? { original: null, preview: null };
+  };
+  await caller.users.setAvatar({ userId: sewer.id, file: pixel });
+  const withPreview = await avatarKeys(sewer.id);
+  check(
+    'фото: к оригиналу сохраняется превью',
+    withPreview.original !== null && withPreview.preview !== null,
+    JSON.stringify(withPreview),
+  );
+  // Сервер проверяет только заявленный тип: мусор под видом PNG раньше
+  // сохранялся как есть, и превью не должно делать такую загрузку ошибкой.
+  await caller.users.setAvatar({
+    userId: sewer.id,
+    file: { mimeType: 'image/png', content: Buffer.from('not an image').toString('base64') },
+  });
+  const broken = await avatarKeys(sewer.id);
+  check(
+    'фото: нечитаемый файл сохранён без превью',
+    broken.original !== null && broken.preview === null,
+    JSON.stringify(broken),
+  );
+  await caller.users.setAvatar({ userId: sewer.id, file: pixel });
+  await caller.users.removeAvatar({ userId: sewer.id });
+  const removed = await avatarKeys(sewer.id);
+  check('фото: удаление снимает и оригинал, и превью', removed.original === null && removed.preview === null);
+
   /* ---------------------------- 7. Отчёты -------------------------------- */
 
   const [revenue] = await db
@@ -1305,6 +1343,302 @@ async function run(db: Database): Promise<void> {
     'reports: выработка сотрудников (filter + in)',
     performance.length >= 1,
     `${performance.length.toString()} строк`,
+  );
+
+  /* ----------------------------- 8. Табло -------------------------------- */
+
+  const [otherBranch] = await db
+    .insert(branches)
+    .values({ name: `${PREFIX} Второй цех`, latitude: 41.3, longitude: 69.25, radiusMeters: 100 })
+    .returning();
+  if (otherBranch === undefined) throw new Error('второй филиал не создан');
+
+  const manager = await makeUser('Менеджер', Role.MANAGER, '+998900000120');
+  const sewerA = await makeUser('Швея с заказом', Role.SEWER, '+998900000121');
+  const sewerB = await makeUser('Швея ушла', Role.SEWER, '+998900000122');
+  const sewerC = await makeUser('Швея другого цеха', Role.SEWER, '+998900000123');
+  await db.delete(userBranches).where(eq(userBranches.userId, sewerC.id));
+  await db.insert(userBranches).values({ userId: sewerC.id, branchId: otherBranch.id, isPrimary: true });
+  const both = await makeUser('Установщик-карнизчик', Role.INSTALLER, '+998900000124');
+  await db.insert(userRoles).values({ userId: both.id, role: Role.CORNICE_INSTALLER, grantedBy: both.id });
+
+  const hoursAgo = (hours: number): Date => new Date(Date.now() - hours * 60 * 60 * 1000);
+  const point = { startLatitude: 41.2995, startLongitude: 69.2401, startDistanceMeters: 5 };
+  const closedStart = new Date(Math.max(workshopPeriodStarts(new Date()).today.getTime(), hoursAgo(2).getTime()));
+  const closedEnd = new Date((closedStart.getTime() + Date.now()) / 2);
+  await db.insert(shifts).values([
+    { userId: sewerA.id, branchId: branch.id, startedAt: hoursAgo(1), ...point },
+    // Смена сегодняшняя по Ташкенту, даже если смоук запущен сразу после
+    // полуночи: вчерашняя закрытая смена на табло — уже «нет отметки».
+    { userId: sewerB.id, branchId: branch.id, startedAt: closedStart, endedAt: closedEnd, ...point },
+    { userId: both.id, branchId: branch.id, startedAt: hoursAgo(2), ...point },
+  ]);
+
+  const [sewingNow] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Табло: шьётся`,
+      clientPhone: '+998901112291',
+      createdBy: seller.id,
+      status: OrderStatus.SEWING_IN_PROGRESS,
+      sewerId: sewerA.id,
+    })
+    .returning();
+  if (sewingNow === undefined) throw new Error('заказ в пошиве не создан');
+  await db.insert(orderItems).values([
+    { orderId: sewingNow.id, position: 0, kind: OrderItemKind.WINDOW, quantity: 1 },
+    { orderId: sewingNow.id, position: 1, kind: OrderItemKind.WINDOW, quantity: 1 },
+  ]);
+  await db.insert(orderStatusHistory).values({
+    orderId: sewingNow.id,
+    fromStatus: OrderStatus.PENDING_SEWING_ASSIGNMENT,
+    toStatus: OrderStatus.SEWING_IN_PROGRESS,
+    changedBy: admin.id,
+  });
+
+  // Человеку с двумя ролями сегодня засчитаны установка и карниз — разными заказами.
+  const [installedToday] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Табло: установлено`,
+      clientPhone: '+998901112292',
+      createdBy: seller.id,
+      status: OrderStatus.INSTALLATION_DONE,
+      installerId: both.id,
+    })
+    .returning();
+  if (installedToday === undefined) throw new Error('установленный заказ не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: installedToday.id,
+    fromStatus: OrderStatus.INSTALLATION_IN_PROGRESS,
+    toStatus: OrderStatus.INSTALLATION_DONE,
+    changedBy: both.id,
+  });
+  await db.insert(orders).values({
+    branchId: branch.id,
+    clientName: `${PREFIX} Табло: карниз`,
+    clientPhone: '+998901112293',
+    createdBy: seller.id,
+    status: OrderStatus.SEWING_IN_PROGRESS,
+    corniceStatus: CorniceStatus.DONE,
+    corniceInstallerId: both.id,
+    corniceDoneAt: new Date(),
+  });
+
+  // Карниз взят час назад, а сам заказ в пошиве третьи сутки: «в работе» — от взятия карниза.
+  const [corniceNow] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Табло: карниз в работе`,
+      clientPhone: '+998901112294',
+      createdBy: seller.id,
+      status: OrderStatus.SEWING_IN_PROGRESS,
+      corniceStatus: CorniceStatus.IN_PROGRESS,
+      corniceInstallerId: both.id,
+    })
+    .returning();
+  if (corniceNow === undefined) throw new Error('заказ с карнизом в работе не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: corniceNow.id,
+    fromStatus: OrderStatus.PENDING_SEWING_ASSIGNMENT,
+    toStatus: OrderStatus.SEWING_IN_PROGRESS,
+    changedBy: admin.id,
+    createdAt: hoursAgo(72),
+  });
+  await db.insert(auditLog).values({
+    actorId: both.id,
+    action: 'order.cornice_taken',
+    entityType: 'order',
+    entityId: corniceNow.id,
+    createdAt: hoursAgo(1),
+  });
+
+  // Установка того же человека в другом филиале: в выработку табло филиала она не идёт.
+  const [installedElsewhere] = await db
+    .insert(orders)
+    .values({
+      branchId: otherBranch.id,
+      clientName: `${PREFIX} Табло: установлено в другом филиале`,
+      clientPhone: '+998901112295',
+      createdBy: seller.id,
+      status: OrderStatus.INSTALLATION_DONE,
+      installerId: both.id,
+    })
+    .returning();
+  if (installedElsewhere === undefined) throw new Error('установка в другом филиале не создана');
+  await db.insert(orderStatusHistory).values({
+    orderId: installedElsewhere.id,
+    fromStatus: OrderStatus.INSTALLATION_IN_PROGRESS,
+    toStatus: OrderStatus.INSTALLATION_DONE,
+    changedBy: both.id,
+  });
+
+  const managerCaller = createCallerFactory(appRouter)({
+    db,
+    user: await actorOf(manager.id),
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const sewerCaller = createCallerFactory(appRouter)({
+    db,
+    user: sewerActor,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+
+  const workshopStarted = Date.now();
+  const workshopBoard = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP, branchId: branch.id });
+  const workshopMs = Date.now() - workshopStarted;
+  const personA = workshopBoard.people.find((person) => person.userId === sewerA.id);
+  check(
+    'табло: швея с заказом — работает, заказ и состав',
+    personA?.status === LiveStatus.WORKING && personA.current[0]?.items.text === 'Окно ×2',
+    `${String(personA?.status)} / ${String(personA?.current[0]?.items.text)} · снимок ${workshopMs.toString()} мс`,
+  );
+  const personB = workshopBoard.people.find((person) => person.userId === sewerB.id);
+  check('табло: закрытая смена — смена закрыта', personB?.status === LiveStatus.FINISHED, String(personB?.status));
+  check(
+    'табло: швея другого филиала не видна',
+    !workshopBoard.people.some((person) => person.userId === sewerC.id),
+  );
+
+  const installationBoard = await managerCaller.monitor.board({
+    group: MonitorGroup.INSTALLATION,
+    branchId: branch.id,
+  });
+  const bothCards = installationBoard.people.filter((person) => person.userId === both.id);
+  check(
+    'табло: две роли — одна карточка, выработка сложена',
+    bothCards.length === 1 && bothCards[0]?.counts.today === 2,
+    `карточек ${bothCards.length.toString()}, сегодня ${String(bothCards[0]?.counts.today)}`,
+  );
+  const corniceWork = bothCards[0]?.current.find((work) => work.orderId === corniceNow.id);
+  const corniceHours = corniceWork?.since == null ? null : (Date.now() - corniceWork.since.getTime()) / 3_600_000;
+  check(
+    'табло: карниз в работе — время от взятия карниза, а не от статуса заказа',
+    corniceHours !== null && corniceHours > 0.5 && corniceHours < 2,
+    corniceHours === null ? 'нет времени' : `${corniceHours.toFixed(1)} ч`,
+  );
+  const allBranches = await managerCaller.monitor.board({ group: MonitorGroup.INSTALLATION });
+  check(
+    'табло: установка в другом филиале не идёт в выработку филиала, но видна на общем табло',
+    bothCards[0]?.counts.today === 2 &&
+      allBranches.people.find((person) => person.userId === both.id)?.counts.today === 3,
+    `филиал ${String(bothCards[0]?.counts.today)}, все ${String(allBranches.people.find((person) => person.userId === both.id)?.counts.today)}`,
+  );
+  const bothDetail = await managerCaller.monitor.person({ userId: both.id, branchId: branch.id });
+  check(
+    'табло: панель человека с филиалом — те же цифры и место, что на карточке',
+    bothDetail.counts.today === bothCards[0]?.counts.today &&
+      bothDetail.place === bothCards[0]?.place &&
+      bothDetail.daily[29]?.value === bothCards[0]?.counts.today,
+    `панель ${bothDetail.counts.today.toString()}/${String(bothDetail.daily[29]?.value)}, карточка ${String(bothCards[0]?.counts.today)}`,
+  );
+  await expectRejected('табло: швее закрыто', () =>
+    sewerCaller.monitor.board({ group: MonitorGroup.WORKSHOP }),
+  );
+
+  const detail = await managerCaller.monitor.person({ userId: sewerA.id });
+  check(
+    'табло: карточка человека — 30 дней, сегодня последним',
+    detail.daily.length === 30 && detail.daily[29]?.value === detail.counts.today,
+    `${detail.daily.length.toString()} дней`,
+  );
+  check(
+    'табло: карточка человека — смена сегодня',
+    detail.shiftToday !== null && detail.shiftToday.endedAt === null,
+  );
+  await expectRejectedWith(
+    'табло: продавца на табло нет',
+    () => managerCaller.monitor.person({ userId: seller.id }),
+    (message) => message === 'Сотрудника нет на табло',
+  );
+
+  /* ---------------------- 8a. Табло для ТВ по ссылке ---------------------- */
+
+  const ceo = await makeUser('Директор', Role.CEO, '+998900000125');
+  const ceoCaller = createCallerFactory(appRouter)({
+    db,
+    user: await actorOf(ceo.id),
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+  const tvCaller = createCallerFactory(appRouter)({
+    db,
+    user: null,
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'ru',
+  });
+
+  const tvLink = await ceoCaller.displayLinks.create({
+    label: 'ТВ в цеху',
+    branchId: branch.id,
+    showWorkshop: true,
+    showInstallation: false,
+    locale: 'ru',
+  });
+  // Фото без превью: руководство видит оригинал, на публичный ТВ он не уходит —
+  // в оригинале с телефона метаданные (место съёмки) и мегабайты веса.
+  await db
+    .update(users)
+    .set({ avatarStorageKey: `avatars/${sewerA.id.toString()}/smoke-original.jpg`, avatarPreviewKey: null })
+    .where(eq(users.id, sewerA.id));
+  const withOriginal = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP, branchId: branch.id });
+  const tvBoard = await tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.WORKSHOP });
+  check(
+    'ТВ: фото без превью — на ТВ нет, у руководства оригинал',
+    withOriginal.people.find((person) => person.userId === sewerA.id)?.photoUrl != null &&
+      tvBoard.people.find((person) => person.fullName === sewerA.fullName)?.photoUrl === null,
+  );
+  const tvJson = JSON.stringify(tvBoard);
+  check(
+    'ТВ: по ссылке видно цех своего филиала',
+    tvBoard.people.some((person) => person.fullName === sewerA.fullName) &&
+      !tvBoard.people.some((person) => person.fullName === sewerC.fullName),
+    `людей ${tvBoard.people.length.toString()}`,
+  );
+  check(
+    'ТВ: номер заказа есть, клиента и id заказа нет',
+    tvBoard.people.find((person) => person.fullName === sewerA.fullName)?.current[0]?.orderNumber ===
+      sewingNow.orderNumber &&
+      !tvJson.includes(`${PREFIX} Табло`) &&
+      !tvJson.includes('"orderId"'),
+  );
+  await expectRejectedWith(
+    'ТВ: выключенная группа закрыта',
+    () => tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.INSTALLATION }),
+    (message) => message === 'Эта группа на ссылке не показывается',
+  );
+  await expectRejectedWith(
+    'ТВ: чужой токен не подходит',
+    () => tvCaller.display.board({ token: `${tvLink.token.slice(0, -4)}AAAA`, group: MonitorGroup.WORKSHOP }),
+    (message) => message === 'Ссылка недействительна',
+  );
+  // 404, а не 401: на 401 панель обновляет токен и выходит из сессии, и руководитель,
+  // открывший отозванную ссылку у себя в браузере, вылетел бы из панели.
+  const unknownCode = await tvCaller.display
+    .board({ token: `${tvLink.token.slice(0, -4)}AAAA`, group: MonitorGroup.WORKSHOP })
+    .then(
+      () => null,
+      (error: unknown) => (error instanceof TRPCError ? error.code : String(error)),
+    );
+  check('ТВ: неизвестная ссылка — NOT_FOUND, а не UNAUTHORIZED', unknownCode === 'NOT_FOUND', String(unknownCode));
+  await ceoCaller.displayLinks.revoke({ id: tvLink.id });
+  await expectRejectedWith(
+    'ТВ: отозванная ссылка гаснет',
+    () => tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.WORKSHOP }),
+    (message) => message === 'Ссылка недействительна',
   );
 }
 

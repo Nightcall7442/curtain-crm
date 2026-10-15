@@ -626,6 +626,29 @@
     без латунной черты и капители. Латунь и капитель были знаком «Ателье»;
     в стеклянной панели они читались как этикетка, а не как заголовок.
   */
+  /**
+   * Место под фото сотрудника, пока его не загрузили: косая штриховка.
+   * Пустой серый прямоугольник читается как недогрузившаяся картинка,
+   * штриховка — как «здесь будет фото».
+   */
+  .photo-hatch {
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgb(var(--glass-ink) / 0.03) 0 10px,
+      rgb(var(--glass-ink) / 0.07) 10px 20px
+    );
+  }
+
+  /** Полоса таймера ТВ-табло: заполняется до смены группы. Длительность задаёт разметка. */
+  @keyframes tv-progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
   .section-title {
     @apply flex items-center gap-2 text-subhead font-semibold tracking-[-0.01em] text-primary;
   }

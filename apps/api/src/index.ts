@@ -10,11 +10,12 @@ import { secureHeaders } from 'hono/secure-headers';
 
 import { closeDb, createContext, getDb, readClientIp } from './context';
 import { getEnv } from './lib/constants';
+import { withoutQuery } from './lib/requestLog';
 import { installRussianZodMessages } from './lib/zodMessages';
 import { appRouter } from './routers';
 import { startCollectionReminders } from './services/reminders.service';
 import { startTelegramPolling } from './services/telegram.service';
-import { consumeAuthRequestBudget } from './services/loginThrottle.service';
+import { consumeAuthRequestBudget, ipLimitedCalls } from './services/loginThrottle.service';
 import {
   FILE_EXPIRES_PARAM,
   FILE_SIGNATURE_PARAM,
@@ -45,7 +46,13 @@ installRussianZodMessages();
  */
 const app = new Hono<{ Bindings: HttpBindings }>();
 
-app.use('*', logger());
+// Журнал запросов — без строки запроса: в ней токены ссылок ТВ и подписи файлов (`requestLog.ts`).
+app.use(
+  '*',
+  logger((message, ...rest) => {
+    process.stdout.write(`${[withoutQuery(message), ...rest].join(' ')}\n`);
+  }),
+);
 
 /*
   Снятие `Cross-Origin-Resource-Policy` с раздачи файлов.
@@ -107,7 +114,8 @@ const rateLimitKey = (headers: Headers, socketAddress: string | null): string | 
 };
 
 /**
- * Потолок обращений к `auth.*` с одного адреса.
+ * Потолок обращений к `auth.*` и `display.*` с одного адреса: обе группы
+ * открыты без токена.
  *
  * Ставится ДО tRPC намеренно: смысл ограничителя в том, чтобы отбитый запрос
  * не дошёл ни до базы, ни до проверки пароля — именно они и стоят дорого.
@@ -121,12 +129,13 @@ const rateLimitKey = (headers: Headers, socketAddress: string | null): string | 
  * в `loginThrottle.service.ts`; здесь — защита процессора.
  */
 app.use('/trpc/*', async (c, next) => {
-  // Пакетный запрос tRPC складывает процедуры в путь через запятую
-  // (`/trpc/auth.login,auth.me`), поэтому сравниваем по префиксу.
-  if (!c.req.path.startsWith('/trpc/auth.')) return next();
+  const calls = ipLimitedCalls(c.req.path);
+  if (calls === 0) return next();
 
   const retryAfter = consumeAuthRequestBudget(
     rateLimitKey(c.req.raw.headers, c.env.incoming.socket.remoteAddress ?? null),
+    Date.now(),
+    calls,
   );
   if (retryAfter === 0) return next();
 

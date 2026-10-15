@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode, type ReactElement } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
+import { isBarePath } from '@/lib/publicRoutes';
 
 import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
@@ -16,9 +17,9 @@ import { Sidebar } from './Sidebar';
  * Решение «показывать оболочку или нет» принимается по адресу, а не отдельной
  * группой маршрутов: страницы уже разложены по каталогам `app/*`, и заводить
  * route group пришлось бы ценой переноса всех файлов. Исключения — экран
- * входа и публичный лендинг в корне: у обоих своя, самостоятельная разметка.
+ * входа, публичный лендинг в корне и табло для ТВ: у них своя разметка
+ * (`isBarePath`).
  */
-const BARE_ROUTES = new Set(['/login', '/']);
 
 /**
  * Брейкпоинт, с которого меню живёт в потоке страницы. Совпадает с `lg`
@@ -62,7 +63,7 @@ export function Shell({ children }: { readonly children: ReactNode }): ReactElem
     };
   }, []);
 
-  if (BARE_ROUTES.has(pathname)) {
+  if (isBarePath(pathname)) {
     return <>{children}</>;
   }
 

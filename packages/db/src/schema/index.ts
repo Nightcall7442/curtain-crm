@@ -32,5 +32,6 @@ export * from './events.schema';
 export * from './payroll.schema';
 export * from './notifications.schema';
 export * from './auditLog.schema';
+export * from './displayLinks.schema';
 
 export * from './relations';

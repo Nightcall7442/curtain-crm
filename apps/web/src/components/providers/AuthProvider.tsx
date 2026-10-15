@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, type ReactN
 
 import { setSessionExpiredHandler } from '@/lib/authFetch';
 import { tokenStorage, trpc } from '@/lib/trpc';
+import { isPublicPath } from '@/lib/publicRoutes';
 
 /**
  * Текущий сотрудник и его права.
@@ -43,21 +44,13 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const LOGIN_PATH = '/login';
 
-/**
- * Публичные страницы: свои — без сотрудника, без токена.
- *
- * Корень — витрина для клиентов, а не панель: домен теперь открывает её,
- * а не экран заказов. Запрашивать `auth.me` там незачем — гость не вошёл
- * и не собирается, и редирект на `/login` увёл бы его с рекламной страницы
- * ровно за то, что он её открыл.
- */
-const PUBLIC_ROUTES = new Set(['/', LOGIN_PATH]);
 
 export function AuthProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const router = useRouter();
   const queryClient = useQueryClient();
   const pathname = usePathname();
-  const isPublicPage = PUBLIC_ROUTES.has(pathname);
+  // Витрина, вход и табло для ТВ: профиль там не нужен, редирект на вход — вреден.
+  const isPublicPage = isPublicPath(pathname);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     // На публичных страницах запрашивать профиль незачем — токена ещё нет

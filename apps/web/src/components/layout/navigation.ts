@@ -1,5 +1,8 @@
 import {
   MANAGEMENT_ROLES,
+  MONITOR_GROUP_LABELS,
+  MonitorGroup,
+  ORDER_DISPATCH_ROLES,
   ORDER_INTAKE_ROLES,
   Role,
   ROLE_MANAGER_ROLES,
@@ -12,6 +15,7 @@ import {
   ClipboardList,
   Compass,
   LayoutGrid,
+  MonitorPlay,
   Package,
   ScrollText,
   Settings,
@@ -80,6 +84,24 @@ const ALL_ROLES: readonly RoleName[] = [
 export const NAVIGATION: readonly NavItem[] = [
   { href: '/dashboard', label: 'Главная', icon: LayoutGrid, roles: ALL_ROLES, exact: true },
   { href: '/orders', label: 'Заказы', icon: ClipboardList, roles: ALL_ROLES },
+  /*
+    Табло — тем, кто ведёт заказы: кто сейчас что шьёт и кто на выезде.
+    Денег в нём нет, поэтому менеджер видит его наравне с руководством.
+  */
+  {
+    href: '/monitor',
+    label: 'Табло',
+    icon: MonitorPlay,
+    roles: ORDER_DISPATCH_ROLES,
+    children: [
+      { href: '/monitor/workshop', label: MONITOR_GROUP_LABELS.ru[MonitorGroup.WORKSHOP], roles: ORDER_DISPATCH_ROLES },
+      {
+        href: '/monitor/installation',
+        label: MONITOR_GROUP_LABELS.ru[MonitorGroup.INSTALLATION],
+        roles: ORDER_DISPATCH_ROLES,
+      },
+    ],
+  },
   {
     href: '/employees',
     label: 'Рабочие',

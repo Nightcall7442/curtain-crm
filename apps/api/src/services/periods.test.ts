@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { workshopPeriodStarts } from './reports.router';
+import { workshopPeriodStarts } from './periods';
 
 const iso = (value: Date): string => value.toISOString();
 

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "avatar_preview_key" text;

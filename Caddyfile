@@ -44,8 +44,17 @@
 		-Server
 	}
 
+	# В журнал не пишем секреты из адреса: токен ссылки ТВ в пути `/tv/<токен>`,
+	# вход tRPC (там тот же токен) и подписи файлов в строке запроса, а также
+	# Referer, в котором браузер повторяет адрес страницы ТВ.
 	log {
 		output stdout
-		format console
+		format filter {
+			wrap console
+			fields {
+				request>uri regexp "^(/tv/)[^?]*|\?.*$" "${1}…"
+				request>headers>Referer delete
+			}
+		}
 	}
 }

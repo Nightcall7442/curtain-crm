@@ -132,8 +132,35 @@ export function resetLoginAttempts(phone: string): void {
 /*                          Ограничение по адресу                             */
 /* -------------------------------------------------------------------------- */
 
+/** Процедуры, обращения к которым считаются по адресу: вход и табло для ТВ — обе без токена. */
+const IP_LIMITED_PREFIXES = ['auth.', 'display.'] as const;
+
 /**
- * Списывает одно обращение к `auth.*` из минутного лимита адреса.
+ * Сколько вызовов запроса попадает под потолок по адресу; 0 — запрос не наш.
+ *
+ * Пакетный запрос tRPC перечисляет процедуры через запятую, и вход может стоять
+ * не первым (`/trpc/health,auth.login`), — поэтому проверяется каждая. И
+ * считается каждая: иначе сотня входов в одном запросе стоила бы потолку
+ * одну единицу, а серверу — сотню проверок пароля.
+ * tRPC раскодирует путь целиком, так что `%2C` для него тоже запятая.
+ * Путь, который не раскодировать, tRPC отвергнет сам, но до этого он прошёл
+ * бы мимо счётчика — такой считаем по числу частей, это дешевле, чем разбираться.
+ */
+export function ipLimitedCalls(path: string): number {
+  const raw = path.replace(/^\/trpc\//, '');
+  let procedures: string;
+  try {
+    procedures = decodeURIComponent(raw);
+  } catch {
+    return Math.max(1, raw.split(',').length);
+  }
+  return procedures
+    .split(',')
+    .filter((procedure) => IP_LIMITED_PREFIXES.some((prefix) => procedure.startsWith(prefix))).length;
+}
+
+/**
+ * Списывает `calls` обращений к `auth.*` или `display.*` из минутного лимита адреса.
  * Возвращает секунды до сброса окна, если лимит исчерпан, иначе `0`.
  *
  * Запрос без определяемого адреса (прямое подключение без прокси-заголовков)
@@ -143,6 +170,7 @@ export function resetLoginAttempts(phone: string): void {
 export function consumeAuthRequestBudget(
   ipAddress: string | null,
   now: number = Date.now(),
+  calls = 1,
 ): number {
   if (ipAddress === null || ipAddress.length === 0) return 0;
 
@@ -152,7 +180,7 @@ export function consumeAuthRequestBudget(
       ? { count: 0, windowStartedAt: now }
       : existing;
 
-  window.count += 1;
+  window.count += calls;
   ipWindows.set(ipAddress, window);
 
   if (ipWindows.size > LOGIN_THROTTLE_MAX_TRACKED) {

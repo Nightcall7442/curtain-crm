@@ -1,9 +1,11 @@
 'use client';
 
+import { ROLE_MANAGER_ROLES } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 
 import { BranchManager } from '@/components/settings/BranchManager';
 import { CatalogManager } from '@/components/settings/CatalogManager';
+import { DisplayLinksManager } from '@/components/settings/DisplayLinksManager';
 import { PurchaseItemManager } from '@/components/settings/PurchaseItemManager';
 import { LocalePicker } from '@/components/settings/LocalePicker';
 import { SkinPicker } from '@/components/settings/SkinPicker';
@@ -49,7 +51,9 @@ const SETTINGS_TABS: readonly {
 ];
 
 export default function SettingsPage(): ReactElement {
-  const { isManagement } = useAuth();
+  const { isManagement, hasRole } = useAuth();
+  // Ссылки для ТВ — только директору: это пропуск без входа, и выдаёт его тот, кто отвечает за доступы.
+  const isRoleManager = hasRole(...ROLE_MANAGER_ROLES);
   const tabs = SETTINGS_TABS.filter((entry) => isManagement || entry.management !== true);
 
   const [tab, setTab] = useState<SettingsTab>('personal');
@@ -105,6 +109,7 @@ export default function SettingsPage(): ReactElement {
           hint="Параметры мастерской. Действуют на всех сотрудников сразу."
         >
           <BranchManager />
+          {isRoleManager && <DisplayLinksManager />}
         </SettingsSection>
       )}
 

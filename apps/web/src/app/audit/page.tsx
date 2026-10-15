@@ -39,6 +39,7 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   payment: 'Проводка',
   ready_made_item: 'Готовая штора',
   fabric_stock: 'Ткань на складе',
+  display_link: 'Ссылка для ТВ',
 };
 
 /**
@@ -130,6 +131,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'discipline.explained': 'Дисциплина: объяснение',
   'discipline.removed': 'Дисциплина: запись удалена',
   'terminal_check.created': 'Терминальный чек пробит',
+  'display_link.created': 'Ссылка для ТВ создана',
+  'display_link.revoked': 'Ссылка для ТВ отозвана',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 
