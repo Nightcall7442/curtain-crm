@@ -6,6 +6,7 @@ import { idSchema } from '../lib/schemas';
 import { orderDispatchProcedure } from '../middleware/roleGuard.middleware';
 import { buildBoard, buildPerson } from '../services/monitor.service';
 import { router } from '../trpc';
+import { workPlansRouter } from './workPlans.router';
 
 /**
  * Табло «Цех» и «Установщики» для тех, кто ведёт заказы: директор, админ,
@@ -13,6 +14,9 @@ import { router } from '../trpc';
  * менеджеру, у которого нет финансов, табло доступно.
  */
 export const monitorRouter = router({
+  /** План на месяц: нормы ролей и личные планы — руководство. */
+  plans: workPlansRouter,
+
   board: orderDispatchProcedure
     .input(z.object({ group: monitorGroupSchema, branchId: idSchema.optional() }))
     .query(({ ctx, input }) =>

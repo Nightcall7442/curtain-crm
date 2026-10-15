@@ -15,6 +15,8 @@ export interface PodiumEntry {
   readonly fullName: string;
   readonly photoUrl: string | null;
   readonly value: number;
+  /** Выработка к плану того месяца; плана не было — `null`. */
+  readonly planPercent: number | null;
 }
 
 /**
@@ -121,6 +123,23 @@ export function Podium({
                     </span>
                     <span className="ml-1 text-caption font-medium text-secondary">{UNIT_SHORT[unit]}</span>
                   </p>
+                  {/* Без плана строка остаётся пустой: высота карточек в ряду одна. */}
+                  <div className="w-full space-y-1.5" aria-hidden={entry.planPercent === null}>
+                    <p className="text-footnote text-secondary">
+                      {entry.planPercent === null ? '\u00a0' : `${entry.planPercent.toString()}% плана`}
+                    </p>
+                    <div className="h-1 overflow-hidden rounded-full bg-ink/[0.08]">
+                      {entry.planPercent !== null && (
+                        <div
+                          className={cn(
+                            'h-full rounded-full',
+                            first ? 'bg-gradient-to-r from-[#f6d58b] to-[#c9962e]' : 'bg-accent',
+                          )}
+                          style={{ width: `${Math.min(100, entry.planPercent).toString()}%` }}
+                        />
+                      )}
+                    </div>
+                  </div>
                 </li>
               );
             })}

@@ -2,7 +2,7 @@ import {
   formatIsoDateShort,
   formatTime,
   isImportantNotification,
-  NOTIFICATION_TONES,
+  notificationTone,
   notificationDestination,
   type NotificationDestination,
   type NotificationTone,
@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
-import { Icon, NOTIFICATION_ICONS } from '../components/Icon';
+import { Icon, NOTIFICATION_ICONS, type IconName } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import {
   cardShadow,
@@ -285,11 +285,13 @@ export function NotificationsScreen(): ReactElement {
 
 /** Цветная плитка со значком типа события. */
 function TypeTile({ type }: { readonly type: NotificationType }): ReactElement {
-  const palette = TILE_PALETTE[NOTIFICATION_TONES[type]];
+  // Тип может оказаться новее сборки приложения — тогда рядовой тон и колокольчик.
+  const palette = TILE_PALETTE[notificationTone(type)];
+  const icon = (NOTIFICATION_ICONS as Readonly<Partial<Record<string, IconName>>>)[type] ?? 'notifications';
 
   return (
     <View style={[styles.tile, { backgroundColor: palette.background }]}>
-      <Icon name={NOTIFICATION_ICONS[type]} size={19} color={palette.foreground} />
+      <Icon name={icon} size={19} color={palette.foreground} />
     </View>
   );
 }

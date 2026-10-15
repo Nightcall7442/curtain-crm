@@ -501,6 +501,7 @@ function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: strin
                       employmentType: row.employmentType,
                       birthDate: row.birthDate,
                       hiredAt: row.hiredAt,
+                      workstation: row.workstation,
                       roles: row.roles,
                       branchIds: row.branchIds,
                       primaryBranchId: row.primaryBranchId,

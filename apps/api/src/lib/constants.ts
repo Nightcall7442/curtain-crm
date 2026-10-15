@@ -162,6 +162,7 @@ export const AUDIT_ACTIONS = [
   'order.status_changed',
   'order.cancelled',
   'order.assignee_changed',
+  'order.installation_scheduled',
   'order.price_changed',
   'order.stage_fees_changed',
   'order.item_meters_changed',
@@ -229,6 +230,8 @@ export const AUDIT_ACTIONS = [
 
   'display_link.created',
   'display_link.revoked',
+  'work_plan.norm_set',
+  'work_plan.personal_set',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

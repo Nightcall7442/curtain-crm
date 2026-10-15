@@ -40,6 +40,7 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   ready_made_item: 'Готовая штора',
   fabric_stock: 'Ткань на складе',
   display_link: 'Ссылка для ТВ',
+  work_plan: 'План на месяц',
 };
 
 /**
@@ -90,6 +91,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'order.status_changed': 'Статус изменён',
   'order.cancelled': 'Заказ отменён',
   'order.assignee_changed': 'Исполнитель изменён',
+  'order.installation_scheduled': 'Время установки изменено',
   'order.price_changed': 'Цена изменена',
   'order.stage_fees_changed': 'Расценки по этапам изменены',
   'order.item_meters_changed': 'Метраж позиции изменён',
@@ -133,6 +135,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'terminal_check.created': 'Терминальный чек пробит',
   'display_link.created': 'Ссылка для ТВ создана',
   'display_link.revoked': 'Ссылка для ТВ отозвана',
+  'work_plan.norm_set': 'Норма роли изменена',
+  'work_plan.personal_set': 'Личный план изменён',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 

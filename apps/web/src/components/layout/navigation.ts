@@ -100,6 +100,8 @@ export const NAVIGATION: readonly NavItem[] = [
         label: MONITOR_GROUP_LABELS.ru[MonitorGroup.INSTALLATION],
         roles: ORDER_DISPATCH_ROLES,
       },
+      // Планы ставит руководство: менеджер видит табло, но цели цеху не задаёт.
+      { href: '/monitor/plans', label: 'Планы', roles: MANAGEMENT_ROLES },
     ],
   },
   {

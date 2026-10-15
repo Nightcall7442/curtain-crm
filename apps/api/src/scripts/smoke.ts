@@ -20,6 +20,7 @@ import {
   createDatabase,
   displayLinks,
   hashPassword,
+  installationTrips,
   notifications,
   orderComments,
   orderItems,
@@ -36,6 +37,7 @@ import {
   userBranches,
   userRoles,
   users,
+  workPlans,
   type Database,
 } from '@curtain-crm/db';
 import {
@@ -43,6 +45,7 @@ import {
   LiveStatus,
   MonitorGroup,
   moneyToDecimalString,
+  NotificationType,
   ORDER_STATUS_LABELS_RU,
   OrderItemKind,
   OrderStatus,
@@ -52,11 +55,13 @@ import {
   PaymentMethod,
   PayrollRecordStatus,
   PayrollSchemeType,
+  planPercent,
   Role,
+  workshopToday,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { config as loadEnv } from 'dotenv';
-import { and, asc, desc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 
 import { loadAuthenticatedUser } from '../context';
 import { login, refreshSession } from '../services/auth.service';
@@ -205,6 +210,7 @@ async function cleanup(db: Database): Promise<void> {
     // audit_log и ссылки для ТВ — restrict: без явного удаления сотрудника не убрать.
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
     await db.delete(displayLinks).where(inArray(displayLinks.createdBy, userIds));
+    await db.delete(workPlans).where(or(inArray(workPlans.userId, userIds), inArray(workPlans.createdBy, userIds)));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
@@ -1639,6 +1645,414 @@ async function run(db: Database): Promise<void> {
     'ТВ: отозванная ссылка гаснет',
     () => tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.WORKSHOP }),
     (message) => message === 'Ссылка недействительна',
+  );
+
+  /* ------------------------ 8b. Номер машинки ---------------------------- */
+
+  await ceoCaller.users.update({ id: sewer.id, workstation: 3 });
+  const withWorkstation = await ceoCaller.users.byId({ id: sewer.id });
+  check('машинка: номер сохраняется и отдаётся в карточке', withWorkstation.workstation === 3, String(withWorkstation.workstation));
+  await expectRejected('машинка: 0 отбивается проверкой входа', () =>
+    ceoCaller.users.update({ id: sewer.id, workstation: 0 }),
+  );
+  await expectRejected('машинка: 100 отбивается проверкой входа', () =>
+    ceoCaller.users.update({ id: sewer.id, workstation: 100 }),
+  );
+  await expectRejectedWith(
+    'машинка: check-ограничение отбивает 100 мимо API',
+    () => db.execute(sql`update users set workstation = 100 where id = ${sewer.id}`),
+    (message) => message.includes('users_workstation_range'),
+  );
+
+  /* ------------------------- 8c. План на месяц --------------------------- */
+
+  // Месяц далеко впереди: норма роли общая на всех, и смоук не должен
+  // переписать настоящую норму текущего месяца в базе разработчика.
+  const planMonth = '2098-03';
+  const sewerPlans = async () =>
+    (await ceoCaller.monitor.plans.list({ month: planMonth })).roles.find((entry) => entry.role === Role.SEWER);
+  const planOf = async (userId: number) =>
+    (await sewerPlans())?.people.find((person) => person.userId === userId)?.plan ?? null;
+
+  // Дважды в один месяц: вторая запись обновляет строку нормы (user_id null).
+  await ceoCaller.monitor.plans.setRoleNorm({ role: Role.SEWER, month: planMonth, target: 35 });
+  await ceoCaller.monitor.plans.setRoleNorm({ role: Role.SEWER, month: planMonth, target: 40 });
+  const normPlans = await sewerPlans();
+  check(
+    'план: норма роли достаётся всем швеям смоука',
+    normPlans?.norm?.target === 40 &&
+      [sewer.id, sewerA.id, sewerB.id, sewerC.id].every((id) => {
+        const plan = normPlans.people.find((person) => person.userId === id)?.plan;
+        return plan?.target === 40 && plan.source === 'role';
+      }),
+    JSON.stringify(normPlans?.norm),
+  );
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.SEWER, month: planMonth, target: 55 });
+  const personalPlan = await planOf(sewerA.id);
+  check(
+    'план: личный план важнее нормы',
+    personalPlan?.target === 55 && personalPlan.source === 'personal',
+    JSON.stringify(personalPlan),
+  );
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.SEWER, month: planMonth, target: null });
+  const backToNorm = await planOf(sewerA.id);
+  check(
+    'план: личный null с того же месяца — снова норма',
+    backToNorm?.target === 40 && backToNorm.source === 'role',
+    JSON.stringify(backToNorm),
+  );
+  const [planAudit] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.actorId, ceo.id), eq(auditLog.action, 'work_plan.personal_set')))
+    .orderBy(desc(auditLog.id))
+    .limit(1);
+  check('план: правка личного плана в журнале', JSON.stringify(planAudit?.details ?? null).includes('"to":null'));
+  await expectRejectedWith(
+    'план: личный план по роли, которой у человека нет',
+    () => ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.INSTALLER, month: planMonth, target: 10 }),
+    (message) => message === 'У сотрудника нет этой роли',
+  );
+  await expectRejected('план: менеджеру планы закрыты', () => managerCaller.monitor.plans.list({ month: planMonth }));
+  const planRow = { role: Role.SEWER, userId: sewerA.id, target: 10, createdBy: ceo.id };
+  await expectRejectedWith(
+    'план: check отбивает не первое число месяца',
+    () => db.insert(workPlans).values({ ...planRow, effectiveFrom: '2098-04-15' }),
+    (message) => message.includes('work_plans_effective_from_first_day'),
+  );
+  await expectRejectedWith(
+    'план: check отбивает нулевой план',
+    () => db.insert(workPlans).values({ ...planRow, effectiveFrom: '2098-04-01', target: 0 }),
+    (message) => message.includes('work_plans_target_positive'),
+  );
+  await expectRejectedWith(
+    'план: норма роли без цели отбита',
+    () => db.insert(workPlans).values({ ...planRow, userId: null, effectiveFrom: '2098-04-01', target: null }),
+    (message) => message.includes('work_plans_norm_has_target'),
+  );
+
+  /* ------------------ 8d. «Рабочие»: план из work_plans ------------------- */
+
+  // Личный план — только у одной швеи и только её строкой: норму текущего
+  // месяца смоук не трогает, вторая швея получает ту, что действует в базе.
+  const planToday = workshopToday();
+  const currentMonth = `${planToday.year.toString()}-${planToday.month.toString().padStart(2, '0')}`;
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewer.id, role: Role.SEWER, month: currentMonth, target: 77 });
+  const currentNorm =
+    (await ceoCaller.monitor.plans.list({ month: currentMonth })).roles.find((entry) => entry.role === Role.SEWER)
+      ?.norm?.target ?? null;
+  const performanceRows = await ceoCaller.users.performance({
+    year: planToday.year,
+    month: planToday.month,
+    userIds: [sewer.id, sewerB.id],
+  });
+  const performanceOf = (userId: number) => performanceRows.find((row) => row.userId === userId);
+  check(
+    'рабочие: у каждой швеи свой план — личный или норма роли',
+    performanceOf(sewer.id)?.plan === 77 && performanceOf(sewerB.id)?.plan === currentNorm,
+    `личный ${String(performanceOf(sewer.id)?.plan)}, норма ${String(performanceOf(sewerB.id)?.plan)} (ждали ${String(currentNorm)})`,
+  );
+  const sewerOnBoard = (await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP })).people.find(
+    (person) => person.userId === sewer.id,
+  );
+  check(
+    'рабочие: «сделано» швеи совпадает с выработкой месяца на табло',
+    sewerOnBoard !== undefined && performanceOf(sewer.id)?.completed === sewerOnBoard.counts.month,
+    `рабочие ${String(performanceOf(sewer.id)?.completed)}, табло ${String(sewerOnBoard?.counts.month)}`,
+  );
+
+  /* ------------------- 8e. План и машинка в снимке табло ----------------- */
+
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerA.id, role: Role.SEWER, month: currentMonth, target: 55 });
+  const workshopNow = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP });
+  const sewerACard = workshopNow.people.find((person) => person.userId === sewerA.id);
+  check(
+    'табло: процент личного плана швеи',
+    sewerACard?.plan?.target === 55 &&
+      sewerACard.plan.source === 'personal' &&
+      sewerACard.plan.percent === planPercent(sewerACard.counts.month, 55),
+    JSON.stringify(sewerACard?.plan ?? null),
+  );
+  check(
+    'табло: машинка швеи на карточке',
+    workshopNow.people.find((person) => person.userId === sewer.id)?.workstation === 3,
+  );
+  // Две роли: план — сумма планов ролей. Личные строки, а не нормы: нормы
+  // текущего месяца общие, и смоук не должен их переписывать.
+  await ceoCaller.monitor.plans.setPersonal({ userId: both.id, role: Role.INSTALLER, month: currentMonth, target: 10 });
+  await ceoCaller.monitor.plans.setPersonal({
+    userId: both.id,
+    role: Role.CORNICE_INSTALLER,
+    month: currentMonth,
+    target: 6,
+  });
+  const bothPlan = async () =>
+    (await managerCaller.monitor.board({ group: MonitorGroup.INSTALLATION })).people.find(
+      (person) => person.userId === both.id,
+    )?.plan ?? null;
+  const summed = await bothPlan();
+  check('табло: две роли — план суммой', summed?.target === 16, JSON.stringify(summed));
+  await ceoCaller.monitor.plans.setPersonal({
+    userId: both.id,
+    role: Role.CORNICE_INSTALLER,
+    month: currentMonth,
+    target: null,
+  });
+  const corniceNorm =
+    (await ceoCaller.monitor.plans.list({ month: currentMonth })).roles.find(
+      (entry) => entry.role === Role.CORNICE_INSTALLER,
+    )?.norm?.target ?? 0;
+  const afterReset = await bothPlan();
+  check(
+    'табло: без плана карнизчика остаётся план установщика',
+    afterReset?.target === 10 + corniceNorm,
+    `${JSON.stringify(afterReset)}, норма карнизчика ${corniceNorm.toString()}`,
+  );
+
+  /* -------------------- 8f. Дата и время установки ----------------------- */
+
+  const makeInstallOrder = async (label: string, status: OrderStatus, installerId: number | null) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} ${label}`,
+        clientPhone: '+998901112292',
+        createdBy: seller.id,
+        status,
+        installerId,
+        installAddress: 'ул. Смоука, 1',
+      })
+      .returning();
+    if (row === undefined) throw new Error(`заказ «${label}» не создан`);
+    return row;
+  };
+  const installationAtOf = async (orderId: number) =>
+    (await db.select({ at: orders.installationAt }).from(orders).where(eq(orders.id, orderId)))[0]?.at ?? null;
+  const scheduleNotes = (orderId: number) =>
+    db
+      .select({ type: notifications.type, title: notifications.title })
+      .from(notifications)
+      .where(and(eq(notifications.userId, installer.id), eq(notifications.relatedOrderId, orderId)));
+  // Послезавтра в 10:30 по Ташкенту.
+  const slotAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  slotAt.setUTCHours(5, 30, 0, 0);
+
+  const scheduled = await makeInstallOrder('Установка по времени', OrderStatus.INSTALLATION_ASSIGNED, installer.id);
+  await ceoCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: slotAt });
+  check('установка: время записано', (await installationAtOf(scheduled.id))?.getTime() === slotAt.getTime());
+  const [scheduleAudit] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, 'order.installation_scheduled'), eq(auditLog.entityId, scheduled.id)));
+  const scheduleDetails = JSON.stringify(scheduleAudit?.details ?? null);
+  check(
+    'установка: в журнале «было» и «стало»',
+    scheduleDetails.includes('"from":null') && scheduleDetails.includes(slotAt.toISOString()),
+    scheduleDetails,
+  );
+  const scheduledNotes = (await scheduleNotes(scheduled.id)).filter(
+    (note) => note.type === NotificationType.INSTALLATION_SCHEDULED,
+  );
+  check(
+    'установка: установщику одно уведомление со временем по Ташкенту',
+    scheduledNotes.length === 1 && scheduledNotes[0]?.title.endsWith('в 10:30') === true,
+    JSON.stringify(scheduledNotes),
+  );
+
+  const unassigned = await makeInstallOrder('Установка без установщика', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  await ceoCaller.orders.scheduleInstallation({ orderId: unassigned.id, at: slotAt });
+  const unassignedNotes = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(eq(notifications.relatedOrderId, unassigned.id));
+  check(
+    'установка: без установщика время пишется, уведомлений нет',
+    (await installationAtOf(unassigned.id))?.getTime() === slotAt.getTime() && unassignedNotes.length === 0,
+    `уведомлений ${unassignedNotes.length.toString()}`,
+  );
+
+  await ceoCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: null });
+  check('установка: null убирает время', (await installationAtOf(scheduled.id)) === null);
+  await expectRejectedWith(
+    'установка: в пошиве время не меняется',
+    () => ceoCaller.orders.scheduleInstallation({ orderId: sewingNow.id, at: slotAt }),
+    (message) => message === 'Время установки меняется до выезда',
+  );
+  await expectRejectedWith(
+    'установка: двое суток назад — отказ',
+    () => ceoCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) }),
+    (message) => message === 'Время установки — не раньше вчерашнего дня',
+  );
+  await expectRejected('установка: швее процедура закрыта', () =>
+    sewerCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: slotAt }),
+  );
+
+  const viaStatus = await makeInstallOrder('Установка с переходом', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  await ceoCaller.orders.changeStatus({
+    id: viaStatus.id,
+    toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+    assigneeId: installer.id,
+    installationAt: slotAt,
+  });
+  const viaTypes = (await scheduleNotes(viaStatus.id)).map((note) => note.type);
+  check(
+    'установка: переход с временем — назначение, время и оба уведомления',
+    (await installationAtOf(viaStatus.id))?.getTime() === slotAt.getTime() &&
+      viaTypes.includes(NotificationType.ORDER_ASSIGNED) &&
+      viaTypes.includes(NotificationType.INSTALLATION_SCHEDULED),
+    viaTypes.join(', '),
+  );
+
+  const viaBatch = await makeInstallOrder('Установка пачкой', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  const batch = await ceoCaller.orders.changeStatusBatch({
+    ids: [viaBatch.id],
+    toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+    assigneeId: installer.id,
+    installationAt: slotAt,
+  });
+  check(
+    'установка: массовый переход тоже ставит время',
+    batch.succeeded === 1 && (await installationAtOf(viaBatch.id))?.getTime() === slotAt.getTime(),
+    JSON.stringify(batch.results),
+  );
+
+  /* ------------------- 8g. «Установки сегодня» на табло ------------------ */
+
+  const slotDayStart = workshopPeriodStarts(new Date()).today;
+  const minutesAfterDayStart = (minutes: number): Date => new Date(slotDayStart.getTime() + minutes * 60_000);
+  const slotOrder = async (label: string, status: OrderStatus, installerId: number, at: Date | null) => {
+    const row = await makeInstallOrder(label, status, installerId);
+    await db.update(orders).set({ installationAt: at }).where(eq(orders.id, row.id));
+    return row;
+  };
+  // 00:30 по Ташкенту — это 19:30 UTC предыдущего дня: сутки считаются по Ташкенту.
+  const afterMidnight = await slotOrder('Слот 00:30', OrderStatus.INSTALLATION_ASSIGNED, installer.id, minutesAfterDayStart(30));
+  const lateYesterday = await slotOrder('Слот вчера 23:30', OrderStatus.INSTALLATION_ASSIGNED, installer.id, minutesAfterDayStart(-30));
+  const cancelledSlot = await slotOrder('Слот отменён', OrderStatus.INSTALLATION_ASSIGNED, installer.id, minutesAfterDayStart(60));
+  await db
+    .update(orders)
+    .set({ status: OrderStatus.CANCELLED, cancelledAt: new Date(), cancellationReason: 'Смоук: клиент передумал' })
+    .where(eq(orders.id, cancelledSlot.id));
+  const onTheWay = await slotOrder('Слот в пути', OrderStatus.INSTALLATION_ASSIGNED, both.id, minutesAfterDayStart(20));
+  const doneSlot = await slotOrder('Слот сделан', OrderStatus.INSTALLATION_DONE, installer.id, minutesAfterDayStart(45));
+  const [bothShift] = await db
+    .select({ id: shifts.id })
+    .from(shifts)
+    .where(and(eq(shifts.userId, both.id), isNull(shifts.endedAt)));
+  if (bothShift === undefined) throw new Error('открытой смены установщика-карнизчика нет');
+  await db.insert(installationTrips).values({
+    shiftId: bothShift.id,
+    orderId: onTheWay.id,
+    startedAt: new Date(Date.now() - 10 * 60_000),
+    startLatitude: 41.2995,
+    startLongitude: 69.2401,
+  });
+
+  const installBoard = await managerCaller.monitor.board({ group: MonitorGroup.INSTALLATION, branchId: branch.id });
+  const slots = installBoard.schedule?.slots ?? [];
+  const slotOf = (orderId: number) => slots.find((slot) => slot.orderId === orderId);
+  check(
+    'расписание: 00:30 по Ташкенту — сегодня, вчерашние 23:30 — нет',
+    slotOf(afterMidnight.id) !== undefined && slotOf(lateYesterday.id) === undefined,
+    slots.map((slot) => slot.orderNumber).join(', '),
+  );
+  check('расписание: отменённый заказ не в ленте', slotOf(cancelledSlot.id) === undefined);
+  check('расписание: открытый выезд по заказу — идёт', slotOf(onTheWay.id)?.state === 'in_progress', String(slotOf(onTheWay.id)?.state));
+  check('расписание: выполненная установка — сделано', slotOf(doneSlot.id)?.state === 'done', String(slotOf(doneSlot.id)?.state));
+  check(
+    'расписание: лента по времени',
+    slots.every((slot, index) => index === 0 || (slots[index - 1]?.at.getTime() ?? 0) <= slot.at.getTime()),
+  );
+  const [unscheduledRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.branchId, branch.id),
+        eq(orders.status, OrderStatus.INSTALLATION_ASSIGNED),
+        isNull(orders.installationAt),
+      ),
+    );
+  check(
+    'расписание: «без времени» — назначенные без времени',
+    installBoard.schedule?.unscheduled === unscheduledRow?.count && (unscheduledRow?.count ?? 0) >= 1,
+    `табло ${String(installBoard.schedule?.unscheduled)}, база ${String(unscheduledRow?.count)}`,
+  );
+  check(
+    'расписание: у цеха расписания нет',
+    (await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP, branchId: branch.id })).schedule === null,
+  );
+  const installTv = await ceoCaller.displayLinks.create({
+    label: `${PREFIX} ТВ установщиков`,
+    branchId: branch.id,
+    showWorkshop: false,
+    showInstallation: true,
+  });
+  const installTvJson = JSON.stringify(
+    await tvCaller.display.board({ token: installTv.token, group: MonitorGroup.INSTALLATION }),
+  );
+  check('расписание: на ТВ не уходит', !installTvJson.includes('"schedule"') && !installTvJson.includes('Смоука'));
+
+  /* ------------- 8h. Время доходит до установщика при назначении ---------- */
+
+  const timedFirst = await makeInstallOrder('Время до назначения', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  await db
+    .update(orders)
+    .set({ sewingFee: '50000.00', installationFee: '70000.00' })
+    .where(eq(orders.id, timedFirst.id));
+  await ceoCaller.orders.scheduleInstallation({ orderId: timedFirst.id, at: slotAt });
+  await ceoCaller.orders.changeStatus({
+    id: timedFirst.id,
+    toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+    assigneeId: installer.id,
+  });
+  const timedNotes = (await scheduleNotes(timedFirst.id)).filter(
+    (note) => note.type === NotificationType.INSTALLATION_SCHEDULED,
+  );
+  check(
+    'установка: назначенный после времени получает время',
+    timedNotes.length === 1 && timedNotes[0]?.title.endsWith('в 10:30') === true,
+    JSON.stringify(timedNotes),
+  );
+  await ceoCaller.orders.assign({ id: timedFirst.id, role: Role.INSTALLER, assigneeId: both.id });
+  const reassignedNotes = await db
+    .select({ title: notifications.title })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, both.id),
+        eq(notifications.relatedOrderId, timedFirst.id),
+        eq(notifications.type, NotificationType.INSTALLATION_SCHEDULED),
+      ),
+    );
+  check(
+    'установка: новый установщик при переназначении получает время',
+    reassignedNotes.length === 1,
+    JSON.stringify(reassignedNotes),
+  );
+  // Мутации заказов идут только при открытой смене.
+  await db.insert(shifts).values({ userId: manager.id, branchId: branch.id, startedAt: hoursAgo(1), ...point });
+  const managerAssign = await managerCaller.orders.assign({ id: timedFirst.id, role: Role.INSTALLER, assigneeId: both.id });
+  check(
+    'заказ: менеджеру ответ assign без расценок исполнителей',
+    managerAssign.sewingFee === null && managerAssign.installationFee === null,
+    `${String(managerAssign.sewingFee)} / ${String(managerAssign.installationFee)}`,
+  );
+
+  // Подработка: швее при назначении на установку выдаётся роль установщика.
+  // План в «Рабочих» — по группе её табло (цех), а не сумма штук и заказов.
+  await db.insert(userRoles).values({ userId: sewerB.id, role: Role.INSTALLER, grantedBy: sewerB.id });
+  await ceoCaller.monitor.plans.setPersonal({ userId: sewerB.id, role: Role.INSTALLER, month: currentMonth, target: 5 });
+  const [mixed] = await ceoCaller.users.performance({
+    year: planToday.year,
+    month: planToday.month,
+    userIds: [sewerB.id],
+  });
+  check(
+    'рабочие: у швеи с подработкой установщика — план швеи',
+    mixed?.plan === currentNorm,
+    `${String(mixed?.plan)} (ждали ${String(currentNorm)})`,
   );
 }
 

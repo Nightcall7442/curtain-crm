@@ -41,6 +41,9 @@ const EXACT: Readonly<Record<string, string>> = {
 
 const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Новый заказ {n}', 'Yangi buyurtma {n}'],
+  ['Установка {n}: {date} в {time}', "O'rnatish {n}: {date}, soat {time}"],
+  ['Клиент «{client}». Адрес: {address}', 'Mijoz «{client}». Manzil: {address}'],
+  ['Клиент «{client}».', 'Mijoz «{client}».'],
   ['Вам назначен заказ клиента «{client}» как «{role}»', "Sizga «{client}» mijozining buyurtmasi «{role}» sifatida tayinlandi"],
   ['Заказ {n} ждёт исполнителя', '{n} buyurtmasi ijrochini kutmoqda'],
   ['Клиент «{client}», этап «{stage}». Исполнитель ещё не назначен.', "Mijoz «{client}», bosqich «{stage}». Ijrochi hali tayinlanmagan."],

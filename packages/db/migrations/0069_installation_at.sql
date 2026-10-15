@@ -1,0 +1,2 @@
+ALTER TABLE "orders" ADD COLUMN "installation_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "orders_installation_at_idx" ON "orders" USING btree ("installation_at") WHERE "orders"."installation_at" is not null;

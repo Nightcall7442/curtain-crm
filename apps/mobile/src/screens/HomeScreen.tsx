@@ -19,7 +19,8 @@ import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../comp
 import { Icon, type IconName } from '../components/Icon';
 import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
-import { useAuth, useIsManagement } from '../hooks/useAuth';
+import { MonitorTiles } from '../components/monitor/MonitorTiles';
+import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { useToday } from '../hooks/useToday';
 import type { MessageKey } from '../i18n/messages';
@@ -58,6 +59,8 @@ export function HomeScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const isManager = useIsManagement();
+  // Табло видят все, кто ведёт заказы: руководство и менеджер.
+  const canDispatch = useCanDispatchOrders();
 
   const utils = trpc.useUtils();
   // Тот же ключ, что и на экране профиля: снимок берётся из общего кеша.
@@ -195,6 +198,12 @@ export function HomeScreen(): ReactElement {
           <WorkshopSummary />
         </View>
       )}
+      {isManager && canDispatch && (
+        <View style={styles.section}>
+          <Text style={styles.sectionHeading}>{m('monitor.title')}</Text>
+          <MonitorTiles />
+        </View>
+      )}
       {/* Те же боковые поля, что у «Цеха сегодня»: карточки стоят одной колонкой. */}
       {isManager && (
         <View style={styles.section}>
@@ -251,6 +260,13 @@ export function HomeScreen(): ReactElement {
               <Text style={styles.shiftHint}>{m('home.shiftHint')}</Text>
             )}
           </Card>
+        </View>
+      )}
+      {/* Менеджер ведёт заказы, но смену открывает: табло — под его сменой. */}
+      {!isManager && canDispatch && (
+        <View style={styles.section}>
+          <Text style={styles.sectionHeading}>{m('monitor.title')}</Text>
+          <MonitorTiles />
         </View>
       )}
 
@@ -364,6 +380,7 @@ export function HomeScreen(): ReactElement {
               deadline={order.deadline}
               workPrice={order.workPrice}
               remaining={order.remainingPayment}
+              installationAt={order.installationAt}
               onPress={() => {
                 navigation.navigate('OrderDetail', { orderId: order.id });
               }}

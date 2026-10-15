@@ -32,6 +32,7 @@ import { assertOrderPacked } from './packList.service';
 import { accrueForClosedOrder, accrueForStage, STAGE_ACCRUAL_STATUSES } from './payroll.service';
 import { restockCancelledSale, shelveStockOrder } from './readyMadeStock.service';
 import {
+  notifyInstallationScheduled,
   notifyOrderAssigned,
   notifyOrderStatusChanged,
   notifyRoleChanged,
@@ -740,6 +741,22 @@ export async function assignExecutor(
       params.assigneeId,
       params.role,
     );
+
+    // Время установки поставили раньше, чем назначили установщика (или его
+    // сменили), — новый установщик узнаёт его вместе с назначением.
+    if (params.role === Role.INSTALLER && updated.installationAt !== null) {
+      await notifyInstallationScheduled(
+        executor,
+        {
+          orderId: updated.id,
+          orderNumber: orderLabel(updated),
+          clientName: updated.clientName,
+          address: updated.installAddress,
+        },
+        params.assigneeId,
+        updated.installationAt,
+      );
+    }
   }
 
   return updated;

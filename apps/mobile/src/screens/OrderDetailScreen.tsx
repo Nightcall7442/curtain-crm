@@ -14,6 +14,7 @@ import {
   ROLE_LABELS,
   stageFeesOfOrderType,
   TransitionKind,
+  INSTALLATION_SCHEDULABLE_STATUSES,
 } from '@curtain-crm/shared';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { useRef, useState, type ReactElement } from 'react';
@@ -34,6 +35,7 @@ import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
 import { OrderManagement } from '../components/OrderManagement';
 import { OrderCommentsCard } from '../components/order/OrderCommentsCard';
 import { OrderCorniceCard } from '../components/order/OrderCorniceCard';
+import { useInstallSlotLabel } from '../components/order/InstallationTimeRow';
 import { OrderItemsCard } from '../components/order/OrderItemsCard';
 import { OrderPackList } from '../components/OrderPackList';
 import { Field, MoneyInput } from '../components/Field';
@@ -57,6 +59,7 @@ import type { RootStackScreenProps } from '../types';
 export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>): ReactElement {
   const { orderId } = route.params;
   const { t, m, money } = useLocale();
+  const installSlotLabel = useInstallSlotLabel();
 
   const utils = trpc.useUtils();
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
@@ -217,6 +220,12 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
         <View style={styles.details}>
           <Row label={m('order.deadline')} value={formatIsoDate(data.deadline)} />
+          {(data.installationAt !== null || INSTALLATION_SCHEDULABLE_STATUSES.includes(data.status)) && (
+            <Row
+              label={m('install.title')}
+              value={data.installationAt === null ? m('install.notSet') : installSlotLabel(data.installationAt)}
+            />
+          )}
           {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
           {data.workPrice !== null && data.paidAmount !== null && (
             <>
@@ -558,6 +567,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             [Role.QC]: data.qc,
             [Role.INSTALLER]: data.installer,
           }}
+          installationAt={data.installationAt}
         />
       )}
 

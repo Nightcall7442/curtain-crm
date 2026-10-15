@@ -82,3 +82,45 @@ export const LIVE_STATUS_LABELS: Translated<LiveStatus> = {
     absent: 'Belgilanmagan',
   },
 };
+
+/**
+ * Чей труд меряется планом месяца. У швей — штуки, у выездных — заказы
+ * (`PLAN_UNIT`). Менеджеры и цех без швей плана не имеют.
+ */
+export const PLAN_ROLES = [Role.SEWER, Role.INSTALLER, Role.CORNICE_INSTALLER] as const;
+
+export type PlanRole = (typeof PLAN_ROLES)[number];
+
+export const planRoleSchema = z.enum(PLAN_ROLES);
+
+export function isPlanRole(role: Role): role is PlanRole {
+  return (PLAN_ROLES as readonly Role[]).includes(role);
+}
+
+/** Откуда план человека: личный план важнее нормы роли. */
+export const PLAN_SOURCES = ['personal', 'role'] as const;
+
+export type PlanSource = (typeof PLAN_SOURCES)[number];
+
+/**
+ * Темп выполнения плана: сравнение доли плана с долей прошедших рабочих
+ * дней месяца. Правило — `planPace`.
+ */
+export const PLAN_PACES = ['ahead', 'on_track', 'behind'] as const;
+
+export type PlanPace = (typeof PLAN_PACES)[number];
+
+export const PLAN_PACE_LABELS: Translated<PlanPace> = {
+  ru: { ahead: 'Опережает', on_track: 'В графике', behind: 'Отстаёт' },
+  uz: { ahead: 'Oldinda', on_track: 'Grafikda', behind: 'Ortda' },
+};
+
+/** Где установка из расписания дня. Правило — `installSlotState`. */
+export const INSTALL_SLOT_STATES = ['done', 'in_progress', 'late', 'upcoming'] as const;
+
+export type InstallSlotState = (typeof INSTALL_SLOT_STATES)[number];
+
+export const INSTALL_SLOT_STATE_LABELS: Translated<InstallSlotState> = {
+  ru: { done: 'Сделано', in_progress: 'Идёт', late: 'Опаздывает', upcoming: 'Впереди' },
+  uz: { done: 'Bajarildi', in_progress: 'Davom etmoqda', late: 'Kechikmoqda', upcoming: 'Oldinda' },
+};

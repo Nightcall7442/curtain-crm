@@ -2,7 +2,9 @@
 
 import {
   missingAssigneeFor,
+  OrderStatus as OrderStatusValue,
   ORDER_STATUS_LABELS,
+  parseInstallSlotInput,
   pluralize,
   ROLE_LABELS,
   TransitionKind,
@@ -12,9 +14,10 @@ import {
 } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { Button, Field, FormError, Modal, Select, Textarea } from '@/components/ui/Form';
+import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
 
 import { useAssigneeCandidates } from './useAssigneeCandidates';
@@ -97,9 +100,12 @@ export function OrderActionDialog({
 }): ReactElement | null {
   const toast = useToast();
   const { t } = useLocale();
+  const { canDispatch } = useAuth();
 
   const [comment, setComment] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
+  /** Время установки, `datetime-local`; пусто — без времени. */
+  const [installationAt, setInstallationAt] = useState('');
   const [failures, setFailures] = useState<readonly { id: number; message: string }[]>([]);
 
   // Каждое новое действие открывает окно с чистого листа: причина отмены,
@@ -107,6 +113,7 @@ export function OrderActionDialog({
   useEffect(() => {
     setComment('');
     setAssigneeId('');
+    setInstallationAt('');
     setFailures([]);
   }, [target]);
 
@@ -120,6 +127,10 @@ export function OrderActionDialog({
 
   const commentReady = !action.requiresComment || comment.trim().length >= 3;
   const assigneeReady = needsAssignee === null || assigneeId !== '';
+  // Время спрашиваем при назначении установщика — тем, кто его назначает.
+  const asksInstallationTime = canDispatch && action.toStatus === OrderStatusValue.INSTALLATION_ASSIGNED;
+  const installationTime = parseInstallSlotInput(installationAt);
+  const installationReady = installationAt === '' || installationTime !== null;
 
   const submit = (): void => {
     run.mutate(
@@ -128,6 +139,7 @@ export function OrderActionDialog({
         toStatus: action.toStatus,
         ...(action.requiresComment ? { comment: comment.trim() } : {}),
         ...(needsAssignee === null ? {} : { assigneeId: Number.parseInt(assigneeId, 10) }),
+        ...(asksInstallationTime && installationTime !== null ? { installationAt: installationTime } : {}),
       },
       {
         onSuccess(result) {
@@ -177,7 +189,7 @@ export function OrderActionDialog({
           <Button
             variant={action.kind === TransitionKind.CANCEL ? 'danger' : 'primary'}
             loading={run.isPending}
-            disabled={!commentReady || !assigneeReady}
+            disabled={!commentReady || !assigneeReady || !installationReady}
             onClick={submit}
           >
             {isBulk ? `Применить к ${orders.length.toString()}` : 'Подтвердить'}
@@ -205,6 +217,21 @@ export function OrderActionDialog({
                 : undefined
             }
           />
+        )}
+
+        {asksInstallationTime && (
+          <Field
+            label="Дата и время установки"
+            hint="Необязательно, по Ташкенту. Установщик получит уведомление со временем"
+          >
+            <Input
+              type="datetime-local"
+              value={installationAt}
+              onChange={(event) => {
+                setInstallationAt(event.target.value);
+              }}
+            />
+          </Field>
         )}
 
         {action.requiresComment && (

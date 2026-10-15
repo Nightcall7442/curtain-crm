@@ -47,6 +47,8 @@ export * from './monitor/dayOff';
 export * from './monitor/items';
 export * from './monitor/board';
 export * from './monitor/tvLayout';
+export * from './monitor/plan';
+export * from './monitor/installSlot';
 
 /* Типы */
 export * from './types/orderItemAccessory';

@@ -4,6 +4,7 @@ import {
   filterPeople,
   LIVE_STATUSES,
   MONITOR_GROUP_LABELS,
+  MONITOR_SORT_LABELS,
   MONITOR_SORTS,
   MonitorGroup,
   ROLE_LABELS_RU,
@@ -23,14 +24,12 @@ import { cn } from '@/lib/utils';
 
 import { LiveIndicator } from './LiveIndicator';
 import { PersonCard } from './PersonCard';
+import { InstallSchedule } from './InstallSchedule';
 import { PersonDrawer } from './PersonDrawer';
 import { Podium } from './Podium';
 import { StatusChips, type StatusFilter } from './StatusChips';
 import { SummaryPanel } from './SummaryPanel';
-import { TripsToday } from './TripsToday';
 import { useMonitorBoard } from './useMonitorBoard';
-
-const SORT_LABELS: Readonly<Record<MonitorSort, string>> = { place: 'По месту', name: 'По имени' };
 
 const EMPTY_GROUP: Readonly<Record<MonitorGroupName, string>> = {
   [MonitorGroup.WORKSHOP]: `В цехе пока нет швей: дайте сотруднику роль «${ROLE_LABELS_RU[Role.SEWER]}»`,
@@ -195,7 +194,7 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
                   onChange={(event) => {
                     setParams({ sort: event.target.value === 'place' ? null : event.target.value });
                   }}
-                  options={MONITOR_SORTS.map((value) => ({ value, label: SORT_LABELS[value] }))}
+                  options={MONITOR_SORTS.map((value) => ({ value, label: MONITOR_SORT_LABELS.ru[value] }))}
                 />
               </div>
             </div>
@@ -219,7 +218,7 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
                   setParams({ status: null, q: null });
                 }}
               />
-              {group === MonitorGroup.INSTALLATION && <TripsToday trips={board.trips ?? []} />}
+              {board.schedule !== null && <InstallSchedule schedule={board.schedule} now={board.generatedAt} />}
             </div>
           </section>
         </>
@@ -274,7 +273,14 @@ function PeopleGrid({
   return (
     <div className={GRID}>
       {people.map((person) => (
-        <PersonCard key={person.userId} person={person} group={group} now={board.generatedAt} onSelect={onSelect} />
+        <PersonCard
+          key={person.userId}
+          person={person}
+          group={group}
+          unit={board.unit}
+          now={board.generatedAt}
+          onSelect={onSelect}
+        />
       ))}
     </div>
   );

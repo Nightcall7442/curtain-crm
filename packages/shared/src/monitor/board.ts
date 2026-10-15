@@ -27,12 +27,43 @@ export function filterPeople<T extends { readonly fullName: string; readonly sta
 const byName = (a: { readonly fullName: string }, b: { readonly fullName: string }): number =>
   a.fullName.localeCompare(b.fullName, 'ru');
 
-/** Сортировка карточек: по месту за месяц (равные — по имени) или по имени. */
-export function sortPeople<T extends { readonly fullName: string; readonly place: number }>(
-  people: readonly T[],
-  sort: MonitorSort,
-): T[] {
-  return [...people].sort((a, b) => (sort === 'place' ? a.place - b.place || byName(a, b) : byName(a, b)));
+/** Сравнение, при котором отсутствующее значение уходит в конец. */
+const nullsLast = (a: number | null, b: number | null): number => {
+  if (a === null) return b === null ? 0 : 1;
+  if (b === null) return -1;
+  return a - b;
+};
+
+interface SortablePerson {
+  readonly fullName: string;
+  readonly place: number;
+  readonly plan?: { readonly percent: number } | null;
+  readonly workstation?: number | null;
+}
+
+/** Процент плана со знаком минус: больше процент — раньше в списке. */
+const planOrder = (person: SortablePerson): number | null =>
+  person.plan === undefined || person.plan === null ? null : -person.plan.percent;
+
+/**
+ * Сортировка карточек: по месту за месяц, по проценту плана (больше — выше),
+ * по имени или по номеру машинки. Без плана или машинки — в конце; равные —
+ * по имени.
+ */
+export function sortPeople<T extends SortablePerson>(people: readonly T[], sort: MonitorSort): T[] {
+  const compare = (a: T, b: T): number => {
+    switch (sort) {
+      case 'place':
+        return a.place - b.place;
+      case 'plan':
+        return nullsLast(planOrder(a), planOrder(b));
+      case 'workstation':
+        return nullsLast(a.workstation ?? null, b.workstation ?? null);
+      case 'name':
+        return 0;
+    }
+  };
+  return [...people].sort((a, b) => compare(a, b) || byName(a, b));
 }
 
 /** Имя на пьедестале и в ленте выездов: «Зухра Н.» — полное имя туда не помещается. */

@@ -1,4 +1,5 @@
 import {
+  formatInstallSlot,
   formatIsoDateShort,
   formatMoneyShort,
   isActiveStatus,
@@ -19,6 +20,12 @@ import { cardShadow, colors, radius, spacing, typography, fonts } from '../theme
 import { Pill } from './Card';
 import { PressableScale } from './PressableScale';
 import { SwipeableRow } from './SwipeableRow';
+
+/** Статусы, в которых карточка показывает время установки вместо срока. */
+const INSTALLATION_STAGE: readonly OrderStatusName[] = [
+  OrderStatus.INSTALLATION_ASSIGNED,
+  OrderStatus.INSTALLATION_IN_PROGRESS,
+];
 
 /**
  * Заказ в списке — карточка из утверждённого макета «Хвоя UI».
@@ -42,6 +49,7 @@ export function OrderCard({
   deadline,
   workPrice,
   remaining,
+  installationAt = null,
   onPress,
 }: {
   readonly orderNumber: string;
@@ -55,6 +63,8 @@ export function OrderCard({
   readonly workPrice: string | null;
   /** Остаток по заказу: `0` — оплачен целиком. Не передан — не показывается. */
   readonly remaining?: string | null;
+  /** Время установки: у назначенной установки оно важнее срока. */
+  readonly installationAt?: Date | null;
   readonly onPress: () => void;
 }): ReactElement {
   const { t, m } = useLocale();
@@ -63,6 +73,9 @@ export function OrderCard({
 
   const deadlineLabel =
     deadline === null ? m('orderCard.noDeadline') : m('orderCard.until', { date: formatIsoDateShort(deadline) });
+  // Установщику на выезде важнее не срок, а когда его ждёт клиент.
+  const slot =
+    installationAt !== null && INSTALLATION_STAGE.includes(status) ? formatInstallSlot(installationAt) : null;
 
   const card = (
     <View style={styles.card}>
@@ -91,9 +104,15 @@ export function OrderCard({
       </Text>
 
       <View style={styles.footer}>
-        <Text style={[styles.deadline, isOverdue ? styles.overdue : null]} numberOfLines={1}>
-          {isOverdue ? m('orderCard.overdue', { date: formatIsoDateShort(deadline) }) : deadlineLabel}
-        </Text>
+        {slot === null ? (
+          <Text style={[styles.deadline, isOverdue ? styles.overdue : null]} numberOfLines={1}>
+            {isOverdue ? m('orderCard.overdue', { date: formatIsoDateShort(deadline) }) : deadlineLabel}
+          </Text>
+        ) : (
+          <Text style={[styles.deadline, styles.slot]} numberOfLines={1}>
+            {m('install.at', { date: slot.date, time: slot.time })}
+          </Text>
+        )}
         {workPrice !== null && (
           <View style={styles.money}>
             <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
@@ -226,6 +245,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '500',
     flexShrink: 1,
+  },
+  slot: {
+    color: colors.accentStrong,
+    fontWeight: '600',
   },
   overdue: {
     color: colors.danger,

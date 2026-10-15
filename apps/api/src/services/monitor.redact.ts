@@ -1,6 +1,6 @@
 import { LIVE_STATUSES, type Locale, type LiveStatus } from '@curtain-crm/shared';
 
-import type { MonitorBoard, MonitorPerson, MonitorTrip, MonitorWork } from './monitor.service';
+import type { MonitorBoard, MonitorPerson, MonitorPlan, MonitorWork } from './monitor.service';
 
 /**
  * Табло для ТВ в цеху.
@@ -29,22 +29,27 @@ export interface DisplayWork {
 export interface DisplayPerson
   extends Pick<
     MonitorPerson,
-    'fullName' | 'photoUrl' | 'roles' | 'sewerCategory' | 'status' | 'statusSince' | 'statusUntil' | 'counts' | 'place'
+    | 'fullName'
+    | 'photoUrl'
+    | 'roles'
+    | 'sewerCategory'
+    | 'workstation'
+    | 'status'
+    | 'statusSince'
+    | 'statusUntil'
+    | 'counts'
+    | 'place'
   > {
   readonly current: readonly DisplayWork[];
+  /** Только то, что рисует полоса: источник и дата плана экрану не нужны. */
+  readonly plan: Pick<MonitorPlan, 'target' | 'percent' | 'pace' | 'expectedPercent'> | null;
 }
 
 export interface DisplayPodiumEntry {
   readonly fullName: string;
   readonly photoUrl: string | null;
   readonly value: number;
-}
-
-export interface DisplayTrip {
-  readonly fullName: string;
-  readonly startedAt: Date;
-  readonly returnedAt: Date | null;
-  readonly orderNumber: string | null;
+  readonly planPercent: number | null;
 }
 
 export interface DisplayLinkInfo {
@@ -55,10 +60,10 @@ export interface DisplayLinkInfo {
   readonly locale: Locale;
 }
 
-export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'trips' | 'podium'> {
+/** Расписания установок с адресами на ТВ нет: `schedule` в список не входит. */
+export interface DisplayBoard extends Omit<MonitorBoard, 'people' | 'podium' | 'schedule'> {
   readonly people: readonly DisplayPerson[];
   readonly podium: { readonly month: string; readonly entries: readonly DisplayPodiumEntry[] };
-  readonly trips: readonly DisplayTrip[] | null;
   readonly link: DisplayLinkInfo;
 }
 
@@ -79,21 +84,22 @@ function toDisplayPerson(person: MonitorPerson): DisplayPerson {
     photoUrl: person.photoUrl,
     roles: person.roles,
     sewerCategory: person.sewerCategory,
+    workstation: person.workstation,
+    plan:
+      person.plan === null
+        ? null
+        : {
+            target: person.plan.target,
+            percent: person.plan.percent,
+            pace: person.plan.pace,
+            expectedPercent: person.plan.expectedPercent,
+          },
     status: person.status,
     statusSince: person.statusSince,
     statusUntil: person.statusUntil,
     current: person.current.map(toDisplayWork),
     counts: { today: person.counts.today, week: person.counts.week, month: person.counts.month },
     place: person.place,
-  };
-}
-
-function toDisplayTrip(trip: MonitorTrip): DisplayTrip {
-  return {
-    fullName: trip.fullName,
-    startedAt: trip.startedAt,
-    returnedAt: trip.returnedAt,
-    orderNumber: trip.orderNumber,
   };
 }
 
@@ -110,6 +116,7 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
         fullName: entry.fullName,
         photoUrl: entry.photoUrl,
         value: entry.value,
+        planPercent: entry.planPercent,
       })),
     },
     summary: {
@@ -120,11 +127,12 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
       averagePerPerson: summary.averagePerPerson,
       qualityPercent: summary.qualityPercent,
       onTimePercent: summary.onTimePercent,
+      planTotal: summary.planTotal,
+      planPercent: summary.planPercent,
     },
     statusCounts: Object.fromEntries(
       LIVE_STATUSES.map((status) => [status, board.statusCounts[status]]),
     ) as Record<LiveStatus, number>,
-    trips: board.trips === null ? null : board.trips.map(toDisplayTrip),
     link: {
       label: link.label,
       branchName: link.branchName,

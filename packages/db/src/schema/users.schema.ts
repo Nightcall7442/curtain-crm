@@ -112,6 +112,12 @@ export const users = pgTable(
     sewerCategory: smallint('sewer_category'),
 
     /**
+     * Номер швейной машинки за швеёй: по нему на табло ищут человека в цехе.
+     * `null` — машинка не закреплена.
+     */
+    workstation: smallint('workstation'),
+
+    /**
      * Язык интерфейса, которым человек пользовался последним.
      *
      * Нужен не приложению — оно и так знает свой язык, — а сообщениям,
@@ -146,6 +152,7 @@ export const users = pgTable(
     check('users_phone_e164', sql`${table.phone} ~ '^\\+998[0-9]{9}$'`),
     check('users_weekly_day_off_range', sql`${table.weeklyDayOff} between 1 and 7`),
     check('users_sewer_category_range', sql`${table.sewerCategory} between 1 and 3`),
+    check('users_workstation_range', sql`${table.workstation} between 1 and 99`),
     check('users_locale_known', sql`${table.locale} in ('ru', 'uz')`),
     check(
       'users_fired_after_hired',

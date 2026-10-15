@@ -1,7 +1,6 @@
 import {
   hashPassword,
   payrollRecords,
-  payrollSchemes,
   userBranches,
   userRoles,
   users,
@@ -15,9 +14,16 @@ import {
   isManagement,
   Role,
   ROLE_LABELS_RU,
+  isPlanRole,
+  MONITOR_GROUP_ROLES,
+  PLAN_ROLES,
+  resolveCombinedPlan,
   roleSchema,
+  WORKSTATION_MAX,
+  WORKSTATION_MIN,
   type Department,
   type EmploymentType,
+  type PlanRole,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, count, eq, exists, ilike, inArray, or, sql } from 'drizzle-orm';
@@ -45,6 +51,8 @@ import { resetPasswordByManager, revokeAllSessions } from '../services/auth.serv
 import { notifyRoleChanged } from '../services/notifications.service';
 import { calculateCompletedOrders } from '../services/payroll.service';
 import { periodBounds } from '../services/shifts.service';
+import { monitorGroupOf } from '../services/monitor.service';
+import { loadMonthOutput, loadWorkPlans } from '../services/workPlans.service';
 import {
   buildStorageKey,
   decodeBase64Payload,
@@ -108,10 +116,15 @@ export interface UserDto {
   /** Готовая ссылка на фото; `null`, если фото не загружено. */
   readonly avatarUrl: string | null;
   readonly sewerCategory: number | null;
+  /** Номер швейной машинки; `null` — не закреплена. */
+  readonly workstation: number | null;
   readonly roles: readonly Role[];
   readonly branchIds: readonly number[];
   readonly primaryBranchId: number | null;
 }
+
+/** Номер швейной машинки: пусто — `null`, машинка не закреплена. */
+const workstationSchema = z.number().int().min(WORKSTATION_MIN).max(WORKSTATION_MAX).nullable();
 
 /**
  * Загружает сотрудников вместе с ролями и филиалами.
@@ -175,6 +188,7 @@ async function loadUsers(executor: DbExecutor, userIds: readonly number[]): Prom
         avatarUrl: avatarUrls.get(row.id) ?? null,
         /** Категория швеи, поставленная руками; `null` — считается по рейтингу. */
         sewerCategory: row.sewerCategory,
+        workstation: row.workstation,
         roles: row.roles.map((entry) => entry.role),
         branchIds: row.branches.map((entry) => entry.branchId),
         primaryBranchId: row.branches.find((entry) => entry.isPrimary)?.branchId ?? null,
@@ -553,6 +567,7 @@ export const usersRouter = router({
         employmentType: employmentTypeSchema.default('permanent'),
         birthDate: z.string().date().optional(),
         hiredAt: z.string().date().optional(),
+        workstation: workstationSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -582,6 +597,7 @@ export const usersRouter = router({
             employmentType: input.employmentType,
             birthDate: input.birthDate ?? null,
             hiredAt: input.hiredAt ?? null,
+            workstation: input.workstation ?? null,
           })
           .onConflictDoNothing()
           .returning({ id: users.id });
@@ -647,6 +663,7 @@ export const usersRouter = router({
         employmentType: employmentTypeSchema.optional(),
         birthDate: z.string().date().nullable().optional(),
         hiredAt: z.string().date().nullable().optional(),
+        workstation: workstationSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) =>
@@ -661,6 +678,7 @@ export const usersRouter = router({
             : { employmentType: input.employmentType }),
           ...(input.birthDate === undefined ? {} : { birthDate: input.birthDate }),
           ...(input.hiredAt === undefined ? {} : { hiredAt: input.hiredAt }),
+          ...(input.workstation === undefined ? {} : { workstation: input.workstation }),
         };
 
         if (Object.keys(patch).length === 0) return loadUserOrThrow(tx, input.id);
@@ -1002,14 +1020,15 @@ export const usersRouter = router({
   /**
    * Выработка сотрудников за месяц: план, факт и начисленная зарплата.
    *
-   * План берётся из активной схемы начисления по роли (`kpi_target`), а не из
-   * персонального норматива: персональных планов в системе нет, и заводить их
-   * ради трёх колонок означало бы придумать сущность, которой заказчик
-   * не заказывал. Если у роли схема без KPI, план равен `null` — колонка
-   * покажет прочерк, а не ноль, который читался бы как «план не выполнен».
+   * План — из `work_plans`: личный план или норма роли, действующие в этом
+   * месяце (`resolvePlan`), у человека с двумя ролями плана — сумма. Раньше
+   * он брался из KPI зарплатной схемы роли, и всем людям одной роли
+   * доставалась одна цель. Факт у ролей плана — выработка табло за месяц
+   * (штуки у швей, заказы у выездных), чтобы «Рабочие» и табло не спорили.
    *
-   * Факт — число закрытых за период заказов, где сотрудник был исполнителем
-   * в этой роли.
+   * У остальных ролей плана нет: `null`, колонка покажет прочерк, а не ноль,
+   * который читался бы как «план не выполнен». Факт у них — число закрытых
+   * за период заказов, где сотрудник был исполнителем в этой роли.
    */
   performance: managementProcedure
     .input(periodSchema.extend({ userIds: z.array(idSchema).max(200).optional() }))
@@ -1030,20 +1049,28 @@ export const usersRouter = router({
           ),
         );
 
-      const schemes = await ctx.db
-        .select({
-          role: payrollSchemes.role,
-          kpiTarget: payrollSchemes.kpiTarget,
-        })
-        .from(payrollSchemes)
-        .where(eq(payrollSchemes.isActive, true));
-
-      const planByRole = new Map(
-        schemes.map((scheme) => [
-          scheme.role,
-          scheme.kpiTarget === null ? null : Number.parseFloat(scheme.kpiTarget),
-        ]),
-      );
+      const planMonth = `${period.year.toString()}-${period.month.toString().padStart(2, '0')}`;
+      // Роли плана — только группы табло человека: швее с подработкой
+      // установщика план не складывается из штук и заказов.
+      const rolesByUser = new Map<number, Role[]>();
+      for (const entry of staff) {
+        rolesByUser.set(entry.userId, [...(rolesByUser.get(entry.userId) ?? []), entry.role]);
+      }
+      const planRolesByUser = new Map<number, PlanRole[]>();
+      for (const [userId, roles] of rolesByUser) {
+        const group = monitorGroupOf(roles);
+        if (group === null) continue;
+        const planRoles = roles.filter(isPlanRole).filter((role) => MONITOR_GROUP_ROLES[group].includes(role));
+        if (planRoles.length > 0) planRolesByUser.set(userId, planRoles);
+      }
+      const [planRows, planOutput] = await Promise.all([
+        loadWorkPlans(ctx.db, PLAN_ROLES),
+        loadMonthOutput(
+          ctx.db,
+          [...planRolesByUser].map(([id, roles]) => ({ id, roles })),
+          planMonth,
+        ),
+      ]);
 
       const payrollRows = await ctx.db
         .select({
@@ -1061,32 +1088,21 @@ export const usersRouter = router({
 
       const payrollByUser = new Map(payrollRows.map((row) => [row.userId, row.amount]));
 
-      // Считаем факт по каждой паре «сотрудник + роль» и складываем в разрезе
-      // сотрудника: человек с двумя ролями закрыл заказы и как мастер, и как швея.
       const byUser = new Map<number, { plan: number | null; completed: number }>();
-
-      for (const entry of staff) {
-        const completed = await calculateCompletedOrders(
-          ctx.db,
-          entry.userId,
-          entry.role,
-          bounds,
-        );
-
-        const current = byUser.get(entry.userId) ?? { plan: null, completed: 0 };
-        const rolePlan = planByRole.get(entry.role) ?? null;
-
-        byUser.set(entry.userId, {
-          // Если ролей несколько, берём наибольший план: он и определяет
-          // ожидания от сотрудника за месяц.
-          plan:
-            rolePlan === null
-              ? current.plan
-              : current.plan === null
-                ? rolePlan
-                : Math.max(current.plan, rolePlan),
-          completed: current.completed + completed.count,
+      for (const [userId, roles] of planRolesByUser) {
+        byUser.set(userId, {
+          plan: resolveCombinedPlan(planRows, userId, roles, planMonth)?.target ?? null,
+          completed: planOutput.get(userId) ?? 0,
         });
+      }
+
+      // Без ролей плана — факт по каждой паре «сотрудник + роль», в сумме по
+      // сотруднику: человек с двумя ролями закрыл заказы и как мастер, и как продавец.
+      for (const entry of staff) {
+        if (planRolesByUser.has(entry.userId)) continue;
+        const completed = await calculateCompletedOrders(ctx.db, entry.userId, entry.role, bounds);
+        const current = byUser.get(entry.userId) ?? { plan: null, completed: 0 };
+        byUser.set(entry.userId, { plan: null, completed: current.completed + completed.count });
       }
 
       return [...byUser.entries()].map(([userId, value]) => ({

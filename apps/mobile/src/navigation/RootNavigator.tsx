@@ -1,3 +1,4 @@
+import { MONITOR_GROUP_LABELS } from '@curtain-crm/shared';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import type { ReactElement } from 'react';
@@ -11,6 +12,8 @@ import { DayOffApprovalsScreen } from '../screens/DayOffApprovalsScreen';
 import { EmployeesScreen } from '../screens/EmployeesScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ManagementScreen } from '../screens/ManagementScreen';
+import { MonitorBoardScreen } from '../screens/MonitorBoardScreen';
+import { MonitorPersonScreen } from '../screens/MonitorPersonScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
 import { ReadyMadeStockScreen } from '../screens/ReadyMadeStockScreen';
 import { Icon } from '../components/Icon';
@@ -41,7 +44,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  */
 export function RootNavigator(): ReactElement {
   const { user, isRestoring } = useAuth();
-  const { m } = useLocale();
+  const { m, locale } = useLocale();
 
   if (isRestoring) {
     return (
@@ -162,6 +165,12 @@ export function RootNavigator(): ReactElement {
         // значком в шапке: подпись читается, значок — угадывается.
         options={{ title: m('nav.readyMadeStock') }}
       />
+      <Stack.Screen
+        name="MonitorBoard"
+        component={MonitorBoardScreen}
+        options={({ route }) => ({ title: MONITOR_GROUP_LABELS[locale][route.params.group] })}
+      />
+      <Stack.Screen name="MonitorPerson" component={MonitorPersonScreen} options={{ title: m('monitor.title') }} />
       <Stack.Screen
         name="TaskDetail"
         component={TaskDetailScreen}

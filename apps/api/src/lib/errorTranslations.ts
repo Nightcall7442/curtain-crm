@@ -72,6 +72,19 @@ const EXACT: Readonly<Record<string, string>> = {
   'Ссылка недействительна': 'Havola yaroqsiz',
   'Эта группа на ссылке не показывается': "Bu guruh havolada ko'rsatilmaydi",
 
+  // installationSchedule
+  'Время установки назначают менеджер, администратор или директор':
+    "O'rnatish vaqtini menejer, administrator yoki direktor belgilaydi",
+  'Время установки меняется до выезда': "O'rnatish vaqti faqat chiqishdan oldin o'zgartiriladi",
+  'Время установки — не раньше вчерашнего дня': "O'rnatish vaqti — kechagi kundan oldin emas",
+  'Время установки — не дальше чем через год': "O'rnatish vaqti — bir yildan uzoq emas",
+
+  // workPlans
+  'Месяц в формате ГГГГ-ММ': 'Oy YYYY-OO formatida',
+  'План должен быть больше нуля': "Reja noldan katta bo'lishi kerak",
+  'План слишком большой': 'Reja juda katta',
+  'У сотрудника нет этой роли': "Xodimda bu rol yo'q",
+
   // displayLinks
   'Выберите хотя бы одно табло': 'Kamida bitta tabloni tanlang',
   'Ссылка не создана': 'Havola yaratilmadi',

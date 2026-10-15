@@ -1,6 +1,13 @@
 'use client';
 
-import { formatElapsed, formatIsoDateShort, formatTime, MONITOR_POLL_MS } from '@curtain-crm/shared';
+import {
+  formatElapsed,
+  formatIsoDate,
+  formatIsoDateShort,
+  formatTime,
+  MONITOR_POLL_MS,
+  PLAN_PACE_LABELS,
+} from '@curtain-crm/shared';
 import { ArrowUpRight, Camera, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, type ReactElement, type ReactNode } from 'react';
@@ -15,6 +22,8 @@ import { cn, formatNumber } from '@/lib/utils';
 import { AWAY_STATUSES, STATUS_DOT, UNIT_SHORT } from './labels';
 import { statusPillText } from './PersonCard';
 import { PersonPhoto } from './PersonPhoto';
+import { PACE_TEXT } from './PlanBar';
+import { PlanRing } from './PlanRing';
 
 type PersonDetail = RouterOutputs['monitor']['person'];
 type DetailWork = PersonDetail['queueAll'][number];
@@ -129,6 +138,41 @@ function DrawerBody({ detail }: { readonly detail: PersonDetail }): ReactElement
           </div>
         ))}
       </dl>
+
+      <Section
+        title="План месяца"
+        aside={
+          detail.plan === null
+            ? undefined
+            : `${formatNumber(detail.counts.month, 0)} / ${formatNumber(detail.plan.target, 0)} ${unit}`
+        }
+      >
+        {detail.plan === null ? (
+          <p className="text-footnote text-muted">План на этот месяц не задан</p>
+        ) : (
+          <div className="flex items-center gap-4">
+            <PlanRing percent={detail.plan.percent} pace={detail.plan.pace} />
+            <div className="min-w-0 space-y-1 text-footnote">
+              <p className={cn('text-caption font-semibold', PACE_TEXT[detail.plan.pace])}>
+                {PLAN_PACE_LABELS.ru[detail.plan.pace]}
+              </p>
+              <p className="text-muted">
+                К сегодняшнему дню — {detail.plan.expectedPercent.toString()}% плана по рабочим дням
+              </p>
+              <p className="text-muted">
+                {detail.plan.source === 'personal' ? 'Личный план' : 'Норма роли'} с{' '}
+                {formatIsoDate(detail.plan.effectiveFrom)}
+              </p>
+            </div>
+          </div>
+        )}
+        {isManagement && (
+          <Link href="/monitor/plans" className="inline-flex items-center gap-0.5 text-footnote font-semibold text-accent">
+            Изменить план
+            <ArrowUpRight aria-hidden className="h-3.5 w-3.5" />
+          </Link>
+        )}
+      </Section>
 
       <Section title="Сейчас в работе" aside={detail.current.length === 0 ? undefined : detail.current.length.toString()}>
         {detail.current.length === 0 ? (

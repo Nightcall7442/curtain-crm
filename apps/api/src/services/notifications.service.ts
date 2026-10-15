@@ -2,6 +2,7 @@ import { notifications, userRoles, users, type DbExecutor } from '@curtain-crm/d
 import {
   DISCIPLINE_KIND_LABELS_RU,
   formatDisciplinePoints,
+  formatInstallSlot,
   formatIsoDateShort,
   NotificationType,
   ORDER_STATUS_LABELS_RU,
@@ -164,6 +165,31 @@ export async function notifyOrderAssigned(
     type: NotificationType.ORDER_ASSIGNED,
     title: `Новый заказ ${order.orderNumber}`,
     body: `Вам назначен заказ клиента «${order.clientName}» как «${ROLE_LABELS_RU[role]}»`,
+    relatedOrderId: order.orderId,
+  });
+}
+
+/**
+ * Установщику назначили или перенесли время установки.
+ *
+ * Время — по Ташкенту, как его видят в цехе и у клиента. Адрес — во втором
+ * предложении: по нему установщик решает, во сколько выезжать.
+ */
+export async function notifyInstallationScheduled(
+  executor: DbExecutor,
+  order: OrderNotificationContext & { readonly address: string | null },
+  installerId: number,
+  at: Date,
+): Promise<void> {
+  const slot = formatInstallSlot(at);
+  await createNotification(executor, {
+    userId: installerId,
+    type: NotificationType.INSTALLATION_SCHEDULED,
+    title: `Установка ${order.orderNumber}: ${slot.date} в ${slot.time}`,
+    body:
+      order.address === null
+        ? `Клиент «${order.clientName}».`
+        : `Клиент «${order.clientName}». Адрес: ${order.address}`,
     relatedOrderId: order.orderId,
   });
 }

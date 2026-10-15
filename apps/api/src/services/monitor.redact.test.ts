@@ -36,6 +36,8 @@ function boardWith(leak: { readonly address: string; readonly clientName: string
         roles: ['installer'],
         hiredAt: '2024-01-15',
         sewerCategory: null,
+        workstation: 4,
+        plan: { target: 12, percent: 75, pace: 'on_track', source: 'role', effectiveFrom: '2026-10-01', expectedPercent: 52 },
         status: 'trip',
         statusSince: new Date('2026-10-14T06:00:00Z'),
         statusUntil: null,
@@ -49,7 +51,10 @@ function boardWith(leak: { readonly address: string; readonly clientName: string
         onTimePercent: 90,
       },
     ],
-    podium: { month: '2026-09', entries: [{ userId: 7, fullName: 'Бекзод Эргашев', photoUrl: null, value: 9 }] },
+    podium: {
+      month: '2026-09',
+      entries: [{ userId: 7, fullName: 'Бекзод Эргашев', photoUrl: null, value: 9, planPercent: 90 }],
+    },
     summary: {
       monthTotal: 9,
       monthDeltaPercent: 10,
@@ -58,18 +63,24 @@ function boardWith(leak: { readonly address: string; readonly clientName: string
       averagePerPerson: 9,
       qualityPercent: null,
       onTimePercent: 90,
+      planTotal: 12,
+      planPercent: 75,
     },
     statusCounts: { trip: 1, break: 0, working: 0, idle: 0, finished: 0, day_off: 0, absent: 0 },
-    trips: [
-      {
-        userId: 7,
-        fullName: 'Бекзод Эргашев',
-        startedAt: new Date('2026-10-14T06:00:00Z'),
-        returnedAt: null,
-        orderNumber: 'DH-000041',
-        address: leak.address,
-      },
-    ],
+    schedule: {
+      slots: [
+        {
+          orderId: 41,
+          orderNumber: 'DH-000041',
+          at: new Date('2026-10-14T05:30:00Z'),
+          state: 'upcoming',
+          installerName: 'Бекзод Эргашев',
+          address: leak.address,
+        },
+      ],
+      unscheduled: 1,
+      cornices: { pending: 2, inProgress: 1 },
+    },
   };
 }
 
@@ -82,6 +93,7 @@ describe('табло для ТВ', () => {
     expect(json).not.toContain('Иванов');
     expect(json).not.toContain('"orderId"');
     expect(json).not.toContain('"address"');
+    expect(json).not.toContain('"schedule"');
   });
 
   it('люди, сводка и подпись ссылки на месте', () => {
@@ -89,8 +101,17 @@ describe('табло для ТВ', () => {
 
     expect(out.people[0]?.current[0]?.orderNumber).toBe('DH-000041');
     expect(out.people[0]?.counts.month).toBe(9);
-    expect(out.trips?.[0]?.orderNumber).toBe('DH-000041');
     expect(out.link.label).toBe('ТВ в цеху');
+  });
+
+  it('машинка, план и его процент доходят до ТВ', () => {
+    const out = toDisplayBoard(boardWith({ address: 'x', clientName: 'y' }), link);
+
+    expect(out.people[0]?.workstation).toBe(4);
+    expect(out.people[0]?.plan?.percent).toBe(75);
+    expect(out.people[0]?.plan?.pace).toBe('on_track');
+    expect(out.podium.entries[0]?.planPercent).toBe(90);
+    expect(out.summary.planPercent).toBe(75);
   });
 });
 
@@ -103,5 +124,14 @@ describe('на ТВ только то, что экран показывает', 
       expect(keys).not.toContain(hidden);
     }
     expect(Object.keys(out.podium.entries[0] ?? {})).not.toContain('userId');
+  });
+
+  it('из плана — только то, что рисует полоса: без источника и даты', () => {
+    const out = toDisplayBoard(boardWith({ address: 'x', clientName: 'y' }), link);
+    const keys = Object.keys(out.people[0]?.plan ?? {});
+
+    expect(keys).not.toContain('source');
+    expect(keys).not.toContain('effectiveFrom');
+    expect(keys).toContain('expectedPercent');
   });
 });

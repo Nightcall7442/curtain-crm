@@ -8,7 +8,7 @@ import {
   workshopToday,
   type LiveStatus as LiveStatusName,
 } from '@curtain-crm/shared';
-import { Clock, Layers, ShieldCheck, TrendingDown, TrendingUp, Users, type LucideIcon } from 'lucide-react';
+import { Clock, Layers, ShieldCheck, Target, TrendingDown, TrendingUp, Users, type LucideIcon } from 'lucide-react';
 import type { ReactElement, ReactNode } from 'react';
 
 import { cn, formatNumber } from '@/lib/utils';
@@ -110,6 +110,16 @@ export function SummaryPanel({
           icon={Users}
           value={`${summary.onShift.toString()} из ${summary.headcount.toString()}`}
           label={awayLine(board)}
+        />
+        <Row
+          icon={Target}
+          value={percent(summary.planPercent)}
+          {...(summary.planPercent === null ? {} : { unit: '%' })}
+          label={
+            summary.planTotal === null
+              ? 'План месяца не задан'
+              : `План месяца · сумма планов ${formatNumber(summary.planTotal, 0)} ${unit}`
+          }
         />
         <Row
           icon={Layers}
