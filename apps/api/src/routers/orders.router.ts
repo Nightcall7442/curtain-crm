@@ -1488,6 +1488,8 @@ export const ordersRouter = router({
         toStatus: orderStatusSchema,
         comment: z.string().trim().max(1000).optional(),
         assigneeId: idSchema.optional(),
+        /** Время установки — только при переходе в «Назначен установщик». */
+        installationAt: z.date().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -1501,16 +1503,25 @@ export const ordersRouter = router({
       // в статусе» вторым проходом, и отчёт врал бы про неудачу.
       for (const id of [...new Set(input.ids)]) {
         try {
-          await ctx.db.transaction(async (tx) =>
-            changeOrderStatus(tx, {
+          await ctx.db.transaction(async (tx) => {
+            await changeOrderStatus(tx, {
               orderId: id,
               toStatus: input.toStatus,
               actor: ctx.user,
               comment: input.comment ?? null,
               assigneeId: input.assigneeId ?? null,
               ipAddress: ctx.ipAddress,
-            }),
-          );
+            });
+            // Как в `changeStatus`: время — после назначения, той же транзакцией.
+            if (input.installationAt !== undefined && input.toStatus === OrderStatus.INSTALLATION_ASSIGNED) {
+              await setInstallationTime(tx, {
+                orderId: id,
+                at: input.installationAt,
+                actor: ctx.user,
+                ipAddress: ctx.ipAddress,
+              });
+            }
+          });
           results.push({ id, ok: true, message: null });
         } catch (error) {
           /* Сообщение сервера сохраняем как есть: оно на русском и объясняет

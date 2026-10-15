@@ -1904,6 +1904,19 @@ async function run(db: Database): Promise<void> {
     viaTypes.join(', '),
   );
 
+  const viaBatch = await makeInstallOrder('Установка пачкой', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  const batch = await ceoCaller.orders.changeStatusBatch({
+    ids: [viaBatch.id],
+    toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+    assigneeId: installer.id,
+    installationAt: slotAt,
+  });
+  check(
+    'установка: массовый переход тоже ставит время',
+    batch.succeeded === 1 && (await installationAtOf(viaBatch.id))?.getTime() === slotAt.getTime(),
+    JSON.stringify(batch.results),
+  );
+
   /* ------------------- 8g. «Установки сегодня» на табло ------------------ */
 
   const slotDayStart = workshopPeriodStarts(new Date()).today;

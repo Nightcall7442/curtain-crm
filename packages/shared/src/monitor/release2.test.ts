@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { OrderStatus } from '../enums/orderStatus.enum';
 import { Role } from '../enums/role.enum';
 import { sortPeople } from './board';
-import { formatInstallSlot, installSlotState } from './installSlot';
+import {
+  formatInstallSlot,
+  installSlotInputValue,
+  installSlotState,
+  parseInstallSlotInput,
+} from './installSlot';
 import {
   planPace,
   planPercent,
@@ -100,6 +105,21 @@ describe('слот установки', () => {
   it('время установки по Ташкенту', () => {
     expect(formatInstallSlot(at)).toEqual({ date: '15.10', time: '10:30' });
     expect(formatInstallSlot(new Date('2026-10-14T19:30:00Z'))).toEqual({ date: '15.10', time: '00:30' });
+  });
+});
+
+describe('поле времени установки — по Ташкенту, а не по часам браузера', () => {
+  it('значение поля из момента', () => {
+    expect(installSlotInputValue(new Date('2026-10-15T05:30:00Z'))).toBe('2026-10-15T10:30');
+    expect(installSlotInputValue(new Date('2026-10-14T19:30:00Z'))).toBe('2026-10-15T00:30');
+  });
+  it('момент из значения поля', () => {
+    expect(parseInstallSlotInput('2026-10-15T10:30')?.toISOString()).toBe('2026-10-15T05:30:00.000Z');
+    expect(parseInstallSlotInput('2026-10-15T00:30')?.toISOString()).toBe('2026-10-14T19:30:00.000Z');
+  });
+  it('пусто и мусор — null', () => {
+    expect(parseInstallSlotInput('')).toBeNull();
+    expect(parseInstallSlotInput('15.10 10:30')).toBeNull();
   });
 });
 

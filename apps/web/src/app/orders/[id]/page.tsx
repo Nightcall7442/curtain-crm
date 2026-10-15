@@ -5,8 +5,10 @@ import {
   CORNICE_ROTATION_LABELS_RU,
   CORNICE_STATUS_LABELS_RU,
   CorniceStatus,
+  formatInstallSlot,
   formatMaterial,
   formatDimensions,
+  INSTALLATION_SCHEDULABLE_STATUSES,
   formatMoney,
   formatPhone,
   isTerminalStatus,
@@ -28,6 +30,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type ReactElement } from 'react';
 
+import { InstallationTimeDialog } from '@/components/orders/InstallationTimeDialog';
 import { OrderManagePanel } from '@/components/orders/OrderManagePanel';
 import { OrderPackList } from '@/components/orders/OrderPackList';
 import { stageFeesFromOrder } from '@/components/orders/StageFeesFields';
@@ -64,6 +67,7 @@ export default function OrderDetailPage(): ReactElement {
   const [reason, setReason] = useState('');
   /** Ценники позиций для «Готово — на склад»: `null` — форма закрыта. */
   const [pricing, setPricing] = useState<Record<number, string> | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
 
   const order = trpc.orders.byId.useQuery({ id: orderId }, { enabled: Number.isInteger(orderId) });
   const transitions = trpc.orders.availableTransitions.useQuery(
@@ -243,6 +247,30 @@ export default function OrderDetailPage(): ReactElement {
               <dt className="text-muted">Срок</dt>
               <dd className="text-primary">{formatDate(data.deadline)}</dd>
             </div>
+            {(data.installationAt !== null || INSTALLATION_SCHEDULABLE_STATUSES.includes(data.status)) && (
+              <div>
+                <dt className="text-muted">Установка</dt>
+                <dd className="text-primary">
+                  {data.installationAt === null ? (
+                    <span className="text-muted">время не назначено</span>
+                  ) : (
+                    `${formatInstallSlot(data.installationAt).date}, ${formatInstallSlot(data.installationAt).time}`
+                  )}
+                  {/* Перенести можно до выезда и только тем, кто назначает исполнителей. */}
+                  {canDispatch && INSTALLATION_SCHEDULABLE_STATUSES.includes(data.status) && (
+                    <button
+                      type="button"
+                      className="ml-2 font-semibold text-accent hover:underline"
+                      onClick={() => {
+                        setRescheduling(true);
+                      }}
+                    >
+                      {data.installationAt === null ? 'Назначить' : 'Перенести'}
+                    </button>
+                  )}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-muted">Филиал</dt>
               <dd className="text-primary">{data.branch.name}</dd>
@@ -254,6 +282,16 @@ export default function OrderDetailPage(): ReactElement {
           </dl>
         </CardBody>
       </Card>
+
+      <InstallationTimeDialog
+        open={rescheduling}
+        orderId={data.id}
+        orderLabel={data.orderNumber ?? `#${data.id.toString()}`}
+        current={data.installationAt}
+        onClose={() => {
+          setRescheduling(false);
+        }}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
         {/*

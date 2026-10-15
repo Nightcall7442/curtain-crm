@@ -1,5 +1,5 @@
 import { orders, type DbExecutor, type Order } from '@curtain-crm/db';
-import { canDispatchOrders, OrderStatus, type OrderStatus as OrderStatusName } from '@curtain-crm/shared';
+import { canDispatchOrders, INSTALLATION_SCHEDULABLE_STATUSES } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 
@@ -15,13 +15,6 @@ import { loadOrderForUpdate } from './orderWorkflow.service';
  * установщик» и назначение установщика: проверки, журнал и уведомление
  * не могут разойтись между ними.
  */
-
-/** Пока установщик не выехал, время можно поставить и перенести. */
-export const INSTALLATION_SCHEDULABLE_STATUSES: readonly OrderStatusName[] = [
-  OrderStatus.QC_PASSED,
-  OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
-  OrderStatus.INSTALLATION_ASSIGNED,
-];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YEAR_MS = 365 * DAY_MS;
