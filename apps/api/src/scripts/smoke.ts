@@ -1640,6 +1640,23 @@ async function run(db: Database): Promise<void> {
     () => tvCaller.display.board({ token: tvLink.token, group: MonitorGroup.WORKSHOP }),
     (message) => message === 'Ссылка недействительна',
   );
+
+  /* ------------------------ 8b. Номер машинки ---------------------------- */
+
+  await ceoCaller.users.update({ id: sewer.id, workstation: 3 });
+  const withWorkstation = await ceoCaller.users.byId({ id: sewer.id });
+  check('машинка: номер сохраняется и отдаётся в карточке', withWorkstation.workstation === 3, String(withWorkstation.workstation));
+  await expectRejected('машинка: 0 отбивается проверкой входа', () =>
+    ceoCaller.users.update({ id: sewer.id, workstation: 0 }),
+  );
+  await expectRejected('машинка: 100 отбивается проверкой входа', () =>
+    ceoCaller.users.update({ id: sewer.id, workstation: 100 }),
+  );
+  await expectRejectedWith(
+    'машинка: check-ограничение отбивает 100 мимо API',
+    () => db.execute(sql`update users set workstation = 100 where id = ${sewer.id}`),
+    (message) => message.includes('users_workstation_range'),
+  );
 }
 
 main().catch((error: unknown) => {

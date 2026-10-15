@@ -16,6 +16,8 @@ import {
   Role,
   ROLE_LABELS_RU,
   roleSchema,
+  WORKSTATION_MAX,
+  WORKSTATION_MIN,
   type Department,
   type EmploymentType,
 } from '@curtain-crm/shared';
@@ -108,10 +110,15 @@ export interface UserDto {
   /** Готовая ссылка на фото; `null`, если фото не загружено. */
   readonly avatarUrl: string | null;
   readonly sewerCategory: number | null;
+  /** Номер швейной машинки; `null` — не закреплена. */
+  readonly workstation: number | null;
   readonly roles: readonly Role[];
   readonly branchIds: readonly number[];
   readonly primaryBranchId: number | null;
 }
+
+/** Номер швейной машинки: пусто — `null`, машинка не закреплена. */
+const workstationSchema = z.number().int().min(WORKSTATION_MIN).max(WORKSTATION_MAX).nullable();
 
 /**
  * Загружает сотрудников вместе с ролями и филиалами.
@@ -175,6 +182,7 @@ async function loadUsers(executor: DbExecutor, userIds: readonly number[]): Prom
         avatarUrl: avatarUrls.get(row.id) ?? null,
         /** Категория швеи, поставленная руками; `null` — считается по рейтингу. */
         sewerCategory: row.sewerCategory,
+        workstation: row.workstation,
         roles: row.roles.map((entry) => entry.role),
         branchIds: row.branches.map((entry) => entry.branchId),
         primaryBranchId: row.branches.find((entry) => entry.isPrimary)?.branchId ?? null,
@@ -553,6 +561,7 @@ export const usersRouter = router({
         employmentType: employmentTypeSchema.default('permanent'),
         birthDate: z.string().date().optional(),
         hiredAt: z.string().date().optional(),
+        workstation: workstationSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -582,6 +591,7 @@ export const usersRouter = router({
             employmentType: input.employmentType,
             birthDate: input.birthDate ?? null,
             hiredAt: input.hiredAt ?? null,
+            workstation: input.workstation ?? null,
           })
           .onConflictDoNothing()
           .returning({ id: users.id });
@@ -647,6 +657,7 @@ export const usersRouter = router({
         employmentType: employmentTypeSchema.optional(),
         birthDate: z.string().date().nullable().optional(),
         hiredAt: z.string().date().nullable().optional(),
+        workstation: workstationSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) =>
@@ -661,6 +672,7 @@ export const usersRouter = router({
             : { employmentType: input.employmentType }),
           ...(input.birthDate === undefined ? {} : { birthDate: input.birthDate }),
           ...(input.hiredAt === undefined ? {} : { hiredAt: input.hiredAt }),
+          ...(input.workstation === undefined ? {} : { workstation: input.workstation }),
         };
 
         if (Object.keys(patch).length === 0) return loadUserOrThrow(tx, input.id);

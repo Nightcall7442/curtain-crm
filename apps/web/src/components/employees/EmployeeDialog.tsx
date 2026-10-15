@@ -5,11 +5,13 @@ import {
   DEPARTMENTS,
   EMPLOYMENT_TYPE_LABELS_RU,
   EMPLOYMENT_TYPES,
+  Role,
   ROLE_LABELS_RU,
   ROLES,
+  WORKSTATION_MAX,
+  WORKSTATION_MIN,
   type Department,
   type EmploymentType,
-  type Role,
 } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 
@@ -46,6 +48,7 @@ export interface EmployeeDraft {
   readonly employmentType: EmploymentType;
   readonly birthDate: string | null;
   readonly hiredAt: string | null;
+  readonly workstation: number | null;
   readonly roles: readonly Role[];
   readonly branchIds: readonly number[];
   readonly primaryBranchId: number | null;
@@ -71,6 +74,7 @@ export function EmployeeDialog({
   const [employmentType, setEmploymentType] = useState<EmploymentType>('permanent');
   const [birthDate, setBirthDate] = useState('');
   const [hiredAt, setHiredAt] = useState('');
+  const [workstation, setWorkstation] = useState('');
   const [roles, setRoles] = useState<Role[]>([]);
   const [branchIds, setBranchIds] = useState<number[]>([]);
 
@@ -89,6 +93,7 @@ export function EmployeeDialog({
     setEmploymentType(employee?.employmentType ?? 'permanent');
     setBirthDate(employee?.birthDate ?? '');
     setHiredAt(employee?.hiredAt ?? '');
+    setWorkstation(employee?.workstation?.toString() ?? '');
     setRoles([...(employee?.roles ?? [])]);
     setBranchIds([...(employee?.branchIds ?? [])]);
   }, [open, employee]);
@@ -120,6 +125,11 @@ export function EmployeeDialog({
   const errors = fieldErrors(isEdit ? update.error : create.error);
   const pending = create.isPending || update.isPending || setBranches.isPending;
 
+  // Машинка есть только у швеи; у остальных поле скрыто и не отправляется,
+  // чтобы правка анкеты не стирала номер незаметно.
+  const isSewer = roles.includes(Role.SEWER);
+  const workstationValue = workstation.trim().length > 0 ? Number(workstation) : null;
+
   const handleSubmit = (): void => {
     if (isEdit) {
       update.mutate({
@@ -131,6 +141,7 @@ export function EmployeeDialog({
         employmentType,
         birthDate: birthDate.length > 0 ? birthDate : null,
         hiredAt: hiredAt.length > 0 ? hiredAt : null,
+        ...(isSewer ? { workstation: workstationValue } : {}),
       });
 
       // Филиалы меняются отдельной процедурой — она доступна и админу,
@@ -152,6 +163,7 @@ export function EmployeeDialog({
       employmentType,
       ...(birthDate.length > 0 ? { birthDate } : {}),
       ...(hiredAt.length > 0 ? { hiredAt } : {}),
+      ...(isSewer && workstationValue !== null ? { workstation: workstationValue } : {}),
     });
   };
 
@@ -287,6 +299,21 @@ export function EmployeeDialog({
               }}
             />
           </Field>
+
+          {isSewer && (
+            <Field label="Номер машинки" error={errors['workstation']} hint="По нему швею находят на табло цеха">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={WORKSTATION_MIN}
+                max={WORKSTATION_MAX}
+                value={workstation}
+                onChange={(event) => {
+                  setWorkstation(event.target.value);
+                }}
+              />
+            </Field>
+          )}
         </div>
 
         {/* Роли задаются только при создании: у существующего сотрудника
