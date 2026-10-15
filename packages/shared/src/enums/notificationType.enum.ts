@@ -72,6 +72,8 @@ export const NOTIFICATION_TYPES = [
   'terminal_check_due',
   /** Руководство зафиксировало нарушение или поощрение — узнаёт сотрудник. */
   'discipline_recorded',
+  /** Установщику назначили или перенесли дату и время установки. */
+  'installation_scheduled',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -101,6 +103,7 @@ export const NotificationType = {
   DISCIPLINE_RECORDED: 'discipline_recorded',
   TERMINAL_CHECK_CREATED: 'terminal_check_created',
   TERMINAL_CHECK_DUE: 'terminal_check_due',
+  INSTALLATION_SCHEDULED: 'installation_scheduled',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -152,6 +155,8 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   terminal_check_created: 'info',
   // Цель дня не закрыта — продавцу надо действовать, а не принять к сведению.
   terminal_check_due: 'warning',
+  // Когда ехать к клиенту — рядовой ход заказа, как назначение.
+  installation_scheduled: 'info',
 };
 
 /**
@@ -211,6 +216,7 @@ const ORDER_NOTIFICATIONS: ReadonlySet<NotificationType> = new Set([
   'order_cancelled',
   'order_completed',
   'order_comment_added',
+  'installation_scheduled',
 ]);
 
 export function notificationDestination(

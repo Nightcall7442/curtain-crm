@@ -71,6 +71,7 @@ import {
   changeOrderStatus,
   loadOrderForUpdate,
 } from '../services/orderWorkflow.service';
+import { setInstallationTime } from '../services/installationSchedule.service';
 import { post } from '../services/ledger.service';
 import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
@@ -1424,6 +1425,8 @@ export const ordersRouter = router({
          * Роль задаёт целевой статус, поэтому здесь только человек.
          */
         assigneeId: idSchema.optional(),
+        /** Время установки — только при переходе в «Назначен установщик». */
+        installationAt: z.date().optional(),
         /** Ценники позиций — только для «Готово — на склад» у пошива на склад. */
         stockPrices: z
           .array(z.object({ itemId: idSchema, price: moneySchema.refine((value) => value > 0, 'Укажите цену') }))
@@ -1442,6 +1445,18 @@ export const ordersRouter = router({
           stockPrices: input.stockPrices?.map((entry) => ({ itemId: entry.itemId, price: parseMoney(entry.price) })) ?? null,
           ipAddress: ctx.ipAddress,
         });
+
+        // Время — после назначения, в той же транзакции: установщик получает
+        // и «Новый заказ», и «Установка …: … в …».
+        if (input.installationAt !== undefined && input.toStatus === OrderStatus.INSTALLATION_ASSIGNED) {
+          const order = await setInstallationTime(tx, {
+            orderId: input.id,
+            at: input.installationAt,
+            actor: ctx.user,
+            ipAddress: ctx.ipAddress,
+          });
+          return { ...result, order: maskStageFees(order, ctx.user) };
+        }
 
         // Переход возвращает заказ целиком — вместе с расценками всех этапов.
         // Швея, отправившая работу на контроль, получила бы в ответе сумму
@@ -1549,18 +1564,47 @@ export const ordersRouter = router({
         id: idSchema,
         role: assignableRoleSchema,
         assigneeId: idSchema.nullable(),
+        /** Время установки — только при назначении установщика. */
+        installationAt: z.date().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) =>
-      ctx.db.transaction(async (tx) =>
-        assignExecutor(tx, {
+      ctx.db.transaction(async (tx) => {
+        const order = await assignExecutor(tx, {
           orderId: input.id,
           role: input.role,
           assigneeId: input.assigneeId,
           actor: ctx.user,
           ipAddress: ctx.ipAddress,
-        }),
-      ),
+        });
+        if (input.installationAt === undefined || input.role !== Role.INSTALLER || input.assigneeId === null) {
+          return order;
+        }
+        return setInstallationTime(tx, {
+          orderId: input.id,
+          at: input.installationAt,
+          actor: ctx.user,
+          ipAddress: ctx.ipAddress,
+        });
+      }),
+    ),
+
+  /**
+   * Дата и время установки: поставить, перенести или убрать (`at: null`).
+   * Пока установщик не выехал; назначенный установщик получает уведомление.
+   */
+  scheduleInstallation: orderDispatchProcedure
+    .input(z.object({ orderId: idSchema, at: z.date().nullable() }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const order = await setInstallationTime(tx, {
+          orderId: input.orderId,
+          at: input.at,
+          actor: ctx.user,
+          ipAddress: ctx.ipAddress,
+        });
+        return maskStageFees(order, ctx.user);
+      }),
     ),
 
   /** Полная история переходов статуса. Только добавление, никогда перезапись. */

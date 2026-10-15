@@ -181,4 +181,5 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   discipline_recorded: 'badge',
   terminal_check_created: 'paid',
   terminal_check_due: 'camera',
+  installation_scheduled: 'calendar',
 };

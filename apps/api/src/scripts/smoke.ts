@@ -44,6 +44,7 @@ import {
   LiveStatus,
   MonitorGroup,
   moneyToDecimalString,
+  NotificationType,
   ORDER_STATUS_LABELS_RU,
   OrderItemKind,
   OrderStatus,
@@ -1805,6 +1806,101 @@ async function run(db: Database): Promise<void> {
     'табло: без плана карнизчика остаётся план установщика',
     afterReset?.target === 10 + corniceNorm,
     `${JSON.stringify(afterReset)}, норма карнизчика ${corniceNorm.toString()}`,
+  );
+
+  /* -------------------- 8f. Дата и время установки ----------------------- */
+
+  const makeInstallOrder = async (label: string, status: OrderStatus, installerId: number | null) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} ${label}`,
+        clientPhone: '+998901112292',
+        createdBy: seller.id,
+        status,
+        installerId,
+        installAddress: 'ул. Смоука, 1',
+      })
+      .returning();
+    if (row === undefined) throw new Error(`заказ «${label}» не создан`);
+    return row;
+  };
+  const installationAtOf = async (orderId: number) =>
+    (await db.select({ at: orders.installationAt }).from(orders).where(eq(orders.id, orderId)))[0]?.at ?? null;
+  const scheduleNotes = (orderId: number) =>
+    db
+      .select({ type: notifications.type, title: notifications.title })
+      .from(notifications)
+      .where(and(eq(notifications.userId, installer.id), eq(notifications.relatedOrderId, orderId)));
+  // Послезавтра в 10:30 по Ташкенту.
+  const slotAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  slotAt.setUTCHours(5, 30, 0, 0);
+
+  const scheduled = await makeInstallOrder('Установка по времени', OrderStatus.INSTALLATION_ASSIGNED, installer.id);
+  await ceoCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: slotAt });
+  check('установка: время записано', (await installationAtOf(scheduled.id))?.getTime() === slotAt.getTime());
+  const [scheduleAudit] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, 'order.installation_scheduled'), eq(auditLog.entityId, scheduled.id)));
+  const scheduleDetails = JSON.stringify(scheduleAudit?.details ?? null);
+  check(
+    'установка: в журнале «было» и «стало»',
+    scheduleDetails.includes('"from":null') && scheduleDetails.includes(slotAt.toISOString()),
+    scheduleDetails,
+  );
+  const scheduledNotes = (await scheduleNotes(scheduled.id)).filter(
+    (note) => note.type === NotificationType.INSTALLATION_SCHEDULED,
+  );
+  check(
+    'установка: установщику одно уведомление со временем по Ташкенту',
+    scheduledNotes.length === 1 && scheduledNotes[0]?.title.endsWith('в 10:30') === true,
+    JSON.stringify(scheduledNotes),
+  );
+
+  const unassigned = await makeInstallOrder('Установка без установщика', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  await ceoCaller.orders.scheduleInstallation({ orderId: unassigned.id, at: slotAt });
+  const unassignedNotes = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(eq(notifications.relatedOrderId, unassigned.id));
+  check(
+    'установка: без установщика время пишется, уведомлений нет',
+    (await installationAtOf(unassigned.id))?.getTime() === slotAt.getTime() && unassignedNotes.length === 0,
+    `уведомлений ${unassignedNotes.length.toString()}`,
+  );
+
+  await ceoCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: null });
+  check('установка: null убирает время', (await installationAtOf(scheduled.id)) === null);
+  await expectRejectedWith(
+    'установка: в пошиве время не меняется',
+    () => ceoCaller.orders.scheduleInstallation({ orderId: sewingNow.id, at: slotAt }),
+    (message) => message === 'Время установки меняется до выезда',
+  );
+  await expectRejectedWith(
+    'установка: двое суток назад — отказ',
+    () => ceoCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) }),
+    (message) => message === 'Время установки — не раньше вчерашнего дня',
+  );
+  await expectRejected('установка: швее процедура закрыта', () =>
+    sewerCaller.orders.scheduleInstallation({ orderId: scheduled.id, at: slotAt }),
+  );
+
+  const viaStatus = await makeInstallOrder('Установка с переходом', OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, null);
+  await ceoCaller.orders.changeStatus({
+    id: viaStatus.id,
+    toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+    assigneeId: installer.id,
+    installationAt: slotAt,
+  });
+  const viaTypes = (await scheduleNotes(viaStatus.id)).map((note) => note.type);
+  check(
+    'установка: переход с временем — назначение, время и оба уведомления',
+    (await installationAtOf(viaStatus.id))?.getTime() === slotAt.getTime() &&
+      viaTypes.includes(NotificationType.ORDER_ASSIGNED) &&
+      viaTypes.includes(NotificationType.INSTALLATION_SCHEDULED),
+    viaTypes.join(', '),
   );
 }
 

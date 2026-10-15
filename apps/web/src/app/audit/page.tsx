@@ -91,6 +91,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'order.status_changed': 'Статус изменён',
   'order.cancelled': 'Заказ отменён',
   'order.assignee_changed': 'Исполнитель изменён',
+  'order.installation_scheduled': 'Время установки изменено',
   'order.price_changed': 'Цена изменена',
   'order.stage_fees_changed': 'Расценки по этапам изменены',
   'order.item_meters_changed': 'Метраж позиции изменён',

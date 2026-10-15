@@ -88,6 +88,12 @@ export const orders = pgTable(
 
     deadline: date('deadline'),
 
+    /**
+     * Когда установщик приедет к клиенту. Необязательно: заказ без времени
+     * попадает на табло в счётчик «Без времени». Меняется до выезда.
+     */
+    installationAt: timestamp('installation_at', { withTimezone: true }),
+
     /* --- Деньги ------------------------------------------------------------ */
 
     /** Стоимость работ для клиента — уже со скидкой. Себестоимость считается по `purchases`. */
@@ -229,6 +235,10 @@ export const orders = pgTable(
     // Очередь карнизчиков: заказы, где карниз ещё не повешен.
     index('orders_cornice_status_idx').on(table.corniceStatus),
     index('orders_deadline_idx').on(table.deadline),
+    // «Установки сегодня» на табло: время есть у малой части заказов.
+    index('orders_installation_at_idx')
+      .on(table.installationAt)
+      .where(sql`${table.installationAt} is not null`),
     index('orders_client_phone_idx').on(table.clientPhone),
     index('orders_created_at_idx').on(table.createdAt),
     // Основной запрос списка: активные заказы филиала, свежие сверху.
