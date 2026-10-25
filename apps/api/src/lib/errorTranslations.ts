@@ -354,6 +354,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Укажите причину: действие «{action}» требует комментария', "Sababni ko'rsating: «{action}» amali izoh talab qiladi"],
   ['Статус «{status}» не требует исполнителя — назначьте его отдельно', "«{status}» holati ijrochi talab qilmaydi — uni alohida tayinlang"],
   ['Сначала назначьте исполнителя с ролью «{role}»', 'Avval «{role}» rolli ijrochini tayinlang'],
+  ['У сотрудника нет роли «{role}». Роли меняет директор', "Xodimda «{role}» roli yo'q. Rollarni direktor o'zgartiradi"],
   ['Заказ {order} закреплён за другим сотрудником', '{order} buyurtmasi boshqa xodimga biriktirilgan'],
   ['Сначала соберитесь на выезд. Не отмечено: {items} и ещё {n}', "Avval chiqishga yig'iling. Belgilanmagan: {items} va yana {n}"],
   ['Сначала соберитесь на выезд. Не отмечено: {items}', "Avval chiqishga yig'iling. Belgilanmagan: {items}"],

@@ -1,4 +1,5 @@
 import {
+  auditLog,
   hashPassword,
   payrollRecords,
   userBranches,
@@ -843,6 +844,43 @@ export const usersRouter = router({
         return loadUserOrThrow(tx, input.id);
       }),
     ),
+
+  /**
+   * Роли, которые выдала система, а не директор.
+   *
+   * До выпуска 3 назначение на заказ само выдавало недостающую роль —
+   * продавщица, поставленная на установку, становилась установщиком. Теперь
+   * так нельзя, а выданное раньше осталось. Директор видит здесь каждую такую
+   * роль, которая всё ещё действует, и решает, снять её или оставить.
+   *
+   * Признак — запись журнала `user.role_granted` с `viaOrderAssignment`:
+   * у `user_roles` своего признака нет.
+   */
+  autoGrantedRoles: ceoProcedure.query(async ({ ctx }) => {
+    const grantedBy = sql<string | null>`(select g.full_name from users g where g.id = ${userRoles.grantedBy})`;
+    const rows = await ctx.db
+      .selectDistinctOn([userRoles.userId, userRoles.role], {
+        userId: userRoles.userId,
+        fullName: users.fullName,
+        role: userRoles.role,
+        grantedAt: userRoles.grantedAt,
+        grantedByName: grantedBy,
+      })
+      .from(userRoles)
+      .innerJoin(users, eq(users.id, userRoles.userId))
+      .innerJoin(
+        auditLog,
+        and(
+          eq(auditLog.action, 'user.role_granted'),
+          eq(auditLog.entityId, userRoles.userId),
+          sql`${auditLog.details}->>'role' = ${userRoles.role}::text`,
+          sql`${auditLog.details}->>'viaOrderAssignment' = 'true'`,
+        ),
+      )
+      .orderBy(userRoles.userId, userRoles.role);
+
+    return rows.sort((a, b) => b.grantedAt.getTime() - a.grantedAt.getTime());
+  }),
 
   /** Привязка сотрудника к филиалам. */
   /**

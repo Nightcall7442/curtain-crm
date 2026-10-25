@@ -2040,8 +2040,9 @@ async function run(db: Database): Promise<void> {
     `${String(managerAssign.sewingFee)} / ${String(managerAssign.installationFee)}`,
   );
 
-  // Подработка: швее при назначении на установку выдаётся роль установщика.
-  // План в «Рабочих» — по группе её табло (цех), а не сумма штук и заказов.
+  // Подработка: директор выдал швее роль установщика (вручную — назначение
+  // ролей не выдаёт). План в «Рабочих» — по группе её табло (цех), а не сумма
+  // штук и заказов.
   await db.insert(userRoles).values({ userId: sewerB.id, role: Role.INSTALLER, grantedBy: sewerB.id });
   await ceoCaller.monitor.plans.setPersonal({ userId: sewerB.id, role: Role.INSTALLER, month: currentMonth, target: 5 });
   const [mixed] = await ceoCaller.users.performance({
@@ -2053,6 +2054,65 @@ async function run(db: Database): Promise<void> {
     'рабочие: у швеи с подработкой установщика — план швеи',
     mixed?.plan === currentNorm,
     `${String(mixed?.plan)} (ждали ${String(currentNorm)})`,
+  );
+
+  /* ------------------ 9. Выпуск 3: роли, долги, правка ------------------- */
+
+  const rolesOf = async (userId: number): Promise<string[]> =>
+    (await db.select({ role: userRoles.role }).from(userRoles).where(eq(userRoles.userId, userId)))
+      .map((row) => row.role)
+      .sort();
+
+  // Назначение на заказ ролей не выдаёт: продавца установщиком не поставить.
+  await expectRejectedWith(
+    'роли: назначить продавца установщиком нельзя',
+    () => managerCaller.orders.assign({ id: timedFirst.id, role: Role.INSTALLER, assigneeId: seller.id }),
+    (message) => message === 'У сотрудника нет роли «Установщик». Роли меняет директор',
+  );
+  const [awaitingInstaller] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Без роли`,
+      clientPhone: '+998901112255',
+      createdBy: seller.id,
+      workPrice: '100000.00',
+      status: OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+    })
+    .returning();
+  if (awaitingInstaller === undefined) throw new Error('заказ без роли не создан');
+  await expectRejectedWith(
+    'роли: и вместе с переходом статуса — тоже',
+    () =>
+      managerCaller.orders.changeStatus({
+        id: awaitingInstaller.id,
+        toStatus: OrderStatus.INSTALLATION_ASSIGNED,
+        assigneeId: seller.id,
+      }),
+    (message) => message.startsWith('У сотрудника нет роли «Установщик»'),
+  );
+  check('роли: у продавца по-прежнему одна роль', (await rolesOf(seller.id)).join() === Role.SELLER);
+
+  // Старая автовыдача: роль и запись журнала остались с прошлых назначений.
+  await db.insert(userRoles).values({ userId: seller.id, role: Role.INSTALLER, grantedBy: admin.id });
+  await db.insert(auditLog).values({
+    actorId: admin.id,
+    action: 'user.role_granted',
+    entityType: 'user',
+    entityId: seller.id,
+    details: { role: Role.INSTALLER, viaOrderAssignment: true },
+  });
+  const autoGranted = await ceoCaller.users.autoGrantedRoles();
+  check(
+    'роли: директор видит роль, выданную системой',
+    autoGranted.some((row) => row.userId === seller.id && row.role === Role.INSTALLER),
+    JSON.stringify(autoGranted.map((row) => [row.fullName, row.role])),
+  );
+  await expectRejected('роли: админ списка автовыдачи не видит', () => caller.users.autoGrantedRoles());
+  await ceoCaller.users.revokeRole({ id: seller.id, role: Role.INSTALLER });
+  check(
+    'роли: снятая роль из списка уходит',
+    !(await ceoCaller.users.autoGrantedRoles()).some((row) => row.userId === seller.id),
   );
 }
 
