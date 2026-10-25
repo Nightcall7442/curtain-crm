@@ -26,6 +26,7 @@ import { Suspense, useMemo, useState, type ReactElement } from 'react';
 
 import { AttendanceHeatmap, ColumnChart, ProgressBar } from '@/components/charts/Bars';
 import { Donut, DonutLegend, Gauge } from '@/components/charts/Donut';
+import { AutoGrantedRoles } from '@/components/employees/AutoGrantedRoles';
 import { EmployeeActions } from '@/components/employees/EmployeeActions';
 import { EmployeeDialog, type EmployeeDraft } from '@/components/employees/EmployeeDialog';
 import {
@@ -256,6 +257,9 @@ function EmployeesInner({ initialSearch = '' }: { readonly initialSearch?: strin
           </CardBody>
         </Card>
       )}
+
+      {/* --- Роли, выданные системой: только директору и только непустой ---- */}
+      <AutoGrantedRoles />
 
       {/*
         Список — ВЫШЕ разрезов штата (ревизия «Диспетчерская», П2):

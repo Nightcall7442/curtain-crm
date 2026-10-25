@@ -296,7 +296,7 @@ function AssigneeSelect({
   readonly disabled: boolean;
   readonly onChange: (assigneeId: number | null) => void;
 }): ReactElement {
-  const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(role, value);
+  const { loading, candidates } = useAssigneeCandidates(role, value);
   // Категория швеи прямо в списке: кого ставить на дорогой заказ, видно до выбора.
   const categories = trpc.rating.sewerCategories.useQuery(undefined, {
     enabled: role === Role.SEWER,
@@ -324,15 +324,6 @@ function AssigneeSelect({
           return { value: person.id.toString(), label: `${person.fullName}${suffix}` };
         })}
       />
-      {canShowMore && (
-        <button
-          type="button"
-          className="mt-1 text-footnote text-accent hover:underline"
-          onClick={showMore}
-        >
-          Ещё сотрудники
-        </button>
-      )}
     </Field>
   );
 }
