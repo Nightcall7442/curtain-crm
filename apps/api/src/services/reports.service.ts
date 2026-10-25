@@ -246,7 +246,19 @@ export async function deadlinesReport(
   const from = sql`${sqlTimestamp(bounds.start)}::timestamptz`;
   const to = sql`${sqlTimestamp(bounds.end)}::timestamptz`;
   const branch = branchId === undefined ? sql`` : sql`and o.branch_id = ${branchId}`;
-  const lateDays = sql`(o.completed_at at time zone 'Asia/Tashkent')::date - o.deadline`;
+  /*
+    Опоздание — от завершения установки, а не от закрытия.
+
+    С выпуска 3 заказ с долгом ждёт оплаты в «Установка завершена» и
+    закрывается, когда клиент доплатит. Мерить срок по закрытию значило бы
+    записать в опоздавшие цех и установщиков за то, что клиент не заплатил.
+    Заказ без установки (продажа, пошив на склад) — по-прежнему по закрытию.
+  */
+  const doneAt = sql`coalesce(
+    (select max(h.created_at) from order_status_history h
+      where h.order_id = o.id and h.to_status = 'installation_done'),
+    o.completed_at)`;
+  const lateDays = sql`(${doneAt} at time zone 'Asia/Tashkent')::date - o.deadline`;
 
   const [[summary], lateRows, [reworkTotal], sewerRows] = await Promise.all([
     db.execute(sql`

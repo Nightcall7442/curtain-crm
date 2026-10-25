@@ -76,6 +76,7 @@ import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.ser
 import { loadPackList } from '../services/packList.service';
 import { balance, dayReport, onHands, orderPaid, post } from '../services/ledger.service';
 import { employeeRating } from '../services/rating.service';
+import { deadlinesReport } from '../services/reports.service';
 import { TRPCError } from '@trpc/server';
 
 import { appRouter } from '../routers';
@@ -2268,6 +2269,48 @@ async function run(db: Database): Promise<void> {
     paidSale.status === OrderStatus.COMPLETED &&
       installSale.status === OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
     `${paidSale.status} / ${installSale.status}`,
+  );
+
+  // Опоздание считается от завершения установки, а не от оплаты: заказ,
+  // поставленный в срок и оплаченный позже, — вовремя.
+  const daysAgoIso = (days: number): string => {
+    const at = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { year, month, day } = workshopToday(at);
+    return `${year.toString()}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+  };
+  const deadlineIso = daysAgoIso(5);
+  const lateFixture = async (label: string) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} Срок ${label}`,
+        clientPhone: '+998901112288',
+        createdBy: seller.id,
+        status: OrderStatus.COMPLETED,
+        completedAt: new Date(),
+        deadline: deadlineIso,
+      })
+      .returning();
+    if (row === undefined) throw new Error(`заказ «${label}» не создан`);
+    return row;
+  };
+  const installedOnTime = await lateFixture('установлен в срок');
+  await db.insert(orderStatusHistory).values({
+    orderId: installedOnTime.id,
+    fromStatus: OrderStatus.INSTALLATION_IN_PROGRESS,
+    toStatus: OrderStatus.INSTALLATION_DONE,
+    changedBy: installer.id,
+    createdAt: new Date(`${deadlineIso}T10:00:00+05:00`),
+  });
+  const closedLate = await lateFixture('без установки');
+  const nowPeriod = workshopToday();
+  const lateness = await deadlinesReport(db, { year: nowPeriod.year, month: nowPeriod.month }, branch.id);
+  const lateIds = lateness.lateOrders.map((row) => row.id);
+  check(
+    'сроки: установлен в срок и оплачен позже — вовремя; закрыт без установки позже срока — опоздал',
+    !lateIds.includes(installedOnTime.id) && lateIds.includes(closedLate.id),
+    JSON.stringify(lateness.lateOrders.filter((row) => [installedOnTime.id, closedLate.id].includes(row.id)).map((row) => [row.clientName, row.lateDays])),
   );
 }
 
