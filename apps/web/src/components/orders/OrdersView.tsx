@@ -687,7 +687,7 @@ export function OrdersView({
               <span className="flex max-w-[15rem] items-center gap-2">
                 <OrderStatusDot status={row.status} />
                 <OrderTypeBadge orderType={row.orderType} />
-                {isAwaitingPayment(row) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL.ru}</Badge>}
+                {isAwaitingPayment(row) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL[locale]}</Badge>}
               </span>
             ),
           },

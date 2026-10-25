@@ -27,7 +27,7 @@ import {
   type PlanRole,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, eq, exists, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, exists, gte, ilike, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
@@ -875,6 +875,9 @@ export const usersRouter = router({
           eq(auditLog.entityId, userRoles.userId),
           sql`${auditLog.details}->>'role' = ${userRoles.role}::text`,
           sql`${auditLog.details}->>'viaOrderAssignment' = 'true'`,
+          // Запись о той же выдаче, а не о прошлой: роль, снятую и выданную
+          // директором заново, система не выдавала.
+          gte(auditLog.createdAt, userRoles.grantedAt),
         ),
       )
       .orderBy(userRoles.userId, userRoles.role);

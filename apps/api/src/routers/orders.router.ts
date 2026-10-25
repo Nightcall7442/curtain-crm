@@ -49,6 +49,7 @@ import {
   TransitionKind,
   type OrderPhase,
   Role,
+  type Locale,
   type OrderStageFee,
   workshopToday,
 } from '@curtain-crm/shared';
@@ -71,6 +72,7 @@ import {
   orderDispatchProcedure,
   orderIntakeProcedure,
 } from '../middleware/roleGuard.middleware';
+import { translateErrorMessage } from '../lib/errorTranslations';
 import { recordAudit } from '../services/audit.service';
 import {
   assertCanAccessOrder,
@@ -499,6 +501,11 @@ async function applyPriceChange(
     ipAddress,
   });
   return true;
+}
+
+/** Причина недоступного перехода — на языке клиента, как и ошибки. */
+function translateBlocked(reason: string | null, locale: Locale): string | null {
+  return reason === null ? null : translateErrorMessage(reason, locale);
 }
 
 export const ordersRouter = router({
@@ -1706,7 +1713,7 @@ export const ordersRouter = router({
         kind: transition.kind,
         requiresComment: transition.kind !== TransitionKind.FORWARD,
         /** Почему переход сейчас недоступен — кнопка видна, но неактивна. */
-        blockedReason: transitionBlockedReason(order, transition.to),
+        blockedReason: translateBlocked(transitionBlockedReason(order, transition.to), ctx.locale),
       }));
     }),
 

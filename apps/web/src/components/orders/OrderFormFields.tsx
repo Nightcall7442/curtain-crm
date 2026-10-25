@@ -3,8 +3,8 @@
 import {
   CatalogKind,
   curtainMountKindOf,
-  CurtainMountKind,
   MATERIAL_CODE_KINDS,
+  mountSlotsToSend,
   type OrderItemMaterial,
 } from '@curtain-crm/shared';
 import { Plus } from 'lucide-react';
@@ -87,6 +87,7 @@ export function useOrderCatalog(enabled: boolean): ItemCatalog {
     options: (kind) => (byKind.get(kind) ?? []).map((name) => ({ value: name, label: name })),
     accessoryOptions,
     mountOf: (model) => curtainMountKindOf(mountByModel.get(model)),
+    knownMountOf: (model) => (mountByModel.has(model) ? curtainMountKindOf(mountByModel.get(model)) : null),
     describeCode: (kind, code) => codeDescriptions.get(`${kind}:${code.trim().toLowerCase()}`) ?? null,
   };
 }
@@ -95,17 +96,18 @@ export function useOrderCatalog(enabled: boolean): ItemCatalog {
 export function itemDraftToInput(item: ItemDraft, catalog: ItemCatalog) {
   /*
     Строки материала, которых у этой модели не бывает, не уезжают на
-    сервер, даже если продавец успел их заполнить до смены модели.
+    сервер, даже если продавец успел их заполнить до смены модели. Модель,
+    которой нет в справочнике, ничего не отбрасывает (`mountSlotsToSend`).
   */
-  const onPipe = catalog.mountOf(item.model) === CurtainMountKind.PIPE;
+  const slots = mountSlotsToSend(catalog.knownMountOf(item.model));
   const material = (draft: MaterialDraft, kind: string) =>
     toMaterial(draft, catalog.describeCode(kind, draft.code));
 
   const tulle = material(item.tulle, MATERIAL_CODE_KINDS.tulle);
   const protection = material(item.protection, MATERIAL_CODE_KINDS.protection);
-  const cornice = onPipe ? undefined : material(item.cornice, MATERIAL_CODE_KINDS.cornice);
-  const plastic = onPipe ? undefined : material(item.plastic, MATERIAL_CODE_KINDS.plastic);
-  const pipe = onPipe ? material(item.pipe, MATERIAL_CODE_KINDS.pipe) : undefined;
+  const cornice = slots.cornice ? material(item.cornice, MATERIAL_CODE_KINDS.cornice) : undefined;
+  const plastic = slots.cornice ? material(item.plastic, MATERIAL_CODE_KINDS.plastic) : undefined;
+  const pipe = slots.pipe ? material(item.pipe, MATERIAL_CODE_KINDS.pipe) : undefined;
 
   return {
     kind: item.kind,

@@ -57,16 +57,24 @@ export function OrderPhotoUpload({
   const photos = trpc.orderPhotos.listByOrder.useQuery({ orderId });
 
   const upload = trpc.orderPhotos.upload.useMutation({
-    async onSuccess(result) {
+    async onSuccess(result, variables) {
       await utils.orderPhotos.listByOrder.invalidate({ orderId });
 
-      if (result.autoCompleted) {
+      // Фото «после установки» меняет статус: закрывает заказ или, при долге,
+      // переводит его в «Установка завершена». Обновляем в обоих случаях.
+      const installPhoto = variables.stage === AUTO_COMPLETE_PHOTO_STAGE;
+      if (result.autoCompleted || installPhoto) {
         await Promise.all([
           utils.orders.byId.invalidate({ id: orderId }),
           utils.orders.availableTransitions.invalidate({ id: orderId }),
+          utils.orders.history.invalidate({ id: orderId }),
           utils.orders.list.invalidate(),
         ]);
+      }
+      if (result.autoCompleted) {
         Alert.alert(m('photo.closedTitle'), m('photo.closedBody'));
+      } else if (installPhoto && autoCompletesOnInstallPhoto(orderStatus)) {
+        Alert.alert(m('photo.waitsPaymentTitle'), m('photo.waitsPaymentBody'));
       }
     },
     onError(error) {

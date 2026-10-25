@@ -10,7 +10,9 @@ import {
   currentExecutorRole,
   editedMaterialMeters,
   isAwaitingPayment,
+  mountSlotsToSend,
 } from './rules';
+import { CurtainMountKind } from '../constants/catalog';
 
 describe('исполнитель этапа', () => {
   it('пошив — швея', () => expect(currentExecutorRole(OrderStatus.SEWING_IN_PROGRESS)).toBe(Role.SEWER));
@@ -76,4 +78,13 @@ describe('метраж при правке позиции', () => {
     expect(editedMaterialMeters({ code: 'П-40', originalCode: 'П-31', meters: 3.5 })).toBeNull());
   it('новый материал — без метража', () =>
     expect(editedMaterialMeters({ code: 'П-40', originalCode: null, meters: null })).toBeNull());
+});
+
+describe('строки крепления при отправке позиции', () => {
+  it('труба — без карниза и пластика', () =>
+    expect(mountSlotsToSend(CurtainMountKind.PIPE)).toEqual({ cornice: false, pipe: true }));
+  it('карниз — без трубы', () =>
+    expect(mountSlotsToSend(CurtainMountKind.CORNICE)).toEqual({ cornice: true, pipe: false }));
+  it('модель неизвестна справочнику — ничего не отбрасываем', () =>
+    expect(mountSlotsToSend(null)).toEqual({ cornice: true, pipe: true }));
 });

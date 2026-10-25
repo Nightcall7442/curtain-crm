@@ -53,14 +53,20 @@ export function OrderPayments({
   const remainingValue = remaining === null ? 0 : parseMoney(remaining);
 
   const accept = trpc.payments.acceptForOrder.useMutation({
-    async onSuccess() {
+    async onSuccess(result) {
       notifySuccess();
       setOpen(false);
+      // Последний платёж сам закрывает заказ, ждавший оплаты: обновляем и
+      // переходы с историей, иначе на экране останутся кнопки закрытого заказа.
       await Promise.all([
         utils.orders.byId.invalidate({ id: orderId }),
+        utils.orders.availableTransitions.invalidate({ id: orderId }),
+        utils.orders.history.invalidate({ id: orderId }),
+        utils.orders.list.invalidate(),
         utils.payments.byOrder.invalidate({ orderId }),
         utils.payments.onHands.invalidate(),
       ]);
+      if (result.closed) Alert.alert(m('pay.closedTitle'), m('pay.closedBody'));
     },
     onError(error) {
       Alert.alert(m('common.saveError'), error.message);

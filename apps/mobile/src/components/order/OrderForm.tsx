@@ -1,8 +1,8 @@
 import {
   CatalogKind,
-  CurtainMountKind,
   curtainMountKindOf,
   MATERIAL_CODE_KINDS,
+  mountSlotsToSend,
   type OrderItemMaterial,
 } from '@curtain-crm/shared';
 import { useMemo, type ReactElement } from 'react';
@@ -80,6 +80,7 @@ export function useOrderCatalog(): ItemCatalog {
     modelOptions: byKind.get(CatalogKind.CURTAIN_MODEL) ?? [],
     accessoryOptions,
     mountOf: (model) => curtainMountKindOf(mountByModel.get(model)),
+    knownMountOf: (model) => (mountByModel.has(model) ? curtainMountKindOf(mountByModel.get(model)) : null),
     describeCode: (kind, code) => codeDescriptions.get(`${kind}:${code.trim().toLowerCase()}`) ?? null,
   };
 }
@@ -88,17 +89,18 @@ export function useOrderCatalog(): ItemCatalog {
 export function draftItemToInput(item: DraftItem, catalog: ItemCatalog) {
   /*
     Строки материала, которых у этой модели не бывает, на сервер не
-    уезжают, даже если продавец успел их заполнить до смены модели.
+    уезжают, даже если продавец успел их заполнить до смены модели. Модель,
+    которой нет в справочнике, ничего не отбрасывает (`mountSlotsToSend`).
   */
-  const onPipe = catalog.mountOf(item.model) === CurtainMountKind.PIPE;
+  const slots = mountSlotsToSend(catalog.knownMountOf(item.model));
   const material = (draft: MaterialDraft, kind: string) =>
     toMaterial(draft, catalog.describeCode(kind, draft.code));
 
   const tulle = material(item.tulle, MATERIAL_CODE_KINDS.tulle);
   const protection = material(item.protection, MATERIAL_CODE_KINDS.protection);
-  const cornice = onPipe ? undefined : material(item.cornice, MATERIAL_CODE_KINDS.cornice);
-  const plastic = onPipe ? undefined : material(item.plastic, MATERIAL_CODE_KINDS.plastic);
-  const pipe = onPipe ? material(item.pipe, MATERIAL_CODE_KINDS.pipe) : undefined;
+  const cornice = slots.cornice ? material(item.cornice, MATERIAL_CODE_KINDS.cornice) : undefined;
+  const plastic = slots.cornice ? material(item.plastic, MATERIAL_CODE_KINDS.plastic) : undefined;
+  const pipe = slots.pipe ? material(item.pipe, MATERIAL_CODE_KINDS.pipe) : undefined;
 
   return {
     // Поля, которых форма телефона не показывает, — как пришли с сайта.

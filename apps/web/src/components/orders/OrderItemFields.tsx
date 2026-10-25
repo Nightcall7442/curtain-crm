@@ -187,6 +187,8 @@ export interface ItemCatalog {
   readonly accessoryOptions: readonly { readonly value: string; readonly label: string }[];
   /** Труба или пластик с карнизом — что спрашивать для выбранной модели. */
   readonly mountOf: (model: string) => string;
+  /** Крепление модели по справочнику; `null` — модели в справочнике нет. */
+  readonly knownMountOf: (model: string) => CurtainMountKind | null;
   /** Описание кода со склада — подсказка под полем. */
   readonly describeCode: (kind: string, code: string) => string | null;
 }

@@ -288,10 +288,15 @@ async function requireStockPrices(
   return prices;
 }
 
-/** «Остаток 800 000 сум — сначала примите оплату». */
+/**
+ * «Остаток 800 000 сум — сначала примите оплату».
+ *
+ * Валюта — словом в самом тексте, а не из `formatMoney`: перевод ищет фразу
+ * по шаблону, и в узбекской «сум» станет «so'm», а не останется чужим словом.
+ */
 function debtCloseMessage(order: Order): string {
   const remaining = parseMoney(order.remainingPayment ?? '0');
-  return `Остаток ${formatMoney(remaining)} — сначала примите оплату`;
+  return `Остаток ${formatMoney(remaining, { withCurrency: false })} сум — сначала примите оплату`;
 }
 
 /**
@@ -378,13 +383,6 @@ export async function changeOrderStatus(
     });
   }
 
-  /* 1a. С долгом заказ не закрывается — ни кнопкой, ни пачкой, ни
-     автозакрытием. Остаток читается из заказа под блокировкой, то есть
-     с проводками, сделанными в этой же транзакции. */
-  if (toStatus === OrderStatus.COMPLETED && closeBlockedByDebt(order)) {
-    throw new TRPCError({ code: 'CONFLICT', message: debtCloseMessage(order) });
-  }
-
   /* 2. Права роли на этот конкретный переход. */
   if (params.systemInitiated !== true) {
     if (!transition.roles.some((role) => actor.roles.includes(role))) {
@@ -401,6 +399,14 @@ export async function changeOrderStatus(
      закреплён за мной» — разные вопросы, и автозакрытие снимает только
      первый. */
   if (params.settlement !== true) assertActorOwnsOrder(order, actor, fromStatus);
+
+  /* 3a. С долгом заказ не закрывается — ни кнопкой, ни пачкой, ни
+     автозакрытием. Остаток читается из заказа под блокировкой, то есть
+     с проводками, сделанными в этой же транзакции. Проверка стоит ПОСЛЕ
+     прав: её текст называет сумму, а цеху деньги клиента не показывают. */
+  if (toStatus === OrderStatus.COMPLETED && closeBlockedByDebt(order)) {
+    throw new TRPCError({ code: 'CONFLICT', message: debtCloseMessage(order) });
+  }
 
   /* 4. Обязательный комментарий для откатов, отклонений и отмен. */
   const comment = params.comment?.trim() ?? '';

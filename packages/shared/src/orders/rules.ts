@@ -1,3 +1,4 @@
+import { CurtainMountKind } from '../constants/catalog';
 import { isTerminalStatus, OrderStatus } from '../enums/orderStatus.enum';
 import { OrderType } from '../enums/orderType.enum';
 import { canDispatchOrders, isManagement, Role, type AssignableRole } from '../enums/role.enum';
@@ -149,6 +150,22 @@ export function editedMaterialMeters(material: {
   readonly meters: number | null;
 }): number | null {
   return material.code.trim() === material.originalCode ? material.meters : null;
+}
+
+/**
+ * Какие строки крепления позиции отправлять: у трубной модели нет карниза
+ * и пластика, у карнизной — трубы.
+ *
+ * `null` — модели нет в справочнике (переименовали, удалили, справочник ещё
+ * не загрузился): тогда не отбрасываем ничего. Иначе правка старой позиции
+ * молча теряла бы трубу, которую форма даже не показала.
+ */
+export function mountSlotsToSend(mount: CurtainMountKind | null): {
+  readonly cornice: boolean;
+  readonly pipe: boolean;
+} {
+  if (mount === null) return { cornice: true, pipe: true };
+  return mount === CurtainMountKind.PIPE ? { cornice: false, pipe: true } : { cornice: true, pipe: false };
 }
 
 export const AWAITING_PAYMENT_LABEL: Readonly<Record<Locale, string>> = {

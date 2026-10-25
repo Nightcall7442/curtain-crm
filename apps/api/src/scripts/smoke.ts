@@ -2469,6 +2469,41 @@ async function run(db: Database): Promise<void> {
   const editDebt = await makeDebtOrder('правка цены', OrderStatus.INSTALLATION_DONE, '400000.00', '150000');
   await managerCaller.orders.update({ id: editDebt.id, workPrice: 150000 });
   check('правка: цена снижена до оплаченного — ждавший оплаты заказ закрыт', (await statusOf(editDebt.id)) === OrderStatus.COMPLETED);
+  // Цех не узнаёт сумму долга даже прямым вызовом: отказ — по праву, а не по деньгам.
+  const sewerDebt = await makeDebtOrder('цех', OrderStatus.INSTALLATION_DONE, '500000.00', '0');
+  await db.update(orders).set({ sewerId: sewer.id }).where(eq(orders.id, sewerDebt.id));
+  // Без открытой смены отказ пришёл бы раньше и проверка ничего бы не доказала.
+  await db.insert(shifts).values({ userId: sewer.id, branchId: branch.id, startedAt: hoursAgo(1), ...point });
+  await expectRejectedWith(
+    'долг: швея при попытке закрыть не видит сумму остатка',
+    () => sewerCaller.orders.changeStatus({ id: sewerDebt.id, toStatus: OrderStatus.COMPLETED }),
+    (message) => !message.includes('Остаток') && !message.includes('500'),
+  );
+
+  // Роль, выданная директором после снятия автовыдачи, — не «выдана системой».
+  await ceoCaller.users.grantRole({ id: seller.id, role: Role.INSTALLER });
+  check(
+    'роли: роль, выданная директором заново, в списке автовыдачи не появляется',
+    !(await ceoCaller.users.autoGrantedRoles()).some((row) => row.userId === seller.id),
+  );
+  await ceoCaller.users.revokeRole({ id: seller.id, role: Role.INSTALLER });
+
+  // Причина недоступного перехода — на языке клиента и с его валютой.
+  const managerUzCaller = createCallerFactory(appRouter)({
+    db,
+    user: await actorOf(manager.id),
+    requestId: 'smoke',
+    ipAddress: null,
+    userAgent: null,
+    locale: 'uz',
+  });
+  const uzTransitions = await managerUzCaller.orders.availableTransitions({ id: debtor.id });
+  const uzReason = uzTransitions.find((t) => t.to === OrderStatus.COMPLETED)?.blockedReason ?? '';
+  check(
+    'долг: причина на узбекском — с «so\'m», без русского',
+    uzReason.startsWith('Qoldiq') && uzReason.includes("so'm") && !/[А-Яа-яЁё]/.test(uzReason),
+    uzReason,
+  );
 }
 
 main().catch((error: unknown) => {
