@@ -15,8 +15,11 @@ import {
   assignableRoleSchema,
   availableTransitions,
   canDispatchOrders,
+  canSeeClientMoney,
   corniceRotationSchema,
   CorniceStatus,
+  currentExecutorRole,
+  DEBT_STATUSES,
   isManagement,
   isTerminalStatus,
   MAX_ACCESSORIES_PER_ITEM,
@@ -45,9 +48,10 @@ import {
   type OrderPhase,
   Role,
   type OrderStageFee,
+  workshopToday,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lt, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -68,6 +72,7 @@ import {
 import { recordAudit } from '../services/audit.service';
 import {
   assertCanAccessOrder,
+  ASSIGNABLE_ROLE_COLUMNS,
   assignExecutor,
   changeOrderStatus,
   closeIfSettled,
@@ -372,11 +377,7 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   const seesEverything = isManagement(user.roles);
   // Менеджеру цена и платежи клиента нужны (он ставит цену), а расценки
   // исполнителям — нет: это зарплатная часть, она остаётся у руководства.
-  const seesClientMoney =
-    seesEverything ||
-    canDispatchOrders(user.roles) ||
-    user.roles.includes(Role.SELLER) ||
-    order.installerId === user.id;
+  const seesClientMoney = canSeeClientMoney(user.roles) || order.installerId === user.id;
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
@@ -474,10 +475,30 @@ export const ordersRouter = router({
           deadlineTo: z.string().date().optional(),
           /** По умолчанию выполненные и отменённые скрыты — они в «Архиве». */
           includeArchived: z.boolean().default(false),
+          /**
+           * «С долгом»: установка сделана или заказ закрыт, а остаток > 0.
+           * Только тем, кто видит деньги клиента: иначе цех по фильтру узнал
+           * бы, какие из его заказов не оплачены.
+           */
+          withDebt: z.boolean().default(false),
+          /** Просроченные: срок раньше сегодняшнего дня мастерской, заказ открыт. */
+          overdue: z.boolean().default(false),
+          /** Номер страницы для подгрузки при прокрутке (`useInfiniteQuery`). */
+          cursor: z.number().int().min(1).optional(),
         })
-        .default({ page: 1, pageSize: 20, includeArchived: false }),
+        .default({ page: 1, pageSize: 20, includeArchived: false, withDebt: false, overdue: false }),
     )
     .query(async ({ ctx, input }) => {
+      if (input.withDebt && !canSeeClientMoney(ctx.user.roles)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Фильтр «С долгом» доступен только тем, кто видит оплаты',
+        });
+      }
+      const paging = { page: input.cursor ?? input.page, pageSize: input.pageSize };
+      const today = workshopToday();
+      const todayIsoDate = `${today.year.toString()}-${today.month.toString().padStart(2, '0')}-${today.day.toString().padStart(2, '0')}`;
+
       const statusesByPhase =
         input.phase === undefined
           ? undefined
@@ -493,9 +514,15 @@ export const ordersRouter = router({
         ...(statusesByPhase === undefined || statusesByPhase.length === 0
           ? []
           : [inArray(orders.status, statusesByPhase)]),
-        ...(input.status !== undefined || input.phase !== undefined || input.includeArchived
+        ...(input.status !== undefined || input.phase !== undefined || input.includeArchived || input.withDebt
           ? []
           : [notInArray(orders.status, [...ARCHIVED_ORDER_STATUSES])]),
+        ...(input.withDebt
+          ? [inArray(orders.status, [...DEBT_STATUSES]), gt(orders.remainingPayment, '0')]
+          : []),
+        ...(input.overdue
+          ? [lt(orders.deadline, todayIsoDate), notInArray(orders.status, [...ARCHIVED_ORDER_STATUSES])]
+          : []),
         ...(input.priority === undefined ? [] : [eq(orders.priority, input.priority)]),
         ...(input.branchId === undefined ? [] : [eq(orders.branchId, input.branchId)]),
         ...(input.deadlineFrom === undefined ? [] : [gte(orders.deadline, input.deadlineFrom)]),
@@ -508,6 +535,7 @@ export const ordersRouter = router({
                 eq(orders.sewerId, input.assigneeId),
                 eq(orders.qcId, input.assigneeId),
                 eq(orders.installerId, input.assigneeId),
+                eq(orders.corniceInstallerId, input.assigneeId),
               ),
             ]),
         ...(input.search === undefined || input.search.length === 0
@@ -531,15 +559,48 @@ export const ordersRouter = router({
             sql`case ${orders.priority} when 'critical' then 2 when 'urgent' then 1 else 0 end desc`,
             desc(orders.createdAt),
           )
-          .limit(input.pageSize)
-          .offset(toOffset(input)),
+          .limit(paging.pageSize)
+          .offset(toOffset(paging)),
         ctx.db.select({ value: count() }).from(orders).where(where),
       ]);
 
+      /* Текущий исполнитель — по той же таблице, по которой сервер решает,
+         чей заказ. Имена всей страницы — одним запросом. */
+      const executorIds = [
+        ...new Set(
+          rows
+            .map((row) => {
+              const role = currentExecutorRole(row.status);
+              return role === null ? null : row[ASSIGNABLE_ROLE_COLUMNS[role]];
+            })
+            .filter((id): id is number => id !== null),
+        ),
+      ];
+      const names = new Map(
+        executorIds.length === 0
+          ? []
+          : (
+              await ctx.db
+                .select({ id: users.id, fullName: users.fullName })
+                .from(users)
+                .where(inArray(users.id, executorIds))
+            ).map((row) => [row.id, row.fullName] as const),
+      );
+
       return toPage(
-        rows.map((row) => maskStageFees(row, ctx.user)),
+        rows.map((row) => {
+          const role = currentExecutorRole(row.status);
+          const userId = role === null ? null : row[ASSIGNABLE_ROLE_COLUMNS[role]];
+          return {
+            ...maskStageFees(row, ctx.user),
+            currentExecutor:
+              role === null
+                ? null
+                : { role, userId, fullName: userId === null ? null : (names.get(userId) ?? null) },
+          };
+        }),
         totalRow?.value ?? 0,
-        input,
+        paging,
       );
     }),
 

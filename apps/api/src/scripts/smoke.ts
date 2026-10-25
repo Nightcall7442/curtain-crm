@@ -2312,6 +2312,88 @@ async function run(db: Database): Promise<void> {
     !lateIds.includes(installedOnTime.id) && lateIds.includes(closedLate.id),
     JSON.stringify(lateness.lateOrders.filter((row) => [installedOnTime.id, closedLate.id].includes(row.id)).map((row) => [row.clientName, row.lateDays])),
   );
+  // Список заказов: текущий исполнитель, «С долгом», просроченные, страницы.
+  const listFixture = async (label: string, values: Partial<typeof orders.$inferInsert>) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} Список ${label}`,
+        clientPhone: '+998901112299',
+        createdBy: seller.id,
+        ...values,
+      })
+      .returning();
+    if (row === undefined) throw new Error(`заказ «${label}» не создан`);
+    return row;
+  };
+  const inSewing = await listFixture('пошив', { status: OrderStatus.SEWING_IN_PROGRESS, sewerId: sewer.id });
+  const inQcPool = await listFixture('пул ОТК', { status: OrderStatus.PENDING_QC });
+  const fresh = await listFixture('новый', { status: OrderStatus.NEW });
+  const listed = await managerCaller.orders.list({ search: `${PREFIX} Список`, pageSize: 100 });
+  const executorOf = (id: number) => listed.items.find((row) => row.id === id)?.currentExecutor;
+  check(
+    'список: исполнитель — швея в пошиве, «не назначен» в пуле ОТК, никого у нового',
+    executorOf(inSewing.id)?.userId === sewer.id &&
+      executorOf(inSewing.id)?.role === Role.SEWER &&
+      executorOf(inSewing.id)?.fullName === sewer.fullName &&
+      executorOf(inQcPool.id)?.role === Role.QC &&
+      executorOf(inQcPool.id)?.userId === null &&
+      executorOf(fresh.id) === null,
+    JSON.stringify([executorOf(inSewing.id), executorOf(inQcPool.id), executorOf(fresh.id)]),
+  );
+
+  const debts = await sellerCaller.orders.list({ withDebt: true, pageSize: 100 });
+  check(
+    'список: «С долгом» — только после установки и с остатком',
+    debts.items.some((row) => row.id === debtor.id) &&
+      !debts.items.some((row) => row.id === settled.id) &&
+      debts.items.every(
+        (row) =>
+          (row.status === OrderStatus.INSTALLATION_DONE || row.status === OrderStatus.COMPLETED) &&
+          parseMoney(row.remainingPayment ?? '0') > 0,
+      ),
+    `${debts.items.length.toString()} заказов`,
+  );
+  await expectRejectedWith(
+    'список: швее фильтр «С долгом» недоступен',
+    () => sewerCaller.orders.list({ withDebt: true }),
+    (message) => message === 'Фильтр «С долгом» доступен только тем, кто видит оплаты',
+  );
+
+  const overdueOpen = await listFixture('просрочен', {
+    status: OrderStatus.SEWING_IN_PROGRESS,
+    sewerId: sewer.id,
+    deadline: daysAgoIso(1),
+  });
+  const overdueClosed = await listFixture('просрочен закрыт', {
+    status: OrderStatus.COMPLETED,
+    completedAt: new Date(),
+    deadline: daysAgoIso(1),
+  });
+  const overdue = await managerCaller.orders.list({ overdue: true, search: `${PREFIX} Список`, pageSize: 100 });
+  check(
+    'список: «Просрочены» — открытый со вчерашним сроком есть, закрытый — нет',
+    overdue.items.some((row) => row.id === overdueOpen.id) &&
+      !overdue.items.some((row) => row.id === overdueClosed.id) &&
+      !overdue.items.some((row) => row.id === inSewing.id),
+    `${overdue.items.length.toString()} заказов`,
+  );
+
+  const withCornice = await listFixture('карниз', {
+    status: OrderStatus.SEWING_IN_PROGRESS,
+    corniceStatus: CorniceStatus.IN_PROGRESS,
+    corniceInstallerId: corniceMan.id,
+  });
+  const byCornice = await managerCaller.orders.list({ assigneeId: corniceMan.id, pageSize: 100 });
+  check('список: фильтр по исполнителю находит карнизчика', byCornice.items.some((row) => row.id === withCornice.id));
+
+  const secondPage = await managerCaller.orders.list({ search: `${PREFIX} Список`, pageSize: 1, cursor: 2 });
+  check(
+    'список: cursor — номер страницы для подгрузки',
+    secondPage.page === 2 && secondPage.items.length === 1 && secondPage.totalPages >= 2,
+    `стр. ${secondPage.page.toString()} из ${secondPage.totalPages.toString()}`,
+  );
 }
 
 main().catch((error: unknown) => {
