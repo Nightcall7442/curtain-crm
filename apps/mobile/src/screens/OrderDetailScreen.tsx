@@ -682,12 +682,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   typeRow: {
     flexDirection: 'row',
     marginTop: spacing.sm,
   },
   orderNumber: {
+    // Номер не сжимается: при двух бейджах переносятся они, а не «DH-000515».
+    flexShrink: 0,
     fontFamily: fonts.extrabold,
     fontSize: 18,
     fontWeight: '800',
@@ -816,6 +819,7 @@ const styles = StyleSheet.create({
   headerPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    flexShrink: 1,
     gap: spacing.xs,
     justifyContent: 'flex-end',
   },
