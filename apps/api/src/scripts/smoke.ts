@@ -2394,6 +2394,81 @@ async function run(db: Database): Promise<void> {
     secondPage.page === 2 && secondPage.items.length === 1 && secondPage.totalPages >= 2,
     `стр. ${secondPage.page.toString()} из ${secondPage.totalPages.toString()}`,
   );
+  // Правка заказа: права, цена, позиции с метражом, уведомление исполнителю.
+  await expectRejectedWith(
+    'правка: закрытый заказ не правит даже директор',
+    () => ceoCaller.orders.update({ id: settled.id, clientName: `${PREFIX} Правка` }),
+    (message) => message === 'Заказ закрыт — правка недоступна',
+  );
+  await sellerCaller.orders.update({ id: fresh.id, clientName: `${PREFIX} Список новый (правка)`, workPrice: 777000 });
+  const freshAfter = (await db.select().from(orders).where(eq(orders.id, fresh.id)))[0];
+  const freshAudit = (
+    await db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(and(eq(auditLog.entityType, 'order'), eq(auditLog.entityId, fresh.id)))
+  ).map((row) => row.action);
+  check(
+    'правка: продавец правит свой новый заказ — клиента и цену, с аудитом',
+    freshAfter?.workPrice === '777000.00' &&
+      freshAfter.clientName.endsWith('(правка)') &&
+      freshAudit.includes('order.updated') &&
+      freshAudit.includes('order.price_changed'),
+    `${String(freshAfter?.workPrice)}; ${freshAudit.join(', ')}`,
+  );
+  await expectRejectedWith(
+    'правка: продавец не правит свой заказ в пошиве',
+    () => sellerCaller.orders.update({ id: inSewing.id, clientName: `${PREFIX} Правка` }),
+    (message) => message === 'Заказ уже в работе — правки вносит администратор',
+  );
+
+  await managerCaller.orders.update({
+    id: inSewing.id,
+    items: [
+      {
+        kind: OrderItemKind.WINDOW,
+        widthCm: 200,
+        heightCm: 250,
+        portieres: [{ code: 'П-31', meters: 3.5, description: null }],
+        quantity: 1,
+      },
+    ],
+  });
+  const editedItems = await db.select().from(orderItems).where(eq(orderItems.orderId, inSewing.id));
+  const sewerNotes = await db
+    .select({ body: notifications.body })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, sewer.id),
+        eq(notifications.relatedOrderId, inSewing.id),
+        eq(notifications.type, NotificationType.ORDER_UPDATED),
+      ),
+    );
+  const managerNotes = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(and(eq(notifications.userId, manager.id), eq(notifications.type, NotificationType.ORDER_UPDATED)));
+  check(
+    'правка: позиции заменены с метражом, швея получила уведомление, менеджер — нет',
+    editedItems.length === 1 &&
+      editedItems[0]?.portieres[0]?.meters === 3.5 &&
+      sewerNotes.some((note) => note.body === 'Изменён состав заказа — проверьте позиции') &&
+      managerNotes.length === 0,
+    JSON.stringify({ items: editedItems.length, notes: sewerNotes, managerNotes: managerNotes.length }),
+  );
+  await expectRejectedWith(
+    'правка: состав продажи готовых штор не меняется',
+    () =>
+      managerCaller.orders.update({
+        id: installSale.id,
+        items: [{ kind: OrderItemKind.WINDOW, quantity: 2 }],
+      }),
+    (message) => message === 'Состав продажи готовых штор изменить нельзя',
+  );
+  const editDebt = await makeDebtOrder('правка цены', OrderStatus.INSTALLATION_DONE, '400000.00', '150000');
+  await managerCaller.orders.update({ id: editDebt.id, workPrice: 150000 });
+  check('правка: цена снижена до оплаченного — ждавший оплаты заказ закрыт', (await statusOf(editDebt.id)) === OrderStatus.COMPLETED);
 }
 
 main().catch((error: unknown) => {

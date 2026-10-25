@@ -8,6 +8,7 @@ import {
   readyMadeItems,
   users,
   type DbExecutor,
+  type Order,
 } from '@curtain-crm/db';
 import {
   areaM2FromCm,
@@ -15,6 +16,7 @@ import {
   assignableRoleSchema,
   availableTransitions,
   canDispatchOrders,
+  canEditOrder,
   canSeeClientMoney,
   corniceRotationSchema,
   CorniceStatus,
@@ -81,6 +83,7 @@ import {
 } from '../services/orderWorkflow.service';
 import { setInstallationTime } from '../services/installationSchedule.service';
 import { post } from '../services/ledger.service';
+import { notifyOrderUpdated } from '../services/notifications.service';
 import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
@@ -111,18 +114,8 @@ import { toOffset, toPage } from '../types';
  * `changeOrderStatus()`, которая ведёт историю и рассылает уведомления.
  */
 
-/**
- * Статусы, в которых автор ещё вправе править собственный заказ.
- *
- * Типизирован как `OrderStatus[]`, а не `string[]`: с обычным массивом строк
- * переименование статуса прошло бы мимо компилятора, и правка молча стала бы
- * недоступна автору — без единой ошибки сборки.
- */
-const AUTHOR_EDITABLE_STATUSES: readonly OrderStatus[] = [
-  OrderStatus.NEW,
-  OrderStatus.PENDING_ADMIN_REVIEW,
-  OrderStatus.REJECTED_TO_CEO,
-];
+/* Статусы, в которых автор правит свой заказ, — `AUTHOR_EDITABLE_STATUSES`
+   в `@curtain-crm/shared` (правило `canEditOrder`). */
 
 /* -------------------------------------------------------------------------- */
 /*                             Позиции заказа                                 */
@@ -457,6 +450,55 @@ function withMeters(
 ): OrderItemMaterial | null {
   if (material === null || meters === undefined) return material;
   return { ...material, meters };
+}
+
+/**
+ * Новая цена и скидка заказа — общая часть `setPrice` и `update`.
+ *
+ * «Оплачено» здесь не правится: это сумма проводок, и меняют её приходом
+ * или возвратом (`payments.acceptForOrder`, `payments.refund`). Остаток
+ * пересчитывает сама база.
+ *
+ * @returns `true`, если цена или скидка изменились.
+ */
+async function applyPriceChange(
+  tx: DbExecutor,
+  order: Order,
+  input: {
+    readonly workPrice?: number | undefined;
+    readonly discountAmount?: number | undefined;
+    readonly discountReason?: string | null | undefined;
+  },
+  actor: { readonly id: number },
+  ipAddress: string | null,
+): Promise<boolean> {
+  const patch = {
+    ...(input.workPrice === undefined
+      ? {}
+      : { workPrice: moneyToDecimalString(parseMoney(input.workPrice)) }),
+    ...(input.discountAmount === undefined
+      ? {}
+      : discountValues({
+          discountAmount: input.discountAmount,
+          discountReason: input.discountReason ?? order.discountReason,
+        })),
+  };
+
+  if (Object.keys(patch).length === 0) return false;
+
+  await tx.update(orders).set({ ...patch, updatedAt: new Date() }).where(eq(orders.id, order.id));
+  await recordAudit(tx, {
+    actorId: actor.id,
+    action: 'order.price_changed',
+    entityType: 'order',
+    entityId: order.id,
+    details: {
+      from: { workPrice: order.workPrice, discountAmount: order.discountAmount },
+      to: patch,
+    },
+    ipAddress,
+  });
+  return true;
 }
 
 export const ordersRouter = router({
@@ -1200,12 +1242,16 @@ export const ordersRouter = router({
     }),
 
   /**
-   * Правка заказа.
+   * Правка заказа: клиент, адрес, срок, приоритет, позиции, цена.
    *
-   * Автор может править заказ, пока тот не ушёл дальше проверки админом:
-   * менять состав позиций у заказа, который уже шьют, нельзя — швея работает
-   * по тому, что видела. Руководство не ограничено, но каждая правка попадает
-   * в `audit_log`.
+   * Кто правит — решает `canEditOrder` из `@curtain-crm/shared`, по тому же
+   * правилу клиенты показывают карандаш: руководство и менеджер — любой
+   * открытый заказ, автор — свой, пока админ его не принял (дальше швея
+   * работает по тому, что видела). Закрытый заказ не правит никто: по нему
+   * уже начислены проценты и рейтинг.
+   *
+   * Каждая правка — в `audit_log`; текущий исполнитель узнаёт о ней
+   * уведомлением, чтобы не работать по старым размерам.
    */
   update: protectedProcedure
     .input(
@@ -1219,26 +1265,39 @@ export const ordersRouter = router({
         installLongitude: z.number().min(-180).max(180).nullable().optional(),
         deadline: z.string().date().nullable().optional(),
         priority: prioritySchema.optional(),
-        /** Полная замена состава позиций. */
+        /** Полная замена состава позиций. Метраж приходит в строках материалов. */
         items: z.array(orderItemInputSchema).min(1).max(50).optional(),
+        /** Цена со скидкой, как в `setPrice`. */
+        workPrice: moneySchema.optional(),
+        discountAmount: moneySchema.optional(),
+        discountReason: optionalText(300),
       }),
     )
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const order = await loadOrderForUpdate(tx, input.id);
-        if (!canDispatchOrders(ctx.user.roles)) {
+        if (!canEditOrder(order, ctx.user)) {
+          if (isTerminalStatus(order.status)) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Заказ закрыт — правка недоступна' });
+          }
           if (order.createdBy !== ctx.user.id) {
             throw new TRPCError({
               code: 'FORBIDDEN',
               message: 'Править заказ может его автор или руководство',
             });
           }
-          if (!AUTHOR_EDITABLE_STATUSES.includes(order.status)) {
-            throw new TRPCError({
-              code: 'CONFLICT',
-              message: 'Заказ уже в работе — правки вносит администратор',
-            });
-          }
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Заказ уже в работе — правки вносит администратор',
+          });
+        }
+        // Готовые шторы уже списаны со склада: состав продажи меняет возврат,
+        // а не правка — иначе полка и продажа разойдутся.
+        if (input.items !== undefined && order.orderType === OrderType.READY_MADE) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Состав продажи готовых штор изменить нельзя',
+          });
         }
 
         const patch = {
@@ -1271,14 +1330,40 @@ export const ordersRouter = router({
             .values(input.items.map((item, index) => toOrderItemValues(item, order.id, index)));
         }
 
-        await recordAudit(tx, {
-          actorId: ctx.user.id,
-          action: 'order.updated',
-          entityType: 'order',
-          entityId: order.id,
-          details: { ...patch, itemsReplaced: input.items !== undefined },
-          ipAddress: ctx.ipAddress,
-        });
+        const priceChanged = await applyPriceChange(tx, order, input, ctx.user, ctx.ipAddress);
+        const itemsChanged = input.items !== undefined;
+        const changed = Object.keys(patch).length > 0 || itemsChanged || priceChanged;
+
+        if (Object.keys(patch).length > 0 || itemsChanged) {
+          await recordAudit(tx, {
+            actorId: ctx.user.id,
+            action: 'order.updated',
+            entityType: 'order',
+            entityId: order.id,
+            details: { ...patch, itemsReplaced: itemsChanged },
+            ipAddress: ctx.ipAddress,
+          });
+        }
+
+        // Исполнитель текущего этапа узнаёт о правке — если она не его же.
+        const executorRole = currentExecutorRole(order.status);
+        const executorId = executorRole === null ? null : order[ASSIGNABLE_ROLE_COLUMNS[executorRole]];
+        if (changed && executorId !== null && executorId !== ctx.user.id) {
+          await notifyOrderUpdated(
+            tx,
+            {
+              orderId: order.id,
+              orderNumber: order.orderNumber ?? `#${order.id.toString()}`,
+              clientName: input.clientName ?? order.clientName,
+            },
+            executorId,
+            itemsChanged,
+          );
+        }
+
+        if (priceChanged) {
+          await closeIfSettled(tx, { orderId: order.id, actor: ctx.user, ipAddress: ctx.ipAddress });
+        }
 
         const [updated] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
         return maskStageFees(updated ?? order, ctx.user);
@@ -1302,50 +1387,17 @@ export const ordersRouter = router({
           throw new TRPCError({ code: 'CONFLICT', message: 'Заказ закрыт — правка недоступна' });
         }
 
-        // «Оплачено» здесь не правится: это сумма проводок, и меняют её
-        // приходом или возвратом (`payments.acceptForOrder`, `payments.refund`).
-        const patch = {
-          ...(input.workPrice === undefined
-            ? {}
-            : { workPrice: moneyToDecimalString(parseMoney(input.workPrice)) }),
-          ...(input.discountAmount === undefined
-            ? {}
-            : discountValues({
-                discountAmount: input.discountAmount,
-                discountReason: input.discountReason ?? order.discountReason,
-              })),
-        };
+        if (!(await applyPriceChange(tx, order, input, ctx.user, ctx.ipAddress))) {
+          return maskStageFees(order, ctx.user);
+        }
 
-        if (Object.keys(patch).length === 0) return maskStageFees(order, ctx.user);
+        // Цену снизили до оплаченного — заказ, ждавший денег, закрывается.
+        await closeIfSettled(tx, { orderId: order.id, actor: ctx.user, ipAddress: ctx.ipAddress });
 
-        const [updated] = await tx
-          .update(orders)
-          .set({ ...patch, updatedAt: new Date() })
-          .where(eq(orders.id, order.id))
-          .returning();
-
+        const [updated] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
         if (updated === undefined) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
         }
-
-        await recordAudit(tx, {
-          actorId: ctx.user.id,
-          action: 'order.price_changed',
-          entityType: 'order',
-          entityId: order.id,
-          details: {
-            from: { workPrice: order.workPrice, discountAmount: order.discountAmount },
-            to: patch,
-          },
-          ipAddress: ctx.ipAddress,
-        });
-
-        // Цену снизили до оплаченного — заказ, ждавший денег, закрывается.
-        if (await closeIfSettled(tx, { orderId: order.id, actor: ctx.user, ipAddress: ctx.ipAddress })) {
-          const [closed] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
-          return maskStageFees(closed ?? updated, ctx.user);
-        }
-
         return maskStageFees(updated, ctx.user);
       }),
     ),

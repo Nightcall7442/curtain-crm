@@ -155,6 +155,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Править заказ может его автор или руководство': "Buyurtmani faqat muallifi yoki rahbariyat tahrirlay oladi",
   'Заказ уже в работе — правки вносит администратор': "Buyurtma allaqachon ishda — tahrirni administrator kiritadi",
   'Заказ закрыт — правка недоступна': "Buyurtma yopilgan — tahrirlab bo'lmaydi",
+  'Состав продажи готовых штор изменить нельзя': "Tayyor pardalar sotuvi tarkibini o'zgartirib bo'lmaydi",
   'Фильтр «С долгом» доступен только тем, кто видит оплаты': "«Qarzdor» filtri faqat to'lovlarni ko'radiganlar uchun",
   'Без установки готовые шторы продаются только при полной оплате':
     "O'rnatishsiz tayyor pardalar faqat to'liq to'lov bilan sotiladi",

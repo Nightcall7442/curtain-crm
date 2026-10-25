@@ -498,6 +498,13 @@
       "when": 1792068050459,
       "tag": "0070_installation_scheduled_notification",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792964299456,
+      "tag": "0071_order_updated_notification",
+      "breakpoints": true
     }
   ]
 }

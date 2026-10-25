@@ -35,6 +35,8 @@ const EXACT: Readonly<Record<string, string>> = {
   'Время инкассации': 'Inkassatsiya vaqti',
   'Терминальный чек пробит': 'Terminal cheki urildi',
   'Пробейте терминальный чек': 'Terminal chekini uring',
+  'Изменён состав заказа — проверьте позиции': "Buyurtma tarkibi o'zgardi — pozitsiyalarni tekshiring",
+  'Изменены данные заказа': "Buyurtma ma'lumotlari o'zgardi",
   'Зафиксировано нарушение': 'Qoidabuzarlik qayd etildi',
   'Зафиксировано поощрение': "Rag'batlantirish qayd etildi",
 };
@@ -42,6 +44,7 @@ const EXACT: Readonly<Record<string, string>> = {
 const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Новый заказ {n}', 'Yangi buyurtma {n}'],
   ['Установка {n}: {date} в {time}', "O'rnatish {n}: {date}, soat {time}"],
+  ['Заказ {n} изменён', "{n} buyurtmasi o'zgartirildi"],
   ['Клиент «{client}». Адрес: {address}', 'Mijoz «{client}». Manzil: {address}'],
   ['Клиент «{client}».', 'Mijoz «{client}».'],
   ['Вам назначен заказ клиента «{client}» как «{role}»', "Sizga «{client}» mijozining buyurtmasi «{role}» sifatida tayinlandi"],
