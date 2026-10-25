@@ -3,6 +3,7 @@ import {
   CORNICE_ROTATION_LABELS,
   CORNICE_ROTATIONS,
   CurtainMountKind,
+  editedMaterialMeters,
   MATERIAL_CODE_KINDS,
   ORDER_ITEM_KIND_LABELS,
   ORDER_ITEM_KINDS,
@@ -43,6 +44,13 @@ export const emptyAccessory = (id: number): AccessoryDraft => ({
  */
 export interface MaterialDraft {
   readonly code: string;
+  /**
+   * Код и метраж, с которыми материал пришёл из сохранённого заказа. Метраж
+   * проставляет админ: при правке позиции он остаётся, пока код прежний
+   * (`editedMaterialMeters`).
+   */
+  readonly originalCode?: string | null;
+  readonly meters?: number | null;
 }
 
 export const emptyMaterial = (): MaterialDraft => ({ code: '' });
@@ -57,8 +65,9 @@ export const emptyPortiere = (id: number): PortiereDraft => ({ id, ...emptyMater
 /**
  * Материал для отправки на сервер. `undefined` — код не заполнен.
  *
- * Метраж уходит пустым: колонка в позиции заказа осталась, но продавец её
- * больше не набирает. Описание — из справочника, а не из формы.
+ * Метраж продавец не набирает: у нового материала он пустой, а при правке
+ * сохранённого заказа остаётся тем, что проставил админ, пока код прежний.
+ * Описание — из справочника, а не из формы.
  */
 export function toMaterial(
   draft: MaterialDraft,
@@ -67,7 +76,12 @@ export function toMaterial(
   const code = draft.code.trim();
   if (code === '') return undefined;
 
-  return { code, meters: null, description };
+  const meters = editedMaterialMeters({
+    code,
+    originalCode: draft.originalCode ?? null,
+    meters: draft.meters ?? null,
+  });
+  return { code, meters, description };
 }
 
 /**
@@ -187,6 +201,17 @@ export interface DraftItem {
   readonly corniceRotation: CorniceRotation | null;
   readonly accessories: readonly AccessoryDraft[];
   readonly comment: string;
+  /**
+   * Поля позиции, которых форма телефона не показывает (заполняют на сайте).
+   * При правке они уходят обратно как были: позиции заменяются целиком, и
+   * без этого правка с телефона стирала бы чужой ввод.
+   */
+  readonly kept?: {
+    readonly materials: readonly string[];
+    readonly materialOptions: readonly string[];
+    readonly color?: string;
+    readonly characteristics?: string;
+  };
 }
 
 export const emptyItem = (id: number): DraftItem => ({

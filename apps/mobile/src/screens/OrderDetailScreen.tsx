@@ -1,5 +1,6 @@
 import {
   AWAITING_PAYMENT_LABEL,
+  canEditOrder,
   formatIsoDate,
   formatPhone,
   isAwaitingPayment,
@@ -19,7 +20,8 @@ import {
   INSTALLATION_SCHEDULABLE_STATUSES,
 } from '@curtain-crm/shared';
 import { BlurTargetView, BlurView } from 'expo-blur';
-import { useRef, useState, type ReactElement } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -88,6 +90,32 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
+
+  /*
+    Карандаш в шапке — тем, кому сервер разрешит правку (`canEditOrder`):
+    руководству и менеджеру у открытого заказа, автору — до принятия.
+  */
+  const navigation = useNavigation();
+  const editable = order.data !== undefined && user !== null && canEditOrder(order.data, user);
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: editable
+        ? () => (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('OrderEdit', { orderId });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={m('order.edit')}
+              hitSlop={10}
+              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+            >
+              <Icon name="edit" size={22} color={colors.headerText} />
+            </Pressable>
+          )
+        : undefined,
+    });
+  }, [navigation, editable, orderId, m]);
 
   const refresh = async (): Promise<void> => {
     await Promise.all([

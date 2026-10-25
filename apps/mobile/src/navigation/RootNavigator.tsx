@@ -20,6 +20,7 @@ import { Icon } from '../components/Icon';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { OrderCreateScreen } from '../screens/OrderCreateScreen';
+import { OrderEditScreen } from '../screens/OrderEditScreen';
 import { RatingBoardScreen } from '../screens/RatingBoardScreen';
 import { RatingScreen } from '../screens/RatingScreen';
 import { SaleDetailScreen } from '../screens/SaleDetailScreen';
@@ -79,6 +80,11 @@ export function RootNavigator(): ReactElement {
         name="RatingBoard"
         component={RatingBoardScreen}
         options={{ title: m('nav.ratingBoard') }}
+      />
+      <Stack.Screen
+        name="OrderEdit"
+        component={OrderEditScreen}
+        options={{ title: m('nav.editOrder') }}
       />
       <Stack.Screen
         name="OrderCreate"
