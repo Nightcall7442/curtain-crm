@@ -2,6 +2,9 @@
 
 import {
   AWAITING_PAYMENT_LABEL,
+  EXECUTOR_LABEL,
+  EXECUTOR_NOT_ASSIGNED_LABEL,
+  ROLE_LABELS,
   canSeeClientMoney,
   isAwaitingPayment,
   formatIsoDateShort,
@@ -685,6 +688,30 @@ export function OrdersView({
                 {isAwaitingPayment(row) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL.ru}</Badge>}
               </span>
             ),
+          },
+          {
+            key: 'executor',
+            header: EXECUTOR_LABEL[locale],
+            sortValue: (row) => row.currentExecutor?.fullName ?? '',
+            render: (row) => {
+              // Тот, кто сейчас ведёт этап. «—» — у статуса исполнителя нет
+              // (приём, проверка, закрыт); «не назначен» — этап ждёт человека.
+              const executor = row.currentExecutor;
+              if (executor === null) return <span className="text-muted">—</span>;
+              if (executor.fullName === null) {
+                return (
+                  <span className="text-footnote text-muted">{EXECUTOR_NOT_ASSIGNED_LABEL[locale]}</span>
+                );
+              }
+              return (
+                <span className="block max-w-[12rem]">
+                  <span className="block truncate text-caption text-primary">{executor.fullName}</span>
+                  <span className="block truncate text-footnote text-muted">
+                    {t(ROLE_LABELS, executor.role)}
+                  </span>
+                </span>
+              );
+            },
           },
           {
             key: 'deadline',
