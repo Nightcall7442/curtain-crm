@@ -6,6 +6,7 @@ import {
   EXECUTOR_NOT_ASSIGNED_LABEL,
   ROLE_LABELS,
   canSeeClientMoney,
+  closeBlockedByDebt,
   isAwaitingPayment,
   formatIsoDateShort,
   formatMoney,
@@ -16,6 +17,7 @@ import {
   isTerminalStatus,
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
+  OrderStatus as OrderStatusValue,
   type OrderStatus,
   parseMoney,
   PRIORITIES,
@@ -790,6 +792,12 @@ export function OrdersView({
                 roles={roles}
                 locale={locale}
                 orderType={row.orderType}
+                // Закрыть заказ с долгом нельзя — кнопка неактивна, как на странице заказа.
+                blockedReason={(toStatus) =>
+                  toStatus === OrderStatusValue.COMPLETED && closeBlockedByDebt(row)
+                    ? 'Остаток не получен — сначала примите оплату'
+                    : null
+                }
                 onPick={(action) => {
                   runAction({ orders: [toActionOrder(row)], action });
                 }}

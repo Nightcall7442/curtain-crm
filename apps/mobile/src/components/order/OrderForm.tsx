@@ -143,6 +143,17 @@ export function draftItemToInput(item: DraftItem, catalog: ItemCatalog) {
 
 type OrderItemRow = RouterOutputs['orders']['byId']['items'][number];
 
+/**
+ * Размер позиции → строка поля.
+ *
+ * Тип говорит «строка», но позиции `orders.byId` приходят вложенным
+ * запросом, и numeric-колонка внутри JSON доезжает числом (`190`, а не
+ * `'190.0'`). Приводим явно — иначе поле упало бы на `.replace`.
+ */
+function sizeField(value: string | number | null): string {
+  return value === null ? '' : String(value);
+}
+
 /** Сохранённый материал → черновик с прежним кодом и метражом (см. `editedMaterialMeters`). */
 function materialDraft(material: OrderItemMaterial | null): MaterialDraft {
   return material === null
@@ -167,8 +178,8 @@ export function orderItemToDraft(item: OrderItemRow, id: number): DraftItem {
     ...emptyItem(id),
     kind: item.kind,
     model: item.model ?? '',
-    heightCm: item.heightCm ?? '',
-    widthCm: item.widthCm ?? '',
+    heightCm: sizeField(item.heightCm),
+    widthCm: sizeField(item.widthCm),
     quantity: item.quantity.toString(),
     portieres: portieres.length > 0 ? portieres : [emptyPortiere(1)],
     tulle: materialDraft(item.tulle),

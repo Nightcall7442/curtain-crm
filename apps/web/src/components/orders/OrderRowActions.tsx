@@ -75,12 +75,18 @@ export function OrderRowActions({
   roles,
   locale,
   orderType = OrderType.CUSTOM,
+  blockedReason,
   onPick,
 }: {
   readonly status: OrderStatus;
   readonly roles: readonly Role[];
   readonly locale: Locale;
   readonly orderType?: OrderTypeName;
+  /**
+   * Почему переход в данный статус сейчас недоступен — тот же отказ, что даст
+   * сервер (например, закрытие с долгом). Кнопка видна, но неактивна.
+   */
+  readonly blockedReason?: (toStatus: OrderStatus) => string | null;
   readonly onPick: (action: OrderAction) => void;
 }): ReactElement | null {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -131,10 +137,11 @@ export function OrderRowActions({
       {primary !== null && primaryAction !== undefined && (
         <Button
           size="sm"
+          disabled={blockedReason?.(primaryAction.toStatus) != null}
           onClick={() => {
             onPick(primaryAction);
           }}
-          title={transitionLabel(primary.transition, locale)}
+          title={blockedReason?.(primaryAction.toStatus) ?? transitionLabel(primary.transition, locale)}
         >
           {primary.shortLabel}
         </Button>
@@ -173,12 +180,14 @@ export function OrderRowActions({
                   key={action.toStatus}
                   type="button"
                   role="menuitem"
+                  disabled={blockedReason?.(action.toStatus) != null}
+                  title={blockedReason?.(action.toStatus) ?? undefined}
                   onClick={() => {
                     setMenuOpen(false);
                     onPick(action);
                   }}
                   className={cn(
-                    'block w-full px-3 py-2 text-left text-caption transition-colors',
+                    'block w-full px-3 py-2 text-left text-caption transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                     action.kind === TransitionKind.CANCEL || action.kind === TransitionKind.REJECT
                       ? 'text-danger hover:bg-danger/10'
                       : action.kind === TransitionKind.ROLLBACK
