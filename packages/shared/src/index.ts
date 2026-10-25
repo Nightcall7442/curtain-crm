@@ -50,6 +50,9 @@ export * from './monitor/tvLayout';
 export * from './monitor/plan';
 export * from './monitor/installSlot';
 
+/* Правила заказа */
+export * from './orders/rules';
+
 /* Типы */
 export * from './types/orderItemAccessory';
 export * from './types/orderItemMaterial';
