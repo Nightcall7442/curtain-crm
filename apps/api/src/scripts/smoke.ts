@@ -551,6 +551,20 @@ async function run(db: Database): Promise<void> {
   );
 
   await move(OrderStatus.INSTALLATION_DONE, installerActor);
+  // С долгом заказ не закрывается: сначала остаток, потом «Закрыть заказ».
+  await expectRejectedWith(
+    'долг: заказ с остатком не закрывается',
+    () => move(OrderStatus.COMPLETED, adminActor),
+    (message) => message.startsWith('Остаток 3') && message.endsWith('сначала примите оплату'),
+  );
+  await post(db, {
+    branchId: branch.id,
+    kind: PaymentKind.ORDER_BALANCE,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('3000000'),
+    orderId: order.id,
+    actorId: admin.id,
+  });
   await move(OrderStatus.COMPLETED, adminActor);
 
   const [finished] = await db.select().from(orders).where(eq(orders.id, order.id));
@@ -661,6 +675,15 @@ async function run(db: Database): Promise<void> {
     readyDirect.orderType,
   );
 
+  // Без установки готовые шторы уходят только оплаченными целиком.
+  await post(db, {
+    branchId: branch.id,
+    kind: PaymentKind.READY_MADE,
+    method: PaymentMethod.CASH,
+    amount: parseMoney('900000'),
+    orderId: readyDirect.id,
+    actorId: admin.id,
+  });
   await db.transaction(async (tx) => {
     await changeOrderStatus(tx, {
       orderId: readyDirect.id,
@@ -1197,10 +1220,13 @@ async function run(db: Database): Promise<void> {
   check(
     'касса: приходы разложены по источнику и способу, оплата картой в норму терминальных чеков не идёт',
     depositRow?.byMethod.cash === parseMoney('2300000') &&
-      balanceRow?.byMethod.cash === parseMoney('500000') &&
+      // 500 000 по этому заказу + 3 000 000 остатка заказа из раздела 2,
+      // принятые руководством перед закрытием.
+      balanceRow?.byMethod.cash === parseMoney('3500000') &&
       balanceRow.byMethod.card === parseMoney('200000') &&
-      // 1 000 000 по этому заказу + 2 000 000 первой оплаты заказа из раздела 2.
-      cash.total === parseMoney('3000000') &&
+      // 1 000 000 по этому заказу + 5 000 000 заказа из раздела 2 (2 000 000
+      // первой оплаты и 3 000 000 остатка) + 900 000 продажи готовых штор.
+      cash.total === parseMoney('6900000') &&
       // Касса и терминал разведены: приход по карте — не чек, чеком его делает
       // только отдельная запись (см. ниже), так что здесь их ноль.
       cash.terminalChecks === 0 &&
@@ -2113,6 +2139,135 @@ async function run(db: Database): Promise<void> {
   check(
     'роли: снятая роль из списка уходит',
     !(await ceoCaller.users.autoGrantedRoles()).some((row) => row.userId === seller.id),
+  );
+
+  // Долг: заказ с остатком не закрывается ни одним путём.
+  const makeDebtOrder = async (label: string, status: OrderStatus, price: string, paid: string) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} Долг ${label}`,
+        clientPhone: '+998901112266',
+        createdBy: seller.id,
+        installerId: installer.id,
+        status,
+        workPrice: price,
+        installAddress: 'ул. Смоука, 2',
+      })
+      .returning();
+    if (row === undefined) throw new Error(`заказ «${label}» не создан`);
+    if (parseMoney(paid) > 0) {
+      await post(db, {
+        branchId: branch.id,
+        kind: PaymentKind.ORDER_DEPOSIT,
+        method: PaymentMethod.CASH,
+        amount: parseMoney(paid),
+        orderId: row.id,
+        actorId: seller.id,
+      });
+    }
+    return row;
+  };
+  const statusOf = async (orderId: number) =>
+    (await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)))[0]?.status;
+  const isDebtMessage = (message: string): boolean =>
+    message.startsWith('Остаток') && message.endsWith('сначала примите оплату');
+
+  const debtor = await makeDebtOrder('после установки', OrderStatus.INSTALLATION_DONE, '300000.00', '0');
+  const settled = await makeDebtOrder('оплачен', OrderStatus.INSTALLATION_DONE, '300000.00', '300000');
+  await expectRejectedWith(
+    'долг: «Закрыть заказ» с остатком отбивается',
+    () => managerCaller.orders.changeStatus({ id: debtor.id, toStatus: OrderStatus.COMPLETED }),
+    isDebtMessage,
+  );
+  const debtTransitions = await managerCaller.orders.availableTransitions({ id: debtor.id });
+  const settledTransitions = await managerCaller.orders.availableTransitions({ id: settled.id });
+  check(
+    'долг: у перехода «Закрыть заказ» причина отказа — только у должника',
+    isDebtMessage(debtTransitions.find((t) => t.to === OrderStatus.COMPLETED)?.blockedReason ?? '') &&
+      settledTransitions.find((t) => t.to === OrderStatus.COMPLETED)?.blockedReason === null,
+    JSON.stringify(debtTransitions.map((t) => [t.to, t.blockedReason])),
+  );
+  const debtBatch = await managerCaller.orders.changeStatusBatch({
+    ids: [debtor.id, settled.id],
+    toStatus: OrderStatus.COMPLETED,
+  });
+  check(
+    'долг: массовое закрытие пропускает должника и объясняет почему',
+    debtBatch.succeeded === 1 &&
+      debtBatch.results.some((r) => r.id === debtor.id && !r.ok && isDebtMessage(r.message ?? '')) &&
+      (await statusOf(settled.id)) === OrderStatus.COMPLETED,
+    JSON.stringify(debtBatch.results),
+  );
+
+  // Фото «после установки» при долге: фото сохранено, заказ ждёт оплаты.
+  const photoDebt = await makeDebtOrder('фото', OrderStatus.INSTALLATION_IN_PROGRESS, '400000.00', '100000');
+  await installerCaller.orderPhotos.upload({ orderId: photoDebt.id, stage: 'install_after', file: pixel });
+  await installerCaller.orderPhotos.upload({ orderId: photoDebt.id, stage: 'install_after', file: pixel });
+  const photoRows = await db.select({ id: orderPhotos.id }).from(orderPhotos).where(eq(orderPhotos.orderId, photoDebt.id));
+  check(
+    'долг: фото после установки при долге — «Установка завершена», фото на месте',
+    (await statusOf(photoDebt.id)) === OrderStatus.INSTALLATION_DONE && photoRows.length === 2,
+    `${String(await statusOf(photoDebt.id))}, фото ${photoRows.length.toString()}`,
+  );
+
+  // Оплата частями: последняя закрывает заказ — даже принятая установщиком.
+  await installerCaller.payments.acceptForOrder({ id: photoDebt.id, amount: 100000, method: PaymentMethod.CASH });
+  check('долг: частичная оплата статус не меняет', (await statusOf(photoDebt.id)) === OrderStatus.INSTALLATION_DONE);
+  await installerCaller.payments.acceptForOrder({ id: photoDebt.id, amount: 200000, method: PaymentMethod.CASH });
+  const [settleNote] = await db
+    .select({ comment: orderStatusHistory.comment })
+    .from(orderStatusHistory)
+    .where(and(eq(orderStatusHistory.orderId, photoDebt.id), eq(orderStatusHistory.toStatus, OrderStatus.COMPLETED)));
+  check(
+    'долг: последний платёж от установщика закрывает заказ',
+    (await statusOf(photoDebt.id)) === OrderStatus.COMPLETED &&
+      settleNote?.comment === 'Оплата получена полностью — заказ закрыт автоматически',
+    `${String(await statusOf(photoDebt.id))}: ${String(settleNote?.comment)}`,
+  );
+
+  // Снижение цены до оплаченного закрывает ждущий оплаты заказ — и только его.
+  const priceDebt = await makeDebtOrder('цена', OrderStatus.INSTALLATION_DONE, '500000.00', '200000');
+  const priceSewing = await makeDebtOrder('цена в пошиве', OrderStatus.SEWING_IN_PROGRESS, '500000.00', '200000');
+  await managerCaller.orders.setPrice({ id: priceDebt.id, workPrice: 200000 });
+  await managerCaller.orders.setPrice({ id: priceSewing.id, workPrice: 200000 });
+  check(
+    'долг: цена снижена до оплаченного — заказ после установки закрыт, в пошиве — нет',
+    (await statusOf(priceDebt.id)) === OrderStatus.COMPLETED &&
+      (await statusOf(priceSewing.id)) === OrderStatus.SEWING_IN_PROGRESS,
+  );
+  await expectRejectedWith(
+    'долг: цену закрытого заказа не изменить',
+    () => managerCaller.orders.setPrice({ id: priceDebt.id, workPrice: 100000 }),
+    (message) => message === 'Заказ закрыт — правка недоступна',
+  );
+
+  // Готовые шторы без установки — только с полной оплатой.
+  const readySale = {
+    clientName: `${PREFIX} Готовые долг`,
+    clientPhone: '+998901112277',
+    workPrice: 500000,
+    depositMethod: PaymentMethod.CASH,
+    items: [{ model: `${PREFIX} Модель`, quantity: 1 }],
+  };
+  await expectRejectedWith(
+    'долг: готовые без установки с неполной оплатой не продаются',
+    () => sellerCaller.orders.sellReadyMade({ ...readySale, deposit: 100000, needsInstallation: false }),
+    (message) => message === 'Без установки готовые шторы продаются только при полной оплате',
+  );
+  const paidSale = await sellerCaller.orders.sellReadyMade({ ...readySale, deposit: 500000, needsInstallation: false });
+  const installSale = await sellerCaller.orders.sellReadyMade({
+    ...readySale,
+    deposit: 100000,
+    needsInstallation: true,
+    installAddress: 'ул. Смоука, 3',
+  });
+  check(
+    'долг: оплаченная продажа закрыта, с установкой — ждёт установщика',
+    paidSale.status === OrderStatus.COMPLETED &&
+      installSale.status === OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
+    `${paidSale.status} / ${installSale.status}`,
   );
 }
 

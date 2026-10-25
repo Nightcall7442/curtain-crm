@@ -154,6 +154,9 @@ const EXACT: Readonly<Record<string, string>> = {
   'Готовая штора не найдена': 'Tayyor parda topilmadi',
   'Править заказ может его автор или руководство': "Buyurtmani faqat muallifi yoki rahbariyat tahrirlay oladi",
   'Заказ уже в работе — правки вносит администратор': "Buyurtma allaqachon ishda — tahrirni administrator kiritadi",
+  'Заказ закрыт — правка недоступна': "Buyurtma yopilgan — tahrirlab bo'lmaydi",
+  'Без установки готовые шторы продаются только при полной оплате':
+    "O'rnatishsiz tayyor pardalar faqat to'liq to'lov bilan sotiladi",
   'Позиция заказа не найдена': 'Buyurtma pozitsiyasi topilmadi',
   'Не удалось изменить статус заказа': "Buyurtma holatini o'zgartirib bo'lmadi",
   'В сборочном листе нет такой строки': "Yig'ish varag'ida bunday qator yo'q",
@@ -355,6 +358,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Статус «{status}» не требует исполнителя — назначьте его отдельно', "«{status}» holati ijrochi talab qilmaydi — uni alohida tayinlang"],
   ['Сначала назначьте исполнителя с ролью «{role}»', 'Avval «{role}» rolli ijrochini tayinlang'],
   ['У сотрудника нет роли «{role}». Роли меняет директор', "Xodimda «{role}» roli yo'q. Rollarni direktor o'zgartiradi"],
+  ['Остаток {sum} — сначала примите оплату', "Qoldiq {sum} — avval to'lovni qabul qiling"],
   ['Заказ {order} закреплён за другим сотрудником', '{order} buyurtmasi boshqa xodimga biriktirilgan'],
   ['Сначала соберитесь на выезд. Не отмечено: {items} и ещё {n}', "Avval chiqishga yig'iling. Belgilanmagan: {items} va yana {n}"],
   ['Сначала соберитесь на выезд. Не отмечено: {items}', "Avval chiqishga yig'iling. Belgilanmagan: {items}"],

@@ -18,6 +18,7 @@ import {
   corniceRotationSchema,
   CorniceStatus,
   isManagement,
+  isTerminalStatus,
   MAX_ACCESSORIES_PER_ITEM,
   MAX_PORTIERES_PER_ITEM,
   MAX_BATCH_ORDERS,
@@ -69,7 +70,9 @@ import {
   assertCanAccessOrder,
   assignExecutor,
   changeOrderStatus,
+  closeIfSettled,
   loadOrderForUpdate,
+  transitionBlockedReason,
 } from '../services/orderWorkflow.service';
 import { setInstallationTime } from '../services/installationSchedule.service';
 import { post } from '../services/ledger.service';
@@ -910,6 +913,18 @@ export const ordersRouter = router({
           message: 'Нельзя создать заказ в филиале, к которому вы не привязаны',
         });
       }
+      // Без установки и переделки продажа закрывается сразу — а с долгом
+      // заказ не закрывается. Поэтому такая продажа — только за всю сумму.
+      if (
+        !input.needsInstallation &&
+        !input.needsRework &&
+        parseMoney(input.deposit) !== parseMoney(input.workPrice)
+      ) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Без установки готовые шторы продаются только при полной оплате',
+        });
+      }
 
       return ctx.db.transaction(async (tx) => {
         const [created] = await tx
@@ -1222,6 +1237,9 @@ export const ordersRouter = router({
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const order = await loadOrderForUpdate(tx, input.id);
+        if (isTerminalStatus(order.status)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Заказ закрыт — правка недоступна' });
+        }
 
         // «Оплачено» здесь не правится: это сумма проводок, и меняют её
         // приходом или возвратом (`payments.acceptForOrder`, `payments.refund`).
@@ -1260,6 +1278,12 @@ export const ordersRouter = router({
           },
           ipAddress: ctx.ipAddress,
         });
+
+        // Цену снизили до оплаченного — заказ, ждавший денег, закрывается.
+        if (await closeIfSettled(tx, { orderId: order.id, actor: ctx.user, ipAddress: ctx.ipAddress })) {
+          const [closed] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
+          return maskStageFees(closed ?? updated, ctx.user);
+        }
 
         return maskStageFees(updated, ctx.user);
       }),
@@ -1568,6 +1592,8 @@ export const ordersRouter = router({
         label: transition.label,
         kind: transition.kind,
         requiresComment: transition.kind !== TransitionKind.FORWARD,
+        /** Почему переход сейчас недоступен — кнопка видна, но неактивна. */
+        blockedReason: transitionBlockedReason(order, transition.to),
       }));
     }),
 

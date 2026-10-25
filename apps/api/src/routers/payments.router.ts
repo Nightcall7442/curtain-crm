@@ -28,7 +28,7 @@ import {
   post,
   sumEntries,
 } from '../services/ledger.service';
-import { loadOrderForUpdate } from '../services/orderWorkflow.service';
+import { closeIfSettled, loadOrderForUpdate } from '../services/orderWorkflow.service';
 import { router } from '../trpc';
 
 /**
@@ -135,7 +135,18 @@ export const paymentsRouter = router({
           ipAddress: ctx.ipAddress,
         });
 
-        return { paidAmount: updated?.paidAmount ?? '0.00', remainingPayment: updated?.remainingPayment ?? null };
+        // Последний платёж по заказу, ждавшему оплаты, закрывает его.
+        const closed = await closeIfSettled(tx, {
+          orderId: order.id,
+          actor: ctx.user,
+          ipAddress: ctx.ipAddress,
+        });
+
+        return {
+          paidAmount: updated?.paidAmount ?? '0.00',
+          remainingPayment: updated?.remainingPayment ?? null,
+          closed,
+        };
       }),
     ),
 

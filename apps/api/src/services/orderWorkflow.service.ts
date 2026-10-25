@@ -8,14 +8,17 @@ import {
 } from '@curtain-crm/db';
 import {
   canDispatchOrders,
+  closeBlockedByDebt,
   CorniceStatus,
   findTransition,
+  formatMoney,
   isRollback,
   ORDER_STATUS_LABELS_RU,
   ORDER_STATUS_OWNER,
   ORDER_STATUS_REQUIRED_ASSIGNEE,
   OrderStatus,
   OrderType,
+  parseMoney,
   requiresComment,
   Role,
   ROLE_LABELS_RU,
@@ -213,6 +216,17 @@ export interface ChangeOrderStatusParams {
    */
   readonly systemInitiated?: boolean;
   /**
+   * Закрытие по оплате (`closeIfSettled`): последний платёж принят или цена
+   * снижена до оплаченного.
+   *
+   * Снимает проверки доступа и закрепления этапа: право на само действие —
+   * принять оплату или поменять цену — уже проверила вызывающая процедура.
+   * Без этого продавец, принявший остаток, получал бы отказ «заказ закреплён
+   * за другим сотрудником»: на этапе установки заказ принадлежит установщику.
+   * Ставится только вместе с `systemInitiated`.
+   */
+  readonly settlement?: boolean;
+  /**
    * Ценники для полки — только для пошива на склад при закрытии.
    *
    * Владелец задал порядок: пошив → контроль → админ ставит цену → штора
@@ -274,6 +288,57 @@ async function requireStockPrices(
   return prices;
 }
 
+/** «Остаток 800 000 сум — сначала примите оплату». */
+function debtCloseMessage(order: Order): string {
+  const remaining = parseMoney(order.remainingPayment ?? '0');
+  return `Остаток ${formatMoney(remaining)} — сначала примите оплату`;
+}
+
+/**
+ * Причина, по которой переход сейчас недоступен, — для кнопки в интерфейсе.
+ *
+ * Тот же отказ, что даст `changeOrderStatus`: кнопка «Закрыть заказ» у
+ * должника видна, но неактивна и говорит почему, а не падает после нажатия.
+ */
+export function transitionBlockedReason(order: Order, toStatus: OrderStatusName): string | null {
+  return toStatus === OrderStatus.COMPLETED && closeBlockedByDebt(order)
+    ? debtCloseMessage(order)
+    : null;
+}
+
+/**
+ * Закрывает заказ, ждущий оплаты, если долга больше нет.
+ *
+ * Вызывается после всего, что уменьшает остаток: принятой оплаты и снижения
+ * цены. Заказ в «Установка завершена» с остатком ≤ 0 уходит в «Выполнен»
+ * сам — руками его закрывать больше не нужно, раз вся причина ожидания
+ * была в деньгах.
+ *
+ * @returns `true`, если заказ закрыт этим вызовом.
+ */
+export async function closeIfSettled(
+  executor: DbExecutor,
+  params: {
+    readonly orderId: number;
+    readonly actor: AuthenticatedUser;
+    readonly ipAddress: string | null;
+  },
+): Promise<boolean> {
+  const order = await loadOrderForUpdate(executor, params.orderId);
+  if (order.status !== OrderStatus.INSTALLATION_DONE || closeBlockedByDebt(order)) return false;
+
+  await changeOrderStatus(executor, {
+    orderId: order.id,
+    toStatus: OrderStatus.COMPLETED,
+    actor: params.actor,
+    comment: 'Оплата получена полностью — заказ закрыт автоматически',
+    systemInitiated: true,
+    settlement: true,
+    ipAddress: params.ipAddress,
+  });
+  return true;
+}
+
 export async function changeOrderStatus(
   executor: DbExecutor,
   params: ChangeOrderStatusParams,
@@ -287,7 +352,7 @@ export async function changeOrderStatus(
      этой проверки рядовой сотрудник перебором `id` вычитывал бы состояние
      чужих заказов: сама мутация не прошла бы, но данные утекли. Читающая
      `orders.byId` такую попытку отклоняет давно — здесь проверки не было. */
-  assertCanTouchOrder(order, actor, fromStatus);
+  if (params.settlement !== true) assertCanTouchOrder(order, actor, fromStatus);
 
   if (fromStatus === toStatus) {
     throw new TRPCError({
@@ -313,6 +378,13 @@ export async function changeOrderStatus(
     });
   }
 
+  /* 1a. С долгом заказ не закрывается — ни кнопкой, ни пачкой, ни
+     автозакрытием. Остаток читается из заказа под блокировкой, то есть
+     с проводками, сделанными в этой же транзакции. */
+  if (toStatus === OrderStatus.COMPLETED && closeBlockedByDebt(order)) {
+    throw new TRPCError({ code: 'CONFLICT', message: debtCloseMessage(order) });
+  }
+
   /* 2. Права роли на этот конкретный переход. */
   if (params.systemInitiated !== true) {
     if (!transition.roles.some((role) => actor.roles.includes(role))) {
@@ -328,7 +400,7 @@ export async function changeOrderStatus(
      при системном переходе: «я имею право на такое действие» и «этот заказ
      закреплён за мной» — разные вопросы, и автозакрытие снимает только
      первый. */
-  assertActorOwnsOrder(order, actor, fromStatus);
+  if (params.settlement !== true) assertActorOwnsOrder(order, actor, fromStatus);
 
   /* 4. Обязательный комментарий для откатов, отклонений и отмен. */
   const comment = params.comment?.trim() ?? '';
