@@ -184,6 +184,14 @@ export function SellReadyMadeScreen(): ReactElement {
   const errors = validate({ clientName, clientPhone, needsInstallation, installAddress }, m);
   const hasErrors = Object.keys(errors).length > 0;
 
+  /*
+    Без установки и переделки продажа закрывается сразу, а заказ с долгом
+    не закрывается — поэтому такая продажа только за всю сумму: оплата
+    подставляется сама и не правится.
+  */
+  const paidInFull = needsInstallation === 'no' && needsRework === 'no';
+  const priceDue = discountPayload(workPrice, discount).workPrice;
+
   const submit = (): void => {
     setShowErrors(true);
     if (hasErrors || discountMissingReason(workPrice, discount)) return;
@@ -192,7 +200,7 @@ export function SellReadyMadeScreen(): ReactElement {
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
       ...discountPayload(workPrice, discount),
-      deposit: inputToMajor(deposit),
+      deposit: paidInFull ? priceDue : inputToMajor(deposit),
       depositMethod,
       needsInstallation: needsInstallation === 'yes',
       needsRework: needsRework === 'yes',
@@ -277,8 +285,16 @@ export function SellReadyMadeScreen(): ReactElement {
               </Field>
             </View>
             <View style={styles.moneyItem}>
-              <Field label={m('create.deposit')}>
-                <MoneyInput value={deposit} onChangeText={setDeposit} placeholder="0" />
+              <Field
+                label={paidInFull ? m('sell.paidInFull') : m('create.deposit')}
+                {...(paidInFull ? { hint: m('sell.fullPaymentOnly') } : {})}
+              >
+                <MoneyInput
+                  value={paidInFull ? (priceDue > 0 ? priceDue.toString() : '') : deposit}
+                  onChangeText={setDeposit}
+                  editable={!paidInFull}
+                  placeholder="0"
+                />
               </Field>
             </View>
           </View>

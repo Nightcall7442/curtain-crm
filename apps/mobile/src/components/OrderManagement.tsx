@@ -1,7 +1,6 @@
 import {
   groupDigits,
   ORDER_STAGE_FEE_LABELS,
-  canDispatchOrders,
   INSTALLATION_SCHEDULABLE_STATUSES,
   isAssignableRole,
   ORDER_STAGE_FEE_ROLE,
@@ -95,7 +94,6 @@ export function OrderManagement({
   /** Роль, которой сейчас выбирают исполнителя. `null` — никакая. */
   const [assigning, setAssigning] = useState<Role | null>(null);
   /** Показывать и тех, у кого этой роли нет. Сбрасывается вместе с ролью. */
-  const [showOthers, setShowOthers] = useState(false);
 
   const stages = stageFeesOfOrderType(orderType, status);
 
@@ -224,7 +222,6 @@ export function OrderManagement({
               <Pressable
                 onPress={() => {
                   setAssigning(assigning === role ? null : role);
-                  setShowOthers(false);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('manage.assignRole', { role: t(ROLE_LABELS, role) })}
@@ -253,23 +250,17 @@ export function OrderManagement({
                   ) : (
                     (() => {
                       /*
-                        Как в панели: сначала свои — у кого роль есть, это
-                        обычный короткий список. По «Ещё» — все активные,
-                        кроме тех, кто ведёт заказы (директор, админ,
-                        менеджер): швея, которая сегодня едет на установку, —
-                        подработка, а не ошибка, роль ей выдаст сам API при
-                        назначении.
+                        Как в панели: только те, у кого роль есть. Назначение
+                        ролей не выдаёт — сервер отклонит человека без роли,
+                        а менять роли вправе только директор. Подработку вне
+                        своей роли директор оформляет в карточке сотрудника.
 
                         Кнопки переносятся строками, а не едут лентой:
                         горизонтальная лента внутри экрана-ленты глотала
                         нажатия и прятала половину имён за краем.
                       */
                       const items = people.data ?? [];
-                      const own = items.filter((person) => person.roles.includes(role));
-                      const others = items.filter(
-                        (person) => !person.roles.includes(role) && !canDispatchOrders(person.roles),
-                      );
-                      const pool = showOthers ? [...own, ...others] : own;
+                      const pool = items.filter((person) => person.roles.includes(role));
                       if (current !== null && !pool.some((person) => person.id === current.id)) {
                         const kept = items.find((person) => person.id === current.id);
                         if (kept !== undefined) pool.push(kept);
@@ -327,19 +318,6 @@ export function OrderManagement({
                             );
                           })}
 
-                          {!showOthers && others.length > 0 && (
-                            <Pressable
-                              onPress={() => {
-                                setShowOthers(true);
-                              }}
-                              accessibilityRole="button"
-                              style={[styles.chip, styles.chipMore]}
-                            >
-                              <Text style={styles.chipText}>
-                                {m('manage.more', { n: others.length })}
-                              </Text>
-                            </Pressable>
-                          )}
                         </View>
                       );
                     })()
@@ -545,9 +523,6 @@ const styles = StyleSheet.create({
   chipClearText: {
     ...typography.caption,
     color: colors.danger,
-  },
-  chipMore: {
-    borderStyle: 'dashed',
   },
   chipText: {
     ...typography.caption,

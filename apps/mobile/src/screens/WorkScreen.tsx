@@ -2,6 +2,7 @@ import {
   CORNICE_STATUS_LABELS,
   CorniceStatus,
   isActiveStatus,
+  isAwaitingPayment,
   isOverdueDate,
   ORDER_INTAKE_ROLES,
   Role,
@@ -430,6 +431,8 @@ export function WorkScreen(): ReactElement {
             workPrice={item.workPrice}
             remaining={item.remainingPayment}
             installationAt={item.installationAt}
+            executor={item.currentExecutor === null ? null : { name: item.currentExecutor.fullName }}
+            awaitingPayment={isAwaitingPayment(item)}
             onPress={() => {
               navigation.navigate('OrderDetail', { orderId: item.id });
             }}
