@@ -15,7 +15,7 @@
 |---|---|---|
 | 1.1 | Восемь ролей: `ceo`, `admin`, `seller`, `master`, `sewer`, `qc`, `installer`, `smm` | `packages/shared/src/enums/role.enum.ts` |
 | 1.2 | Роль — множество (many-to-many), один человек может быть мастером И швеёй. Колонки `role` в `users` быть НЕ должно | `packages/db/src/schema/users.schema.ts` |
-| 1.3 | Роли создаёт и меняет ТОЛЬКО CEO. Админ ролями не управляет | `users.grantRole` / `users.revokeRole` объявлены как `ceoProcedure` |
+| 1.3 | Роли создаёт и меняет ТОЛЬКО CEO. Админ ролями не управляет. Назначение на заказ ролей НЕ выдаёт: назначить можно только того, у кого роль этапа уже есть (с 25.10.2026) | `users.grantRole` / `users.revokeRole` объявлены как `ceoProcedure`; `assertAssignableExecutor` в `orderWorkflow.service.ts` |
 | 1.4 | Права проверяются в tRPC-middleware по каждой процедуре, а не только во фронтенде | `middleware/roleGuard.middleware.ts`, использование в роутерах |
 
 ## 2. Мультифилиальность
@@ -39,7 +39,8 @@
 | 3.6 | Шаг замера НЕ обязателен: админ может перевести заказ сразу в `pending_sewing_assignment` | наличие перехода `pending_admin_review -> pending_sewing_assignment` |
 | 3.7 | `cancelled` и `completed` не удаляются, остаются в основной таблице, архив — фильтр по статусу | `archive.router.ts`, отсутствие отдельной таблицы архива |
 | 3.8 | `installer_id` — один ответственный; бригада опциональна и не блокирует MVP | `orders.schema.ts`, `order_installation_team` |
-| 3.9 | Загрузка фото `install_after` АВТОМАТИЧЕСКИ переводит заказ в `completed`, без подтверждения клиента | `orderPhotos.router.ts` |
+| 3.9 | Загрузка фото `install_after` АВТОМАТИЧЕСКИ переводит заказ в `completed`, без подтверждения клиента, — если он оплачен. С остатком > 0 заказ ждёт оплаты в `installation_done` и закрывается сам, когда остаток стал 0 (решение заказчика 25.10.2026) | `orderPhotos.router.ts`, `closeIfSettled` в `orderWorkflow.service.ts` |
+| 3.9а | Заказ с остатком > 0 не закрывается ни одним путём (кнопка, пачка, фото, продажа готовых); пошив на склад правилом не затронут | `closeBlockedByDebt` в `packages/shared`, проверка в `changeOrderStatus` |
 | 3.10 | `cancelled` доступен в любой момент, только CEO/админу, с причиной | таблица переходов + check-констрейнт |
 
 ## 4. Замеры, фото, комментарии

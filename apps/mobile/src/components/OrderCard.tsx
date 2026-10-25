@@ -1,4 +1,6 @@
 import {
+  AWAITING_PAYMENT_LABEL,
+  EXECUTOR_NOT_ASSIGNED_LABEL,
   formatInstallSlot,
   formatIsoDateShort,
   formatMoneyShort,
@@ -50,6 +52,8 @@ export function OrderCard({
   workPrice,
   remaining,
   installationAt = null,
+  executor,
+  awaitingPayment = false,
   onPress,
 }: {
   readonly orderNumber: string;
@@ -65,9 +69,16 @@ export function OrderCard({
   readonly remaining?: string | null;
   /** Время установки: у назначенной установки оно важнее срока. */
   readonly installationAt?: Date | null;
+  /**
+   * Кто сейчас ведёт этап: `name: null` — этап ждёт человека («не назначен»);
+   * `null` или не передан — у статуса исполнителя нет, строки не будет.
+   */
+  readonly executor?: { readonly name: string | null } | null;
+  /** Установка сделана, остаток не получен — пометка «Ждёт оплаты». */
+  readonly awaitingPayment?: boolean;
   readonly onPress: () => void;
 }): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, locale } = useLocale();
   const isOverdue =
     deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
 
@@ -93,10 +104,24 @@ export function OrderCard({
         <Text style={styles.number} numberOfLines={1}>
           {orderNumber}
         </Text>
-        <Pill
-          text={t(ORDER_STATUS_LABELS, status)}
-          tone={statusTone(status, isOverdue)}
-        />
+        <View style={styles.badges}>
+          <Pill
+            text={t(ORDER_STATUS_LABELS, status)}
+            tone={statusTone(status, isOverdue)}
+          />
+          {awaitingPayment && <Pill text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />}
+          {/* Кто сейчас ведёт заказ — сразу под статусом, как просил заказчик. */}
+          {executor != null &&
+            (executor.name === null ? (
+              <Text style={styles.executorNone} numberOfLines={1}>
+                {EXECUTOR_NOT_ASSIGNED_LABEL[locale]}
+              </Text>
+            ) : (
+              <Text style={styles.executor} numberOfLines={1}>
+                {executor.name}
+              </Text>
+            ))}
+        </View>
       </View>
 
       <Text style={styles.client} numberOfLines={1}>
@@ -217,9 +242,29 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  badges: {
+    alignItems: 'flex-end',
+    gap: 4,
+    flexShrink: 1,
+  },
+  executor: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    color: colors.accent,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    overflow: 'hidden',
+    maxWidth: 180,
+  },
+  executorNone: {
+    ...typography.caption,
+    color: colors.textMuted,
   },
   number: {
     fontFamily: fonts.extrabold,

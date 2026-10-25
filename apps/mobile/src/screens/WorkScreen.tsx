@@ -1,16 +1,16 @@
 import {
+  canSeeClientMoney,
   CORNICE_STATUS_LABELS,
   CorniceStatus,
-  isActiveStatus,
-  isOverdueDate,
+  isAwaitingPayment,
   ORDER_INTAKE_ROLES,
   Role,
   TaskStatus,
 } from '@curtain-crm/shared';
 
 import { useNavigation } from '@react-navigation/native';
-import { useState, type ReactElement } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState, type ReactElement } from 'react';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Empty, ErrorState, Skeleton } from '../components/Card';
 import { Icon } from '../components/Icon';
@@ -18,7 +18,11 @@ import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { TerminalCheckCard } from '../components/TerminalCheckCard';
 import { OrderCard } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
-import { useAuth, useIsManagement } from '../hooks/useAuth';
+import { ExecutorFilterSheet } from '../components/work/ExecutorFilterSheet';
+import { OrderSearchBar } from '../components/work/OrderSearchBar';
+import { statusFilterInput, statusFilterLabel, type StatusFilter } from '../components/work/orderFilter';
+import { StatusFilterSheet } from '../components/work/StatusFilterSheet';
+import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
@@ -38,6 +42,11 @@ import type { MessageKey } from '../i18n/messages';
  */
 
 type Filter = 'active' | 'all' | 'overdue' | 'tasks' | 'personal' | 'cornice';
+
+/** Заказов на страницу подгрузки: экран телефона — это 4–5 карточек. */
+const ORDERS_PAGE_SIZE = 30;
+/** Пауза после ввода, после которой поиск уходит на сервер. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 const FILTERS: readonly { readonly key: Filter; readonly label: MessageKey }[] = [
   { key: 'active', label: 'work.filterActive' },
@@ -62,7 +71,7 @@ const CORNICE_FILTER: { readonly key: Filter; readonly label: MessageKey } = {
 export function WorkScreen(): ReactElement {
   const navigation = useNavigation();
   const { user } = useAuth();
-  const { m, t } = useLocale();
+  const { m, t, locale } = useLocale();
   const [filter, setFilter] = useState<Filter>('active');
 
   /**
@@ -81,13 +90,47 @@ export function WorkScreen(): ReactElement {
   const isSeller = (user?.roles ?? []).includes(Role.SELLER);
   const filters = isCorniceInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
-  const query = trpc.orders.list.useQuery(
+  /*
+    Поиск и фильтры. Строка поиска уходит на сервер с задержкой: запрос на
+    каждую букву перегружал бы и сеть, и список. Фильтр по исполнителю — только
+    тем, кто ведёт заказы; «С долгом» — тем, кто видит деньги клиента.
+  */
+  const canDispatch = useCanDispatchOrders();
+  const seesMoney = canSeeClientMoney(user?.roles ?? []);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter | null>(null);
+  const [executor, setExecutor] = useState<{ readonly id: number; readonly fullName: string } | null>(null);
+  const [sheet, setSheet] = useState<'status' | 'executor' | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [search]);
+
+  /*
+    Подгрузка страницами при прокрутке. Поиск и фильтры входят в ключ
+    запроса: смена любого из них начинает выдачу с первой страницы, а не
+    дописывает к старой. «Просрочены» отбирает сервер — по всем заказам, а не
+    по первой странице.
+  */
+  const query = trpc.orders.list.useInfiniteQuery(
     {
-      page: 1,
-      pageSize: 50,
+      pageSize: ORDERS_PAGE_SIZE,
       includeArchived: filter === 'all',
+      ...(filter === 'overdue' ? { overdue: true } : {}),
+      ...(debouncedSearch.length > 0 ? { search: debouncedSearch } : {}),
+      ...statusFilterInput(statusFilter),
+      ...(executor === null ? {} : { assigneeId: executor.id }),
     },
-    { enabled: filter !== 'tasks' && filter !== 'personal' && filter !== 'cornice' },
+    {
+      enabled: filter !== 'tasks' && filter !== 'personal' && filter !== 'cornice',
+      getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
+    },
   );
 
   /*
@@ -121,15 +164,8 @@ export function WorkScreen(): ReactElement {
     (task) => task.status === TaskStatus.OPEN,
   );
 
-  const items = (query.data?.items ?? []).filter((order) => {
-    if (filter === 'overdue') {
-      return (
-        isOverdueDate(order.deadline) &&
-        isActiveStatus(order.status)
-      );
-    }
-    return true;
-  });
+  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const filtersActive = debouncedSearch.length > 0 || statusFilter !== null || executor !== null;
 
   return (
     <View style={styles.container}>
@@ -394,14 +430,72 @@ export function WorkScreen(): ReactElement {
         </View>
       )}
 
+      <OrderSearchBar
+        search={search}
+        onSearch={setSearch}
+        statusLabel={statusFilter === null ? null : statusFilterLabel(statusFilter, locale)}
+        onStatusPress={() => {
+          setSheet('status');
+        }}
+        onStatusClear={() => {
+          setStatusFilter(null);
+        }}
+        executorLabel={executor?.fullName ?? null}
+        onExecutorPress={() => {
+          setSheet('executor');
+        }}
+        onExecutorClear={() => {
+          setExecutor(null);
+        }}
+        showExecutor={canDispatch}
+        onReset={() => {
+          setSearch('');
+          setDebouncedSearch('');
+          setStatusFilter(null);
+          setExecutor(null);
+        }}
+      />
+      <StatusFilterSheet
+        visible={sheet === 'status'}
+        value={statusFilter}
+        withDebt={seesMoney}
+        onSelect={(next) => {
+          setStatusFilter(next);
+          setSheet(null);
+        }}
+        onClose={() => {
+          setSheet(null);
+        }}
+      />
+      {canDispatch && (
+        <ExecutorFilterSheet
+          visible={sheet === 'executor'}
+          selectedId={executor?.id ?? null}
+          onSelect={(person) => {
+            setExecutor(person);
+            setSheet(null);
+          }}
+          onClose={() => {
+            setSheet(null);
+          }}
+        />
+      )}
+
       <FlatList
         data={items}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
-        refreshing={query.isFetching && !query.isLoading}
+        refreshing={query.isRefetching && !query.isFetchingNextPage}
         onRefresh={() => {
           void query.refetch();
         }}
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+        }}
+        ListFooterComponent={
+          query.isFetchingNextPage ? <ActivityIndicator style={styles.more} color={colors.accent} /> : null
+        }
         /*
           Терминальные чеки — задание продавцов на день, поэтому в «Работе»,
           над заказами: это обязанность, а не касса. Остальным ролям — нет.
@@ -414,8 +508,14 @@ export function WorkScreen(): ReactElement {
             <ErrorState />
           ) : (
             <Empty
-              message={filter === 'overdue' ? m('work.noOverdue') : m('work.noOrders')}
-              hint={m('work.noOrdersHint')}
+              message={
+                filtersActive
+                  ? m('work.noMatches')
+                  : filter === 'overdue'
+                    ? m('work.noOverdue')
+                    : m('work.noOrders')
+              }
+              {...(filtersActive ? {} : { hint: m('work.noOrdersHint') })}
             />
           )
         }
@@ -430,6 +530,8 @@ export function WorkScreen(): ReactElement {
             workPrice={item.workPrice}
             remaining={item.remainingPayment}
             installationAt={item.installationAt}
+            executor={item.currentExecutor === null ? null : { name: item.currentExecutor.fullName }}
+            awaitingPayment={isAwaitingPayment(item)}
             onPress={() => {
               navigation.navigate('OrderDetail', { orderId: item.id });
             }}
@@ -562,6 +664,9 @@ const styles = StyleSheet.create({
     marginTop: -spacing.xs,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
+  },
+  more: {
+    paddingVertical: spacing.lg,
   },
   list: {
     padding: spacing.lg,

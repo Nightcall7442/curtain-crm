@@ -53,16 +53,25 @@ export function OrderPayments({
   const paidValue = paid === null ? 0 : parseMoney(paid);
   const remainingValue = remaining === null ? 0 : parseMoney(remaining);
 
+  /*
+    Оплата меняет не только «оплачено»: последний платёж сам закрывает заказ,
+    ждавший оплаты, а остаток стоит в подсказке у кнопки «Закрыть заказ».
+    Поэтому обновляем и переходы, и историю, и списки — иначе экран показал
+    бы закрытый заказ с кнопками, которые сервер уже не примет.
+  */
   const refresh = async (): Promise<void> => {
     await Promise.all([
       utils.orders.byId.invalidate({ id: orderId }),
+      utils.orders.availableTransitions.invalidate({ id: orderId }),
+      utils.orders.history.invalidate({ id: orderId }),
+      utils.orders.list.invalidate(),
       utils.payments.byOrder.invalidate({ orderId }),
     ]);
   };
   const accept = trpc.payments.acceptForOrder.useMutation({
-    async onSuccess() {
+    async onSuccess(result) {
       setMode(null);
-      toast.success('Оплата принята');
+      toast.success(result.closed ? 'Оплата принята — заказ закрыт' : 'Оплата принята');
       await refresh();
     },
   });

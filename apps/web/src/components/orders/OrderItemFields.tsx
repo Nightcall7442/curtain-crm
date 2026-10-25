@@ -6,6 +6,7 @@ import {
   CORNICE_ROTATION_LABELS_RU,
   CORNICE_ROTATIONS,
   CurtainMountKind,
+  editedMaterialMeters,
   MATERIAL_CODE_KINDS,
   ORDER_ITEM_KIND_LABELS_RU,
   ORDER_ITEM_KINDS,
@@ -43,6 +44,13 @@ export const emptyAccessory = (): AccessoryDraft => ({
  */
 export interface MaterialDraft {
   code: string;
+  /**
+   * Код и метраж, с которыми материал пришёл из сохранённого заказа. Метраж
+   * проставляет админ, а форма показывает только код: при правке позиции
+   * метраж остаётся, пока код прежний (`editedMaterialMeters`).
+   */
+  readonly originalCode?: string | null;
+  readonly meters?: number | null;
 }
 
 export const emptyMaterial = (): MaterialDraft => ({ code: '' });
@@ -60,8 +68,9 @@ export const emptyPortiere = (): PortiereDraft => ({
 /**
  * Материал для отправки на сервер. `undefined` — код не заполнен.
  *
- * Метраж уходит пустым: колонка осталась в позиции заказа, но продавец её
- * больше не набирает. Описание — из справочника, а не из формы.
+ * Метраж продавец не набирает: у нового материала он пустой, а при правке
+ * сохранённого заказа остаётся тем, что проставил админ, пока код прежний.
+ * Описание — из справочника, а не из формы.
  */
 export function toMaterial(
   draft: MaterialDraft,
@@ -70,7 +79,12 @@ export function toMaterial(
   const code = draft.code.trim();
   if (code.length === 0) return undefined;
 
-  return { code, meters: null, description };
+  const meters = editedMaterialMeters({
+    code,
+    originalCode: draft.originalCode ?? null,
+    meters: draft.meters ?? null,
+  });
+  return { code, meters, description };
 }
 
 /**
@@ -173,6 +187,8 @@ export interface ItemCatalog {
   readonly accessoryOptions: readonly { readonly value: string; readonly label: string }[];
   /** Труба или пластик с карнизом — что спрашивать для выбранной модели. */
   readonly mountOf: (model: string) => string;
+  /** Крепление модели по справочнику; `null` — модели в справочнике нет. */
+  readonly knownMountOf: (model: string) => CurtainMountKind | null;
   /** Описание кода со склада — подсказка под полем. */
   readonly describeCode: (kind: string, code: string) => string | null;
 }

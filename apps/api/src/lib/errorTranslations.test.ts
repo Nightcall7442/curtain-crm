@@ -187,6 +187,12 @@ describe('notificationTranslations', () => {
     expect(texts.filter((text) => !covered(text)), 'непереведённые уведомления').toEqual([]);
   });
 
+  it('долг при закрытии — по-узбекски и с узбекской валютой', () => {
+    expect(translateErrorMessage('Остаток 800\u00A0000 сум — сначала примите оплату', 'uz')).toBe(
+      "Qoldiq 800\u00A0000 so'm — avval to'lovni qabul qiling",
+    );
+  });
+
   it('переводит статус, роль и месяц внутри текста', () => {
     expect(translateNotificationText('Заказ DH-000012: В пошиве', 'uz')).toBe(
       `Buyurtma DH-000012: ${ORDER_STATUS_LABELS.uz.sewing_in_progress}`,

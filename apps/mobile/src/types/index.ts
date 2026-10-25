@@ -20,6 +20,8 @@ export type RootStackParamList = {
    * открывает именно этот режим — продажа с полки переехала на экран склада.
    */
   OrderCreate: { mode?: 'custom' | 'stock' } | undefined;
+  /** Правка заказа: открывается карандашом из шапки карточки заказа. */
+  OrderEdit: { orderId: number };
   /** Продажа со склада: штора уже выбрана на полке — подставляется первой позицией. */
   SellReadyMade: { readyMadeItemId?: number } | undefined;
   DayOff: undefined;

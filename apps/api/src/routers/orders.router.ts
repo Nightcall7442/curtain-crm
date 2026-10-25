@@ -8,6 +8,7 @@ import {
   readyMadeItems,
   users,
   type DbExecutor,
+  type Order,
 } from '@curtain-crm/db';
 import {
   areaM2FromCm,
@@ -15,9 +16,14 @@ import {
   assignableRoleSchema,
   availableTransitions,
   canDispatchOrders,
+  canEditOrder,
+  canSeeClientMoney,
   corniceRotationSchema,
   CorniceStatus,
+  currentExecutorRole,
+  DEBT_STATUSES,
   isManagement,
+  isTerminalStatus,
   MAX_ACCESSORIES_PER_ITEM,
   MAX_PORTIERES_PER_ITEM,
   MAX_BATCH_ORDERS,
@@ -43,10 +49,12 @@ import {
   TransitionKind,
   type OrderPhase,
   Role,
+  type Locale,
   type OrderStageFee,
+  workshopToday,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lt, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -64,15 +72,20 @@ import {
   orderDispatchProcedure,
   orderIntakeProcedure,
 } from '../middleware/roleGuard.middleware';
+import { translateErrorMessage } from '../lib/errorTranslations';
 import { recordAudit } from '../services/audit.service';
 import {
   assertCanAccessOrder,
+  ASSIGNABLE_ROLE_COLUMNS,
   assignExecutor,
   changeOrderStatus,
+  closeIfSettled,
   loadOrderForUpdate,
+  transitionBlockedReason,
 } from '../services/orderWorkflow.service';
 import { setInstallationTime } from '../services/installationSchedule.service';
 import { post } from '../services/ledger.service';
+import { notifyOrderUpdated } from '../services/notifications.service';
 import { accrueForStage } from '../services/payroll.service';
 import { assertCanPack, loadPackList } from '../services/packList.service';
 import { router } from '../trpc';
@@ -103,18 +116,8 @@ import { toOffset, toPage } from '../types';
  * `changeOrderStatus()`, которая ведёт историю и рассылает уведомления.
  */
 
-/**
- * Статусы, в которых автор ещё вправе править собственный заказ.
- *
- * Типизирован как `OrderStatus[]`, а не `string[]`: с обычным массивом строк
- * переименование статуса прошло бы мимо компилятора, и правка молча стала бы
- * недоступна автору — без единой ошибки сборки.
- */
-const AUTHOR_EDITABLE_STATUSES: readonly OrderStatus[] = [
-  OrderStatus.NEW,
-  OrderStatus.PENDING_ADMIN_REVIEW,
-  OrderStatus.REJECTED_TO_CEO,
-];
+/* Статусы, в которых автор правит свой заказ, — `AUTHOR_EDITABLE_STATUSES`
+   в `@curtain-crm/shared` (правило `canEditOrder`). */
 
 /* -------------------------------------------------------------------------- */
 /*                             Позиции заказа                                 */
@@ -369,11 +372,7 @@ function maskStageFees<T extends typeof orders.$inferSelect>(
   const seesEverything = isManagement(user.roles);
   // Менеджеру цена и платежи клиента нужны (он ставит цену), а расценки
   // исполнителям — нет: это зарплатная часть, она остаётся у руководства.
-  const seesClientMoney =
-    seesEverything ||
-    canDispatchOrders(user.roles) ||
-    user.roles.includes(Role.SELLER) ||
-    order.installerId === user.id;
+  const seesClientMoney = canSeeClientMoney(user.roles) || order.installerId === user.id;
 
   const visible = Object.fromEntries(
     ORDER_STAGE_FEES.map((stage) => [
@@ -455,6 +454,60 @@ function withMeters(
   return { ...material, meters };
 }
 
+/**
+ * Новая цена и скидка заказа — общая часть `setPrice` и `update`.
+ *
+ * «Оплачено» здесь не правится: это сумма проводок, и меняют её приходом
+ * или возвратом (`payments.acceptForOrder`, `payments.refund`). Остаток
+ * пересчитывает сама база.
+ *
+ * @returns `true`, если цена или скидка изменились.
+ */
+async function applyPriceChange(
+  tx: DbExecutor,
+  order: Order,
+  input: {
+    readonly workPrice?: number | undefined;
+    readonly discountAmount?: number | undefined;
+    readonly discountReason?: string | null | undefined;
+  },
+  actor: { readonly id: number },
+  ipAddress: string | null,
+): Promise<boolean> {
+  const patch = {
+    ...(input.workPrice === undefined
+      ? {}
+      : { workPrice: moneyToDecimalString(parseMoney(input.workPrice)) }),
+    ...(input.discountAmount === undefined
+      ? {}
+      : discountValues({
+          discountAmount: input.discountAmount,
+          discountReason: input.discountReason ?? order.discountReason,
+        })),
+  };
+
+  if (Object.keys(patch).length === 0) return false;
+
+  await tx.update(orders).set({ ...patch, updatedAt: new Date() }).where(eq(orders.id, order.id));
+  await recordAudit(tx, {
+    actorId: actor.id,
+    action: 'order.price_changed',
+    entityType: 'order',
+    entityId: order.id,
+    details: {
+      from: { workPrice: order.workPrice, discountAmount: order.discountAmount },
+      to: patch,
+    },
+    ipAddress,
+  });
+  return true;
+}
+
+/** Причина недоступного перехода — на языке клиента, как и ошибки. */
+function translateBlocked(reason: string | null, locale: Locale): string | null {
+  return reason === null ? null : translateErrorMessage(reason, locale);
+}
+
 export const ordersRouter = router({
   /** Список заказов с фильтрами. Основная выдача раздела «Заказы». */
   list: protectedProcedure
@@ -471,10 +524,30 @@ export const ordersRouter = router({
           deadlineTo: z.string().date().optional(),
           /** По умолчанию выполненные и отменённые скрыты — они в «Архиве». */
           includeArchived: z.boolean().default(false),
+          /**
+           * «С долгом»: установка сделана или заказ закрыт, а остаток > 0.
+           * Только тем, кто видит деньги клиента: иначе цех по фильтру узнал
+           * бы, какие из его заказов не оплачены.
+           */
+          withDebt: z.boolean().default(false),
+          /** Просроченные: срок раньше сегодняшнего дня мастерской, заказ открыт. */
+          overdue: z.boolean().default(false),
+          /** Номер страницы для подгрузки при прокрутке (`useInfiniteQuery`). */
+          cursor: z.number().int().min(1).optional(),
         })
-        .default({ page: 1, pageSize: 20, includeArchived: false }),
+        .default({ page: 1, pageSize: 20, includeArchived: false, withDebt: false, overdue: false }),
     )
     .query(async ({ ctx, input }) => {
+      if (input.withDebt && !canSeeClientMoney(ctx.user.roles)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Фильтр «С долгом» доступен только тем, кто видит оплаты',
+        });
+      }
+      const paging = { page: input.cursor ?? input.page, pageSize: input.pageSize };
+      const today = workshopToday();
+      const todayIsoDate = `${today.year.toString()}-${today.month.toString().padStart(2, '0')}-${today.day.toString().padStart(2, '0')}`;
+
       const statusesByPhase =
         input.phase === undefined
           ? undefined
@@ -490,9 +563,15 @@ export const ordersRouter = router({
         ...(statusesByPhase === undefined || statusesByPhase.length === 0
           ? []
           : [inArray(orders.status, statusesByPhase)]),
-        ...(input.status !== undefined || input.phase !== undefined || input.includeArchived
+        ...(input.status !== undefined || input.phase !== undefined || input.includeArchived || input.withDebt
           ? []
           : [notInArray(orders.status, [...ARCHIVED_ORDER_STATUSES])]),
+        ...(input.withDebt
+          ? [inArray(orders.status, [...DEBT_STATUSES]), gt(orders.remainingPayment, '0')]
+          : []),
+        ...(input.overdue
+          ? [lt(orders.deadline, todayIsoDate), notInArray(orders.status, [...ARCHIVED_ORDER_STATUSES])]
+          : []),
         ...(input.priority === undefined ? [] : [eq(orders.priority, input.priority)]),
         ...(input.branchId === undefined ? [] : [eq(orders.branchId, input.branchId)]),
         ...(input.deadlineFrom === undefined ? [] : [gte(orders.deadline, input.deadlineFrom)]),
@@ -505,6 +584,7 @@ export const ordersRouter = router({
                 eq(orders.sewerId, input.assigneeId),
                 eq(orders.qcId, input.assigneeId),
                 eq(orders.installerId, input.assigneeId),
+                eq(orders.corniceInstallerId, input.assigneeId),
               ),
             ]),
         ...(input.search === undefined || input.search.length === 0
@@ -528,15 +608,48 @@ export const ordersRouter = router({
             sql`case ${orders.priority} when 'critical' then 2 when 'urgent' then 1 else 0 end desc`,
             desc(orders.createdAt),
           )
-          .limit(input.pageSize)
-          .offset(toOffset(input)),
+          .limit(paging.pageSize)
+          .offset(toOffset(paging)),
         ctx.db.select({ value: count() }).from(orders).where(where),
       ]);
 
+      /* Текущий исполнитель — по той же таблице, по которой сервер решает,
+         чей заказ. Имена всей страницы — одним запросом. */
+      const executorIds = [
+        ...new Set(
+          rows
+            .map((row) => {
+              const role = currentExecutorRole(row.status);
+              return role === null ? null : row[ASSIGNABLE_ROLE_COLUMNS[role]];
+            })
+            .filter((id): id is number => id !== null),
+        ),
+      ];
+      const names = new Map(
+        executorIds.length === 0
+          ? []
+          : (
+              await ctx.db
+                .select({ id: users.id, fullName: users.fullName })
+                .from(users)
+                .where(inArray(users.id, executorIds))
+            ).map((row) => [row.id, row.fullName] as const),
+      );
+
       return toPage(
-        rows.map((row) => maskStageFees(row, ctx.user)),
+        rows.map((row) => {
+          const role = currentExecutorRole(row.status);
+          const userId = role === null ? null : row[ASSIGNABLE_ROLE_COLUMNS[role]];
+          return {
+            ...maskStageFees(row, ctx.user),
+            currentExecutor:
+              role === null
+                ? null
+                : { role, userId, fullName: userId === null ? null : (names.get(userId) ?? null) },
+          };
+        }),
         totalRow?.value ?? 0,
-        input,
+        paging,
       );
     }),
 
@@ -910,6 +1023,18 @@ export const ordersRouter = router({
           message: 'Нельзя создать заказ в филиале, к которому вы не привязаны',
         });
       }
+      // Без установки и переделки продажа закрывается сразу — а с долгом
+      // заказ не закрывается. Поэтому такая продажа — только за всю сумму.
+      if (
+        !input.needsInstallation &&
+        !input.needsRework &&
+        parseMoney(input.deposit) !== parseMoney(input.workPrice)
+      ) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Без установки готовые шторы продаются только при полной оплате',
+        });
+      }
 
       return ctx.db.transaction(async (tx) => {
         const [created] = await tx
@@ -1124,12 +1249,16 @@ export const ordersRouter = router({
     }),
 
   /**
-   * Правка заказа.
+   * Правка заказа: клиент, адрес, срок, приоритет, позиции, цена.
    *
-   * Автор может править заказ, пока тот не ушёл дальше проверки админом:
-   * менять состав позиций у заказа, который уже шьют, нельзя — швея работает
-   * по тому, что видела. Руководство не ограничено, но каждая правка попадает
-   * в `audit_log`.
+   * Кто правит — решает `canEditOrder` из `@curtain-crm/shared`, по тому же
+   * правилу клиенты показывают карандаш: руководство и менеджер — любой
+   * открытый заказ, автор — свой, пока админ его не принял (дальше швея
+   * работает по тому, что видела). Закрытый заказ не правит никто: по нему
+   * уже начислены проценты и рейтинг.
+   *
+   * Каждая правка — в `audit_log`; текущий исполнитель узнаёт о ней
+   * уведомлением, чтобы не работать по старым размерам.
    */
   update: protectedProcedure
     .input(
@@ -1143,26 +1272,39 @@ export const ordersRouter = router({
         installLongitude: z.number().min(-180).max(180).nullable().optional(),
         deadline: z.string().date().nullable().optional(),
         priority: prioritySchema.optional(),
-        /** Полная замена состава позиций. */
+        /** Полная замена состава позиций. Метраж приходит в строках материалов. */
         items: z.array(orderItemInputSchema).min(1).max(50).optional(),
+        /** Цена со скидкой, как в `setPrice`. */
+        workPrice: moneySchema.optional(),
+        discountAmount: moneySchema.optional(),
+        discountReason: optionalText(300),
       }),
     )
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const order = await loadOrderForUpdate(tx, input.id);
-        if (!canDispatchOrders(ctx.user.roles)) {
+        if (!canEditOrder(order, ctx.user)) {
+          if (isTerminalStatus(order.status)) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Заказ закрыт — правка недоступна' });
+          }
           if (order.createdBy !== ctx.user.id) {
             throw new TRPCError({
               code: 'FORBIDDEN',
               message: 'Править заказ может его автор или руководство',
             });
           }
-          if (!AUTHOR_EDITABLE_STATUSES.includes(order.status)) {
-            throw new TRPCError({
-              code: 'CONFLICT',
-              message: 'Заказ уже в работе — правки вносит администратор',
-            });
-          }
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Заказ уже в работе — правки вносит администратор',
+          });
+        }
+        // Готовые шторы уже списаны со склада: состав продажи меняет возврат,
+        // а не правка — иначе полка и продажа разойдутся.
+        if (input.items !== undefined && order.orderType === OrderType.READY_MADE) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Состав продажи готовых штор изменить нельзя',
+          });
         }
 
         const patch = {
@@ -1195,14 +1337,40 @@ export const ordersRouter = router({
             .values(input.items.map((item, index) => toOrderItemValues(item, order.id, index)));
         }
 
-        await recordAudit(tx, {
-          actorId: ctx.user.id,
-          action: 'order.updated',
-          entityType: 'order',
-          entityId: order.id,
-          details: { ...patch, itemsReplaced: input.items !== undefined },
-          ipAddress: ctx.ipAddress,
-        });
+        const priceChanged = await applyPriceChange(tx, order, input, ctx.user, ctx.ipAddress);
+        const itemsChanged = input.items !== undefined;
+        const changed = Object.keys(patch).length > 0 || itemsChanged || priceChanged;
+
+        if (Object.keys(patch).length > 0 || itemsChanged) {
+          await recordAudit(tx, {
+            actorId: ctx.user.id,
+            action: 'order.updated',
+            entityType: 'order',
+            entityId: order.id,
+            details: { ...patch, itemsReplaced: itemsChanged },
+            ipAddress: ctx.ipAddress,
+          });
+        }
+
+        // Исполнитель текущего этапа узнаёт о правке — если она не его же.
+        const executorRole = currentExecutorRole(order.status);
+        const executorId = executorRole === null ? null : order[ASSIGNABLE_ROLE_COLUMNS[executorRole]];
+        if (changed && executorId !== null && executorId !== ctx.user.id) {
+          await notifyOrderUpdated(
+            tx,
+            {
+              orderId: order.id,
+              orderNumber: order.orderNumber ?? `#${order.id.toString()}`,
+              clientName: input.clientName ?? order.clientName,
+            },
+            executorId,
+            itemsChanged,
+          );
+        }
+
+        if (priceChanged) {
+          await closeIfSettled(tx, { orderId: order.id, actor: ctx.user, ipAddress: ctx.ipAddress });
+        }
 
         const [updated] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
         return maskStageFees(updated ?? order, ctx.user);
@@ -1222,45 +1390,21 @@ export const ordersRouter = router({
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const order = await loadOrderForUpdate(tx, input.id);
+        if (isTerminalStatus(order.status)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Заказ закрыт — правка недоступна' });
+        }
 
-        // «Оплачено» здесь не правится: это сумма проводок, и меняют её
-        // приходом или возвратом (`payments.acceptForOrder`, `payments.refund`).
-        const patch = {
-          ...(input.workPrice === undefined
-            ? {}
-            : { workPrice: moneyToDecimalString(parseMoney(input.workPrice)) }),
-          ...(input.discountAmount === undefined
-            ? {}
-            : discountValues({
-                discountAmount: input.discountAmount,
-                discountReason: input.discountReason ?? order.discountReason,
-              })),
-        };
+        if (!(await applyPriceChange(tx, order, input, ctx.user, ctx.ipAddress))) {
+          return maskStageFees(order, ctx.user);
+        }
 
-        if (Object.keys(patch).length === 0) return maskStageFees(order, ctx.user);
+        // Цену снизили до оплаченного — заказ, ждавший денег, закрывается.
+        await closeIfSettled(tx, { orderId: order.id, actor: ctx.user, ipAddress: ctx.ipAddress });
 
-        const [updated] = await tx
-          .update(orders)
-          .set({ ...patch, updatedAt: new Date() })
-          .where(eq(orders.id, order.id))
-          .returning();
-
+        const [updated] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
         if (updated === undefined) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Заказ не найден' });
         }
-
-        await recordAudit(tx, {
-          actorId: ctx.user.id,
-          action: 'order.price_changed',
-          entityType: 'order',
-          entityId: order.id,
-          details: {
-            from: { workPrice: order.workPrice, discountAmount: order.discountAmount },
-            to: patch,
-          },
-          ipAddress: ctx.ipAddress,
-        });
-
         return maskStageFees(updated, ctx.user);
       }),
     ),
@@ -1568,6 +1712,8 @@ export const ordersRouter = router({
         label: transition.label,
         kind: transition.kind,
         requiresComment: transition.kind !== TransitionKind.FORWARD,
+        /** Почему переход сейчас недоступен — кнопка видна, но неактивна. */
+        blockedReason: translateBlocked(transitionBlockedReason(order, transition.to), ctx.locale),
       }));
     }),
 

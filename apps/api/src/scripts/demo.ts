@@ -418,6 +418,8 @@ async function build(db: Database): Promise<void> {
     { status: OrderStatus.PENDING_INSTALLATION_ASSIGNMENT, count: 4 },
     { status: OrderStatus.INSTALLATION_ASSIGNED, count: 4 },
     { status: OrderStatus.INSTALLATION_IN_PROGRESS, count: 2 },
+    // Установка сделана, клиент не доплатил — «Ждёт оплаты» и вкладка «С долгом».
+    { status: OrderStatus.INSTALLATION_DONE, count: 2 },
     { status: OrderStatus.COMPLETED, count: 14 },
     { status: OrderStatus.CANCELLED, count: 3 },
   ];
@@ -443,7 +445,11 @@ async function build(db: Database): Promise<void> {
 
       const createdAt = daysAgo(between(2, 85));
       const workPrice = between(30, 220) * 100_000;
-      const deposit = Math.round(workPrice * (0.2 + random() * 0.5));
+      // Закрытые заказы оплачены целиком: с долгом заказ не закрывается.
+      const deposit =
+        target.status === OrderStatus.COMPLETED
+          ? workPrice
+          : Math.round(workPrice * (0.2 + random() * 0.5));
 
       const [order] = await db
         .insert(orders)

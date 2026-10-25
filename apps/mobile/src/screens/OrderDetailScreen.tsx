@@ -1,6 +1,9 @@
 import {
+  AWAITING_PAYMENT_LABEL,
+  canEditOrder,
   formatIsoDate,
   formatPhone,
+  isAwaitingPayment,
   ORDER_ITEM_KIND_LABELS,
   ORDER_STAGE_FEE_LABELS,
   ORDER_STATUS_LABELS,
@@ -17,7 +20,8 @@ import {
   INSTALLATION_SCHEDULABLE_STATUSES,
 } from '@curtain-crm/shared';
 import { BlurTargetView, BlurView } from 'expo-blur';
-import { useRef, useState, type ReactElement } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -58,7 +62,7 @@ import type { RootStackScreenProps } from '../types';
  */
 export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>): ReactElement {
   const { orderId } = route.params;
-  const { t, m, money } = useLocale();
+  const { t, m, money, locale } = useLocale();
   const installSlotLabel = useInstallSlotLabel();
 
   const utils = trpc.useUtils();
@@ -86,6 +90,32 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
+
+  /*
+    Карандаш в шапке — тем, кому сервер разрешит правку (`canEditOrder`):
+    руководству и менеджеру у открытого заказа, автору — до принятия.
+  */
+  const navigation = useNavigation();
+  const editable = order.data !== undefined && user !== null && canEditOrder(order.data, user);
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: editable
+        ? () => (
+            <Pressable
+              onPress={() => {
+                navigation.navigate('OrderEdit', { orderId });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={m('order.edit')}
+              hitSlop={10}
+              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+            >
+              <Icon name="edit" size={22} color={colors.headerText} />
+            </Pressable>
+          )
+        : undefined,
+    });
+  }, [navigation, editable, orderId, m]);
 
   const refresh = async (): Promise<void> => {
     await Promise.all([
@@ -189,7 +219,12 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
       <Card>
         <View style={styles.headerRow}>
           <Text style={styles.orderNumber}>{data.orderNumber ?? `#${data.id.toString()}`}</Text>
-          <Pill text={t(ORDER_STATUS_LABELS, data.status)} tone="info" />
+          <View style={styles.headerPills}>
+            {isAwaitingPayment(data) && (
+              <Pill text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />
+            )}
+            <Pill text={t(ORDER_STATUS_LABELS, data.status)} tone="info" />
+          </View>
         </View>
 
         {/*
@@ -360,8 +395,9 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
               return (
                 <>
+                  {/* Недоступный переход виден, но неактивен — и говорит почему. */}
                   <Pressable
-                    disabled={changeStatus.isPending}
+                    disabled={changeStatus.isPending || primary.blockedReason !== null}
                     onPress={() => {
                       startTransition(primary.to, primary.requiresComment);
                     }}
@@ -369,12 +405,16 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                       styles.primaryAction,
                       primary.kind === TransitionKind.FORWARD ? null : styles.primaryActionMuted,
                       pressed ? styles.pressed : null,
-                      changeStatus.isPending ? styles.disabled : null,
+                      changeStatus.isPending || primary.blockedReason !== null ? styles.disabled : null,
                     ]}
                     accessibilityRole="button"
+                    accessibilityState={{ disabled: changeStatus.isPending || primary.blockedReason !== null }}
                   >
                     <Text style={styles.primaryActionText}>{primary.label}</Text>
                   </Pressable>
+                  {primary.blockedReason !== null && (
+                    <Text style={styles.blockedHint}>{primary.blockedReason}</Text>
+                  )}
 
                   {list.length > 1 && (
                     <Pressable
@@ -593,11 +633,15 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
           return (
             <Pressable
               key={transition.to}
-              disabled={changeStatus.isPending}
+              disabled={changeStatus.isPending || transition.blockedReason !== null}
               onPress={() => {
                 startTransition(transition.to, transition.requiresComment);
               }}
-              style={({ pressed }) => [styles.sheetRow, pressed ? styles.sheetRowPressed : null]}
+              style={({ pressed }) => [
+                styles.sheetRow,
+                pressed ? styles.sheetRowPressed : null,
+                transition.blockedReason === null ? null : styles.disabled,
+              ]}
               accessibilityRole="button"
             >
               <View style={[styles.sheetIcon, { backgroundColor: look.bg }]}>
@@ -605,8 +649,12 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
               </View>
               <View style={styles.sheetTextWrap}>
                 <Text style={[styles.sheetLabel, { color: look.fg }]}>{transition.label}</Text>
-                {transition.requiresComment && (
-                  <Text style={styles.sheetHint}>{m('order.willAskReason')}</Text>
+                {transition.blockedReason !== null ? (
+                  <Text style={styles.sheetHint}>{transition.blockedReason}</Text>
+                ) : (
+                  transition.requiresComment && (
+                    <Text style={styles.sheetHint}>{m('order.willAskReason')}</Text>
+                  )
                 )}
               </View>
             </Pressable>
@@ -634,12 +682,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   typeRow: {
     flexDirection: 'row',
     marginTop: spacing.sm,
   },
   orderNumber: {
+    // Номер не сжимается: при двух бейджах переносятся они, а не «DH-000515».
+    flexShrink: 0,
     fontFamily: fonts.extrabold,
     fontSize: 18,
     fontWeight: '800',
@@ -758,6 +809,19 @@ const styles = StyleSheet.create({
     ...typography.footnote,
     color: colors.textMuted,
     marginTop: 1,
+  },
+  blockedHint: {
+    ...typography.footnote,
+    color: colors.warning,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  headerPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    flexShrink: 1,
+    gap: spacing.xs,
+    justifyContent: 'flex-end',
   },
   reasonBlock: {
     marginTop: spacing.lg,

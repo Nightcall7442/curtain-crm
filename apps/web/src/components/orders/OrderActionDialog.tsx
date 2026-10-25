@@ -290,7 +290,7 @@ function AssigneePicker({
   readonly hint?: string;
 }): ReactElement {
   const { t } = useLocale();
-  const { loading, candidates, canShowMore, showMore } = useAssigneeCandidates(
+  const { loading, candidates } = useAssigneeCandidates(
     role,
     value === '' ? null : Number.parseInt(value, 10),
   );
@@ -313,15 +313,6 @@ function AssigneePicker({
               : `${person.fullName} · ${t(ROLE_LABELS, person.mainRole)}`,
         }))}
       />
-      {canShowMore && (
-        <button
-          type="button"
-          className="mt-1 text-footnote text-accent hover:underline"
-          onClick={showMore}
-        >
-          Ещё сотрудники
-        </button>
-      )}
     </Field>
   );
 }

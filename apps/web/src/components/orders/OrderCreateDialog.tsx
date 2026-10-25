@@ -1,10 +1,6 @@
 'use client';
 
 import {
-  CatalogKind,
-  curtainMountKindOf,
-  CurtainMountKind,
-  MATERIAL_CODE_KINDS,
   PRIORITIES,
   Priority,
   type Priority as PriorityName,
@@ -14,8 +10,7 @@ import {
   PaymentMethod,
   type PaymentMethod as PaymentMethodName,
 } from '@curtain-crm/shared';
-import { Plus } from 'lucide-react';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import {
   Button,
@@ -31,14 +26,8 @@ import {
 import { trpc } from '@/lib/trpc';
 
 import { DiscountFields, discountError, discountPayload, emptyDiscount } from './DiscountFields';
-import {
-  emptyItem,
-  OrderItemFields,
-  toMaterial,
-  type AccessoryDraft,
-  type ItemDraft,
-  type PortiereDraft,
-} from './OrderItemFields';
+import { itemDraftToInput, OrderItemsSection, useOrderCatalog } from './OrderFormFields';
+import { emptyItem, type ItemDraft } from './OrderItemFields';
 
 /**
  * Создание заказа.
@@ -90,7 +79,6 @@ export function OrderCreateDialog({
 
   const utils = trpc.useUtils();
   const branches = trpc.branches.list.useQuery({}, { enabled: open });
-  const catalog = trpc.catalog.list.useQuery({}, { enabled: open });
 
   const create = trpc.orders.create.useMutation({
     async onSuccess(order) {
@@ -126,174 +114,12 @@ export function OrderCreateDialog({
     produceForStock.reset();
   };
 
-  /** Справочники, сгруппированные по виду. */
-  const byKind = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const entry of catalog.data ?? []) {
-      const bucket = map.get(entry.kind) ?? [];
-      bucket.push(entry.name);
-      map.set(entry.kind, bucket);
-    }
-    return map;
-  }, [catalog.data]);
-
-  const options = (kind: string): { value: string; label: string }[] =>
-    (byKind.get(kind) ?? []).map((name) => ({ value: name, label: name }));
-
-  /**
-   * Мини-описания кодов и группа крепления моделей — из того же справочника.
-   *
-   * Ключ с приведённым регистром: продавец переписывает код с этикетки от
-   * руки, и «п-31» должно найтись так же, как «П-31».
-   */
-  const codeDescriptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of catalog.data ?? []) {
-      if (entry.description !== null && entry.description.length > 0) {
-        map.set(`${entry.kind}:${entry.name.trim().toLowerCase()}`, entry.description);
-      }
-    }
-    return map;
-  }, [catalog.data]);
-
-  const describeCode = (kind: string, code: string): string | null =>
-    codeDescriptions.get(`${kind}:${code.trim().toLowerCase()}`) ?? null;
-
-  const mountByModel = useMemo(() => {
-    const map = new Map<string, string | null>();
-    for (const entry of catalog.data ?? []) {
-      if (entry.kind === CatalogKind.CURTAIN_MODEL) map.set(entry.name, entry.mountKind);
-    }
-    return map;
-  }, [catalog.data]);
-
-  /** Труба или пластик с карнизом — что спрашивать для выбранной модели. */
-  const mountOf = (model: string): string => curtainMountKindOf(mountByModel.get(model));
-
-  /**
-   * Список аксессуаров на выбор — из двух справочников сразу.
-   *
-   * «Сачак» больше не отдельное поле позиции: оно такой же аксессуар, как
-   * держатель или бубон, просто из другого справочника. Объединяем оба
-   * списка здесь, а не в справочнике, — сами справочники (и права на их
-   * редактирование) трогать не пришлось.
-   */
-  const accessoryOptions = useMemo(() => {
-    const names = new Set([
-      ...(byKind.get(CatalogKind.ACCESSORY) ?? []),
-      ...(byKind.get(CatalogKind.SACHAK) ?? []),
-    ]);
-    return Array.from(names).map((name) => ({ value: name, label: name }));
-  }, [byKind]);
-
+  const catalog = useOrderCatalog(open);
   const errors = fieldErrors(submitting.error);
-
-  const patchItem = (id: string, patch: Partial<ItemDraft>): void => {
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
-  };
-
-  const patchPortiere = (
-    itemId: string,
-    portiereId: string,
-    patch: Partial<PortiereDraft>,
-  ): void => {
-    setItems((current) =>
-      current.map((item) =>
-        item.id !== itemId
-          ? item
-          : {
-              ...item,
-              portieres: item.portieres.map((portiere) =>
-                portiere.id === portiereId ? { ...portiere, ...patch } : portiere,
-              ),
-            },
-      ),
-    );
-  };
-
-  const patchAccessory = (
-    itemId: string,
-    accessoryId: string,
-    patch: Partial<AccessoryDraft>,
-  ): void => {
-    setItems((current) =>
-      current.map((item) =>
-        item.id !== itemId
-          ? item
-          : {
-              ...item,
-              accessories: item.accessories.map((accessory) =>
-                accessory.id === accessoryId ? { ...accessory, ...patch } : accessory,
-              ),
-            },
-      ),
-    );
-  };
 
   const handleSubmit = (): void => {
     setSubmitted(true);
-    const orderItemsPayload = items.map((item) => {
-      /*
-          Строки материала, которых у этой модели не бывает, не уезжают на
-          сервер, даже если продавец успел их заполнить до смены модели.
-        */
-      const onPipe = mountOf(item.model) === CurtainMountKind.PIPE;
-
-      const tulle = toMaterial(
-        item.tulle,
-        describeCode(MATERIAL_CODE_KINDS.tulle, item.tulle.code),
-      );
-      const protection = toMaterial(
-        item.protection,
-        describeCode(MATERIAL_CODE_KINDS.protection, item.protection.code),
-      );
-      const cornice = onPipe
-        ? undefined
-        : toMaterial(item.cornice, describeCode(MATERIAL_CODE_KINDS.cornice, item.cornice.code));
-      const plastic = onPipe
-        ? undefined
-        : toMaterial(item.plastic, describeCode(MATERIAL_CODE_KINDS.plastic, item.plastic.code));
-      const pipe = onPipe
-        ? toMaterial(item.pipe, describeCode(MATERIAL_CODE_KINDS.pipe, item.pipe.code))
-        : undefined;
-
-      return {
-        kind: item.kind,
-        ...(item.model.length > 0 ? { model: item.model } : {}),
-        materials: item.materials,
-        materialOptions: item.materialOptions,
-        ...(item.color.length > 0 ? { color: item.color } : {}),
-        ...(item.characteristics.trim().length > 0
-          ? { characteristics: item.characteristics.trim() }
-          : {}),
-        ...(item.widthCm.trim().length > 0 && item.heightCm.trim().length > 0
-          ? {
-              widthCm: Number.parseFloat(item.widthCm.replace(',', '.')),
-              heightCm: Number.parseFloat(item.heightCm.replace(',', '.')),
-            }
-          : {}),
-        portieres: item.portieres
-          .map((portiere) =>
-            toMaterial(portiere, describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code)),
-          )
-          .filter((portiere) => portiere !== undefined),
-        ...(tulle === undefined ? {} : { tulle }),
-        ...(protection === undefined ? {} : { protection }),
-        ...(cornice === undefined ? {} : { cornice }),
-        ...(plastic === undefined ? {} : { plastic }),
-        ...(pipe === undefined ? {} : { pipe }),
-        ...(item.corniceRotation === '' ? {} : { corniceRotation: item.corniceRotation }),
-        accessories: item.accessories
-          .filter((accessory) => accessory.name.trim().length > 0)
-          .map((accessory) => ({
-            name: accessory.name.trim(),
-            quantity: Math.max(1, accessory.quantity),
-            code: accessory.code.trim().length > 0 ? accessory.code.trim() : null,
-          })),
-        quantity: item.quantity,
-        ...(item.comment.trim().length > 0 ? { comment: item.comment.trim() } : {}),
-      };
-    });
+    const orderItemsPayload = items.map((item) => itemDraftToInput(item, catalog));
 
     if (forStock) {
       produceForStock.mutate({
@@ -513,49 +339,7 @@ export function OrderCreateDialog({
         </section>
 
         {/* --- Позиции --------------------------------------------------- */}
-        <section>
-          <div className="mb-2 flex items-center gap-2">
-            <h3 className="section-title">Позиции заказа</h3>
-            <Button
-              variant="ghost"
-              className="ml-auto"
-              onClick={() => {
-                setItems((current) => [...current, emptyItem()]);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-              Добавить позицию
-            </Button>
-          </div>
-
-          {errors['items'] !== undefined && (
-            <p className="mb-2 text-overline text-danger">{errors['items']}</p>
-          )}
-
-          <div className="space-y-3">
-            {items.map((item, index) => (
-              <OrderItemFields
-                key={item.id}
-                item={item}
-                index={index}
-                canRemove={items.length > 1}
-                onRemove={() => {
-                  setItems((current) => current.filter((entry) => entry.id !== item.id));
-                }}
-                onChange={(patch) => {
-                  patchItem(item.id, patch);
-                }}
-                onPortiere={(portiereId, patch) => {
-                  patchPortiere(item.id, portiereId, patch);
-                }}
-                onAccessory={(accessoryId, patch) => {
-                  patchAccessory(item.id, accessoryId, patch);
-                }}
-                catalog={{ options, accessoryOptions, mountOf, describeCode }}
-              />
-            ))}
-          </div>
-        </section>
+        <OrderItemsSection items={items} onChange={setItems} catalog={catalog} error={errors['items']} />
       </div>
     </Modal>
   );

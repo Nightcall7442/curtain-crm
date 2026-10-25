@@ -2,8 +2,10 @@ import { orderPhotos, orders, users, type DbExecutor } from '@curtain-crm/db';
 import {
   AUTO_COMPLETE_PHOTO_STAGE,
   autoCompletePathFrom,
+  closeBlockedByDebt,
   hasAnyRole,
   isManagement,
+  OrderStatus,
   PHOTO_STAGE_LABELS_RU,
   PHOTO_STAGE_UPLOADER_ROLES,
   photoStageSchema,
@@ -247,11 +249,26 @@ async function autoCompleteIfInstallFinished(
   if (path.length === 0) return false;
 
   for (const status of path) {
+    /*
+      С долгом заказ не закрывается: доходит до «Установка завершена» и ждёт
+      оплаты — закроет его последний платёж (`closeIfSettled`). Фото при этом
+      сохраняется: ошибка здесь откатила бы и его, и установщику пришлось бы
+      снимать заново то, что уже снято.
+    */
+    if (status === OrderStatus.COMPLETED) {
+      const current = await loadOrderForUpdate(executor, params.orderId);
+      if (closeBlockedByDebt(current)) return false;
+    }
+
+    const waitsForPayment =
+      status === OrderStatus.INSTALLATION_DONE && closeBlockedByDebt(order);
     await changeOrderStatus(executor, {
       orderId: params.orderId,
       toStatus: status,
       actor: params.actor,
-      comment: 'Загружено фото после установки — заказ закрыт автоматически',
+      comment: waitsForPayment
+        ? 'Загружено фото после установки — заказ ждёт оплаты'
+        : 'Загружено фото после установки — заказ закрыт автоматически',
       systemInitiated: true,
       ipAddress: params.ipAddress,
     });

@@ -2,20 +2,23 @@ import {
   orderItems,
   orders,
   orderStatusHistory,
-  userRoles,
   users,
   type DbExecutor,
   type Order,
 } from '@curtain-crm/db';
 import {
   canDispatchOrders,
+  closeBlockedByDebt,
   CorniceStatus,
   findTransition,
+  formatMoney,
   isRollback,
   ORDER_STATUS_LABELS_RU,
+  ORDER_STATUS_OWNER,
   ORDER_STATUS_REQUIRED_ASSIGNEE,
   OrderStatus,
   OrderType,
+  parseMoney,
   requiresComment,
   Role,
   ROLE_LABELS_RU,
@@ -35,7 +38,6 @@ import {
   notifyInstallationScheduled,
   notifyOrderAssigned,
   notifyOrderStatusChanged,
-  notifyRoleChanged,
   notifyStageAwaitingExecutor,
 } from './notifications.service';
 import type { AuthenticatedUser } from '../types';
@@ -76,43 +78,11 @@ export const ASSIGNABLE_ROLE_COLUMNS = {
 
 export type { AssignableRole };
 
-/**
- * Кто «владеет» заказом, находящимся в данном статусе.
- *
- * Используется, чтобы сотрудник не мог двигать чужой заказ: пока заказ в
- * пошиве, действия по нему выполняет назначенная швея, а не любая швея цеха.
- * Если владелец ещё не назначен (`null`), ограничение не применяется —
- * например, `pending_qc` это общий пул, из которого заказ берёт свободный ОТК.
- *
- * Руководство (CEO, админ) не ограничено этой проверкой никогда.
- */
-const STATUS_OWNER: Readonly<Partial<Record<OrderStatusName, AssignableRole>>> = {
-  [OrderStatus.MEASUREMENT_ASSIGNED]: Role.MASTER,
-  [OrderStatus.MEASUREMENT_DONE]: Role.MASTER,
-  [OrderStatus.PENDING_SEWING_ASSIGNMENT]: Role.SEWER,
-  [OrderStatus.SEWING_IN_PROGRESS]: Role.SEWER,
-  [OrderStatus.SEWING_DONE]: Role.SEWER,
-  [OrderStatus.PENDING_QC]: Role.QC,
-  [OrderStatus.QC_FAILED]: Role.QC,
-  [OrderStatus.QC_PASSED]: Role.QC,
-  /*
-    «Ждёт назначения установщика» этой таблицы не знал — и зря.
-
-    У пошива и контроля статус ожидания есть, у установки его не было, хотя
-    смысл тот же: заказ готов, установщик ещё не назначен. Из-за пропуска
-    установщики не получали уведомления о свободной работе (оно рассылается
-    как раз по этой таблице) и не могли даже открыть такой заказ, чтобы
-    посмотреть адрес и объём.
-
-    Двигать заказ дальше по-прежнему вправе только руководство и менеджер:
-    переход «Назначить установщика» назван в `ORDER_TRANSITIONS` ролями
-    админа, директора и менеджера, и эта строка на него не влияет.
-  */
-  [OrderStatus.PENDING_INSTALLATION_ASSIGNMENT]: Role.INSTALLER,
-  [OrderStatus.INSTALLATION_ASSIGNED]: Role.INSTALLER,
-  [OrderStatus.INSTALLATION_IN_PROGRESS]: Role.INSTALLER,
-  [OrderStatus.INSTALLATION_DONE]: Role.INSTALLER,
-};
+/*
+  Кто «владеет» заказом в каждом статусе — `ORDER_STATUS_OWNER` из
+  `@curtain-crm/shared`: по той же таблице списки показывают текущего
+  исполнителя, и расходиться с правами она не должна.
+*/
 
 const assigneeOf = (order: Order, role: AssignableRole): number | null =>
   order[ASSIGNABLE_ROLE_COLUMNS[role]];
@@ -246,6 +216,17 @@ export interface ChangeOrderStatusParams {
    */
   readonly systemInitiated?: boolean;
   /**
+   * Закрытие по оплате (`closeIfSettled`): последний платёж принят или цена
+   * снижена до оплаченного.
+   *
+   * Снимает проверки доступа и закрепления этапа: право на само действие —
+   * принять оплату или поменять цену — уже проверила вызывающая процедура.
+   * Без этого продавец, принявший остаток, получал бы отказ «заказ закреплён
+   * за другим сотрудником»: на этапе установки заказ принадлежит установщику.
+   * Ставится только вместе с `systemInitiated`.
+   */
+  readonly settlement?: boolean;
+  /**
    * Ценники для полки — только для пошива на склад при закрытии.
    *
    * Владелец задал порядок: пошив → контроль → админ ставит цену → штора
@@ -307,6 +288,62 @@ async function requireStockPrices(
   return prices;
 }
 
+/**
+ * «Остаток 800 000 сум — сначала примите оплату».
+ *
+ * Валюта — словом в самом тексте, а не из `formatMoney`: перевод ищет фразу
+ * по шаблону, и в узбекской «сум» станет «so'm», а не останется чужим словом.
+ */
+function debtCloseMessage(order: Order): string {
+  const remaining = parseMoney(order.remainingPayment ?? '0');
+  return `Остаток ${formatMoney(remaining, { withCurrency: false })} сум — сначала примите оплату`;
+}
+
+/**
+ * Причина, по которой переход сейчас недоступен, — для кнопки в интерфейсе.
+ *
+ * Тот же отказ, что даст `changeOrderStatus`: кнопка «Закрыть заказ» у
+ * должника видна, но неактивна и говорит почему, а не падает после нажатия.
+ */
+export function transitionBlockedReason(order: Order, toStatus: OrderStatusName): string | null {
+  return toStatus === OrderStatus.COMPLETED && closeBlockedByDebt(order)
+    ? debtCloseMessage(order)
+    : null;
+}
+
+/**
+ * Закрывает заказ, ждущий оплаты, если долга больше нет.
+ *
+ * Вызывается после всего, что уменьшает остаток: принятой оплаты и снижения
+ * цены. Заказ в «Установка завершена» с остатком ≤ 0 уходит в «Выполнен»
+ * сам — руками его закрывать больше не нужно, раз вся причина ожидания
+ * была в деньгах.
+ *
+ * @returns `true`, если заказ закрыт этим вызовом.
+ */
+export async function closeIfSettled(
+  executor: DbExecutor,
+  params: {
+    readonly orderId: number;
+    readonly actor: AuthenticatedUser;
+    readonly ipAddress: string | null;
+  },
+): Promise<boolean> {
+  const order = await loadOrderForUpdate(executor, params.orderId);
+  if (order.status !== OrderStatus.INSTALLATION_DONE || closeBlockedByDebt(order)) return false;
+
+  await changeOrderStatus(executor, {
+    orderId: order.id,
+    toStatus: OrderStatus.COMPLETED,
+    actor: params.actor,
+    comment: 'Оплата получена полностью — заказ закрыт автоматически',
+    systemInitiated: true,
+    settlement: true,
+    ipAddress: params.ipAddress,
+  });
+  return true;
+}
+
 export async function changeOrderStatus(
   executor: DbExecutor,
   params: ChangeOrderStatusParams,
@@ -320,7 +357,7 @@ export async function changeOrderStatus(
      этой проверки рядовой сотрудник перебором `id` вычитывал бы состояние
      чужих заказов: сама мутация не прошла бы, но данные утекли. Читающая
      `orders.byId` такую попытку отклоняет давно — здесь проверки не было. */
-  assertCanTouchOrder(order, actor, fromStatus);
+  if (params.settlement !== true) assertCanTouchOrder(order, actor, fromStatus);
 
   if (fromStatus === toStatus) {
     throw new TRPCError({
@@ -361,7 +398,15 @@ export async function changeOrderStatus(
      при системном переходе: «я имею право на такое действие» и «этот заказ
      закреплён за мной» — разные вопросы, и автозакрытие снимает только
      первый. */
-  assertActorOwnsOrder(order, actor, fromStatus);
+  if (params.settlement !== true) assertActorOwnsOrder(order, actor, fromStatus);
+
+  /* 3a. С долгом заказ не закрывается — ни кнопкой, ни пачкой, ни
+     автозакрытием. Остаток читается из заказа под блокировкой, то есть
+     с проводками, сделанными в этой же транзакции. Проверка стоит ПОСЛЕ
+     прав: её текст называет сумму, а цеху деньги клиента не показывают. */
+  if (toStatus === OrderStatus.COMPLETED && closeBlockedByDebt(order)) {
+    throw new TRPCError({ code: 'CONFLICT', message: debtCloseMessage(order) });
+  }
 
   /* 4. Обязательный комментарий для откатов, отклонений и отмен. */
   const comment = params.comment?.trim() ?? '';
@@ -574,9 +619,9 @@ export async function changeOrderStatus(
 
     Условие ровно то же, по которому `assertCanTouchOrder` пускает в пул
     постороннего: у статуса есть роль-владелец, а исполнитель не назначен.
-    Разъехаться эти два места не могут — оба читают `STATUS_OWNER`.
+    Разъехаться эти два места не могут — оба читают `ORDER_STATUS_OWNER`.
   */
-  const awaitingRole = STATUS_OWNER[toStatus];
+  const awaitingRole = ORDER_STATUS_OWNER[toStatus];
   if (awaitingRole !== undefined && assigneeOf(updated, awaitingRole) === null) {
     await notifyStageAwaitingExecutor(executor, context, awaitingRole, actor.id);
   }
@@ -615,7 +660,7 @@ function assertCanTouchOrder(
 ): void {
   if (canUserAccessOrder(order, actor)) return;
 
-  const ownerRole = STATUS_OWNER[fromStatus];
+  const ownerRole = ORDER_STATUS_OWNER[fromStatus];
   const isFreePool =
     ownerRole !== undefined &&
     assigneeOf(order, ownerRole) === null &&
@@ -643,7 +688,7 @@ function assertActorOwnsOrder(
 ): void {
   if (canDispatchOrders(actor.roles)) return;
 
-  const ownerRole = STATUS_OWNER[fromStatus];
+  const ownerRole = ORDER_STATUS_OWNER[fromStatus];
   if (ownerRole === undefined) return;
 
   const ownerId = assigneeOf(order, ownerRole);
@@ -708,7 +753,7 @@ export async function assignExecutor(
   if (previousId === params.assigneeId) return order;
 
   if (params.assigneeId !== null) {
-    await ensureUserHasRole(executor, params.assigneeId, params.role, params);
+    await assertAssignableExecutor(executor, params.assigneeId, params.role);
   }
 
   const [updated] = await executor
@@ -763,24 +808,24 @@ export async function assignExecutor(
 }
 
 /**
- * Проверяет, что назначаемый сотрудник существует и активен, и выдаёт ему
- * роль, если её ещё нет.
+ * Проверяет, что назначаемый сотрудник существует, активен и уже имеет роль
+ * этапа.
  *
- * Назначить можно любого: швея, которая сегодня едет на установку, — обычная
- * подработка, а не ошибка. Но переходы статусов и сдельная считаются по
- * ролям, и человек без роли не смог бы сдвинуть заказ ни на шаг и не попал
- * бы в ведомость. Поэтому назначение на работу и есть выдача роли — с
- * записью в журнал и уведомлением, как при выдаче вручную.
+ * Раньше назначение само выдавало недостающую роль: продавщицу ставили на
+ * установку — и у неё появлялась роль установщика. Так роли раздавали
+ * админ и менеджер, хотя менять их вправе только директор (ТЗ, п. 1.3).
+ * Теперь человек без роли не назначается вовсе: подработку оформляет
+ * директор, выдав роль в карточке сотрудника.
  */
-async function ensureUserHasRole(
+async function assertAssignableExecutor(
   executor: DbExecutor,
   userId: number,
   role: RoleName,
-  params: { readonly actor: AuthenticatedUser; readonly ipAddress?: string | null },
 ): Promise<void> {
   const person = await executor.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { isActive: true },
+    with: { roles: { columns: { role: true } } },
   });
 
   if (person === undefined) {
@@ -792,27 +837,10 @@ async function ensureUserHasRole(
       message: 'Нельзя назначить деактивированного сотрудника',
     });
   }
-
-  const granted = await executor
-    .insert(userRoles)
-    .values({ userId, role, grantedBy: params.actor.id })
-    .onConflictDoNothing()
-    .returning({ role: userRoles.role });
-
-  if (granted.length === 0) return;
-
-  await recordAudit(executor, {
-    actorId: params.actor.id,
-    action: 'user.role_granted',
-    entityType: 'user',
-    entityId: userId,
-    details: { role, viaOrderAssignment: true },
-    ipAddress: params.ipAddress ?? null,
-  });
-
-  await notifyRoleChanged(executor, userId, {
-    role,
-    granted: true,
-    actorName: params.actor.fullName,
-  });
+  if (!person.roles.some((entry) => entry.role === role)) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `У сотрудника нет роли «${ROLE_LABELS_RU[role]}». Роли меняет директор`,
+    });
+  }
 }

@@ -195,6 +195,28 @@ export async function notifyInstallationScheduled(
 }
 
 /**
+ * Заказ правили — сообщаем тому, кто сейчас над ним работает.
+ *
+ * Швея режет по тем размерам, что видела утром; если днём админ поменял
+ * позиции, она узнаёт об этом из уведомления, а не на примерке. Тело — одна
+ * из двух готовых фраз, а не список полей: так его можно перевести целиком.
+ */
+export async function notifyOrderUpdated(
+  executor: DbExecutor,
+  order: OrderNotificationContext,
+  userId: number,
+  itemsChanged: boolean,
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.ORDER_UPDATED,
+    title: `Заказ ${order.orderNumber} изменён`,
+    body: itemsChanged ? 'Изменён состав заказа — проверьте позиции' : 'Изменены данные заказа',
+    relatedOrderId: order.orderId,
+  });
+}
+
+/**
  * Этап заказа ждёт исполнителя — сообщаем тем, чья это работа.
  *
  * Пока исполнитель не назначен, заказ на этапе ничей, и узнать о нём было
