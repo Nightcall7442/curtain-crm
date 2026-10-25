@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  AWAITING_PAYMENT_LABEL,
+  canSeeClientMoney,
+  isAwaitingPayment,
   formatIsoDateShort,
   formatMoney,
   formatMoneyShort,
@@ -32,7 +35,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from '
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLocale } from '@/components/providers/LocaleProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusDot, OrderTypeBadge } from '@/components/ui/Badge';
+import { Badge, OrderStatusDot, OrderTypeBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, controlClass, FilterBar, Input, Select } from '@/components/ui/Form';
 import { DataTable, Pagination, type RowKey } from '@/components/ui/Table';
@@ -93,6 +96,11 @@ export interface OrdersPreset {
   readonly key: string;
   readonly label: string;
   readonly statuses?: readonly OrderStatus[];
+  /**
+   * «С долгом»: установка сделана или заказ закрыт, а остаток > 0. Вкладку
+   * видят только те, кому видны деньги клиента, — цеху её нет.
+   */
+  readonly withDebt?: true;
   readonly emptyMessage?: string;
 }
 
@@ -123,6 +131,10 @@ export function OrdersView({
   const utils = trpc.useUtils();
   const toast = useToast();
   const { hasRole, user } = useAuth();
+  // Вкладка долгов — только тем, кто видит деньги клиента: сервер другим её откажет.
+  const allowedPresets = presets?.filter(
+    (entry) => entry.withDebt !== true || canSeeClientMoney(user?.roles ?? []),
+  );
   const { locale, t } = useLocale();
   const roles = user?.roles ?? [];
 
@@ -157,12 +169,12 @@ export function OrdersView({
    */
   const [presetKey, setPresetKey] = useState<string>(() => {
     if (initialStatus !== undefined || initialStage !== undefined) {
-      return presets?.[0]?.key ?? '';
+      return allowedPresets?.[0]?.key ?? '';
     }
-    const known = presets?.find((entry) => entry.key === initialPreset);
-    return known?.key ?? presets?.[0]?.key ?? '';
+    const known = allowedPresets?.find((entry) => entry.key === initialPreset);
+    return known?.key ?? allowedPresets?.[0]?.key ?? '';
   });
-  const preset = presets?.find((entry) => entry.key === presetKey);
+  const preset = allowedPresets?.find((entry) => entry.key === presetKey);
 
   /** Отмеченные галочками заказы — для массового действия. */
   const [checked, setChecked] = useState<ReadonlySet<RowKey>>(new Set());
@@ -185,15 +197,18 @@ export function OrdersView({
         : undefined;
 
   // Порядок силы: жёсткий набор раздела → вкладка-пресет → ручной выбор.
-  const statusFilter = lockedStatuses ?? preset?.statuses ?? selectedStatuses;
+  const withDebt = preset?.withDebt === true;
+  const statusFilter = withDebt ? undefined : (lockedStatuses ?? preset?.statuses ?? selectedStatuses);
   // Ручной селект статуса имеет смысл только там, где набор не зафиксирован.
-  const statusSelectVisible = lockedStatuses === undefined && preset?.statuses === undefined;
+  const statusSelectVisible =
+    lockedStatuses === undefined && preset?.statuses === undefined && !withDebt;
 
   const query = trpc.orders.list.useQuery({
     page,
     pageSize: 20,
     ...(search.length > 0 ? { search } : {}),
     ...(statusFilter === undefined ? {} : { status: [...statusFilter] }),
+    ...(withDebt ? { withDebt: true } : {}),
     ...(priority === '' ? {} : { priority }),
   });
 
@@ -467,12 +482,12 @@ export function OrdersView({
         }
       />
 
-      {presets !== undefined && presets.length > 1 && (
+      {allowedPresets !== undefined && allowedPresets.length > 1 && (
         <nav
           aria-label="Участки работы"
           className="flex flex-wrap gap-1.5 border-b border-subtle px-4 py-2"
         >
-          {presets.map((entry) => {
+          {allowedPresets.map((entry) => {
             const isActive = entry.key === presetKey;
             return (
               <button
@@ -487,7 +502,7 @@ export function OrdersView({
                   // Вкладка попадает в адрес: ссылку на «Установку» можно
                   // отправить коллеге, а «назад» возвращает на тот же срез.
                   router.replace(
-                    entry.key === presets[0]?.key ? pathname : `${pathname}?tab=${entry.key}`,
+                    entry.key === allowedPresets[0]?.key ? pathname : `${pathname}?tab=${entry.key}`,
                     { scroll: false },
                   );
                 }}
@@ -667,6 +682,7 @@ export function OrdersView({
               <span className="flex max-w-[15rem] items-center gap-2">
                 <OrderStatusDot status={row.status} />
                 <OrderTypeBadge orderType={row.orderType} />
+                {isAwaitingPayment(row) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL.ru}</Badge>}
               </span>
             ),
           },

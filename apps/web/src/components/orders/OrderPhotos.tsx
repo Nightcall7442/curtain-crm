@@ -176,8 +176,8 @@ export function OrderPhotos({
       <CardBody>
         {willAutoComplete && (
           <p className="mb-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-footnote text-warning">
-            Фото стадии «После установки» автоматически закроет заказ.
-            Отменить закрытие сможет только руководство.
+            Фото стадии «После установки» закроет заказ, если он оплачен.
+            Иначе заказ будет ждать оплаты.
           </p>
         )}
 

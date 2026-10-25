@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  AWAITING_PAYMENT_LABEL,
+  isAwaitingPayment,
   ORDER_STATUS_PHASE,
   CORNICE_ROTATION_LABELS_RU,
   CORNICE_STATUS_LABELS_RU,
@@ -41,7 +43,7 @@ import { OrderPurchases } from '@/components/orders/OrderPurchases';
 import { VoiceRecorder } from '@/components/orders/VoiceRecorder';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/components/providers/ToastProvider';
-import { OrderStatusBadge, OrderTypeBadge, PriorityBadge } from '@/components/ui/Badge';
+import { Badge, OrderStatusBadge, OrderTypeBadge, PriorityBadge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/Card';
 import { controlClass, Field, MoneyInput } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
@@ -200,6 +202,7 @@ export default function OrderDetailPage(): ReactElement {
                 {data.orderNumber ?? `#${data.id.toString()}`}
               </h2>
               <OrderStatusBadge status={data.status} />
+              {isAwaitingPayment(data) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL.ru}</Badge>}
               <PriorityBadge priority={data.priority} />
               <OrderTypeBadge orderType={data.orderType} />
             </div>
@@ -321,7 +324,9 @@ export default function OrderDetailPage(): ReactElement {
                     <button
                       key={transition.to}
                       type="button"
-                      disabled={changeStatus.isPending}
+                      // Недоступный переход виден, но неактивен: причина — под кнопками.
+                      disabled={changeStatus.isPending || transition.blockedReason !== null}
+                      title={transition.blockedReason ?? undefined}
                       onClick={() => {
                         if (transition.requiresComment) {
                           setPendingStatus(transition.to);
@@ -351,6 +356,13 @@ export default function OrderDetailPage(): ReactElement {
                     </button>
                   ))}
                 </div>
+              )}
+              {transitions.data?.map((transition) =>
+                transition.blockedReason === null ? null : (
+                  <p key={`blocked-${transition.to}`} className="mt-2 text-footnote text-warning">
+                    {`«${transition.label}»: ${transition.blockedReason}`}
+                  </p>
+                ),
               )}
 
               {/* Форма причины — появляется только для действий, где она обязательна */}

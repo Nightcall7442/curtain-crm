@@ -112,6 +112,14 @@ export function SellReadyMadeDialog({
 
   const errors = fieldErrors(sell.error);
 
+  /*
+    Без установки и переделки продажа закрывается сразу, а заказ с долгом
+    не закрывается — поэтому такая продажа только за всю сумму: оплата
+    подставляется сама и не правится.
+  */
+  const paidInFull = !needsInstallation && !needsRework;
+  const priceDue = discountPayload(workPrice, discount).workPrice;
+
   const handleSubmit = (): void => {
     setSubmitted(true);
     if (discountError(workPrice, discount) !== undefined) return;
@@ -119,7 +127,7 @@ export function SellReadyMadeDialog({
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
       ...discountPayload(workPrice, discount),
-      deposit: Number.parseFloat(deposit.replace(',', '.')) || 0,
+      deposit: paidInFull ? priceDue : Number.parseFloat(deposit.replace(',', '.')) || 0,
       depositMethod,
       needsInstallation,
       needsRework,
@@ -418,10 +426,16 @@ export function SellReadyMadeDialog({
               error={errors['discountReason'] ?? (submitted ? discountError(workPrice, discount) : undefined)}
             />
 
-            <Field label="Предоплата, сум" error={errors['deposit']} className="sm:col-span-2 lg:col-span-1">
+            <Field
+              label={paidInFull ? 'Оплата, сум' : 'Предоплата, сум'}
+              error={errors['deposit']}
+              {...(paidInFull ? { hint: 'Без установки — только полная оплата' } : {})}
+              className="sm:col-span-2 lg:col-span-1"
+            >
               <MoneyInput
-                value={deposit}
+                value={paidInFull ? (priceDue > 0 ? priceDue.toString() : '') : deposit}
                 onChange={setDeposit}
+                disabled={paidInFull}
                 placeholder="0"
               />
             </Field>

@@ -2,6 +2,7 @@
 
 import {
   ARCHIVED_ORDER_STATUSES,
+  DEBT_FILTER_LABEL,
   isOrderStatus,
   isProductionStageKey,
   OrderStatus,
@@ -79,6 +80,12 @@ const ORDER_PRESETS: readonly OrdersPreset[] = [
       OrderStatus.INSTALLATION_DONE,
     ],
     emptyMessage: 'Заказов на установку нет',
+  },
+  {
+    key: 'debt',
+    label: DEBT_FILTER_LABEL.ru,
+    withDebt: true,
+    emptyMessage: 'Долгов по заказам нет',
   },
   {
     key: 'archive',
