@@ -31,6 +31,7 @@ import {
   payments,
   payrollRecords,
   payrollSchemes,
+  personalBreaks,
   purchases,
   refreshTokens,
   shifts,
@@ -53,6 +54,7 @@ import {
   parseMoney,
   PaymentKind,
   PaymentMethod,
+  PayrollOrderPayStatus,
   PayrollRecordStatus,
   PayrollSchemeType,
   planPercent,
@@ -2503,6 +2505,177 @@ async function run(db: Database): Promise<void> {
     'долг: причина на узбекском — с «so\'m», без русского',
     uzReason.startsWith('Qoldiq') && uzReason.includes("so'm") && !/[А-Яа-яЁё]/.test(uzReason),
     uzReason,
+  );
+
+  /* ------------- 10. Выпуск 4: смены почасовика, оплата заказов ---------- */
+
+  /*
+    Пример заказчика (25.10): «100 000 за смену 9:00–18:00», то есть 11 111,11
+    в час, и каждая смена — целыми сумами: 9 ч — 100 000, 8,5 ч — 94 444,
+    7 ч — 77 778, 13 ч — 144 444. Сентябрь 2026 — прошлый месяц с
+    фиксированными датами: проверка не зависит от того, когда её запустили.
+  */
+  const atTashkent = (day: string, time: string): Date => new Date(`${day}T${time}:00+05:00`);
+  const september = { year: 2026, month: 9 };
+
+  const hourlySewer = await makeUser('Почасовик', Role.SEWER, '+998900000131');
+  await db.insert(payrollSchemes).values({
+    userId: hourlySewer.id,
+    role: Role.SEWER,
+    type: PayrollSchemeType.HOURLY,
+    rate: '11111.11',
+    shiftStart: '09:00',
+    shiftEnd: '18:00',
+    effectiveFrom: '2020-01-01',
+    createdBy: admin.id,
+  });
+
+  const shiftPlan = [
+    ['2026-09-01', '09:00', '18:00'],
+    ['2026-09-02', '09:30', '18:00'],
+    ['2026-09-03', '10:00', '17:00'],
+    ['2026-09-04', '09:00', '22:00'],
+    ['2026-09-05', '09:00', '18:00'],
+  ] as const;
+  const plannedShifts = [];
+  for (const [day, from, to] of shiftPlan) {
+    const [row] = await db
+      .insert(shifts)
+      .values({
+        userId: hourlySewer.id,
+        branchId: branch.id,
+        startedAt: atTashkent(day, from),
+        endedAt: atTashkent(day, to),
+      })
+      .returning();
+    if (row === undefined) throw new Error(`смена ${day} не создана`);
+    plannedShifts.push(row);
+  }
+  // На пятой смене — отлучка 30 минут: смена 9 ч, оплачено 8,5.
+  await db.insert(personalBreaks).values({
+    shiftId: plannedShifts[4]?.id ?? 0,
+    plannedMinutes: 30,
+    startedAt: atTashkent('2026-09-05', '13:00'),
+    returnedAt: atTashkent('2026-09-05', '13:30'),
+  });
+  // Шестая смена ещё идёт: в таблице она есть, в расчёте — нет.
+  await db
+    .insert(shifts)
+    .values({ userId: hourlySewer.id, branchId: branch.id, startedAt: atTashkent('2026-09-06', '09:00') });
+
+  const hourlyCalc = await calculateForUserRole(db, hourlySewer.id, Role.SEWER, september);
+  await saveDraft(db, hourlyCalc);
+  check(
+    'зарплата 4: почасовая — сумма смен, каждая целыми сумами',
+    hourlyCalc.calculation.amount === parseMoney('511110'),
+    moneyToDecimalString(hourlyCalc.calculation.amount),
+  );
+
+  const [hourlyRecord] = await db
+    .select({ id: payrollRecords.id })
+    .from(payrollRecords)
+    .where(and(eq(payrollRecords.userId, hourlySewer.id), eq(payrollRecords.periodMonth, 9)));
+  const hourlyBreakdown = await caller.payroll.breakdown({ id: hourlyRecord?.id ?? 0 });
+  const shiftAmounts = hourlyBreakdown.shifts.map((row) => row.amount);
+  check(
+    'зарплата 4: разбивка — смены с суммами заказчика, открытая без суммы',
+    JSON.stringify(shiftAmounts) ===
+      JSON.stringify(['100000.00', '94444.00', '77778.00', '144444.00', '94444.00', null]),
+    JSON.stringify(shiftAmounts),
+  );
+  const shiftTotal = shiftAmounts.reduce((sum, amount) => sum + (amount === null ? 0 : parseMoney(amount)), 0);
+  check(
+    'зарплата 4: сумма строк таблицы равна начисленному',
+    shiftTotal === parseMoney(hourlyBreakdown.record.calculatedAmount),
+    `${moneyToDecimalString(shiftTotal)} / ${hourlyBreakdown.record.calculatedAmount}`,
+  );
+  check(
+    'зарплата 4: день по Ташкенту, перерыв виден, у открытой смены нет длительности',
+    hourlyBreakdown.shifts[0]?.day === '2026-09-01' &&
+      hourlyBreakdown.shifts[4]?.awaySeconds === 1800 &&
+      hourlyBreakdown.shifts[4]?.workedSeconds === 8.5 * 3600 &&
+      hourlyBreakdown.shifts[5]?.endedAt === null &&
+      hourlyBreakdown.shifts[5]?.workedSeconds === null,
+    JSON.stringify(hourlyBreakdown.shifts.map((row) => [row.day, row.workedSeconds, row.awaySeconds])),
+  );
+  check(
+    'зарплата 4: в снимке — график смены',
+    hourlyBreakdown.record.schemeSnapshot.shiftStart === '09:00' &&
+      hourlyBreakdown.record.schemeSnapshot.shiftEnd === '18:00',
+  );
+
+  const firstDay = await calculateForDay(db, hourlySewer.id, Role.SEWER, {
+    start: atTashkent('2026-09-01', '00:00'),
+    end: atTashkent('2026-09-02', '00:00'),
+  });
+  check(
+    'зарплата 4: за день — то же правило смены',
+    firstDay?.calculation.amount === parseMoney('100000'),
+    moneyToDecimalString(firstDay?.calculation.amount ?? 0),
+  );
+
+  /*
+    Сдельщица: два заказа, пошив сдан 03.09 в 02:30 по Ташкенту (по UTC это
+    ещё 02.09) и 04.09. Выплачен день 03.09 — первый заказ «Выплачен»,
+    второй «На утверждении».
+  */
+  const pieceSewer = await makeUser('Сдельщица', Role.SEWER, '+998900000132');
+  await db.insert(payrollSchemes).values({
+    userId: pieceSewer.id,
+    role: Role.SEWER,
+    type: PayrollSchemeType.PIECE_RATE,
+    effectiveFrom: '2020-01-01',
+    createdBy: admin.id,
+  });
+  const sewnOn = async (name: string, at: Date) => {
+    const [row] = await db
+      .insert(orders)
+      .values({
+        branchId: branch.id,
+        clientName: `${PREFIX} ${name}`,
+        clientPhone: '+998901112266',
+        createdBy: seller.id,
+        workPrice: '500000.00',
+        sewingFee: '50000.00',
+        sewerId: pieceSewer.id,
+        status: OrderStatus.SEWING_DONE,
+      })
+      .returning();
+    if (row === undefined) throw new Error(`заказ ${name} не создан`);
+    await db.insert(orderStatusHistory).values({
+      orderId: row.id,
+      fromStatus: OrderStatus.SEWING_IN_PROGRESS,
+      toStatus: OrderStatus.SEWING_DONE,
+      changedBy: pieceSewer.id,
+      createdAt: at,
+    });
+    return row;
+  };
+  const paidPiece = await sewnOn('Сдельно выплачен', atTashkent('2026-09-03', '02:30'));
+  const pendingPiece = await sewnOn('Сдельно ждёт', atTashkent('2026-09-04', '15:00'));
+
+  await saveDraft(db, await calculateForUserRole(db, pieceSewer.id, Role.SEWER, september));
+  const [pieceRecord] = await db
+    .select({ id: payrollRecords.id })
+    .from(payrollRecords)
+    .where(and(eq(payrollRecords.userId, pieceSewer.id), eq(payrollRecords.periodMonth, 9)));
+  await caller.payroll.markPaid({ id: pieceRecord?.id ?? 0, days: [{ day: '2026-09-03', amount: 50000 }] });
+
+  const pieceBreakdown = await caller.payroll.breakdown({ id: pieceRecord?.id ?? 0 });
+  const payStatusOf = (orderId: number) =>
+    pieceBreakdown.orders.find((row) => row.id === orderId)?.paymentStatus ?? 'нет';
+  check(
+    'зарплата 4: заказ из выплаченного дня — «Выплачен», другой — «На утверждении»',
+    payStatusOf(paidPiece.id) === PayrollOrderPayStatus.PAID &&
+      payStatusOf(pendingPiece.id) === PayrollOrderPayStatus.PENDING,
+    `${payStatusOf(paidPiece.id)} / ${payStatusOf(pendingPiece.id)}`,
+  );
+  check(
+    'зарплата 4: у заказов — дата сдачи этапа, новые сверху; у сдельщицы смен нет',
+    pieceBreakdown.orders.map((row) => row.id).join() === [pendingPiece.id, paidPiece.id].join() &&
+      pieceBreakdown.orders.every((row) => row.doneAt !== null) &&
+      pieceBreakdown.shifts.length === 0,
+    JSON.stringify(pieceBreakdown.orders.map((row) => [row.id, row.doneAt])),
   );
 }
 

@@ -185,7 +185,13 @@ export async function listWorkedShifts(
       endedAt: shifts.endedAt,
       workedSeconds: sql<string | null>`case when ${shifts.endedAt} is null then null
         else greatest(0, ${gross} - ${away}) end`,
-      awaySeconds: away,
+      /*
+        Обёрнуто намеренно. Сырой SQL полем выборки верхнего уровня Drizzle
+        рендерит БЕЗ имени таблицы (`"id"`), и в подзапросе `"shift_id" = "id"`
+        сравнивал отлучку саму с собой — перерыв всегда выходил нулём.
+        Вложенное выражение рендерится с таблицей (`"shifts"."id"`).
+      */
+      awaySeconds: sql<string>`(${away})`,
       isManuallyAdjusted: shifts.isManuallyAdjusted,
     })
     .from(shifts)
