@@ -292,6 +292,11 @@ refresh-токен. Предъявление уже отозванного refre
 | `displayLinks.create` | mutation | директор | Новая ссылка; ответ `{ id, token }` — токен **только здесь**, в базе его хеш |
 | `displayLinks.revoke({ id })` | mutation | директор | Отозвать ссылку |
 | `display.board({ token, group })` | query | по ссылке ТВ | Табло для телевизора |
+| `monitor.photos.list` | query | руководство | Люди табло (`userId, fullName, group, roles, avatarUrl`) и их фото по статусам `photos: { working, idle, break }` (ссылки на превью или `null`) |
+| `monitor.photos.set({ userId, kind, file })` | mutation | руководство | Загрузить или заменить фото статуса (`working` / `idle` / `break`); оригинал и превью WebP, прежние файлы удаляются. Человек не на табло — `BAD_REQUEST` |
+| `monitor.photos.remove({ userId, kind })` | mutation | руководство | Убрать фото статуса — табло снова покажет обычное фото |
+| `monitor.queues({ branchId? })` | query | диспетчеры | Очереди ТВ: `qc[]` и `cornice[]` — `{ orderId, orderNumber, status: sewn \| checking \| failed \| waiting \| taken, performers: { name, photoUrl }[], since, deadline, overdue }`, до 30 строк |
+| `display.queues({ token })` | query | по ссылке ТВ | Те же очереди без `orderId`; `qc: null`, если в ссылке нет цеха, `cornice: null` — если нет установщиков |
 
 `display.board`: ссылки нет или отозвана — `NOT_FOUND` «Ссылка
 недействительна» (не `UNAUTHORIZED`: на 401 клиент панели выходит из сессии,
