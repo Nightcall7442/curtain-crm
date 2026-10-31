@@ -1,17 +1,23 @@
 'use client';
 
 import {
+  formatMoney,
+  hourlyRateFromShift,
+  moneyToDecimalString,
+  parseMoney,
   PAYROLL_SCHEME_REQUIRED_FIELDS,
   PAYROLL_SCHEME_TYPE_LABELS_RU,
   PAYROLL_SCHEME_TYPES,
   PayrollSchemeType,
   type PayrollSchemeType as PayrollSchemeTypeName,
   ROLE_LABELS_RU,
+  scheduleMinutes,
 } from '@curtain-crm/shared';
 import { useMemo, useState, type ReactElement } from 'react';
 
 import { Button, Field, fieldErrors, FormError, Input, Modal, MoneyInput, Select } from '@/components/ui/Form';
 import { trpc } from '@/lib/trpc';
+import { cn } from '@/lib/utils';
 
 /**
  * Условия оплаты КОНКРЕТНОГО сотрудника в одной его роли.
@@ -69,6 +75,14 @@ export function SchemeDialog({
    */
   const [shiftStart, setShiftStart] = useState('');
   const [shiftEnd, setShiftEnd] = useState('');
+  /**
+   * Как вводится ставка почасовика. Заказчик называет её «за смену»:
+   * 100 000 за 09:00–18:00. Панель переводит её в часовую по графику и
+   * сохраняет как раньше — `rate` за час, — поэтому сервер и расчёт не
+   * знают, каким способом ставку ввели. «За час» остаётся для тех, у кого
+   * ставка часовая изначально.
+   */
+  const [rateMode, setRateMode] = useState<'shift' | 'hour'>('shift');
 
   const utils = trpc.useUtils();
 
@@ -101,6 +115,21 @@ export function SchemeDialog({
     return Number.isFinite(parsed) ? parsed : undefined;
   };
 
+  const perShift = type === PayrollSchemeType.HOURLY && rateMode === 'shift';
+  const scheduled = scheduleMinutes(shiftStart === '' ? null : shiftStart, shiftEnd === '' ? null : shiftEnd);
+  const shiftAmount = numberOf('shiftAmount');
+  /** Часовая ставка из «за смену», в тийинах; `null`, пока чего-то не хватает. */
+  const derivedRate =
+    perShift && scheduled !== null && shiftAmount !== undefined && shiftAmount > 0
+      ? hourlyRateFromShift(parseMoney(shiftAmount), scheduled)
+      : null;
+  /** Ставка, которая уйдёт на сервер, в сумах. */
+  const rateToSend = perShift
+    ? derivedRate === null
+      ? undefined
+      : Number.parseFloat(moneyToDecimalString(derivedRate))
+    : numberOf('rate');
+
   return (
     <Modal
       open={open}
@@ -116,7 +145,9 @@ export function SchemeDialog({
             disabled={
               selected === undefined ||
               role === '' ||
-              required.some((key) => numberOf(key) === undefined)
+              required.some((key) =>
+                key === 'rate' ? rateToSend === undefined : numberOf(key) === undefined,
+              )
             }
             onClick={() => {
               if (selected === undefined || role === '') return;
@@ -130,7 +161,7 @@ export function SchemeDialog({
                   ? { shiftStart, shiftEnd }
                   : {}),
                 ...(numberOf('baseAmount') === undefined ? {} : { baseAmount: numberOf('baseAmount') }),
-                ...(numberOf('rate') === undefined ? {} : { rate: numberOf('rate') }),
+                ...(rateToSend === undefined ? {} : { rate: rateToSend }),
                 ...(numberOf('kpiTarget') === undefined ? {} : { kpiTarget: numberOf('kpiTarget') }),
                 ...(numberOf('commissionPercent') === undefined
                   ? {}
@@ -215,7 +246,60 @@ export function SchemeDialog({
           </p>
         )}
 
-        {required.map((key) => {
+        {type === PayrollSchemeType.HOURLY && (
+          <div className="space-y-2">
+            <div
+              role="radiogroup"
+              aria-label="Как задана ставка"
+              className="inline-flex overflow-hidden rounded-xl border border-subtle"
+            >
+              {(
+                [
+                  ['shift', 'За смену'],
+                  ['hour', 'За час'],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={rateMode === mode}
+                  onClick={() => {
+                    setRateMode(mode);
+                  }}
+                  className={cn(
+                    'px-3 py-1.5 text-caption transition-colors',
+                    rateMode === mode ? 'bg-accent text-on-accent' : 'text-secondary hover:bg-raised',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {perShift && (
+              <Field
+                label="За смену по графику, сум"
+                required
+                error={errors['rate']}
+                hint={
+                  derivedRate !== null && scheduled !== null
+                    ? `= ${formatMoney(derivedRate)} в час · ${formatScheduleHours(scheduled)} по графику`
+                    : 'Укажите ниже «Смена с» и «до»: по ним сумма за смену переводится в часовую ставку'
+                }
+              >
+                <MoneyInput
+                  value={values['shiftAmount'] ?? ''}
+                  onChange={(next) => {
+                    setValues((current) => ({ ...current, shiftAmount: next }));
+                  }}
+                  invalid={errors['rate'] !== undefined}
+                />
+              </Field>
+            )}
+          </div>
+        )}
+
+        {required.filter((key) => !(perShift && key === 'rate')).map((key) => {
           const meta = FIELD_LABELS[key];
           return (
             <Field
@@ -289,4 +373,11 @@ export function SchemeDialog({
       </div>
     </Modal>
   );
+}
+
+/** Длина смены по графику для подсказки: «9 ч», «8 ч 30 мин». */
+function formatScheduleHours(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours.toString()} ч` : `${hours.toString()} ч ${rest.toString()} мин`;
 }
