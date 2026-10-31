@@ -22,6 +22,7 @@ import {
   percentOfMoney,
   Role,
   ROLE_LABELS_RU,
+  shiftPay,
   stageFeesOfRole,
   sumMoney,
   type MoneyMinor,
@@ -29,12 +30,13 @@ import {
   type OrderStatus as OrderStatusName,
   type PayrollSchemeType as PayrollSchemeTypeName,
   type Role as RoleName,
+  workedHoursOf,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 
 import {
-  calculateWorkedHours,
+  listWorkedShifts,
   periodBounds,
   sqlTimestamp,
   type Period,
@@ -81,6 +83,14 @@ export interface PayrollSchemeParams {
 export interface PayrollInputs {
   /** Отработанные часы по закрытым сменам, обрезанным границами периода. */
   readonly workedHours: number;
+  /**
+   * Те же часы по сменам — отработанные секунды каждой закрытой смены.
+   *
+   * Почасовику платят за смену, округляя каждую до сума (так считает
+   * заказчик), поэтому одного итога часов расчёту мало: Σ округлений
+   * не равна округлению Σ.
+   */
+  readonly shiftSeconds: readonly number[];
   /** Количество закрытых за период заказов, засчитанных сотруднику. */
   readonly completedOrders: number;
   /** Сумма работ по этим заказам. */
@@ -126,24 +136,30 @@ export function calculateFixed(scheme: PayrollSchemeParams): PayrollCalculation 
   };
 }
 
-/** Почасовая: ставка, умноженная на отработанные часы. */
+/**
+ * Почасовая: каждая смена — ставка × её часы, до целого сума; итог — сумма смен.
+ *
+ * Так считает заказчик («100 000 за смену 9 ч, 13 ч — 144 444»), и так
+ * сотрудник может проверить начисление по таблице смен, сложив строки.
+ */
 export function calculateHourly(
   scheme: PayrollSchemeParams,
   inputs: PayrollInputs,
 ): PayrollCalculation {
-  if (scheme.rate === null) throw missingField(PayrollSchemeType.HOURLY, 'rate');
+  const rate = scheme.rate;
+  if (rate === null) throw missingField(PayrollSchemeType.HOURLY, 'rate');
 
-  // Отрицательные часы означали бы битые данные смен; считаем как ноль,
-  // а не как отрицательную зарплату.
-  const hours = Math.max(0, inputs.workedHours);
-  const amount = multiplyMoney(scheme.rate, hours);
+  // Отрицательные секунды означали бы битые данные смен; `shiftPay` и
+  // `workedHoursOf` считают их нулём, а не отрицательной зарплатой.
+  const amount = sumMoney(inputs.shiftSeconds.map((seconds) => shiftPay(rate, seconds)));
+  const hours = workedHoursOf(
+    inputs.shiftSeconds.reduce((total, seconds) => total + Math.max(0, seconds), 0),
+  );
 
   return {
     amount,
     kpiPercent: null,
-    breakdown: [
-      { label: `Часы: ${hours.toFixed(2)} × ставка`, amount },
-    ],
+    breakdown: [{ label: `Часы: ${hours.toFixed(2)} × ставка`, amount }],
   };
 }
 
@@ -429,6 +445,29 @@ function attributedOrdersFilter(userId: number, role: RoleName, bounds: PeriodBo
   return sql`${completed} and ${ORDER_ROLE_COLUMN[role]} = ${userId}${excludeStock}`;
 }
 
+/**
+ * Момент, которым заказ засчитан сотруднику в роли, — для колонки
+ * «Исполнен» в разбивке и для статуса оплаты по дню.
+ *
+ * Те же ветки, что у `attributedOrdersFilter`: сдача этапа для исполнителей,
+ * «карниз готов» для карнизчика, закрытие заказа для остальных. Иначе дата
+ * в разбивке разошлась бы с тем, за какой месяц заказ засчитан.
+ */
+function attributionMoment(role: RoleName): SQL<Date | null> {
+  const doneStatuses = STAGE_DONE_STATUSES[role];
+  const moment =
+    hasOrderAttribution(role) && doneStatuses !== undefined
+      ? stageDoneAt(doneStatuses)
+      : role === Role.CORNICE_INSTALLER
+        ? sql`${orders.corniceDoneAt}`
+        : sql`${orders.completedAt}`;
+
+  // Подзапрос драйвер отдаёт строкой — приводим к `Date`, как колонку.
+  return sql<Date | null>`${moment}`.mapWith((value: Date | string | null) =>
+    value === null ? null : new Date(value),
+  );
+}
+
 /** Заказы (сданные этапы) за период, засчитанные сотруднику в данной роли. */
 export async function calculateCompletedOrders(
   executor: DbExecutor,
@@ -503,11 +542,14 @@ export async function listCompletedOrdersForPayroll(
     readonly orderNumber: string | null;
     readonly clientName: string;
     readonly completedAt: Date | null;
+    /** Когда этап сотрудника сдан (или заказ закрыт — для продавца). */
+    readonly doneAt: Date | null;
     readonly workPrice: string;
     readonly stageFee: string;
   }[]
 > {
   const where = attributedOrdersFilter(userId, role, bounds);
+  const doneAt = attributionMoment(role);
 
   const stages = stageFeesOfRole(role);
   const stageFee =
@@ -524,12 +566,13 @@ export async function listCompletedOrdersForPayroll(
       orderNumber: orders.orderNumber,
       clientName: orders.clientName,
       completedAt: orders.completedAt,
+      doneAt,
       workPrice: orders.workPrice,
       stageFee,
     })
     .from(orders)
     .where(where)
-    .orderBy(desc(orders.completedAt))
+    .orderBy(sql`${doneAt} desc nulls last`, desc(orders.id))
     // Потолок щедрый, но конечный: ведомость за месяц — это десятки
     // заказов, а не тысячи, и открытая разбивка не должна выкачивать базу.
     .limit(300);
@@ -542,15 +585,33 @@ export async function gatherPayrollInputs(
   role: RoleName,
   period: Period,
 ): Promise<PayrollInputs> {
-  const bounds = periodBounds(period);
+  return gatherInputsWithin(executor, userId, role, periodBounds(period));
+}
 
-  const [workedHours, completed] = await Promise.all([
-    calculateWorkedHours(executor, userId, bounds),
+/**
+ * Исходные данные в произвольных границах — месяц или сутки.
+ *
+ * Часы берутся сменами (`listWorkedShifts`), а не одним итогом: почасовая
+ * округляется по каждой смене. Итог часов — их сумма, ровно то, что
+ * считает `calculateWorkedHours` для табеля и отчётов.
+ */
+async function gatherInputsWithin(
+  executor: DbExecutor,
+  userId: number,
+  role: RoleName,
+  bounds: PeriodBounds,
+): Promise<PayrollInputs> {
+  const [worked, completed] = await Promise.all([
+    listWorkedShifts(executor, userId, bounds),
     calculateCompletedOrders(executor, userId, role, bounds),
   ]);
+  const shiftSeconds = worked.flatMap((shift) =>
+    shift.workedSeconds === null ? [] : [shift.workedSeconds],
+  );
 
   return {
-    workedHours,
+    workedHours: workedHoursOf(shiftSeconds.reduce((total, seconds) => total + seconds, 0)),
+    shiftSeconds,
     completedOrders: completed.count,
     completedOrdersAmount: completed.amount,
     stageFeesAmount: completed.stageFees,
@@ -635,6 +696,8 @@ export async function calculateForUserRole(
       kpiTarget: scheme.kpiTarget,
       commissionPercent: scheme.commissionPercent,
       effectiveFrom: scheme.effectiveFrom,
+      shiftStart: scheme.shiftStart,
+      shiftEnd: scheme.shiftEnd,
       inputs: {
         workedHours: inputs.workedHours,
         completedOrders: inputs.completedOrders,
@@ -670,16 +733,7 @@ export async function calculateForDay(
   const scheme = await findActiveSchemeOrNull(executor, userId, role);
   if (scheme === null) return null;
 
-  const [workedHours, completed] = await Promise.all([
-    calculateWorkedHours(executor, userId, bounds),
-    calculateCompletedOrders(executor, userId, role, bounds),
-  ]);
-  const inputs: PayrollInputs = {
-    workedHours,
-    completedOrders: completed.count,
-    completedOrdersAmount: completed.amount,
-    stageFeesAmount: completed.stageFees,
-  };
+  const inputs = await gatherInputsWithin(executor, userId, role, bounds);
 
   const monthlyBase =
     scheme.type === PayrollSchemeType.FIXED || scheme.type === PayrollSchemeType.KPI;
