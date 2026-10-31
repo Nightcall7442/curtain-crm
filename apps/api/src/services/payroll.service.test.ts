@@ -1,4 +1,4 @@
-import { parseMoney, PayrollSchemeType } from '@curtain-crm/shared';
+import { parseMoney, PayrollRecordStatus, PayrollSchemeType } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { describe, expect, it } from 'vitest';
 
@@ -11,6 +11,7 @@ import {
   calculatePerOrder,
   calculatePieceRate,
   payableRoles,
+  reopensPaidRecord,
   withStageFees,
   type PayrollInputs,
   type PayrollSchemeParams,
@@ -69,7 +70,7 @@ describe('calculateHourly', () => {
 
     // 100 000 + 94 444 + 77 778 + 144 444
     expect(result.amount).toBe(parseMoney('416666'));
-    expect(result.breakdown[0]?.label).toBe('Часы: 37.50 × ставка');
+    expect(result.breakdown[0]?.label).toBe('Смены: 4, часов 37.50');
   });
 
   it('целая ставка: одна длинная смена — как раньше', () => {
@@ -360,5 +361,31 @@ describe('periodBounds', () => {
 describe('payableRoles', () => {
   it('исключает SMM: функционал роли ещё не определён', () => {
     expect(payableRoles(['sewer', 'smm', 'qc'])).toEqual(['sewer', 'qc']);
+  });
+});
+
+describe('reopensPaidRecord', () => {
+  const inputs = { workedHours: 168.4, completedOrders: 0, completedOrdersAmount: '0.00', stageFeesAmount: '0.00' };
+  const paid = { status: PayrollRecordStatus.PAID, paidAmount: '2093500.00', inputs };
+
+  it('новая работа и сумма выросла — переоткрывается', () => {
+    expect(
+      reopensPaidRecord(paid, { amount: parseMoney('2200000'), inputs: { ...inputs, workedHours: 177.4 } }),
+    ).toBe(true);
+  });
+
+  it('работа та же, сумма выросла только от правила расчёта — выплаченный месяц не трогаем', () => {
+    expect(reopensPaidRecord(paid, { amount: parseMoney('2093517'), inputs })).toBe(false);
+  });
+
+  it('старый снимок без сдельных — это ноль, а не «изменилось»', () => {
+    const old = { ...paid, inputs: { workedHours: 168.4, completedOrders: 0, completedOrdersAmount: '0.00' } };
+    expect(reopensPaidRecord(old, { amount: parseMoney('2093517'), inputs })).toBe(false);
+  });
+
+  it('не выплачена — вопрос не к ней', () => {
+    expect(
+      reopensPaidRecord({ ...paid, status: PayrollRecordStatus.APPROVED }, { amount: parseMoney('1'), inputs }),
+    ).toBe(false);
   });
 });

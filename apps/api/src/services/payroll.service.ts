@@ -28,6 +28,7 @@ import {
   type MoneyMinor,
   type OrderStageFee,
   type OrderStatus as OrderStatusName,
+  type PayrollRecordStatus as PayrollRecordStatusName,
   type PayrollSchemeType as PayrollSchemeTypeName,
   type Role as RoleName,
   workedHoursOf,
@@ -156,10 +157,12 @@ export function calculateHourly(
     inputs.shiftSeconds.reduce((total, seconds) => total + Math.max(0, seconds), 0),
   );
 
+  // Без знака «×»: каждая смена округляется до сума отдельно, и итог часов,
+  // умноженный на ставку, с суммой смен не совпадёт — строка этого и не обещает.
   return {
     amount,
     kpiPercent: null,
-    breakdown: [{ label: `Часы: ${hours.toFixed(2)} × ставка`, amount }],
+    breakdown: [{ label: `Смены: ${inputs.shiftSeconds.length.toString()}, часов ${hours.toFixed(2)}`, amount }],
   };
 }
 
@@ -744,6 +747,41 @@ export async function calculateForDay(
   return { type: scheme.type, monthlyBase, inputs, calculation };
 }
 
+/** Исходные данные снимка, приведённые к сравнимому виду. */
+function inputsKey(inputs: PayrollSchemeSnapshot['inputs']): string {
+  return JSON.stringify([
+    inputs.workedHours,
+    inputs.completedOrders,
+    parseMoney(inputs.completedOrdersAmount),
+    parseMoney(inputs.stageFeesAmount ?? '0'),
+  ]);
+}
+
+/**
+ * Переоткрыть ли выплаченную целиком запись.
+ *
+ * Только если появилась новая работа (часы, заказы, сдельные) и начислено
+ * стало больше выданного. Сумма может вырасти и без новой работы — когда
+ * меняется правило расчёта (выпуск 4: почасовая по сменам с округлением до
+ * сума). Тогда выплаченный месяц не трогаем: иначе первое же «Рассчитать»
+ * переоткрыло бы половину почасовиков с остатком в несколько сумов, а их
+ * заказы в разбивке сменили бы «Выплачен» на «На утверждении».
+ */
+export function reopensPaidRecord(
+  existing: {
+    readonly status: PayrollRecordStatusName;
+    readonly paidAmount: string;
+    readonly inputs: PayrollSchemeSnapshot['inputs'];
+  },
+  next: { readonly amount: MoneyMinor; readonly inputs: PayrollSchemeSnapshot['inputs'] },
+): boolean {
+  return (
+    existing.status === PayrollRecordStatus.PAID &&
+    next.amount > parseMoney(existing.paidAmount) &&
+    inputsKey(existing.inputs) !== inputsKey(next.inputs)
+  );
+}
+
 /**
  * Сохраняет расчёт за период.
  *
@@ -752,9 +790,10 @@ export async function calculateForDay(
  * начисление должно расти дальше, а не замирать на первой выплате. Снимок
  * схемы в `scheme_snapshot` при этом хранит ставки на момент расчёта.
  *
- * Выплаченная целиком запись переоткрывается, если начислено больше, чем
- * уже выдано: появился остаток — значит, снова есть что платить. Если новых
- * начислений нет, закрытая запись не трогается.
+ * Выплаченная целиком запись переоткрывается, если появилась новая работа и
+ * начислено больше, чем уже выдано: появился остаток — значит, снова есть
+ * что платить (`reopensPaidRecord`). Если новой работы нет, закрытая запись
+ * не трогается, даже если сумма выросла от правила расчёта.
  *
  * @returns `true`, если запись создана или обновлена; `false`, если она
  *   выплачена и нового начисления по ней нет.
@@ -772,11 +811,12 @@ export async function saveDraft(
     ),
   });
 
-  const amount = calculated.calculation.amount;
   const reopens =
     existing !== undefined &&
-    existing.status === PayrollRecordStatus.PAID &&
-    amount > parseMoney(existing.paidAmount);
+    reopensPaidRecord(
+      { status: existing.status, paidAmount: existing.paidAmount, inputs: existing.schemeSnapshot.inputs },
+      { amount: calculated.calculation.amount, inputs: calculated.snapshot.inputs },
+    );
   if (existing !== undefined && existing.status === PayrollRecordStatus.PAID && !reopens) {
     return false;
   }

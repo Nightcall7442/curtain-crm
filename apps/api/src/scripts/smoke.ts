@@ -2682,6 +2682,94 @@ async function run(db: Database): Promise<void> {
     JSON.stringify(pieceBreakdown.orders.map((row) => [row.id, row.doneAt])),
   );
 
+  /*
+    Выплату за день могли отметить раньше, чем сдали этап того же дня:
+    директор выдал в 12:00, швея сдала в 16:00. Сдельная за этот заказ в
+    дневную выплату не вошла — значит, «На утверждении», а не «Выплачен».
+  */
+  const lateSewn = await sewnOn('Сдельно после выплаты', atTashkent('2026-09-05', '16:00'));
+  await saveDraft(db, await calculateForUserRole(db, pieceSewer.id, Role.SEWER, september));
+  await caller.payroll.markPaid({ id: pieceRecord?.id ?? 0, days: [{ day: '2026-09-05', amount: 1000 }] });
+  await db
+    .update(payments)
+    .set({ receivedAt: atTashkent('2026-09-05', '12:00') })
+    .where(and(eq(payments.payrollRecordId, pieceRecord?.id ?? 0), eq(payments.day, '2026-09-05')));
+  const afterEarlyPayout = await caller.payroll.breakdown({ id: pieceRecord?.id ?? 0 });
+  const lateStatus = afterEarlyPayout.orders.find((row) => row.id === lateSewn.id)?.paymentStatus ?? 'нет';
+  check(
+    'зарплата 4: этап сдан после выплаты за тот же день — «На утверждении»',
+    lateStatus === PayrollOrderPayStatus.PENDING,
+    lateStatus,
+  );
+
+  /*
+    Выплаченный месяц, пересчитанный без новой работы, остаётся выплаченным,
+    даже если новое правило дало на несколько сумов больше: раньше первое же
+    «Рассчитать» переоткрывало его с остатком в копейки.
+  */
+  await db
+    .update(payrollRecords)
+    .set({
+      status: PayrollRecordStatus.PAID,
+      paidAmount: moneyToDecimalString(hourlyCalc.calculation.amount - parseMoney('58')),
+      calculatedAmount: moneyToDecimalString(hourlyCalc.calculation.amount - parseMoney('58')),
+      approvedBy: admin.id,
+      approvedAt: new Date(),
+      paidAt: new Date(),
+    })
+    .where(eq(payrollRecords.id, hourlyRecord?.id ?? 0));
+  const resaved = await saveDraft(db, await calculateForUserRole(db, hourlySewer.id, Role.SEWER, september));
+  const [stillPaid] = await db
+    .select({ status: payrollRecords.status })
+    .from(payrollRecords)
+    .where(eq(payrollRecords.id, hourlyRecord?.id ?? 0));
+  check(
+    'зарплата 4: выплаченный месяц без новой работы не переоткрывается',
+    !resaved && stillPaid?.status === PayrollRecordStatus.PAID,
+    `${String(resaved)} ${stillPaid?.status ?? 'null'}`,
+  );
+
+  // Снимок до выпуска 4 — без графика смены: разбивка открывается как раньше.
+  await db.execute(
+    sql`update payroll_records set scheme_snapshot = scheme_snapshot - 'shiftStart' - 'shiftEnd' where id = ${hourlyRecord?.id ?? 0}`,
+  );
+  const oldSnapshot = await caller.payroll.breakdown({ id: hourlyRecord?.id ?? 0 });
+  check(
+    'зарплата 4: старый снимок без графика — разбивка открывается, смены с суммами',
+    oldSnapshot.record.schemeSnapshot.shiftStart === undefined && oldSnapshot.shifts[0]?.amount === '100000.00',
+    String(oldSnapshot.shifts[0]?.amount),
+  );
+
+  /*
+    Смена через границу месяца: 30.09 22:00 UTC → 01.10 02:00 UTC с
+    отлучкой 00:30–01:00 UTC. Сентябрю — 2 ч, октябрю — 1,5 ч; ничего не
+    потеряно и не посчитано дважды (отлучка за границей периода — ноль, а
+    не отрицательное время).
+  */
+  const nightSewer = await makeUser('Ночная смена', Role.SEWER, '+998900000133');
+  const [night] = await db
+    .insert(shifts)
+    .values({
+      userId: nightSewer.id,
+      branchId: branch.id,
+      startedAt: new Date('2026-09-30T22:00:00Z'),
+      endedAt: new Date('2026-10-01T02:00:00Z'),
+    })
+    .returning();
+  await db.insert(personalBreaks).values({
+    shiftId: night?.id ?? 0,
+    plannedMinutes: 30,
+    startedAt: new Date('2026-10-01T00:30:00Z'),
+    returnedAt: new Date('2026-10-01T01:00:00Z'),
+  });
+  const septemberHours = await calculateWorkedHours(db, nightSewer.id, periodBounds(september));
+  const octoberHours = await calculateWorkedHours(db, nightSewer.id, periodBounds({ year: 2026, month: 10 }));
+  check(
+    'зарплата 4: смена через границу месяца делится без потерь и двойного счёта',
+    septemberHours === 2 && octoberHours === 1.5,
+    `сентябрь ${septemberHours.toString()} ч, октябрь ${octoberHours.toString()} ч`,
+  );
+
   /* ------------------ 11. Выпуск 5: фото табло по статусам ---------------- */
 
   /*
