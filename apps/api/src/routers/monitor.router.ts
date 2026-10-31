@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { idSchema } from '../lib/schemas';
 import { orderDispatchProcedure } from '../middleware/roleGuard.middleware';
+import { loadQueues } from '../services/monitor.queues';
 import { buildBoard, buildPerson } from '../services/monitor.service';
 import { router } from '../trpc';
 import { boardPhotosRouter } from './boardPhotos.router';
@@ -30,6 +31,13 @@ export const monitorRouter = router({
         now: new Date(),
         locale: ctx.locale,
       }),
+    ),
+
+  /** Очереди ТВ «всё сразу»: контроль качества и карнизы — номер, исполнитель, статус. */
+  queues: orderDispatchProcedure
+    .input(z.object({ branchId: idSchema.optional() }).default({}))
+    .query(({ ctx, input }) =>
+      loadQueues(ctx.db, { branchId: input.branchId ?? null, now: new Date(), previewOnly: false }),
     ),
 
   /**

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MonitorBoard } from './monitor.service';
-import { toDisplayBoard } from './monitor.redact';
+import { toDisplayBoard, toDisplayQueues } from './monitor.redact';
+import type { QueueItem } from './monitor.queues';
 
 const link = {
   label: 'ТВ в цеху',
@@ -133,5 +134,29 @@ describe('на ТВ только то, что экран показывает', 
     expect(keys).not.toContain('source');
     expect(keys).not.toContain('effectiveFrom');
     expect(keys).toContain('expectedPercent');
+  });
+});
+
+describe('очереди на ТВ', () => {
+  const item = {
+    orderId: 42,
+    orderNumber: 'DH-000042',
+    status: 'checking',
+    performers: [{ name: 'Нигора Азизова', photoUrl: null, userId: 7 }],
+    since: new Date('2026-10-31T10:00:00Z'),
+    deadline: '2026-11-02',
+    overdue: false,
+    // Лишнее поле, которое однажды добавят в запрос: на ТВ его быть не должно.
+    clientName: 'Секретный клиент',
+  } as unknown as QueueItem;
+
+  it('только белый список: без id заказа, клиента и id людей', () => {
+    const shown = toDisplayQueues({ qc: [item], cornice: [item] }, { qc: true, cornice: false });
+    const json = JSON.stringify(shown);
+    expect(shown.cornice).toBeNull();
+    expect(shown.qc?.[0]?.orderNumber).toBe('DH-000042');
+    expect(json).not.toContain('orderId');
+    expect(json).not.toContain('Секретный');
+    expect(json).not.toContain('userId');
   });
 });

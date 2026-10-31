@@ -60,6 +60,7 @@ import {
   PayrollRecordStatus,
   PayrollSchemeType,
   planPercent,
+  QueueStatus,
   Role,
   workshopToday,
   type Role as RoleName,
@@ -2761,6 +2762,100 @@ async function run(db: Database): Promise<void> {
   );
   await expectRejected('табло 5: менеджер фото табло не меняет', () =>
     managerCaller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.WORKING, file: pixel }),
+  );
+
+  /* ---------------- 11a. Выпуск 5: очереди ОТК и карнизов на ТВ ---------- */
+
+  /*
+    Заказчик: «справа — контроль качества, очередь с исполнителями; рядом
+    очередь на карнизы: номер заказа, исполнитель, статус». На ТВ — без
+    клиента и адреса.
+  */
+  const [atQc] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Клиент ОТК`,
+      clientPhone: '+998901112277',
+      installAddress: 'ул. Секретная, 7',
+      createdBy: seller.id,
+      workPrice: '700000.00',
+      sewerId: photoSewer.id,
+      status: OrderStatus.PENDING_QC,
+    })
+    .returning();
+  if (atQc === undefined) throw new Error('заказ в ОТК не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: atQc.id,
+    fromStatus: OrderStatus.SEWING_DONE,
+    toStatus: OrderStatus.PENDING_QC,
+    changedBy: photoSewer.id,
+    createdAt: new Date(Date.now() - 40 * 60 * 1000),
+  });
+  const [atCornice] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Клиент карниза`,
+      clientPhone: '+998901112288',
+      createdBy: seller.id,
+      workPrice: '300000.00',
+      status: OrderStatus.SEWING_IN_PROGRESS,
+      corniceStatus: CorniceStatus.IN_PROGRESS,
+      corniceInstallerId: corniceMan.id,
+    })
+    .returning();
+  if (atCornice === undefined) throw new Error('заказ с карнизом не создан');
+  await db.insert(auditLog).values({
+    actorId: corniceMan.id,
+    action: 'order.cornice_taken',
+    entityType: 'order',
+    entityId: atCornice.id,
+    details: {},
+  });
+
+  const queues = await managerCaller.monitor.queues({ branchId: branch.id });
+  const qcRow = queues.qc.find((row) => row.orderNumber === atQc.orderNumber);
+  const corniceRow = queues.cornice.find((row) => row.orderNumber === atCornice.orderNumber);
+  check(
+    'табло 5: заказ на контроле — в очереди ОТК со швеёй',
+    qcRow?.status === QueueStatus.CHECKING &&
+      qcRow.performers.some((person) => person.name === photoSewer.fullName) &&
+      qcRow.since !== null,
+    JSON.stringify(qcRow ?? null).slice(0, 160),
+  );
+  check(
+    'табло 5: карниз в работе — в очереди карнизов с карнизчиком',
+    corniceRow?.status === QueueStatus.TAKEN &&
+      corniceRow.performers.some((person) => person.name === corniceMan.fullName) &&
+      corniceRow.since !== null,
+    JSON.stringify(corniceRow ?? null).slice(0, 160),
+  );
+
+  const installersTv = await ceoCaller.displayLinks.create({
+    label: 'ТВ установщиков',
+    branchId: branch.id,
+    showWorkshop: false,
+    showInstallation: true,
+    locale: 'ru',
+  });
+  const tvQueues = await tvCaller.display.queues({ token: installersTv.token });
+  const tvQueuesJson = JSON.stringify(tvQueues);
+  check(
+    'табло 5: ссылка без цеха — без очереди ОТК, очередь карнизов есть',
+    tvQueues.qc === null && tvQueues.cornice !== null && tvQueues.cornice.some((row) => row.orderNumber === atCornice.orderNumber),
+    tvQueuesJson.slice(0, 120),
+  );
+  check(
+    'табло 5: в очередях на ТВ нет клиента, адреса и внутренних id',
+    !tvQueuesJson.includes('Клиент') &&
+      !tvQueuesJson.includes('Секретная') &&
+      !tvQueuesJson.includes('orderId') &&
+      !tvQueuesJson.includes('userId'),
+    tvQueuesJson.slice(0, 120),
+  );
+  await expectRejected('табло 5: очереди по чужому токену — нет', () =>
+    tvCaller.display.queues({ token: 'x'.repeat(40) }),
   );
 }
 

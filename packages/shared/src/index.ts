@@ -51,6 +51,7 @@ export * from './monitor/plan';
 export * from './monitor/installSlot';
 export * from './monitor/boardPhoto';
 export * from './monitor/wallLayout';
+export * from './monitor/queues';
 
 /* Правила заказа */
 export * from './orders/rules';

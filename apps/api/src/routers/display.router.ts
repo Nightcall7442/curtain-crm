@@ -3,7 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { findActiveDisplayLink, touchDisplayLinkSeen } from '../services/displayLinks.service';
-import { toDisplayBoard } from '../services/monitor.redact';
+import { loadQueues } from '../services/monitor.queues';
+import { toDisplayBoard, toDisplayQueues } from '../services/monitor.redact';
 import { buildBoard } from '../services/monitor.service';
 import { baseProcedure, router } from '../trpc';
 
@@ -44,5 +45,22 @@ export const displayRouter = router({
         previewOnly: true,
       });
       return toDisplayBoard(board, { ...link, locale });
+    }),
+
+  /**
+   * Очереди ТВ по ссылке: ОТК — только если на ссылке есть цех, карнизы —
+   * если есть установщики. Выключенная группа — `null`, а не отказ: экран
+   * «всё сразу» один, и он рисует то, что ему разрешено.
+   */
+  queues: baseProcedure
+    .input(z.object({ token: z.string().min(20).max(100) }))
+    .query(async ({ ctx, input }) => {
+      const link = await findActiveDisplayLink(ctx.db, input.token);
+      if (link === null) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Ссылка недействительна' });
+      }
+
+      const queues = await loadQueues(ctx.db, { branchId: link.branchId, now: new Date(), previewOnly: true });
+      return toDisplayQueues(queues, { qc: link.showWorkshop, cornice: link.showInstallation });
     }),
 });

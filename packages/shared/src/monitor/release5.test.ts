@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { LIVE_STATUS_LABELS, LIVE_STATUSES, LiveStatus } from '../enums/monitor.enum';
+import { CorniceStatus } from '../enums/corniceStatus.enum';
+import { OrderStatus } from '../enums/orderStatus.enum';
 import { BOARD_PHOTO_KIND_LABELS, boardPhotoKindOf } from './boardPhoto';
+import { corniceQueueStatusOf, qcQueueStatusOf, QC_QUEUE_ORDER_STATUSES } from './queues';
 import { fitStatusLanes, WALL_LANE_LABELS, WALL_TILE_MAX, WALL_TILE_RATIO, wallLaneOf } from './wallLayout';
 
 describe('фото табло по статусу', () => {
@@ -74,5 +77,19 @@ describe('fitStatusLanes', () => {
   it('много людей на узком экране — всё равно все на месте', () => {
     const narrow = { width: 700, height: 300, gap: 8, laneGap: 16, laneHeader: 32 };
     expect(fits([9, 3, 2, 4, 6], narrow)).toBe(true);
+  });
+});
+
+describe('очереди на ТВ', () => {
+  it('ОТК: сшит, на контроле, брак; остальное — не очередь ОТК', () => {
+    expect(QC_QUEUE_ORDER_STATUSES.map(qcQueueStatusOf)).toEqual(['sewn', 'checking', 'failed']);
+    expect(qcQueueStatusOf(OrderStatus.QC_PASSED)).toBeNull();
+  });
+
+  it('карнизы: ждёт и в работе; готовый и ненужный — не очередь', () => {
+    expect(corniceQueueStatusOf(CorniceStatus.PENDING)).toBe('waiting');
+    expect(corniceQueueStatusOf(CorniceStatus.IN_PROGRESS)).toBe('taken');
+    expect(corniceQueueStatusOf(CorniceStatus.DONE)).toBeNull();
+    expect(corniceQueueStatusOf(CorniceStatus.NOT_REQUIRED)).toBeNull();
   });
 });

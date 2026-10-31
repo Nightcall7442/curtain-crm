@@ -1,5 +1,6 @@
 import { LIVE_STATUSES, type Locale, type LiveStatus } from '@curtain-crm/shared';
 
+import type { BoardQueues, QueueItem } from './monitor.queues';
 import type { MonitorBoard, MonitorPerson, MonitorPlan, MonitorWork } from './monitor.service';
 
 /**
@@ -140,5 +141,33 @@ export function toDisplayBoard(board: MonitorBoard, link: DisplayLinkInfo): Disp
       showInstallation: link.showInstallation,
       locale: link.locale,
     },
+  };
+}
+
+/** Строка очереди на ТВ: без внутреннего id заказа — только то, что видно на экране. */
+export type DisplayQueueItem = Omit<QueueItem, 'orderId'>;
+
+/**
+ * Очереди для ТВ — белым списком, как и снимок табло: новое поле в
+ * `QueueItem` само на экран в цеху не попадёт.
+ */
+export function toDisplayQueueItem(item: QueueItem): DisplayQueueItem {
+  return {
+    orderNumber: item.orderNumber,
+    status: item.status,
+    performers: item.performers.map((person) => ({ name: person.name, photoUrl: person.photoUrl })),
+    since: item.since,
+    deadline: item.deadline,
+    overdue: item.overdue,
+  };
+}
+
+export function toDisplayQueues(
+  queues: BoardQueues,
+  shown: { readonly qc: boolean; readonly cornice: boolean },
+): { readonly qc: readonly DisplayQueueItem[] | null; readonly cornice: readonly DisplayQueueItem[] | null } {
+  return {
+    qc: shown.qc ? queues.qc.map(toDisplayQueueItem) : null,
+    cornice: shown.cornice ? queues.cornice.map(toDisplayQueueItem) : null,
   };
 }
