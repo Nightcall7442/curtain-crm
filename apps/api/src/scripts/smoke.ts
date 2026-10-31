@@ -14,6 +14,7 @@
  */
 import {
   auditLog,
+  boardPhotos,
   branches,
   catalogItems,
   closeDatabase,
@@ -42,6 +43,7 @@ import {
   type Database,
 } from '@curtain-crm/db';
 import {
+  BoardPhotoKind,
   CorniceStatus,
   LiveStatus,
   MonitorGroup,
@@ -215,6 +217,7 @@ async function cleanup(db: Database): Promise<void> {
     await db.delete(displayLinks).where(inArray(displayLinks.createdBy, userIds));
     await db.delete(workPlans).where(or(inArray(workPlans.userId, userIds), inArray(workPlans.createdBy, userIds)));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
+    await db.delete(boardPhotos).where(or(inArray(boardPhotos.userId, userIds), inArray(boardPhotos.uploadedBy, userIds)));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
     // Коды склада ссылаются на автора — удаляются раньше пользователей.
@@ -2676,6 +2679,88 @@ async function run(db: Database): Promise<void> {
       pieceBreakdown.orders.every((row) => row.doneAt !== null) &&
       pieceBreakdown.shifts.length === 0,
     JSON.stringify(pieceBreakdown.orders.map((row) => [row.id, row.doneAt])),
+  );
+
+  /* ------------------ 11. Выпуск 5: фото табло по статусам ---------------- */
+
+  /*
+    Заказчик: «фото ставится по статусам — работает / без заказа / на
+    перерыве; это фото не отображается в других разделах, как мой профиль».
+    Швея на смене без заказа — табло показывает фото «Без заказа»; ушла на
+    перерыв — фото «На перерыве»; профиль — всё время обычная аватарка.
+  */
+  const photoSewer = await makeUser('Швея с фото', Role.SEWER, '+998900000141');
+  await caller.users.setAvatar({ userId: photoSewer.id, file: pixel });
+  const [photoShift] = await db
+    .insert(shifts)
+    .values({ userId: photoSewer.id, branchId: branch.id, startedAt: new Date(Date.now() - 60 * 60 * 1000) })
+    .returning();
+
+  await caller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.IDLE, file: pixel });
+  await caller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.BREAK, file: pixel });
+
+  const boardPhotoOf = async (): Promise<{ status: string; url: string }> => {
+    const board = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP });
+    const person = board.people.find((entry) => entry.userId === photoSewer.id);
+    return { status: person?.status ?? 'нет', url: person?.photoUrl ?? '' };
+  };
+  const [idlePhoto] = await db
+    .select({ key: boardPhotos.previewKey })
+    .from(boardPhotos)
+    .where(and(eq(boardPhotos.userId, photoSewer.id), eq(boardPhotos.kind, BoardPhotoKind.IDLE)));
+  const idleOnBoard = await boardPhotoOf();
+  check(
+    'табло 5: без заказа — фото «Без заказа», а не аватарка',
+    idleOnBoard.status === LiveStatus.IDLE &&
+      idlePhoto?.key !== null &&
+      idlePhoto?.key !== undefined &&
+      idleOnBoard.url.includes(idlePhoto.key),
+    `${idleOnBoard.status} ${idleOnBoard.url.slice(0, 80)}`,
+  );
+
+  await db.insert(personalBreaks).values({ shiftId: photoShift?.id ?? 0, plannedMinutes: 15 });
+  const breakOnBoard = await boardPhotoOf();
+  check(
+    'табло 5: на перерыве — фото «На перерыве»',
+    breakOnBoard.status === LiveStatus.BREAK &&
+      breakOnBoard.url.includes('board-photos') &&
+      breakOnBoard.url !== idleOnBoard.url,
+    `${breakOnBoard.status} ${breakOnBoard.url.slice(0, 80)}`,
+  );
+
+  const profile = await caller.users.byId({ id: photoSewer.id });
+  check(
+    'табло 5: в профиле — обычная аватарка, фото табло туда не попадают',
+    profile.avatarUrl !== null && profile.avatarUrl.includes('avatars') && !profile.avatarUrl.includes('board-photos'),
+    profile.avatarUrl ?? 'null',
+  );
+
+  const photoSettings = await caller.monitor.photos.list();
+  const listedSewer = photoSettings.people.find((entry) => entry.userId === photoSewer.id);
+  check(
+    'табло 5: в настройках у швеи два фото из трёх',
+    listedSewer !== undefined &&
+      listedSewer.photos.idle !== null &&
+      listedSewer.photos.break !== null &&
+      listedSewer.photos.working === null,
+    JSON.stringify(listedSewer?.photos ?? null).slice(0, 120),
+  );
+
+  await caller.monitor.photos.remove({ userId: photoSewer.id, kind: BoardPhotoKind.BREAK });
+  const afterRemove = await boardPhotoOf();
+  check(
+    'табло 5: фото убрали — снова аватарка',
+    afterRemove.status === LiveStatus.BREAK && afterRemove.url.includes('avatars'),
+    afterRemove.url.slice(0, 80),
+  );
+
+  await expectRejectedWith(
+    'табло 5: продавцу фото табло не загрузить — его нет на табло',
+    () => caller.monitor.photos.set({ userId: seller.id, kind: BoardPhotoKind.WORKING, file: pixel }),
+    (message) => message.includes('табло'),
+  );
+  await expectRejected('табло 5: менеджер фото табло не меняет', () =>
+    managerCaller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.WORKING, file: pixel }),
   );
 }
 

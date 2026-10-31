@@ -1,5 +1,6 @@
 import {
   auditLog,
+  boardPhotos,
   dayOffRequests,
   installationTrips,
   orderItems,
@@ -22,6 +23,7 @@ import {
   Priority,
   Role,
   SHIFT_FORGOTTEN_AFTER_HOURS,
+  type BoardPhotoKind,
   type OrderStatus as OrderStatusName,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -87,6 +89,41 @@ export async function loadGroupPeople(
     else if (!existing.roles.includes(role)) existing.roles.push(role);
   }
   return [...byId.values()];
+}
+
+/** Фото табло по статусам: ключи оригинала и превью. */
+export interface BoardPhotoKeys {
+  readonly storageKey: string;
+  readonly previewKey: string | null;
+}
+
+export type BoardPhotoSet = Partial<Record<BoardPhotoKind, BoardPhotoKeys>>;
+
+/** Фото табло людей группы — одним запросом на всех. */
+export async function loadBoardPhotos(
+  db: Database,
+  userIds: readonly number[],
+): Promise<Map<number, BoardPhotoSet>> {
+  const byUser = new Map<number, BoardPhotoSet>();
+  if (userIds.length === 0) return byUser;
+
+  const rows = await db
+    .select({
+      userId: boardPhotos.userId,
+      kind: boardPhotos.kind,
+      storageKey: boardPhotos.storageKey,
+      previewKey: boardPhotos.previewKey,
+    })
+    .from(boardPhotos)
+    .where(inArray(boardPhotos.userId, [...userIds]));
+
+  for (const row of rows) {
+    byUser.set(row.userId, {
+      ...byUser.get(row.userId),
+      [row.kind]: { storageKey: row.storageKey, previewKey: row.previewKey },
+    });
+  }
+  return byUser;
 }
 
 export interface PresenceRow {

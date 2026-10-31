@@ -137,6 +137,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'display_link.revoked': 'Ссылка для ТВ отозвана',
   'work_plan.norm_set': 'Норма роли изменена',
   'work_plan.personal_set': 'Личный план изменён',
+  'board_photo.set': 'Фото табло загружено',
+  'board_photo.removed': 'Фото табло убрано',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 

@@ -6,6 +6,7 @@ import { idSchema } from '../lib/schemas';
 import { orderDispatchProcedure } from '../middleware/roleGuard.middleware';
 import { buildBoard, buildPerson } from '../services/monitor.service';
 import { router } from '../trpc';
+import { boardPhotosRouter } from './boardPhotos.router';
 import { workPlansRouter } from './workPlans.router';
 
 /**
@@ -16,6 +17,9 @@ import { workPlansRouter } from './workPlans.router';
 export const monitorRouter = router({
   /** План на месяц: нормы ролей и личные планы — руководство. */
   plans: workPlansRouter,
+
+  /** Фото табло по статусам — руководство (как обычная аватарка). */
+  photos: boardPhotosRouter,
 
   board: orderDispatchProcedure
     .input(z.object({ group: monitorGroupSchema, branchId: idSchema.optional() }))
