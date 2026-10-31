@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { discountFromInput, formatMoneyShort, groupDigits, inputToMajor, parseMoney, ungroupDigits } from './money';
+import {
+  discountFromInput,
+  formatMoneyShort,
+  groupDigits,
+  inputToMajor,
+  parseMoney,
+  roundMoneyToWhole,
+  ungroupDigits,
+} from './money';
 
 /**
  * Компактный формат сумм — только он: остальная денежная арифметика
@@ -91,5 +99,15 @@ describe('discountFromInput', () => {
     expect(discountFromInput('1 000 000', '15', 'percent')).toEqual({ workPrice: 850_000, discountAmount: 150_000 });
     expect(discountFromInput('500 000', '900 000', 'sum')).toEqual({ workPrice: 0, discountAmount: 500_000 });
     expect(discountFromInput('500 000', '', 'percent')).toEqual({ workPrice: 500_000, discountAmount: 0 });
+  });
+});
+
+describe('roundMoneyToWhole', () => {
+  it('до целого сума, половина — от нуля', () => {
+    expect(roundMoneyToWhole(9_444_443.5)).toBe(9_444_400);
+    expect(roundMoneyToWhole(7_777_777)).toBe(7_777_800);
+    expect(roundMoneyToWhole(150)).toBe(200);
+    expect(roundMoneyToWhole(-150)).toBe(-200);
+    expect(roundMoneyToWhole(0)).toBe(0);
   });
 });

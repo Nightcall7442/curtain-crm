@@ -136,6 +136,30 @@ export function canTransitionPayrollStatus(
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Статус оплаты заказа в разбивке сдельщика: «Выплачен» / «На утверждении».
+ *
+ * Отдельной связи «выплата → заказ» нет: директор платит по дням
+ * (`payments.day`) или за месяц целиком. Заказ выплачен, если выплачен день,
+ * когда сдан его этап, или весь месяц; всё остальное — «на утверждении»,
+ * в том числе уже утверждённое, но не выданное (так решил заказчик).
+ */
+export const PAYROLL_ORDER_PAY_STATUSES = ['paid', 'pending'] as const;
+
+export type PayrollOrderPayStatus = (typeof PAYROLL_ORDER_PAY_STATUSES)[number];
+
+export const PayrollOrderPayStatus = {
+  PAID: 'paid',
+  PENDING: 'pending',
+} as const satisfies Record<string, PayrollOrderPayStatus>;
+
+export const PAYROLL_ORDER_PAY_STATUS_LABELS: Translated<PayrollOrderPayStatus> = {
+  ru: { paid: 'Выплачен', pending: 'На утверждении' },
+  uz: { paid: "To'langan", pending: 'Tasdiqlanmoqda' },
+};
+
+/* -------------------------------------------------------------------------- */
+
 /** Единицы измерения закупочных материалов. */
 export const PURCHASE_UNITS = ['m', 'm2', 'pcs', 'set', 'kg', 'roll'] as const;
 
