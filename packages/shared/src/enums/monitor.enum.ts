@@ -65,7 +65,8 @@ export const liveStatusSchema = z.enum(LIVE_STATUSES);
 export const LIVE_STATUS_LABELS: Translated<LiveStatus> = {
   ru: {
     trip: 'На выезде',
-    break: 'Отлучка',
+    // Так отлучку называет заказчик; кнопка в приложении — по-прежнему «Отлучка».
+    break: 'На перерыве',
     working: 'Работает',
     idle: 'Без заказа',
     finished: 'Смена закрыта',
@@ -74,7 +75,7 @@ export const LIVE_STATUS_LABELS: Translated<LiveStatus> = {
   },
   uz: {
     trip: 'Chiqishda',
-    break: 'Vaqtincha chiqib ketgan',
+    break: 'Tanaffusda',
     working: 'Ishlamoqda',
     idle: 'Buyurtmasiz',
     finished: 'Smena yopilgan',
