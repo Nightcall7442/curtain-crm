@@ -19,7 +19,7 @@ import {
   workshopDayIso,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, max, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText, periodSchema } from '../lib/schemas';
@@ -446,8 +446,10 @@ export const payrollRouter = router({
         listWorkedShifts(ctx.db, record.userId, bounds),
         // Выплаченные дни — по всем месяцам этой роли: день сдачи этапа
         // может принадлежать соседней записи, если выплату отметили там.
+        // С моментом последней выплаты: за день могли выдать раньше, чем в
+        // тот же день сдали этап.
         ctx.db
-          .selectDistinct({ day: payments.day })
+          .select({ day: payments.day, lastPaidAt: max(payments.receivedAt) })
           .from(payments)
           .innerJoin(payrollRecords, eq(payrollRecords.id, payments.payrollRecordId))
           .where(
@@ -456,7 +458,8 @@ export const payrollRouter = router({
               eq(payrollRecords.role, record.role),
               isNotNull(payments.day),
             ),
-          ),
+          )
+          .groupBy(payments.day),
       ]);
 
       /*
@@ -486,17 +489,24 @@ export const payrollRouter = router({
       /*
         Статус оплаты заказа. Связи «выплата → заказ» нет: директор платит
         по дням или за месяц. Выплачен — если выплачен весь месяц или день
-        сдачи этапа по Ташкенту; остальное — «на утверждении», в том числе
-        утверждённое, но не выданное (так решил заказчик).
+        сдачи этапа по Ташкенту, причём выдали ПОСЛЕ сдачи: выплата в 12:00
+        не включала этап, сданный в 16:00 того же дня. Остальное — «на
+        утверждении», в том числе утверждённое, но не выданное (так решил
+        заказчик).
       */
-      const paid = new Set(paidDays.flatMap((row) => (row.day === null ? [] : [row.day])));
+      const lastPaidAt = new Map(
+        paidDays.flatMap((row) => (row.day === null || row.lastPaidAt === null ? [] : [[row.day, row.lastPaidAt]])),
+      );
       const wholeMonthPaid = record.status === PayrollRecordStatus.PAID;
+      const paidAfter = (doneAt: Date | null): boolean => {
+        if (doneAt === null) return false;
+        const paidAt = lastPaidAt.get(workshopDayIso(doneAt));
+        return paidAt !== undefined && paidAt.getTime() >= doneAt.getTime();
+      };
       const ordersWithStatus = orders.map((order) => ({
         ...order,
         paymentStatus:
-          wholeMonthPaid || (order.doneAt !== null && paid.has(workshopDayIso(order.doneAt)))
-            ? PayrollOrderPayStatus.PAID
-            : PayrollOrderPayStatus.PENDING,
+          wholeMonthPaid || paidAfter(order.doneAt) ? PayrollOrderPayStatus.PAID : PayrollOrderPayStatus.PENDING,
       }));
 
       const workedHours = workedHoursOf(

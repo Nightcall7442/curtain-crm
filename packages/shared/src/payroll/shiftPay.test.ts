@@ -28,6 +28,18 @@ describe('shiftPay', () => {
     expect(shiftPay(parseMoney('35000'), 7.33 * HOUR)).toBe(parseMoney('256550'));
   });
 
+  it('платится от показанных часов: строку можно проверить калькулятором', () => {
+    // 08:58:12–18:03:47 — 32 735 с, в таблице «9,09 ч»; 9,09 × 11 111,11 = 100 999,99 → 101 000.
+    expect(workedHoursOf(32_735)).toBe(9.09);
+    expect(shiftPay(rate, 32_735)).toBe(parseMoney('101000'));
+  });
+
+  it('округление одно, ровно на половине сума — вверх', () => {
+    // 0,07 ч × 35 000 = 2 450; 0,01 ч × 150 = 1,5 → 2.
+    expect(shiftPay(parseMoney('35000'), 261)).toBe(parseMoney('2450'));
+    expect(shiftPay(parseMoney('150'), 36)).toBe(parseMoney('2'));
+  });
+
   it('битые отрицательные секунды — ноль, а не минус', () => {
     expect(shiftPay(rate, -HOUR)).toBe(0);
   });

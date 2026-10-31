@@ -13,7 +13,6 @@ import { multiplyMoney, roundMoneyToWhole, type MoneyMinor } from '../utils/mone
  * поэтому живёт здесь.
  */
 
-const SECONDS_IN_HOUR = 3600;
 const MINUTES_IN_DAY = 24 * 60;
 
 /** Минуты от полуночи для `HH:MM`; иначе `null`. */
@@ -52,23 +51,32 @@ export function hourlyRateFromShift(shiftAmount: MoneyMinor, minutes: number): M
   return multiplyMoney(shiftAmount, 60 / minutes);
 }
 
-/**
- * Оплата одной смены: ставка × отработанные часы, до целого сума.
- *
- * Округление одно — от точного произведения: 11 111,11 × 8,5 = 94 444,435
- * → 94 444. С ставкой 11 111,11 так получается и ровно 100 000 за 9 ч:
- * копеечная недостача ставки (9 × 0,001…) тонет в округлении до сума.
- *
- * Отрицательные секунды означали бы битые данные смены — считаем нулём, а
- * не отрицательной зарплатой.
- */
-export function shiftPay(rate: MoneyMinor, workedSeconds: number): MoneyMinor {
-  const hours = Math.max(0, workedSeconds) / SECONDS_IN_HOUR;
+/** Сотая часа — 36 секунд: столько точности у часов в таблице смен. */
+const SECONDS_IN_HUNDREDTH = 36;
 
-  return roundMoneyToWhole(rate * hours);
+/** Отработанные сотые часа: 30 600 с → 850 (8,50 ч). Отрицательное — ноль. */
+function workedHundredths(seconds: number): number {
+  return Math.round(Math.max(0, seconds) / SECONDS_IN_HUNDREDTH);
 }
 
-/** Часы для показа, до сотых: 30 600 с → 8,5. */
+/**
+ * Оплата одной смены: ставка × часы смены, до целого сума.
+ *
+ * Часы — ТЕ ЖЕ, что в таблице смен, до сотых: отметки прихода и ухода
+ * секундные, и плати мы от точных секунд, строку «9,09 ч — 101 034» нельзя
+ * было бы проверить калькулятором (9,09 × 11 111,11 = 101 000). Таблица
+ * существует, чтобы сотрудник мог сверить начисление, — значит, сумма
+ * считается от показанного.
+ *
+ * Округление одно, от точного произведения, в целых числах: ставка в
+ * тийинах × сотые часа — целое, и половина сума округляется вверх без
+ * погрешности плавающей точки. 11 111,11 × 8,50 = 94 444,435 → 94 444.
+ */
+export function shiftPay(rate: MoneyMinor, workedSeconds: number): MoneyMinor {
+  return roundMoneyToWhole((rate * workedHundredths(workedSeconds)) / 100);
+}
+
+/** Часы для показа, до сотых: 30 600 с → 8,5. От них же считается оплата смены. */
 export function workedHoursOf(seconds: number): number {
-  return Math.round((Math.max(0, seconds) / SECONDS_IN_HOUR) * 100) / 100;
+  return workedHundredths(seconds) / 100;
 }
