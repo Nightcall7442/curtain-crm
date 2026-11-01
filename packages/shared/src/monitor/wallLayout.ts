@@ -49,6 +49,11 @@ export interface WallLanesArea {
   readonly laneGap: number;
   /** Высота шапки полосы (статус и число). */
   readonly laneHeader: number;
+  /**
+   * Наименьшая ширина каждой полосы — чтобы подпись статуса («На перерыве»,
+   * «Buyurtmasiz») не обрезалась у полосы в одну плитку. В порядке `counts`.
+   */
+  readonly minWidths?: readonly number[];
 }
 
 export interface WallLanesFit {
@@ -74,14 +79,40 @@ export function fitStatusLanes(counts: readonly number[], area: WallLanesArea): 
   if (most === 0) return { tile: WALL_TILE_MAX, rows: 0, cols: counts.map(() => 0) };
 
   const colsFor = (rows: number): number[] => counts.map((count) => (count > 0 ? Math.ceil(count / rows) : 0));
+  const minOf = (index: number): number => area.minWidths?.[index] ?? 0;
+  const lanesGap = (busy.length - 1) * area.laneGap;
+  /** Ширина всех полос при плитке `tile`: узкая полоса — не уже своей подписи. */
+  const widthAt = (cols: readonly number[], tile: number, withMins: boolean): number =>
+    cols.reduce((sum, col, index) => {
+      if (col === 0) return sum;
+      const lane = col * tile + (col - 1) * area.gap;
+      return sum + (withMins ? Math.max(lane, minOf(index)) : lane);
+    }, lanesGap);
+
+  /*
+    Наибольшая плитка не больше `limit`, при которой полосы влезают по
+    ширине. Ширина растёт с плиткой монотонно, поэтому — делением пополам.
+    Подписи не влезают даже при нулевой плитке (экран слишком узкий) —
+    тогда без них: людей видно важнее, чем подпись целиком.
+  */
+  const widest = (cols: readonly number[], limit: number): number => {
+    const withMins = widthAt(cols, 0, true) <= area.width;
+    if (widthAt(cols, limit, withMins) <= area.width) return limit;
+    let low = 0;
+    let high = limit;
+    for (let step = 0; step < 40; step += 1) {
+      const middle = (low + high) / 2;
+      if (widthAt(cols, middle, withMins) <= area.width) low = middle;
+      else high = middle;
+    }
+    return low;
+  };
 
   let best: WallLanesFit = { tile: 0, rows: most, cols: colsFor(most) };
   for (let rows = 1; rows <= most; rows += 1) {
     const cols = colsFor(rows);
-    const total = cols.reduce((sum, value) => sum + value, 0);
-    const byWidth = (area.width - (total - busy.length) * area.gap - (busy.length - 1) * area.laneGap) / total;
     const byHeight = (area.height - area.laneHeader - (rows - 1) * area.gap) / rows / WALL_TILE_RATIO;
-    const tile = Math.min(byWidth, byHeight, WALL_TILE_MAX);
+    const tile = widest(cols, Math.max(0, Math.min(byHeight, WALL_TILE_MAX)));
     if (tile > best.tile) best = { tile, rows, cols };
   }
 

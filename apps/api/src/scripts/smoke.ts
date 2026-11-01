@@ -2903,8 +2903,8 @@ async function run(db: Database): Promise<void> {
   });
 
   const queues = await managerCaller.monitor.queues({ branchId: branch.id });
-  const qcRow = queues.qc.find((row) => row.orderNumber === atQc.orderNumber);
-  const corniceRow = queues.cornice.find((row) => row.orderNumber === atCornice.orderNumber);
+  const qcRow = queues.qc.items.find((row) => row.orderNumber === atQc.orderNumber);
+  const corniceRow = queues.cornice.items.find((row) => row.orderNumber === atCornice.orderNumber);
   check(
     'табло 5: заказ на контроле — в очереди ОТК со швеёй',
     qcRow?.status === QueueStatus.CHECKING &&
@@ -2931,7 +2931,7 @@ async function run(db: Database): Promise<void> {
   const tvQueuesJson = JSON.stringify(tvQueues);
   check(
     'табло 5: ссылка без цеха — без очереди ОТК, очередь карнизов есть',
-    tvQueues.qc === null && tvQueues.cornice !== null && tvQueues.cornice.some((row) => row.orderNumber === atCornice.orderNumber),
+    tvQueues.qc === null && tvQueues.cornice !== null && tvQueues.cornice.items.some((row) => row.orderNumber === atCornice.orderNumber),
     tvQueuesJson.slice(0, 120),
   );
   check(
@@ -2944,6 +2944,45 @@ async function run(db: Database): Promise<void> {
   );
   await expectRejected('табло 5: очереди по чужому токену — нет', () =>
     tvCaller.display.queues({ token: 'x'.repeat(40) }),
+  );
+
+  /*
+    Готовые шторы закрываются сразу, а карниз ждёт карнизчика «как обычно»
+    (orderWorkflow): в очереди на ТВ он должен быть, как в очереди самого
+    карнизчика. И длина очереди — настоящая, а не обрезанная выдача.
+  */
+  const [closedWithCornice] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Закрыт, карниз ждёт`,
+      clientPhone: '+998901112299',
+      createdBy: seller.id,
+      workPrice: '200000.00',
+      status: OrderStatus.COMPLETED,
+      corniceStatus: CorniceStatus.PENDING,
+    })
+    .returning();
+  const queuesAgain = await managerCaller.monitor.queues({ branchId: branch.id });
+  const [corniceCount] = await db
+    .select({ n: sql<string>`count(*)` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.branchId, branch.id),
+        inArray(orders.corniceStatus, [CorniceStatus.PENDING, CorniceStatus.IN_PROGRESS]),
+        sql`${orders.status} <> ${OrderStatus.CANCELLED}`,
+      ),
+    );
+  check(
+    'табло 5: карниз закрытого заказа — в очереди, как у карнизчика',
+    queuesAgain.cornice.items.some((row) => row.orderNumber === closedWithCornice?.orderNumber),
+  );
+  check(
+    'табло 5: длина очереди — все ждущие, а не только показанные',
+    queuesAgain.cornice.total === Number.parseInt(corniceCount?.n ?? '-1', 10) &&
+      queuesAgain.cornice.total >= queuesAgain.cornice.items.length,
+    `${queuesAgain.cornice.total.toString()} / ${corniceCount?.n ?? '?'}`,
   );
 }
 

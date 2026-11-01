@@ -69,6 +69,8 @@ const EXACT: Readonly<Record<string, string>> = {
 
   // monitor
   'Сотрудника нет на табло': "Xodim tabloda yo'q",
+  'Сотрудника нет на табло: фото табло — только у швей, установщиков и карнизчиков':
+    "Xodim tabloda yo'q: tablo rasmlari faqat tikuvchilar, o'rnatuvchilar va karnizchilar uchun",
   'Ссылка недействительна': 'Havola yaroqsiz',
   'Эта группа на ссылке не показывается': "Bu guruh havolada ko'rsatilmaydi",
 

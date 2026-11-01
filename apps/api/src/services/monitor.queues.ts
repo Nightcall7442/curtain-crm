@@ -9,7 +9,7 @@ import {
   QUEUE_LIMIT,
   type QueueStatus,
 } from '@curtain-crm/shared';
-import { and, eq, inArray, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, count, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 
 import type { AuditAction } from '../lib/constants';
 import { loadBoardPhotos } from './monitor.queries';
@@ -42,9 +42,15 @@ export interface QueueItem {
   readonly overdue: boolean;
 }
 
+/** Очередь: первые `QUEUE_LIMIT` строк и сколько ждёт всего — на ТВ показывается полная длина. */
+export interface QueueList {
+  readonly items: readonly QueueItem[];
+  readonly total: number;
+}
+
 export interface BoardQueues {
-  readonly qc: readonly QueueItem[];
-  readonly cornice: readonly QueueItem[];
+  readonly qc: QueueList;
+  readonly cornice: QueueList;
 }
 
 const CORNICE_TAKEN: AuditAction = 'order.cornice_taken';
@@ -85,8 +91,24 @@ export async function loadQueues(
   },
 ): Promise<BoardQueues> {
   const branch: SQL | undefined = params.branchId === null ? undefined : eq(orders.branchId, params.branchId);
+  const qcWhere = and(inArray(orders.status, [...QC_QUEUE_ORDER_STATUSES]), branch);
+  /*
+    Карниз ждёт карнизчика и у ЗАКРЫТОГО заказа: готовые шторы закрываются
+    сразу, а карниз остаётся в очереди «как обычно» (`orderWorkflow`). Фильтр —
+    тот же, что у очереди самого карнизчика (`orders.corniceQueue`) и счётчика
+    табло: исключены только отменённые.
+  */
+  const corniceWhere = and(
+    inArray(orders.corniceStatus, [CorniceStatus.PENDING, CorniceStatus.IN_PROGRESS]),
+    ne(orders.status, OrderStatus.CANCELLED),
+    branch,
+  );
+  const countOf = async (where: SQL | undefined): Promise<number> => {
+    const [row] = await db.select({ n: count() }).from(orders).where(where);
+    return row?.n ?? 0;
+  };
 
-  const [qcRows, corniceRows] = await Promise.all([
+  const [qcRows, corniceRows, qcTotal, corniceTotal] = await Promise.all([
     db
       .select({
         orderId: orders.id,
@@ -98,7 +120,7 @@ export async function loadQueues(
         since: asMoment(enteredCurrentStatus),
       })
       .from(orders)
-      .where(and(inArray(orders.status, [...QC_QUEUE_ORDER_STATUSES]), branch))
+      .where(qcWhere)
       // Дольше всех ждущий — сверху: очередь читают сверху вниз.
       .orderBy(sql`${enteredCurrentStatus} asc nulls last`, orders.id)
       .limit(QUEUE_LIMIT),
@@ -112,13 +134,7 @@ export async function loadQueues(
         since: asMoment(corniceTakenAt),
       })
       .from(orders)
-      .where(
-        and(
-          inArray(orders.corniceStatus, [CorniceStatus.PENDING, CorniceStatus.IN_PROGRESS]),
-          notInArray(orders.status, [OrderStatus.COMPLETED, OrderStatus.CANCELLED]),
-          branch,
-        ),
-      )
+      .where(corniceWhere)
       // Сначала те, что уже ставят, — потом ждущие, по сроку.
       .orderBy(
         sql`case when ${orders.corniceStatus} = ${CorniceStatus.IN_PROGRESS} then 0 else 1 end`,
@@ -126,6 +142,8 @@ export async function loadQueues(
         orders.id,
       )
       .limit(QUEUE_LIMIT),
+    countOf(qcWhere),
+    countOf(corniceWhere),
   ]);
 
   const peopleIds = [
@@ -180,7 +198,9 @@ export async function loadQueues(
   const overdue = (deadline: string | null): boolean => deadline !== null && deadline < today;
 
   return {
-    qc: qcRows.flatMap((row) => {
+    qc: {
+      total: qcTotal,
+      items: qcRows.flatMap((row) => {
       const status = qcQueueStatusOf(row.status);
       return status === null
         ? []
@@ -195,8 +215,11 @@ export async function loadQueues(
               overdue: overdue(row.deadline),
             },
           ];
-    }),
-    cornice: corniceRows.flatMap((row) => {
+      }),
+    },
+    cornice: {
+      total: corniceTotal,
+      items: corniceRows.flatMap((row) => {
       const status = corniceQueueStatusOf(row.corniceStatus);
       return status === null
         ? []
@@ -211,6 +234,7 @@ export async function loadQueues(
               overdue: overdue(row.deadline),
             },
           ];
-    }),
+      }),
+    },
   };
 }

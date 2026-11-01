@@ -74,6 +74,26 @@ describe('fitStatusLanes', () => {
     expect(fitStatusLanes([0, 0], area)).toEqual({ tile: WALL_TILE_MAX, rows: 0, cols: [0, 0] });
   });
 
+  it('узкая полоса не уже своей подписи — «На перерыве» не обрезается', () => {
+    const minWidths = [150, 150, 230, 150, 160];
+    const counts = [6, 1, 1, 3, 1];
+    const fit = fitStatusLanes(counts, { ...area, minWidths });
+    const widths = counts.map((count, index) =>
+      count === 0 ? 0 : Math.max((fit.cols[index] ?? 0) * fit.tile + ((fit.cols[index] ?? 0) - 1) * area.gap, minWidths[index] ?? 0),
+    );
+    for (const [index, count] of counts.entries()) {
+      if (count > 0) expect(widths[index]).toBeGreaterThanOrEqual(minWidths[index] ?? 0);
+    }
+    expect(widths.reduce((sum, value) => sum + value, 0) + 4 * area.laneGap).toBeLessThanOrEqual(area.width + 0.01);
+  });
+
+  it('две панели из спецификации: 15 швей и 8 установщиков на 1920×1080', () => {
+    const panel = { width: 1300, height: 360, gap: 12, laneGap: 36, laneHeader: 27 };
+    expect(fits([7, 0, 2, 4, 2], panel)).toBe(true);
+    expect(fits([3, 2, 1, 2, 0], panel)).toBe(true);
+    expect(fitStatusLanes([7, 0, 2, 4, 2], panel).tile).toBeGreaterThan(100);
+  });
+
   it('много людей на узком экране — всё равно все на месте', () => {
     const narrow = { width: 700, height: 300, gap: 8, laneGap: 16, laneHeader: 32 };
     expect(fits([9, 3, 2, 4, 6], narrow)).toBe(true);

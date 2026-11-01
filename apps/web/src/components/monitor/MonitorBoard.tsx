@@ -126,7 +126,8 @@ function MonitorBoard({ group }: { readonly group: MonitorGroupName }): ReactEle
             icon={<Maximize aria-hidden className="h-3.5 w-3.5" />}
             onClick={() => {
               if (document.fullscreenEnabled) void document.documentElement.requestFullscreen().catch(() => undefined);
-              router.push(`/monitor/tv?group=${group}`);
+              // ТВ «всё сразу»: обе группы и очереди, как на телевизоре в цеху.
+              router.push('/monitor/tv');
             }}
           >
             На весь экран

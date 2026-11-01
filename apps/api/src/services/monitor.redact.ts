@@ -162,12 +162,19 @@ export function toDisplayQueueItem(item: QueueItem): DisplayQueueItem {
   };
 }
 
+export interface DisplayQueueList {
+  readonly items: readonly DisplayQueueItem[];
+  readonly total: number;
+}
+
 export function toDisplayQueues(
   queues: BoardQueues,
   shown: { readonly qc: boolean; readonly cornice: boolean },
-): { readonly qc: readonly DisplayQueueItem[] | null; readonly cornice: readonly DisplayQueueItem[] | null } {
+): { readonly qc: DisplayQueueList | null; readonly cornice: DisplayQueueList | null } {
   return {
-    qc: shown.qc ? queues.qc.map(toDisplayQueueItem) : null,
-    cornice: shown.cornice ? queues.cornice.map(toDisplayQueueItem) : null,
+    qc: shown.qc ? { items: queues.qc.items.map(toDisplayQueueItem), total: queues.qc.total } : null,
+    cornice: shown.cornice
+      ? { items: queues.cornice.items.map(toDisplayQueueItem), total: queues.cornice.total }
+      : null,
   };
 }

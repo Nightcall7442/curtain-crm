@@ -26,7 +26,7 @@ import {
   type WallLane,
 } from '@curtain-crm/shared';
 import { Crown, PackageCheck, Ruler, Scissors, ShieldCheck, Truck } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 
 import type { RouterOutputs } from '@/lib/trpc';
 import { cn, formatNumber } from '@/lib/utils';
@@ -50,12 +50,13 @@ import { TV_TEXT, type TvText } from './tvLabels';
 /** Снимок группы: и `display.board` по ссылке, и `monitor.board` руководителя. */
 export type TvBoardData = Omit<RouterOutputs['display']['board'], 'link'>;
 type TvPerson = TvBoardData['people'][number];
-type TvQueueItem = NonNullable<RouterOutputs['display']['queues']['qc']>[number];
+type TvQueueList = NonNullable<RouterOutputs['display']['queues']['qc']>;
+type TvQueueItem = TvQueueList['items'][number];
 
 export interface TvWallQueues {
   /** `null` — очередь на этом экране не показывается (группа выключена). */
-  readonly qc: readonly TvQueueItem[] | null;
-  readonly cornice: readonly TvQueueItem[] | null;
+  readonly qc: TvQueueList | null;
+  readonly cornice: TvQueueList | null;
 }
 
 export interface TvWallGroup {
@@ -240,8 +241,8 @@ function WallHeader({
         {installation !== null && (
           <Stat value={formatNumber(installation.summary.monthTotal, 0)} unit={text.unit[installation.unit]} label={text.installedMonth} />
         )}
-        {queues?.qc != null && <Stat value={queues.qc.length.toString()} label={text.qcTitle} />}
-        {queues?.cornice != null && <Stat value={queues.cornice.length.toString()} label={text.corniceTitle} />}
+        {queues?.qc != null && <Stat value={queues.qc.total.toString()} label={text.qcTitle} />}
+        {queues?.cornice != null && <Stat value={queues.cornice.total.toString()} label={text.corniceTitle} />}
       </div>
       <span aria-hidden className="w-px self-stretch bg-ink/10" />
       <div className="shrink-0 text-right">
@@ -342,12 +343,6 @@ function WallTile({
 /*                               Панель группы                                */
 /* -------------------------------------------------------------------------- */
 
-/** Полосы группы: у цеха выездов нет — полосы «На выезде» у швей не бывает. */
-const GROUP_LANES: Readonly<Record<MonitorGroupName, readonly WallLane[]>> = {
-  [MonitorGroup.WORKSHOP]: WALL_LANES.filter((lane) => lane !== 'trip'),
-  [MonitorGroup.INSTALLATION]: WALL_LANES,
-};
-
 const GROUP_ICON: Readonly<Record<MonitorGroupName, ReactElement>> = {
   [MonitorGroup.WORKSHOP]: <Scissors aria-hidden className="h-[1em] w-[1em]" />,
   [MonitorGroup.INSTALLATION]: <Truck aria-hidden className="h-[1em] w-[1em]" />,
@@ -356,16 +351,21 @@ const GROUP_ICON: Readonly<Record<MonitorGroupName, ReactElement>> = {
 function GroupPanel({ entry, locale, text }: { readonly entry: TvWallGroup; readonly locale: Locale; readonly text: TvText }): ReactElement {
   const [ref, area] = useSize();
   const { board, group } = entry;
-  const lanes = GROUP_LANES[group];
+  // Полоса «На выезде» и у цеха: человек с ролями швеи и установщика может
+  // уехать на установку — пустые полосы не рисуются вовсе.
+  const lanes = WALL_LANES;
   const people = board === null ? [] : sortPeople(board.people, 'place');
   const byLane = lanes.map((lane) => people.filter((person) => wallLaneOf(person.status) === lane));
 
   const gap = Math.max(6, Math.round(area.width / 160));
   const laneGap = gap * 3;
   const laneHeader = Math.max(22, Math.round(area.width / 48));
+  // Подпись полосы — заглавными, с разрядкой: ~0.72 кегля на знак, плюс точка и число.
+  const headerFont = laneHeader * 0.5;
+  const minWidths = lanes.map((lane) => (WALL_LANE_LABELS[locale][lane].length * 0.72 + 4.2) * headerFont);
   const fit = fitStatusLanes(
     byLane.map((list) => list.length),
-    { width: area.width, height: area.height, gap, laneGap, laneHeader },
+    { width: area.width, height: area.height, gap, laneGap, laneHeader, minWidths },
   );
 
   return (
@@ -395,8 +395,12 @@ function GroupPanel({ entry, locale, text }: { readonly entry: TvWallGroup; read
                 if (list.length === 0 || cols === 0) return null;
                 const style = LANE_STYLE[lane];
                 return (
-                  <div key={lane} className="min-w-0 shrink-0" style={{ width: cols * fit.tile + (cols - 1) * gap }}>
-                    <div className="flex items-center gap-[0.45em]" style={{ height: laneHeader, fontSize: laneHeader * 0.5 }}>
+                  <div
+                    key={lane}
+                    className="min-w-0 shrink-0"
+                    style={{ width: Math.max(cols * fit.tile + (cols - 1) * gap, Math.min(minWidths[index] ?? 0, area.width)) }}
+                  >
+                    <div className="flex items-center gap-[0.45em]" style={{ height: laneHeader, fontSize: headerFont }}>
                       <span aria-hidden className={cn('h-[0.65em] w-[0.65em] shrink-0 rounded-full', style.dot)} />
                       <span className={cn('truncate font-semibold uppercase tracking-[0.08em]', style.text)}>
                         {WALL_LANE_LABELS[locale][lane]}
@@ -495,7 +499,8 @@ function Leaders({ board, locale, text }: { readonly board: TvBoardData; readonl
   );
 }
 
-function QueueRow({ item, now, locale, text }: {
+function QueueRow({ ref, item, now, locale, text }: {
+  readonly ref?: React.Ref<HTMLLIElement> | undefined;
   readonly item: TvQueueItem;
   readonly now: number;
   readonly locale: Locale;
@@ -512,7 +517,7 @@ function QueueRow({ item, now, locale, text }: {
         : text.waiting(text.duration(minutes));
 
   return (
-    <li className="flex items-center gap-[0.8em] border-t border-ink/[0.07] py-[0.55em] first:border-t-0">
+    <li ref={ref} className="flex items-center gap-[0.8em] border-t border-ink/[0.07] py-[0.55em] first:border-t-0">
       <div className="flex shrink-0 -space-x-[0.6em]">
         {item.performers.length === 0 ? (
           <span className="grid h-[2.6em] w-[2.6em] place-items-center rounded-full border border-dashed border-ink/25 text-[0.8em] text-muted">
@@ -550,44 +555,77 @@ function QueueRow({ item, now, locale, text }: {
   );
 }
 
-function QueueCard({ title, icon, items, locale, text }: {
+function QueueCard({ title, icon, queue, locale, text }: {
   readonly title: string;
   readonly icon: ReactElement;
-  readonly items: readonly TvQueueItem[] | null;
+  /** `null` — очередь ещё грузится. */
+  readonly queue: TvQueueList | null;
   readonly locale: Locale;
   readonly text: TvText;
 }): ReactElement {
   const now = useNow();
   const [ref, area] = useSize();
+  const firstRow = useRef<HTMLLIElement>(null);
+  const moreRow = useRef<HTMLLIElement>(null);
   // Кегль от ширины колонки: строка очереди — номер, исполнитель, время.
   const fontSize = Math.max(11, Math.min(22, area.width / 30));
-  const rowHeight = fontSize * 3.45;
-  const fits = Math.max(1, Math.floor(area.height / rowHeight));
-  const list = items ?? [];
-  const visible = list.length > fits ? list.slice(0, fits - 1) : list;
-  const hidden = list.length - visible.length;
+  const items = queue?.items ?? [];
+  const total = queue?.total ?? 0;
+
+  /*
+    Сколько строк помещается — по НАСТОЯЩЕЙ высоте строки и строки «и ещё
+    N», а не по прикидке: прикидка завышала, и рамка молча срезала последние
+    строки вместе с «ещё». Первый проход рисует всё, замер — до отрисовки
+    кадра, так что срезанной строки на экране не бывает.
+  */
+  // `null` — ещё не мерили: рисуем все строки, чтобы было что мерить.
+  const [fits, setFits] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    // Строки бывают разной высоты (у просроченной — вторая строка справа):
+    // мерим по самой высокой из нарисованных.
+    const rows = [...(firstRow.current?.parentElement?.children ?? [])].filter((node) => node !== moreRow.current);
+    const row = Math.max(0, ...rows.map((node) => node.getBoundingClientRect().height));
+    if (row <= 0 || area.height <= 0) return;
+    const more = moreRow.current?.getBoundingClientRect().height ?? row * 0.5;
+    const all = Math.floor(area.height / row);
+    setFits(total <= all ? total : Math.max(1, Math.floor((area.height - more) / row)));
+  }, [area.height, area.width, items.length, total, fontSize]);
+
+  const visible = fits === null ? items : items.slice(0, Math.min(fits, items.length));
+  const hidden = total - visible.length;
 
   return (
     <section className="surface-card flex min-h-0 flex-1 flex-col px-[1vw] pb-[0.6vw] pt-[0.8vw]">
       <h2 className="mb-[0.3vw] flex items-center gap-[0.5vw] text-[clamp(13px,1.05vw,32px)] font-bold text-primary">
         <span className="text-accent">{icon}</span>
         {title}
-        <span className="ml-auto rounded-full bg-ink/[0.07] px-[0.6em] text-[0.85em] tabular-nums">{list.length.toString()}</span>
+        <span className="ml-auto rounded-full bg-ink/[0.07] px-[0.6em] text-[0.85em] tabular-nums">{total.toString()}</span>
       </h2>
       <div ref={ref} className="min-h-0 flex-1 overflow-hidden" style={{ fontSize }}>
-        {items === null ? (
+        {queue === null ? (
           <div className="h-full animate-pulse rounded-[0.6vw] bg-ink/[0.04]" aria-busy="true" />
-        ) : list.length === 0 ? (
+        ) : total === 0 ? (
           <p className="flex h-full items-center justify-center gap-[0.5em] text-muted">
             <PackageCheck aria-hidden className="h-[1.2em] w-[1.2em]" />
             {text.queueEmpty}
           </p>
         ) : (
           <ul>
-            {visible.map((item) => (
-              <QueueRow key={item.orderNumber} item={item} now={now} locale={locale} text={text} />
+            {visible.map((item, index) => (
+              <QueueRow
+                key={item.orderNumber}
+                ref={index === 0 ? firstRow : undefined}
+                item={item}
+                now={now}
+                locale={locale}
+                text={text}
+              />
             ))}
-            {hidden > 0 && <li className="pt-[0.4em] text-center text-[0.85em] text-muted">{text.more(hidden)}</li>}
+            {hidden > 0 && (
+              <li ref={moreRow} className="py-[0.4em] text-center text-[0.85em] text-muted">
+                {text.more(hidden)}
+              </li>
+            )}
           </ul>
         )}
       </div>
@@ -630,7 +668,7 @@ export function TvWall({
 
   // Высота панели — по числу людей, но не меньше трети: пустая группа не сжимается в щель.
   const total = groups.reduce((sum, entry) => sum + (entry.board?.people.length ?? 1), 0);
-  const weight = (entry: TvWallGroup): number => Math.max(entry.board?.people.length ?? 1, total * 0.36);
+  const weight = (entry: TvWallGroup): number => Math.max(entry.board?.people.length ?? 1, total * 0.36, 1);
 
   return (
     <div
@@ -665,7 +703,7 @@ export function TvWall({
               <QueueCard
                 title={text.qcTitle}
                 icon={<ShieldCheck aria-hidden className="h-[1em] w-[1em]" />}
-                items={queues === null ? null : queues.qc}
+                queue={queues === null ? null : queues.qc}
                 locale={locale}
                 text={text}
               />
@@ -674,7 +712,7 @@ export function TvWall({
               <QueueCard
                 title={text.corniceTitle}
                 icon={<Ruler aria-hidden className="h-[1em] w-[1em]" />}
-                items={queues === null ? null : queues.cornice}
+                queue={queues === null ? null : queues.cornice}
                 locale={locale}
                 text={text}
               />

@@ -151,10 +151,14 @@ describe('очереди на ТВ', () => {
   } as unknown as QueueItem;
 
   it('только белый список: без id заказа, клиента и id людей', () => {
-    const shown = toDisplayQueues({ qc: [item], cornice: [item] }, { qc: true, cornice: false });
+    const shown = toDisplayQueues(
+      { qc: { items: [item], total: 1 }, cornice: { items: [item], total: 1 } },
+      { qc: true, cornice: false },
+    );
     const json = JSON.stringify(shown);
     expect(shown.cornice).toBeNull();
-    expect(shown.qc?.[0]?.orderNumber).toBe('DH-000042');
+    expect(shown.qc?.items[0]?.orderNumber).toBe('DH-000042');
+    expect(shown.qc?.total).toBe(1);
     expect(json).not.toContain('orderId');
     expect(json).not.toContain('Секретный');
     expect(json).not.toContain('userId');
