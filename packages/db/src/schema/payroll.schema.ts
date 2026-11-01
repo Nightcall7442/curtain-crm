@@ -142,6 +142,15 @@ export interface PayrollSchemeSnapshot {
   readonly kpiTarget: string | null;
   readonly commissionPercent: string | null;
   readonly effectiveFrom: string;
+  /**
+   * Смена по графику на момент расчёта (`HH:MM`).
+   *
+   * Разбивка почасовика показывает «за смену по графику» той ставкой и тем
+   * графиком, по которым считали. Необязательные: в снимках до выпуска 4 их
+   * физически нет, и читаются они как «графика не было».
+   */
+  readonly shiftStart?: string | null;
+  readonly shiftEnd?: string | null;
   /** Исходные данные расчёта: отработанные часы, число заказов, их сумма. */
   readonly inputs: {
     readonly workedHours: number;

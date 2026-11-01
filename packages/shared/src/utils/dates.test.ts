@@ -9,6 +9,7 @@ import {
   isDueToday,
   isOverdueDate,
   todayIso,
+  workshopDayIso,
   workshopToday,
   yesterdayIso,
 } from './dates';
@@ -125,5 +126,14 @@ describe('formatTime / formatDateTime', () => {
     expect(formatDate(at)).toBe('20.09.2026');
     expect(formatDateTime(at)).toBe('20.09.2026, 14:05');
     expect(formatDateTime(at, false)).toBe('20.09, 14:05');
+  });
+});
+
+describe('workshopDayIso', () => {
+  it('день по Ташкенту, а не по UTC', () => {
+    // 22:30 UTC — уже 03:30 следующего дня в Ташкенте.
+    expect(workshopDayIso(new Date('2026-09-02T22:30:00Z'))).toBe('2026-09-03');
+    expect(workshopDayIso('2026-09-03T18:59:00Z')).toBe('2026-09-03');
+    expect(workshopDayIso('2026-09-03T19:00:00Z')).toBe('2026-09-04');
   });
 });

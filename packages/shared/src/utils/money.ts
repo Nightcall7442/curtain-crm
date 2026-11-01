@@ -186,6 +186,27 @@ export function multiplyMoney(minor: MoneyMinor, factor: number): MoneyMinor {
   return result;
 }
 
+/**
+ * Округление до целого сума: `94 444,435` → `94 444`.
+ *
+ * Принимает и дробные тийины — точное произведение ставки на часы, — чтобы
+ * округление было ОДНО: сначала до тийина, потом до сума дало бы на
+ * границе другой результат, чем считает человек на калькуляторе.
+ * Зарплату в цехе выдают целыми сумами, и таблица смен, которую сверяет
+ * сотрудник, тоже в целых.
+ */
+export function roundMoneyToWhole(minor: number): MoneyMinor {
+  if (!Number.isFinite(minor)) {
+    throw new RangeError(`Некорректная сумма: ${String(minor)}`);
+  }
+  const result = roundHalfAwayFromZero(minor / 100) * 100;
+  if (!isSafeMinor(result)) {
+    throw new RangeError('Переполнение при округлении денежной величины');
+  }
+  // `-0` от отрицательного нуля в выдаче не нужен.
+  return result === 0 ? 0 : result;
+}
+
 /** Процент от суммы: `percentOfMoney(1_000_00, 15)` -> 150.00. */
 export function percentOfMoney(minor: MoneyMinor, percent: number): MoneyMinor {
   return multiplyMoney(minor, percent / 100);

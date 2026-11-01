@@ -212,6 +212,7 @@ refresh-токен. Предъявление уже отозванного refre
 | `payroll.approve` | mutation | директор | Утверждение; сумма фиксируется |
 | `payroll.markPaid` | mutation | директор | Отметка о выплате |
 | `payroll.my` | query | вошедший | Свои расчёты за год |
+| `payroll.breakdown` | query | руководство; сотрудник — свою | Из чего сложилось начисление: `record`, `orders[]` (`doneAt`, `paymentStatus: paid \| pending`), `shifts[]` (`day`, `startedAt`, `endedAt`, `awaySeconds`, `workedSeconds`, `amount` — у почасовой, `isManuallyAdjusted`), `workedHours` |
 
 Схемы вынесены в подроутер `schemes`, сами расчёты лежат на верхнем уровне
 `payroll`. Уже утверждённые записи `calculate` пропускает и возвращает их

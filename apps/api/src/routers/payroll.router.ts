@@ -8,13 +8,18 @@ import {
   payrollRecordStatusSchema,
   payrollSchemeTypeSchema,
   PAYROLL_SCHEME_REQUIRED_FIELDS,
+  PayrollOrderPayStatus,
   PayrollRecordStatus,
+  PayrollSchemeType,
   ROLE_LABELS_RU,
   roleSchema,
   PaymentKind,
+  shiftPay,
+  workedHoursOf,
+  workshopDayIso,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, max, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, moneySchema, optionalText, periodSchema } from '../lib/schemas';
@@ -30,7 +35,7 @@ import {
   payableRoles,
   saveDraft,
 } from '../services/payroll.service';
-import { calculateWorkedHours, formatPeriod, periodBounds } from '../services/shifts.service';
+import { formatPeriod, listWorkedShifts, periodBounds } from '../services/shifts.service';
 import { router } from '../trpc';
 
 /**
@@ -430,18 +435,85 @@ export const payrollRouter = router({
       const period = { year: record.periodYear, month: record.periodMonth };
       const bounds = periodBounds(period);
 
-      const [orders, workedHours] = await Promise.all([
+      const [orders, workedShifts, paidDays] = await Promise.all([
         listCompletedOrdersForPayroll(ctx.db, record.userId, record.role, bounds),
         /*
-          Часы пересчитываются, а не берутся из снимка: снимок писался в
+          Смены пересчитываются, а не берутся из снимка: снимок писался в
           момент расчёта, а смены за незакрытый месяц с тех пор прибавились.
           Расхождение с суммой в ведомости здесь — не ошибка, а ответ на
           вопрос «пора ли пересчитать».
         */
-        calculateWorkedHours(ctx.db, record.userId, bounds),
+        listWorkedShifts(ctx.db, record.userId, bounds),
+        // Выплаченные дни — по всем месяцам этой роли: день сдачи этапа
+        // может принадлежать соседней записи, если выплату отметили там.
+        // С моментом последней выплаты: за день могли выдать раньше, чем в
+        // тот же день сдали этап.
+        ctx.db
+          .select({ day: payments.day, lastPaidAt: max(payments.receivedAt) })
+          .from(payments)
+          .innerJoin(payrollRecords, eq(payrollRecords.id, payments.payrollRecordId))
+          .where(
+            and(
+              eq(payrollRecords.userId, record.userId),
+              eq(payrollRecords.role, record.role),
+              isNotNull(payments.day),
+            ),
+          )
+          .groupBy(payments.day),
       ]);
 
-      return { record, period, orders, workedHours };
+      /*
+        Оплата смены — по ставке СНИМКА: таблица объясняет начисленную сумму,
+        а она посчитана той ставкой. Не почасовику сумма за смену не
+        положена, и колонку ему не рисуют.
+      */
+      const snapshot = record.schemeSnapshot;
+      const hourlyRate =
+        snapshot.type === PayrollSchemeType.HOURLY && snapshot.rate !== null
+          ? parseMoney(snapshot.rate)
+          : null;
+      const shifts = workedShifts.map((shift) => ({
+        id: shift.id,
+        day: workshopDayIso(shift.startedAt),
+        startedAt: shift.startedAt,
+        endedAt: shift.endedAt,
+        awaySeconds: shift.awaySeconds,
+        workedSeconds: shift.workedSeconds,
+        amount:
+          hourlyRate === null || shift.workedSeconds === null
+            ? null
+            : moneyToDecimalString(shiftPay(hourlyRate, shift.workedSeconds)),
+        isManuallyAdjusted: shift.isManuallyAdjusted,
+      }));
+
+      /*
+        Статус оплаты заказа. Связи «выплата → заказ» нет: директор платит
+        по дням или за месяц. Выплачен — если выплачен весь месяц или день
+        сдачи этапа по Ташкенту, причём выдали ПОСЛЕ сдачи: выплата в 12:00
+        не включала этап, сданный в 16:00 того же дня. Остальное — «на
+        утверждении», в том числе утверждённое, но не выданное (так решил
+        заказчик).
+      */
+      const lastPaidAt = new Map(
+        paidDays.flatMap((row) => (row.day === null || row.lastPaidAt === null ? [] : [[row.day, row.lastPaidAt]])),
+      );
+      const wholeMonthPaid = record.status === PayrollRecordStatus.PAID;
+      const paidAfter = (doneAt: Date | null): boolean => {
+        if (doneAt === null) return false;
+        const paidAt = lastPaidAt.get(workshopDayIso(doneAt));
+        return paidAt !== undefined && paidAt.getTime() >= doneAt.getTime();
+      };
+      const ordersWithStatus = orders.map((order) => ({
+        ...order,
+        paymentStatus:
+          wholeMonthPaid || paidAfter(order.doneAt) ? PayrollOrderPayStatus.PAID : PayrollOrderPayStatus.PENDING,
+      }));
+
+      const workedHours = workedHoursOf(
+        workedShifts.reduce((total, shift) => total + (shift.workedSeconds ?? 0), 0),
+      );
+
+      return { record, period, orders: ordersWithStatus, shifts, workedHours };
     }),
 
   /** Собственные начисления сотрудника. */

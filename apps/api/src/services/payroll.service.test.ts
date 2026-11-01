@@ -1,4 +1,4 @@
-import { parseMoney, PayrollSchemeType } from '@curtain-crm/shared';
+import { parseMoney, PayrollRecordStatus, PayrollSchemeType } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { describe, expect, it } from 'vitest';
 
@@ -11,6 +11,7 @@ import {
   calculatePerOrder,
   calculatePieceRate,
   payableRoles,
+  reopensPaidRecord,
   withStageFees,
   type PayrollInputs,
   type PayrollSchemeParams,
@@ -23,8 +24,11 @@ import { formatPeriod, periodBounds } from './shifts.service';
  * не проверяется.
  */
 
+const HOUR = 3600;
+
 const NO_INPUTS: PayrollInputs = {
   workedHours: 0,
+  shiftSeconds: [],
   completedOrders: 0,
   completedOrdersAmount: 0,
   stageFeesAmount: 0,
@@ -56,44 +60,44 @@ describe('calculateFixed', () => {
 });
 
 describe('calculateHourly', () => {
-  it('умножает ставку на отработанные часы', () => {
+  const rate = parseMoney('11111.11');
+
+  it('складывает смены, каждая — целыми сумами (пример заказчика)', () => {
+    const result = calculateHourly(
+      scheme({ type: PayrollSchemeType.HOURLY, rate }),
+      inputs({ shiftSeconds: [9 * HOUR, 8.5 * HOUR, 7 * HOUR, 13 * HOUR] }),
+    );
+
+    // 100 000 + 94 444 + 77 778 + 144 444
+    expect(result.amount).toBe(parseMoney('416666'));
+    expect(result.breakdown[0]?.label).toBe('Смены: 4, часов 37.50');
+  });
+
+  it('целая ставка: одна длинная смена — как раньше', () => {
     const result = calculateHourly(
       scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('35000') }),
-      inputs({ workedHours: 160 }),
+      inputs({ shiftSeconds: [160 * HOUR] }),
     );
 
     expect(result.amount).toBe(parseMoney('5600000'));
   });
 
-  it('корректно считает дробные часы с округлением до копеек', () => {
-    const result = calculateHourly(
-      scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('35000') }),
-      inputs({ workedHours: 7.33 }),
-    );
-
-    // 35000 × 7.33 = 256 550
-    expect(result.amount).toBe(parseMoney('256550'));
-  });
-
-  it('не начисляет ничего при нуле часов', () => {
-    const result = calculateHourly(
-      scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('35000') }),
-      NO_INPUTS,
-    );
+  it('не начисляет ничего без смен', () => {
+    const result = calculateHourly(scheme({ type: PayrollSchemeType.HOURLY, rate }), NO_INPUTS);
     expect(result.amount).toBe(0);
   });
 
-  it('считает битые отрицательные часы нулём, а не отрицательной зарплатой', () => {
+  it('считает битые отрицательные секунды нулём, а не отрицательной зарплатой', () => {
     const result = calculateHourly(
-      scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('35000') }),
-      inputs({ workedHours: -10 }),
+      scheme({ type: PayrollSchemeType.HOURLY, rate }),
+      inputs({ shiftSeconds: [-10 * HOUR, 9 * HOUR] }),
     );
-    expect(result.amount).toBe(0);
+    expect(result.amount).toBe(parseMoney('100000'));
   });
 
   it('падает, если ставка не задана', () => {
     expect(() =>
-      calculateHourly(scheme({ type: PayrollSchemeType.HOURLY }), inputs({ workedHours: 10 })),
+      calculateHourly(scheme({ type: PayrollSchemeType.HOURLY }), inputs({ shiftSeconds: [HOUR] })),
     ).toThrow(TRPCError);
   });
 });
@@ -312,7 +316,7 @@ describe('calculatePayroll', () => {
     expect(
       calculatePayroll(
         scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('1000') }),
-        inputs({ workedHours: 2 }),
+        inputs({ shiftSeconds: [2 * HOUR] }),
       ).amount,
     ).toBe(parseMoney('2000'));
 
@@ -327,7 +331,7 @@ describe('calculatePayroll', () => {
   it('прибавляет сдельные к результату любой схемы', () => {
     const result = calculatePayroll(
       scheme({ type: PayrollSchemeType.HOURLY, rate: parseMoney('30000') }),
-      inputs({ workedHours: 10, stageFeesAmount: parseMoney('250000') }),
+      inputs({ shiftSeconds: [10 * HOUR], stageFeesAmount: parseMoney('250000') }),
     );
 
     expect(result.amount).toBe(parseMoney('550000'));
@@ -357,5 +361,31 @@ describe('periodBounds', () => {
 describe('payableRoles', () => {
   it('исключает SMM: функционал роли ещё не определён', () => {
     expect(payableRoles(['sewer', 'smm', 'qc'])).toEqual(['sewer', 'qc']);
+  });
+});
+
+describe('reopensPaidRecord', () => {
+  const inputs = { workedHours: 168.4, completedOrders: 0, completedOrdersAmount: '0.00', stageFeesAmount: '0.00' };
+  const paid = { status: PayrollRecordStatus.PAID, paidAmount: '2093500.00', inputs };
+
+  it('новая работа и сумма выросла — переоткрывается', () => {
+    expect(
+      reopensPaidRecord(paid, { amount: parseMoney('2200000'), inputs: { ...inputs, workedHours: 177.4 } }),
+    ).toBe(true);
+  });
+
+  it('работа та же, сумма выросла только от правила расчёта — выплаченный месяц не трогаем', () => {
+    expect(reopensPaidRecord(paid, { amount: parseMoney('2093517'), inputs })).toBe(false);
+  });
+
+  it('старый снимок без сдельных — это ноль, а не «изменилось»', () => {
+    const old = { ...paid, inputs: { workedHours: 168.4, completedOrders: 0, completedOrdersAmount: '0.00' } };
+    expect(reopensPaidRecord(old, { amount: parseMoney('2093517'), inputs })).toBe(false);
+  });
+
+  it('не выплачена — вопрос не к ней', () => {
+    expect(
+      reopensPaidRecord({ ...paid, status: PayrollRecordStatus.APPROVED }, { amount: parseMoney('1'), inputs }),
+    ).toBe(false);
   });
 });

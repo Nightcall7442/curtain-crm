@@ -122,6 +122,20 @@ export function workshopToday(now: Date = new Date()): {
   return { year: value('year'), month: value('month'), day: value('day') };
 }
 
+/**
+ * Календарный день момента по времени мастерской: `2026-09-03`.
+ *
+ * Нужен там, где момент (сдача этапа, начало смены) сравнивают с днём
+ * выплаты: выплата записана днём по Ташкенту, и этап, сданный в 03:00 по
+ * Ташкенту, — это сегодняшний день, а не вчерашний по UTC.
+ */
+export function workshopDayIso(at: Date | string): string {
+  const { year, month, day } = workshopToday(new Date(at));
+  const pad = (value: number): string => value.toString().padStart(2, '0');
+
+  return `${year.toString()}-${pad(month)}-${pad(day)}`;
+}
+
 /** Время момента: `14:05`. Строка — как отдаёт сервер (`createdAt`), число — `Date.now()`. */
 export function formatTime(at: Date | string | number): string {
   return new Date(at).toLocaleTimeString(NUMERIC_LOCALE, { hour: '2-digit', minute: '2-digit' });

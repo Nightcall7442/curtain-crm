@@ -53,6 +53,9 @@ export * from './monitor/installSlot';
 /* Правила заказа */
 export * from './orders/rules';
 
+/* Зарплата */
+export * from './payroll/shiftPay';
+
 /* Типы */
 export * from './types/orderItemAccessory';
 export * from './types/orderItemMaterial';
