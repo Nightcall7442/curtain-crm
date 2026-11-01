@@ -295,7 +295,7 @@ refresh-токен. Предъявление уже отозванного refre
 | `monitor.photos.list` | query | руководство | Люди табло (`userId, fullName, group, roles, avatarUrl`) и их фото по статусам `photos: { working, idle, break }` (ссылки на превью или `null`) |
 | `monitor.photos.set({ userId, kind, file })` | mutation | руководство | Загрузить или заменить фото статуса (`working` / `idle` / `break`); оригинал и превью WebP, прежние файлы удаляются. Человек не на табло — `BAD_REQUEST` |
 | `monitor.photos.remove({ userId, kind })` | mutation | руководство | Убрать фото статуса — табло снова покажет обычное фото |
-| `monitor.queues({ branchId? })` | query | диспетчеры | Очереди ТВ: `qc[]` и `cornice[]` — `{ orderId, orderNumber, status: sewn \| checking \| failed \| waiting \| taken, performers: { name, photoUrl }[], since, deadline, overdue }`, до 30 строк |
+| `monitor.queues({ branchId? })` | query | диспетчеры | Очереди ТВ: `qc` и `cornice` — `{ items, total }`; `items` — до 30 строк `{ orderId, orderNumber, status: sewn \| checking \| failed \| waiting \| taken, performers: { name, photoUrl }[], since, deadline, overdue }`, `total` — сколько ждёт всего. В очереди карнизов и закрытые заказы (исключены только отменённые), как у `orders.corniceQueue` |
 | `display.queues({ token })` | query | по ссылке ТВ | Те же очереди без `orderId`; `qc: null`, если в ссылке нет цеха, `cornice: null` — если нет установщиков |
 
 `display.board`: ссылки нет или отозвана — `NOT_FOUND` «Ссылка

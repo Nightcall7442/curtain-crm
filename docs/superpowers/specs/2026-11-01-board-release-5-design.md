@@ -90,7 +90,10 @@
 - `qc: QueueItem[]` — заказы в `sewing_done`, `pending_qc`, `qc_failed`
   (не отменённые), старые сверху;
 - `cornice: QueueItem[]` — `cornice_status in (pending, in_progress)`,
-  заказ не отменён и не закрыт; «ставят» сверху, потом по сроку.
+  заказ не отменён (закрытый — тоже в очереди: готовые шторы закрываются
+  сразу, а карниз ждёт карнизчика, как в его собственной очереди
+  `orders.corniceQueue`); «ставят» сверху, потом по сроку.
+- каждая очередь — `{ items, total }`: первые 30 строк и полная длина.
 
 `QueueItem = { orderNumber, status, performers: { name, photoUrl }[],
 since: Date | null, deadline: string | null, overdue: boolean }`. `since`
