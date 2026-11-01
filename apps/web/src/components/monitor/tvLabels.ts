@@ -42,6 +42,21 @@ export interface TvText {
   readonly noPlan: string;
   readonly workstation: (number: number) => string;
   readonly planPercent: (percent: number) => string;
+  /* ТВ «всё сразу» */
+  readonly wallTitle: string;
+  readonly groupTitle: Readonly<Record<'workshop' | 'installation', string>>;
+  readonly qcTitle: string;
+  readonly corniceTitle: string;
+  readonly leaders: (month: string) => string;
+  readonly queueEmpty: string;
+  readonly more: (count: number) => string;
+  readonly waiting: (duration: string) => string;
+  readonly inWork: (duration: string) => string;
+  readonly duration: (minutes: number) => string;
+  readonly noPerformer: string;
+  readonly installedMonth: string;
+  readonly sewnMonth: string;
+  readonly installationsToday: string;
 }
 
 export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
@@ -67,7 +82,7 @@ export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
     rework: 'переделка',
     noWork: 'Нет текущего заказа',
     tripSince: (time) => `На выезде с ${time}`,
-    breakUntil: (time) => `Отлучка до ${time}`,
+    breakUntil: (time) => `На перерыве до ${time}`,
     finishedAt: (time) => `Смена закрыта в ${time}`,
     noPhoto: 'Фото не загружено',
     allBranches: 'все филиалы',
@@ -78,6 +93,25 @@ export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
     noPlan: 'план не задан',
     workstation: (number) => `Машинка №${number.toString()}`,
     planPercent: (percent) => `${percent.toString()}% плана`,
+    wallTitle: 'Цех и установка',
+    groupTitle: { workshop: 'Швеи', installation: 'Установщики' },
+    qcTitle: 'ОТК — очередь',
+    corniceTitle: 'Карнизы — очередь',
+    leaders: (month) => `Лучшие за ${month}`,
+    queueEmpty: 'Очередь пуста',
+    more: (count) => `и ещё ${count.toString()}`,
+    waiting: (duration) => `ждёт ${duration}`,
+    inWork: (duration) => `в работе ${duration}`,
+    duration: (minutes) =>
+      minutes < 60
+        ? `${Math.max(1, minutes).toString()} мин`
+        : minutes < 24 * 60
+          ? `${Math.floor(minutes / 60).toString()} ч ${(minutes % 60).toString().padStart(2, '0')} мин`
+          : `${Math.floor(minutes / (24 * 60)).toString()} дн`,
+    noPerformer: 'исполнитель не назначен',
+    installedMonth: 'установлено за месяц',
+    sewnMonth: 'сшито за месяц',
+    installationsToday: 'установок сегодня',
   },
   uz: {
     unit: { pieces: 'dona', orders: 'buyurtma' },
@@ -101,7 +135,7 @@ export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
     rework: 'qayta ishlash',
     noWork: 'Joriy buyurtma yo‘q',
     tripSince: (time) => `${time} dan chiqishda`,
-    breakUntil: (time) => `${time} gacha chiqib ketgan`,
+    breakUntil: (time) => `${time} gacha tanaffusda`,
     finishedAt: (time) => `Smena ${time} da yopildi`,
     noPhoto: 'Rasm yuklanmagan',
     allBranches: 'barcha filiallar',
@@ -112,5 +146,24 @@ export const TV_TEXT: Readonly<Record<Locale, TvText>> = {
     noPlan: 'reja belgilanmagan',
     workstation: (number) => `${number.toString()}-mashina`,
     planPercent: (percent) => `${percent.toString()}% reja`,
+    wallTitle: 'Sex va o‘rnatish',
+    groupTitle: { workshop: 'Tikuvchilar', installation: 'O‘rnatuvchilar' },
+    qcTitle: 'OTK — navbat',
+    corniceTitle: 'Karnizlar — navbat',
+    leaders: (month) => `${month} oyining eng yaxshilari`,
+    queueEmpty: 'Navbat bo‘sh',
+    more: (count) => `yana ${count.toString()} ta`,
+    waiting: (duration) => `${duration} kutmoqda`,
+    inWork: (duration) => `${duration} ishda`,
+    duration: (minutes) =>
+      minutes < 60
+        ? `${Math.max(1, minutes).toString()} daq`
+        : minutes < 24 * 60
+          ? `${Math.floor(minutes / 60).toString()} soat ${(minutes % 60).toString().padStart(2, '0')} daq`
+          : `${Math.floor(minutes / (24 * 60)).toString()} kun`,
+    noPerformer: 'ijrochi tayinlanmagan',
+    installedMonth: 'oy davomida o‘rnatildi',
+    sewnMonth: 'oy davomida tikildi',
+    installationsToday: 'bugungi o‘rnatishlar',
   },
 };

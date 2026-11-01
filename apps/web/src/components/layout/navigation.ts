@@ -102,6 +102,8 @@ export const NAVIGATION: readonly NavItem[] = [
       },
       // Планы ставит руководство: менеджер видит табло, но цели цеху не задаёт.
       { href: '/monitor/plans', label: 'Планы', roles: MANAGEMENT_ROLES },
+      // Фото по статусам — руководство, как и обычное фото сотрудника.
+      { href: '/monitor/settings', label: 'Настройки', roles: MANAGEMENT_ROLES },
     ],
   },
   {

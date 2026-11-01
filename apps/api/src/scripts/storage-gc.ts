@@ -18,6 +18,7 @@
  *   pnpm --filter @curtain-crm/api gc -- --apply
  */
 import {
+  boardPhotos,
   closeDatabase,
   createDatabase,
   orderComments,
@@ -57,7 +58,7 @@ async function main(): Promise<void> {
 
   try {
     /* --- Все ключи, на которые кто-то ссылается ---------------------------- */
-    const [photos, voices, avatars, avatarPreviews] = await Promise.all([
+    const [photos, voices, avatars, avatarPreviews, boardOriginals, boardPreviews] = await Promise.all([
       db.select({ key: orderPhotos.storageKey }).from(orderPhotos),
       db
         .select({ key: orderComments.voiceStorageKey })
@@ -72,10 +73,16 @@ async function main(): Promise<void> {
         .select({ key: users.avatarPreviewKey })
         .from(users)
         .where(isNotNull(users.avatarPreviewKey)),
+      // Фото табло по статусам — отдельная таблица, а не колонки пользователя.
+      db.select({ key: boardPhotos.storageKey }).from(boardPhotos),
+      db
+        .select({ key: boardPhotos.previewKey })
+        .from(boardPhotos)
+        .where(isNotNull(boardPhotos.previewKey)),
     ]);
 
     const referenced = new Set<string>();
-    for (const row of [...photos, ...voices, ...avatars, ...avatarPreviews]) {
+    for (const row of [...photos, ...voices, ...avatars, ...avatarPreviews, ...boardOriginals, ...boardPreviews]) {
       if (row.key !== null) referenced.add(row.key);
     }
 

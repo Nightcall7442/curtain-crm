@@ -14,6 +14,7 @@
  */
 import {
   auditLog,
+  boardPhotos,
   branches,
   catalogItems,
   closeDatabase,
@@ -42,6 +43,7 @@ import {
   type Database,
 } from '@curtain-crm/db';
 import {
+  BoardPhotoKind,
   CorniceStatus,
   LiveStatus,
   MonitorGroup,
@@ -58,6 +60,7 @@ import {
   PayrollRecordStatus,
   PayrollSchemeType,
   planPercent,
+  QueueStatus,
   Role,
   workshopToday,
   type Role as RoleName,
@@ -215,6 +218,7 @@ async function cleanup(db: Database): Promise<void> {
     await db.delete(displayLinks).where(inArray(displayLinks.createdBy, userIds));
     await db.delete(workPlans).where(or(inArray(workPlans.userId, userIds), inArray(workPlans.createdBy, userIds)));
     await db.delete(notifications).where(inArray(notifications.userId, userIds));
+    await db.delete(boardPhotos).where(or(inArray(boardPhotos.userId, userIds), inArray(boardPhotos.uploadedBy, userIds)));
     await db.delete(payrollRecords).where(inArray(payrollRecords.userId, userIds));
     await db.delete(payrollSchemes).where(inArray(payrollSchemes.userId, userIds));
     // Коды склада ссылаются на автора — удаляются раньше пользователей.
@@ -2764,6 +2768,221 @@ async function run(db: Database): Promise<void> {
     'зарплата 4: смена через границу месяца делится без потерь и двойного счёта',
     septemberHours === 2 && octoberHours === 1.5,
     `сентябрь ${septemberHours.toString()} ч, октябрь ${octoberHours.toString()} ч`,
+  );
+
+  /* ------------------ 11. Выпуск 5: фото табло по статусам ---------------- */
+
+  /*
+    Заказчик: «фото ставится по статусам — работает / без заказа / на
+    перерыве; это фото не отображается в других разделах, как мой профиль».
+    Швея на смене без заказа — табло показывает фото «Без заказа»; ушла на
+    перерыв — фото «На перерыве»; профиль — всё время обычная аватарка.
+  */
+  const photoSewer = await makeUser('Швея с фото', Role.SEWER, '+998900000141');
+  await caller.users.setAvatar({ userId: photoSewer.id, file: pixel });
+  const [photoShift] = await db
+    .insert(shifts)
+    .values({ userId: photoSewer.id, branchId: branch.id, startedAt: new Date(Date.now() - 60 * 60 * 1000) })
+    .returning();
+
+  await caller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.IDLE, file: pixel });
+  await caller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.BREAK, file: pixel });
+
+  const boardPhotoOf = async (): Promise<{ status: string; url: string }> => {
+    const board = await managerCaller.monitor.board({ group: MonitorGroup.WORKSHOP });
+    const person = board.people.find((entry) => entry.userId === photoSewer.id);
+    return { status: person?.status ?? 'нет', url: person?.photoUrl ?? '' };
+  };
+  const [idlePhoto] = await db
+    .select({ key: boardPhotos.previewKey })
+    .from(boardPhotos)
+    .where(and(eq(boardPhotos.userId, photoSewer.id), eq(boardPhotos.kind, BoardPhotoKind.IDLE)));
+  const idleOnBoard = await boardPhotoOf();
+  check(
+    'табло 5: без заказа — фото «Без заказа», а не аватарка',
+    idleOnBoard.status === LiveStatus.IDLE &&
+      idlePhoto?.key !== null &&
+      idlePhoto?.key !== undefined &&
+      idleOnBoard.url.includes(idlePhoto.key),
+    `${idleOnBoard.status} ${idleOnBoard.url.slice(0, 80)}`,
+  );
+
+  await db.insert(personalBreaks).values({ shiftId: photoShift?.id ?? 0, plannedMinutes: 15 });
+  const breakOnBoard = await boardPhotoOf();
+  check(
+    'табло 5: на перерыве — фото «На перерыве»',
+    breakOnBoard.status === LiveStatus.BREAK &&
+      breakOnBoard.url.includes('board-photos') &&
+      breakOnBoard.url !== idleOnBoard.url,
+    `${breakOnBoard.status} ${breakOnBoard.url.slice(0, 80)}`,
+  );
+
+  const profile = await caller.users.byId({ id: photoSewer.id });
+  check(
+    'табло 5: в профиле — обычная аватарка, фото табло туда не попадают',
+    profile.avatarUrl !== null && profile.avatarUrl.includes('avatars') && !profile.avatarUrl.includes('board-photos'),
+    profile.avatarUrl ?? 'null',
+  );
+
+  const photoSettings = await caller.monitor.photos.list();
+  const listedSewer = photoSettings.people.find((entry) => entry.userId === photoSewer.id);
+  check(
+    'табло 5: в настройках у швеи два фото из трёх',
+    listedSewer !== undefined &&
+      listedSewer.photos.idle !== null &&
+      listedSewer.photos.break !== null &&
+      listedSewer.photos.working === null,
+    JSON.stringify(listedSewer?.photos ?? null).slice(0, 120),
+  );
+
+  await caller.monitor.photos.remove({ userId: photoSewer.id, kind: BoardPhotoKind.BREAK });
+  const afterRemove = await boardPhotoOf();
+  check(
+    'табло 5: фото убрали — снова аватарка',
+    afterRemove.status === LiveStatus.BREAK && afterRemove.url.includes('avatars'),
+    afterRemove.url.slice(0, 80),
+  );
+
+  await expectRejectedWith(
+    'табло 5: продавцу фото табло не загрузить — его нет на табло',
+    () => caller.monitor.photos.set({ userId: seller.id, kind: BoardPhotoKind.WORKING, file: pixel }),
+    (message) => message.includes('табло'),
+  );
+  await expectRejected('табло 5: менеджер фото табло не меняет', () =>
+    managerCaller.monitor.photos.set({ userId: photoSewer.id, kind: BoardPhotoKind.WORKING, file: pixel }),
+  );
+
+  /* ---------------- 11a. Выпуск 5: очереди ОТК и карнизов на ТВ ---------- */
+
+  /*
+    Заказчик: «справа — контроль качества, очередь с исполнителями; рядом
+    очередь на карнизы: номер заказа, исполнитель, статус». На ТВ — без
+    клиента и адреса.
+  */
+  const [atQc] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Клиент ОТК`,
+      clientPhone: '+998901112277',
+      installAddress: 'ул. Секретная, 7',
+      createdBy: seller.id,
+      workPrice: '700000.00',
+      sewerId: photoSewer.id,
+      status: OrderStatus.PENDING_QC,
+    })
+    .returning();
+  if (atQc === undefined) throw new Error('заказ в ОТК не создан');
+  await db.insert(orderStatusHistory).values({
+    orderId: atQc.id,
+    fromStatus: OrderStatus.SEWING_DONE,
+    toStatus: OrderStatus.PENDING_QC,
+    changedBy: photoSewer.id,
+    createdAt: new Date(Date.now() - 40 * 60 * 1000),
+  });
+  const [atCornice] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Клиент карниза`,
+      clientPhone: '+998901112288',
+      createdBy: seller.id,
+      workPrice: '300000.00',
+      status: OrderStatus.SEWING_IN_PROGRESS,
+      corniceStatus: CorniceStatus.IN_PROGRESS,
+      corniceInstallerId: corniceMan.id,
+    })
+    .returning();
+  if (atCornice === undefined) throw new Error('заказ с карнизом не создан');
+  await db.insert(auditLog).values({
+    actorId: corniceMan.id,
+    action: 'order.cornice_taken',
+    entityType: 'order',
+    entityId: atCornice.id,
+    details: {},
+  });
+
+  const queues = await managerCaller.monitor.queues({ branchId: branch.id });
+  const qcRow = queues.qc.items.find((row) => row.orderNumber === atQc.orderNumber);
+  const corniceRow = queues.cornice.items.find((row) => row.orderNumber === atCornice.orderNumber);
+  check(
+    'табло 5: заказ на контроле — в очереди ОТК со швеёй',
+    qcRow?.status === QueueStatus.CHECKING &&
+      qcRow.performers.some((person) => person.name === photoSewer.fullName) &&
+      qcRow.since !== null,
+    JSON.stringify(qcRow ?? null).slice(0, 160),
+  );
+  check(
+    'табло 5: карниз в работе — в очереди карнизов с карнизчиком',
+    corniceRow?.status === QueueStatus.TAKEN &&
+      corniceRow.performers.some((person) => person.name === corniceMan.fullName) &&
+      corniceRow.since !== null,
+    JSON.stringify(corniceRow ?? null).slice(0, 160),
+  );
+
+  const installersTv = await ceoCaller.displayLinks.create({
+    label: 'ТВ установщиков',
+    branchId: branch.id,
+    showWorkshop: false,
+    showInstallation: true,
+    locale: 'ru',
+  });
+  const tvQueues = await tvCaller.display.queues({ token: installersTv.token });
+  const tvQueuesJson = JSON.stringify(tvQueues);
+  check(
+    'табло 5: ссылка без цеха — без очереди ОТК, очередь карнизов есть',
+    tvQueues.qc === null && tvQueues.cornice !== null && tvQueues.cornice.items.some((row) => row.orderNumber === atCornice.orderNumber),
+    tvQueuesJson.slice(0, 120),
+  );
+  check(
+    'табло 5: в очередях на ТВ нет клиента, адреса и внутренних id',
+    !tvQueuesJson.includes('Клиент') &&
+      !tvQueuesJson.includes('Секретная') &&
+      !tvQueuesJson.includes('orderId') &&
+      !tvQueuesJson.includes('userId'),
+    tvQueuesJson.slice(0, 120),
+  );
+  await expectRejected('табло 5: очереди по чужому токену — нет', () =>
+    tvCaller.display.queues({ token: 'x'.repeat(40) }),
+  );
+
+  /*
+    Готовые шторы закрываются сразу, а карниз ждёт карнизчика «как обычно»
+    (orderWorkflow): в очереди на ТВ он должен быть, как в очереди самого
+    карнизчика. И длина очереди — настоящая, а не обрезанная выдача.
+  */
+  const [closedWithCornice] = await db
+    .insert(orders)
+    .values({
+      branchId: branch.id,
+      clientName: `${PREFIX} Закрыт, карниз ждёт`,
+      clientPhone: '+998901112299',
+      createdBy: seller.id,
+      workPrice: '200000.00',
+      status: OrderStatus.COMPLETED,
+      corniceStatus: CorniceStatus.PENDING,
+    })
+    .returning();
+  const queuesAgain = await managerCaller.monitor.queues({ branchId: branch.id });
+  const [corniceCount] = await db
+    .select({ n: sql<string>`count(*)` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.branchId, branch.id),
+        inArray(orders.corniceStatus, [CorniceStatus.PENDING, CorniceStatus.IN_PROGRESS]),
+        sql`${orders.status} <> ${OrderStatus.CANCELLED}`,
+      ),
+    );
+  check(
+    'табло 5: карниз закрытого заказа — в очереди, как у карнизчика',
+    queuesAgain.cornice.items.some((row) => row.orderNumber === closedWithCornice?.orderNumber),
+  );
+  check(
+    'табло 5: длина очереди — все ждущие, а не только показанные',
+    queuesAgain.cornice.total === Number.parseInt(corniceCount?.n ?? '-1', 10) &&
+      queuesAgain.cornice.total >= queuesAgain.cornice.items.length,
+    `${queuesAgain.cornice.total.toString()} / ${corniceCount?.n ?? '?'}`,
   );
 }
 

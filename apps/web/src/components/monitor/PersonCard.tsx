@@ -59,7 +59,7 @@ export function statusPillText(
     return `На выезде с ${formatTime(person.statusSince)}`;
   }
   if (person.status === LiveStatus.BREAK && person.statusUntil !== null) {
-    return `Отлучка до ${formatTime(person.statusUntil)}`;
+    return `На перерыве до ${formatTime(person.statusUntil)}`;
   }
   return statusLabel(person.status);
 }

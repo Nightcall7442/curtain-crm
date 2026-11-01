@@ -1,4 +1,5 @@
 import {
+  BOARD_PHOTO_KINDS,
   CATALOG_KINDS,
   CORNICE_ROTATIONS,
   CORNICE_STATUSES,
@@ -58,3 +59,6 @@ export const corniceRotationEnum = pgEnum('cornice_rotation', CORNICE_ROTATIONS)
 export const paymentMethodEnum = pgEnum('payment_method', PAYMENT_METHODS);
 export const paymentKindEnum = pgEnum('payment_kind', PAYMENT_KINDS);
 export const disciplineKindEnum = pgEnum('discipline_kind', DISCIPLINE_KINDS);
+
+/** Фото табло по статусу: «Работает», «Без заказа», «На перерыве». */
+export const boardPhotoKindEnum = pgEnum('board_photo_kind', BOARD_PHOTO_KINDS);

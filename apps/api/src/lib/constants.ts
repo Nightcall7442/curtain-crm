@@ -232,6 +232,8 @@ export const AUDIT_ACTIONS = [
   'display_link.revoked',
   'work_plan.norm_set',
   'work_plan.personal_set',
+  'board_photo.set',
+  'board_photo.removed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

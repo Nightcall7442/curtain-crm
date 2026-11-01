@@ -1,6 +1,7 @@
 import type { Database } from '@curtain-crm/db';
 import {
   assignPlaces,
+  boardPhotoKindOf,
   CorniceStatus,
   deltaPercent,
   deriveLiveStatus,
@@ -34,6 +35,7 @@ import {
 
 import {
   loadApprovedDaysOff,
+  loadBoardPhotos,
   loadDailyOutput,
   loadGroupPeople,
   loadInstallationsToday,
@@ -43,6 +45,7 @@ import {
   loadScheduleCounts,
   loadShiftDetail,
   loadWorkOrders,
+  type BoardPhotoSet,
   type GroupPersonRow,
   type OutputRow,
   type WorkOrderRow,
@@ -198,11 +201,29 @@ function sameMomentPreviousMonth(now: Date, monthStart: Date, prevMonthStart: Da
   return new Date(Math.min(prevMonthStart.getTime() + (now.getTime() - monthStart.getTime()), monthStart.getTime()));
 }
 
+/**
+ * Фото человека на табло — по его статусу.
+ *
+ * Сначала фото табло для этого статуса («Работает», «Без заказа», «На
+ * перерыве» — `boardPhotoKindOf`), потом обычная аватарка. Фото табло
+ * живут только здесь: профиль и списки сотрудников их не видят (просьба
+ * заказчика — «фото только для табло»).
+ */
 const photoUrlOf = async (
   person: Pick<GroupPersonRow, 'avatarStorageKey' | 'avatarPreviewKey'>,
+  boardPhotos: BoardPhotoSet | undefined,
+  status: LiveStatusName,
   previewOnly: boolean,
 ): Promise<string | null> => {
-  const key = previewOnly ? person.avatarPreviewKey : (person.avatarPreviewKey ?? person.avatarStorageKey);
+  const statusPhoto = boardPhotos?.[boardPhotoKindOf(status)];
+  const statusKey =
+    statusPhoto === undefined
+      ? null
+      : previewOnly
+        ? statusPhoto.previewKey
+        : (statusPhoto.previewKey ?? statusPhoto.storageKey);
+  const avatarKey = previewOnly ? person.avatarPreviewKey : (person.avatarPreviewKey ?? person.avatarStorageKey);
+  const key = statusKey ?? avatarKey;
   return key === null ? null : getStorage().getUrl(key, { stableWithinHour: true });
 };
 
@@ -379,7 +400,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     .filter((id): id is number => id !== null);
 
   const installation = group === MonitorGroup.INSTALLATION;
-  const [daysOff, work, output, scheduleCounts, slow, photos, planRows, slotRows] = await Promise.all([
+  const [daysOff, work, output, scheduleCounts, slow, boardPhotos, planRows, slotRows] = await Promise.all([
     loadApprovedDaysOff(db, ids, todayIso),
     loadWorkOrders(db, ids, tripOrderIds),
     loadOutput(
@@ -396,7 +417,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     ),
     installation ? loadScheduleCounts(db, branchId) : Promise.resolve(null),
     loadSlowParts(db, people, group, branchId, starts.month, now),
-    Promise.all(people.map((person) => photoUrlOf(person, params.previewOnly === true))),
+    loadBoardPhotos(db, ids),
     loadWorkPlans(db, roles.filter(isPlanRole)),
     installation ? loadInstallationsToday(db, starts.today, starts.tomorrow, branchId) : Promise.resolve([]),
   ]);
@@ -405,7 +426,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
   const ratingById = new Map(slow.rating.map((entry) => [entry.userId, entry]));
   const empty: OutputRow = { today: 0, week: 0, month: 0, prevMonth: 0, prevMonthToDate: 0 };
 
-  const unplaced = people.map((person, index) => {
+  const unplaced = await Promise.all(people.map(async (person) => {
     const seen = presence.get(person.id);
     const { current, queue } = splitWork(person.id, group, work, seen?.openTrip?.orderId ?? null);
     const live = deriveLiveStatus({
@@ -423,7 +444,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
     return {
       userId: person.id,
       fullName: person.fullName,
-      photoUrl: photos[index] ?? null,
+      photoUrl: await photoUrlOf(person, boardPhotos.get(person.id), live.status, params.previewOnly === true),
       roles: person.roles,
       hiredAt: person.hiredAt,
       sewerCategory:
@@ -444,7 +465,7 @@ export async function buildBoard(db: Database, params: BuildBoardParams): Promis
       prevMonthToDate: counts.prevMonthToDate,
       prevPlanPercent: prevPlan === null ? null : planPercent(counts.prevMonth, prevPlan.target),
     };
-  });
+  }));
 
   const ranked = assignPlaces(
     [...unplaced].sort((a, b) => b.counts.month - a.counts.month || a.fullName.localeCompare(b.fullName, 'ru')),

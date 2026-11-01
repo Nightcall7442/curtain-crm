@@ -1,15 +1,15 @@
 'use client';
 
-import { MONITOR_GROUP_LABELS, MONITOR_GROUPS, MonitorGroup } from '@curtain-crm/shared';
+import { MONITOR_GROUPS, MONITOR_POLL_MS, MonitorGroup } from '@curtain-crm/shared';
 import { Minimize } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useState, type ReactElement } from 'react';
+import { Suspense, type ReactElement } from 'react';
 
-import { TvBoard } from '@/components/monitor/TvBoard';
+import { TvWall } from '@/components/monitor/TvWall';
 import { useMonitorBoard } from '@/components/monitor/useMonitorBoard';
-import { useTvRotation } from '@/components/monitor/useTvRotation';
 import { useTvRuntime } from '@/components/monitor/useTvRuntime';
+import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
 
 export default function ManagerTvPage(): ReactElement {
@@ -21,45 +21,47 @@ export default function ManagerTvPage(): ReactElement {
 }
 
 /**
- * ТВ-режим для вошедшего руководителя: то же табло, что по ссылке, но по
- * `monitor.board` и без ссылки. `?group=` — одна группа, без него — обе по
- * очереди. Кнопка «На весь экран» на табло открывает сюда.
+ * ТВ-режим для вошедшего руководителя: тот же экран «всё сразу», что по
+ * ссылке, но по `monitor.*` и без ссылки. `?group=` — одна группа со своей
+ * очередью, без него — обе. Кнопка «На весь экран» на табло открывает сюда.
  */
 function ManagerTv(): ReactElement {
   const params = useSearchParams();
   const only = MONITOR_GROUPS.find((group) => group === params.get('group'));
-  const groups = only === undefined ? MONITOR_GROUPS : [only];
+  const shown = only === undefined ? MONITOR_GROUPS : [only];
 
   const { idle } = useTvRuntime();
-  const [pages, setPages] = useState(1);
-  const rotation = useTvRotation(groups, pages);
-  const current = rotation.group ?? MonitorGroup.WORKSHOP;
-
   const boards = {
     [MonitorGroup.WORKSHOP]: useMonitorBoard(MonitorGroup.WORKSHOP, null),
     [MonitorGroup.INSTALLATION]: useMonitorBoard(MonitorGroup.INSTALLATION, null),
   } as const;
-  const state = boards[current];
+  const queues = trpc.monitor.queues.useQuery({}, { refetchInterval: MONITOR_POLL_MS });
+
+  const states = shown.map((group) => boards[group]);
+  const lastSuccess = states
+    .map((state) => state.lastSuccessAt)
+    .filter((at): at is Date => at !== null)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return (
-    <TvBoard
-      board={state.board}
-      group={current}
-      title={MONITOR_GROUP_LABELS.ru[current]}
+    <TvWall
+      groups={shown.map((group) => ({ group, board: boards[group].board }))}
+      queues={
+        queues.data === undefined
+          ? null
+          : {
+              qc: shown.includes(MonitorGroup.WORKSHOP) ? queues.data.qc : null,
+              cornice: shown.includes(MonitorGroup.INSTALLATION) ? queues.data.cornice : null,
+            }
+      }
       branchName={null}
       locale="ru"
-      lastSuccessAt={state.lastSuccessAt}
-      stale={state.stale}
-      rotation={
-        rotation.next === null
-          ? null
-          : { nextLabel: MONITOR_GROUP_LABELS.ru[rotation.next], startedAt: rotation.startedAt, durationMs: rotation.durationMs }
-      }
+      lastSuccessAt={lastSuccess ?? null}
+      stale={states.some((state) => state.stale)}
       idle={idle}
-      onPagesChange={setPages}
       overlay={
         <Link
-          href={`/monitor/${current}`}
+          href={`/monitor/${only ?? MonitorGroup.WORKSHOP}`}
           onClick={() => {
             if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => undefined);
           }}
