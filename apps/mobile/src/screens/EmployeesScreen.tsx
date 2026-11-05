@@ -250,7 +250,9 @@ export function EmployeesScreen(): ReactElement {
     if (next === null) return;
 
     setFullName(person.fullName);
-    setPhone(person.phone);
+    // В поле — так же, как в списке: «+998 93 100 00 07», а не слитно.
+    // Сервер номер нормализует сам, пробелы ему не мешают.
+    setPhone(formatPhone(person.phone));
     setJobTitle(person.jobTitle ?? '');
     setDepartment(person.department);
   };
@@ -291,21 +293,29 @@ export function EmployeesScreen(): ReactElement {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {/* --- Приём нового ------------------------------------------------- */}
         <Card>
-          <CardTitle
-            title={m('emp.new')}
-            icon="person"
-            action={
-              <Pressable
-                onPress={() => {
-                  setCreating((current) => !current);
-                }}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.toggle, pressed ? styles.pressed : null]}
-              >
-                <Text style={styles.toggleText}>{isCreating ? m('emp.hide') : m('emp.hire')}</Text>
-              </Pressable>
-            }
-          />
+          {/*
+            Свёрнутая карточка — только заголовок, и его нижний отступ (12)
+            вставал под ним пустотой: снизу 28 точек против 16 сверху.
+          */}
+          <View style={isCreating ? null : styles.titleOnly}>
+            <CardTitle
+              title={m('emp.new')}
+              icon="person"
+              action={
+                <Pressable
+                  onPress={() => {
+                    setCreating((current) => !current);
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.toggleTarget, pressed ? styles.pressed : null]}
+                >
+                  <View style={styles.toggle}>
+                    <Text style={styles.toggleText}>{isCreating ? m('emp.hide') : m('emp.hire')}</Text>
+                  </View>
+                </Pressable>
+              }
+            />
+          </View>
 
           {isCreating && (
             <>
@@ -422,9 +432,16 @@ export function EmployeesScreen(): ReactElement {
                   </View>
 
                   {!person.isActive && <Pill text={m('emp.disabled')} tone="neutral" />}
-                  <Icon name="chevron" size={16} color={colors.textMuted} />
+                  {/* Раскрытая строка — шеврон вниз, как у любого раскрывающегося списка. */}
+                  <View style={openId === person.id ? styles.chevronOpen : null}>
+                    <Icon name="chevron" size={16} color={colors.textMuted} />
+                  </View>
                 </Pressable>
 
+                {/*
+                  Правка — на своей подложке: поля не сливаются со списком
+                  сотрудников, и видно, где кончается карточка этого человека.
+                */}
                 {openId === person.id && (
                   <View style={styles.editor}>
                     <Field label={m('emp.photo')} hint={m('emp.photoHint')}>
@@ -585,6 +602,13 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     paddingBottom: tabBarSpace,
   },
+  // Цель нажатия — 44, а видимая таблетка — прежние 36: отрицательный
+  // отступ оставляет строке заголовка её высоту.
+  toggleTarget: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginVertical: -spacing.xs,
+  },
   toggle: {
     minHeight: 36,
     paddingHorizontal: spacing.md,
@@ -625,7 +649,18 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   editor: {
-    paddingBottom: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  chevronOpen: {
+    transform: [{ rotate: '90deg' }],
+  },
+  /* Гасит нижний отступ заголовка, когда под ним ничего нет. */
+  titleOnly: {
+    marginBottom: -spacing.md,
   },
   roles: {
     flexDirection: 'row',
@@ -633,7 +668,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chip: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     borderRadius: radius.pill,
@@ -658,12 +693,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  // Белая, как поля ввода: на подложке правки прозрачная кнопка сливалась
+  // с фоном, и от неё оставалась одна рамка.
   action: {
     flex: 1,
     minHeight: 46,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },

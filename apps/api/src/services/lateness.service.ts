@@ -5,6 +5,7 @@ import {
   DisciplineKind,
   isDisciplineViolation,
   type DisciplineKind as DisciplineKindName,
+  type Locale,
 } from '@curtain-crm/shared';
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 
@@ -12,6 +13,46 @@ import { recordAudit } from './audit.service';
 import { notifyDisciplineRecorded } from './notifications.service';
 
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+/**
+ * Пояснение к опозданию: «Смена с 09:00, отметка в 11:52 — опоздание 172 мин».
+ *
+ * В базу пишется по-русски — как и всё, что руководитель вводит в
+ * дисциплину руками: язык читателя сервер в момент отметки не знает. На
+ * узбекский пояснение переводится при показе (`localizeLatenessDescription`),
+ * и обе фразы живут здесь, рядом, — иначе разбор сохранённой строки
+ * разошёлся бы с её сборкой при первой же правке текста.
+ */
+export function latenessDescription(
+  shiftStart: string,
+  actual: string,
+  lateMinutes: number,
+  locale: Locale = 'ru',
+): string {
+  const minutes = lateMinutes.toString();
+  return locale === 'uz'
+    ? `Smena boshlanishi ${shiftStart}, belgi ${actual} da — ${minutes} daqiqa kechikish`
+    : `Смена с ${shiftStart}, отметка в ${actual} — опоздание ${minutes} мин`;
+}
+
+/** Сохранённое русское пояснение — ровно та строка, что собирает `latenessDescription`. */
+const STORED_LATENESS = /^Смена с (\d{1,2}:\d{2}), отметка в (\d{1,2}:\d{2}) — опоздание (\d+) мин$/;
+
+/**
+ * Пояснение к событию дисциплины — на языке читателя.
+ *
+ * В узбекском интерфейсе под переведённым заголовком «30 daqiqadan ko‘p
+ * kechikish» стояло русское «Смена с 09:00, отметка в 11:52 — опоздание
+ * 172 мин». Переводится только то, что записала сама система; текст,
+ * который руководитель ввёл руками, показывается как есть.
+ */
+export function localizeLatenessDescription(description: string, locale: Locale): string {
+  if (locale === 'ru') return description;
+  const match = STORED_LATENESS.exec(description);
+  if (match === null) return description;
+  const [, shiftStart = '', actual = '', minutes = '0'] = match;
+  return latenessDescription(shiftStart, actual, Number.parseInt(minutes, 10), locale);
+}
 
 /**
  * Опоздание — само, по смене из условий оплаты.
@@ -91,7 +132,7 @@ export async function recordLatenessIfAny(
       points: points.toFixed(1),
       isRepeat,
       occurredOn: day,
-      description: `Смена с ${shiftStart}, отметка в ${actual} — опоздание ${lateBy.toString()} мин`,
+      description: latenessDescription(shiftStart, actual, lateBy),
       recordedBy: userId,
     })
     .returning({ id: disciplineEvents.id });

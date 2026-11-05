@@ -82,9 +82,17 @@ export function OrderPhotoUpload({
     },
   });
 
+  /*
+    «Общее» — первым, а не последним.
+
+    Оно выбрано по умолчанию, а стояло в конце ленты этапов: у установщика
+    от него торчало «Общ» у правого края, у руководителя (девять этапов) его
+    не было видно вовсе — непонятно, под каким этапом уйдёт снимок. Первым
+    в ленте выбранный этап виден сразу; остальные идут в порядке работы.
+  */
   const allowedStages = PHOTO_STAGES.filter((value) =>
     hasAnyRole(roles, PHOTO_STAGE_UPLOADER_ROLES[value]),
-  );
+  ).sort((a, b) => Number(b === PhotoStage.GENERAL) - Number(a === PhotoStage.GENERAL));
 
   // То же правило, что применяет сервер: предупреждение «загрузка закроет
   // заказ» и фактическое закрытие не должны расходиться.
@@ -105,7 +113,8 @@ export function OrderPhotoUpload({
     }
 
     const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // Массив типов, а не `MediaTypeOptions`: тот объявлен устаревшим и на каждый выбор пишет предупреждение.
+      mediaTypes: ['images'],
       quality: 0.6,
       base64: true,
       exif: false,
@@ -171,7 +180,17 @@ export function OrderPhotoUpload({
       <CardTitle title={m('photo.title')} icon="camera" />
 
       <Text style={styles.label}>{m('photo.stage')}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stages}>
+      {/*
+        Лента во всю ширину карточки: иначе чип обрезался по линии
+        внутреннего отступа, посреди белого поля, и читался как сбой
+        отрисовки, а не как «листай дальше».
+      */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.stages}
+        contentContainerStyle={styles.stagesContent}
+      >
         {allowedStages.map((value) => {
           const active = value === stage;
           return (
@@ -256,15 +275,21 @@ const styles = StyleSheet.create({
   },
   stages: {
     marginBottom: spacing.md,
+    marginHorizontal: -spacing.lg,
+  },
+  stagesContent: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
   stage: {
     minHeight: 44,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    // Подпись по центру высоты: без этого строка садилась к верху чипа на 4 px.
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    marginRight: spacing.sm,
   },
   stageActive: {
     backgroundColor: colors.accent,
@@ -274,9 +299,10 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
+  /* Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным. */
   stageTextActive: {
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
-    fontWeight: '600',
   },
   warning: {
     backgroundColor: colors.warningSoft,

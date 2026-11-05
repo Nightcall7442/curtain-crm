@@ -1,6 +1,14 @@
 import { groupDigits, ungroupDigits } from '@curtain-crm/shared';
-import { forwardRef, type ReactElement, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import {
+  forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
 import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
@@ -22,16 +30,25 @@ export function Field({
   hint,
   error,
   required = false,
+  last = false,
   children,
 }: {
   readonly label: string;
   readonly hint?: string;
   readonly error?: string;
   readonly required?: boolean;
+  /**
+   * Последнее поле карточки — без нижнего отступа.
+   *
+   * Отступ поля складывался с внутренним отступом карточки, и снизу
+   * выходило 32 при 16 сверху: карточка «Клиент» стояла кривой рядом с
+   * «Товарами».
+   */
+  readonly last?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, last ? styles.fieldLast : null]}>
       <Text style={styles.label}>
         {label}
         {required && <Text style={styles.required}> *</Text>}
@@ -50,20 +67,71 @@ export function Field({
   );
 }
 
+/** Высота многострочного поля: от трёх строк текста до семи, дальше — прокрутка внутри. */
+const MULTILINE_MIN = typography.body.lineHeight * 3 + spacing.sm * 2;
+const MULTILINE_MAX = typography.body.lineHeight * 7 + spacing.sm * 2;
+
 /**
- * Однострочный ввод.
+ * Однострочный (или с `multiline` — многострочный) ввод.
  *
  * `forwardRef` нужен для перевода фокуса по клавише «Далее»: без него форму
  * из десяти полей приходится проходить, целясь пальцем в каждое.
+ *
+ * Фокус показывается рамкой цвета акцента — так же на телефоне и в
+ * браузере. Своё кольцо браузера (оранжевое, поверх скруглённой рамки)
+ * снято глобально в `public/index.html`: оно выдавало в PWA веб-форму.
  */
 export const Input = forwardRef<TextInput, TextInputProps & { readonly invalid?: boolean }>(
-  function Input({ invalid = false, style, ...rest }, ref): ReactElement {
+  function Input({ invalid = false, style, onFocus, onBlur, multiline, value, ...rest }, ref): ReactElement {
+    const [focused, setFocused] = useState(false);
+    const [webHeight, setWebHeight] = useState<number | undefined>(undefined);
+    const inner = useRef<TextInput>(null);
+    useImperativeHandle(ref, () => inner.current as TextInput);
+
+    /*
+      Многострочное поле растёт вместе с текстом.
+
+      На телефоне это делает сама система. В браузере `<textarea>` стоит
+      фиксированной высоты в две строки: третья строка уезжала вверх, и
+      первая видимая резалась рамкой пополам. Высота считается по
+      содержимому после каждой правки — сначала поле схлопывается, чтобы
+      `scrollHeight` умел и уменьшаться, когда текст стёрли.
+    */
+    useLayoutEffect(() => {
+      if (Platform.OS !== 'web' || multiline !== true) return;
+      const node = inner.current as unknown as HTMLTextAreaElement | null;
+      if (node === null) return;
+      const borders = node.offsetHeight - node.clientHeight;
+      const previous = node.style.height;
+      node.style.height = '0px';
+      const content = node.scrollHeight + borders;
+      node.style.height = previous;
+      setWebHeight(Math.min(MULTILINE_MAX, Math.max(MULTILINE_MIN, content)));
+    }, [multiline, value]);
+
     return (
       <TextInput
-        ref={ref}
+        ref={inner}
         {...rest}
+        value={value}
+        multiline={multiline}
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
         placeholderTextColor={colors.textMuted}
-        style={[styles.input, invalid ? styles.inputInvalid : null, style]}
+        style={[
+          styles.input,
+          multiline === true ? styles.inputMultiline : null,
+          focused ? styles.inputFocused : null,
+          invalid ? styles.inputInvalid : null,
+          style,
+          webHeight === undefined ? null : { height: webHeight },
+        ]}
       />
     );
   },
@@ -151,6 +219,9 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: spacing.lg,
   },
+  fieldLast: {
+    marginBottom: 0,
+  },
   label: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -170,6 +241,15 @@ const styles = StyleSheet.create({
     // Высота больше порога нажатия: поле — такая же цель для пальца, как кнопка.
     minHeight: 46,
     paddingVertical: spacing.sm,
+  },
+  inputMultiline: {
+    minHeight: MULTILINE_MIN,
+    maxHeight: MULTILINE_MAX,
+    // Android по умолчанию ставит текст многострочного поля по центру.
+    textAlignVertical: 'top',
+  },
+  inputFocused: {
+    borderColor: colors.accent,
   },
   inputInvalid: {
     borderColor: colors.danger,

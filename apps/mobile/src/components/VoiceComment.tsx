@@ -10,7 +10,7 @@ import {
 // не подошёл — он раздаёт исходники, и их проверял бы наш строгий tsc.
 import { File } from 'expo-file-system';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
@@ -44,6 +44,70 @@ const formatSeconds = (seconds: number): string => {
 /* -------------------------------------------------------------------------- */
 /*                                   Запись                                   */
 /* -------------------------------------------------------------------------- */
+
+/** Расширение файла по MIME-типу записи браузера — для имени файла на сервере. */
+const WEB_AUDIO_EXTENSIONS: Readonly<Record<string, string>> = {
+  'audio/webm': 'webm',
+  'audio/mp4': 'm4a',
+  'audio/ogg': 'ogg',
+};
+
+interface RecordedFile {
+  readonly content: string;
+  readonly mimeType: string;
+  readonly fileName: string;
+}
+
+/**
+ * Готовая запись — в base64 для `orderComments.addVoice`.
+ *
+ * В браузере (PWA) путь другой, и это не косметика. `expo-file-system` в
+ * вебе не реализован: `new File(uri).base64()` там бросал исключение, и
+ * отправить голосовое из PWA было нельзя вовсе — каждая запись кончалась
+ * «Не удалось прочитать запись». В браузере `expo-audio` пишет через
+ * MediaRecorder и отдаёт `blob:`-ссылку, а формат у него свой — webm в
+ * Chrome, mp4 в Safari. Поэтому MIME берётся из самой записи, а не
+ * подставляется m4a: сервер принимает оба, но только если назвать их верно.
+ */
+async function readRecording(uri: string): Promise<RecordedFile> {
+  if (Platform.OS !== 'web') {
+    // На телефоне `expo-audio` пишет m4a (пресет `HIGH_QUALITY`).
+    return { content: await new File(uri).base64(), mimeType: 'audio/mp4', fileName: 'voice.m4a' };
+  }
+
+  const blob = await (await fetch(uri)).blob();
+  // `audio/webm;codecs=opus` → `audio/webm`: сервер сверяет тип без параметров.
+  const mimeType = blob.type.split(';')[0]?.trim() || 'audio/webm';
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(typeof reader.result === 'string' ? reader.result : '');
+    };
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('FileReader'));
+    };
+    reader.readAsDataURL(blob);
+  });
+
+  return {
+    content: dataUrl.slice(dataUrl.indexOf(',') + 1),
+    mimeType,
+    fileName: `voice.${WEB_AUDIO_EXTENSIONS[mimeType] ?? 'webm'}`,
+  };
+}
+
+/** Убирает временную запись: файл в кеше на телефоне, `blob:`-ссылку в браузере. */
+function removeRecording(uri: string): void {
+  try {
+    if (Platform.OS === 'web') {
+      URL.revokeObjectURL(uri);
+      return;
+    }
+    new File(uri).delete();
+  } catch {
+    // Файл мог не существовать — для уборки это не ошибка.
+  }
+}
 
 export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): ReactElement {
   const { m } = useLocale();
@@ -143,31 +207,24 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
 
     // Путь появляется только после остановки — до неё файла ещё нет.
     const uri = recorder.uri;
-    const removeTemp = (target: string): void => {
-      try {
-        new File(target).delete();
-      } catch {
-        // Файл мог не существовать — для уборки это не ошибка.
-      }
-    };
 
     if (!shouldSend || uri === null) {
-      if (uri !== null) removeTemp(uri);
+      if (uri !== null) removeRecording(uri);
       return;
     }
 
-    let content: string | null;
+    let recorded: RecordedFile | null;
     try {
-      content = await new File(uri).base64();
+      recorded = await readRecording(uri);
     } catch {
-      content = null;
+      recorded = null;
     }
 
     // Временный файл больше не нужен ни при успехе, ни при отказе: он лежит
     // в кеше приложения и иначе копился бы там до переустановки.
-    removeTemp(uri);
+    removeRecording(uri);
 
-    if (content === null) {
+    if (recorded === null || recorded.content === '') {
       Alert.alert(m('voice.readError'), m('common.tryAgain'));
       return;
     }
@@ -175,32 +232,46 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     addVoice.mutate({
       orderId,
       durationSeconds: Math.min(MAX_SECONDS, Math.max(1, seconds)),
-      file: { fileName: 'voice.m4a', mimeType: 'audio/mp4', content },
+      file: { fileName: recorded.fileName, mimeType: recorded.mimeType, content: recorded.content },
     });
   };
 
+  /*
+    Запись идёт: сверху состояние, под ним два действия на всю ширину.
+
+    В одну строку с кнопками подпись «Идёт запись · 0:02» получала около
+    100 px и ломалась в две строки, а обрезать её нельзя — в хвосте таймер.
+    Кнопки в ряд по половине ширины — та же пара, что «Снять камерой / Из
+    галереи» в фотофиксации выше.
+  */
   if (isRecording) {
     return (
-      <View style={styles.recordingRow}>
-        <View style={styles.recordingDot} />
-        <Text style={styles.recordingText}>{m('voice.recording', { t: formatSeconds(elapsed) })}</Text>
+      <View style={styles.recording}>
+        <View style={styles.recordingRow}>
+          <View style={styles.recordingDot} />
+          <Text style={styles.recordingText} numberOfLines={1}>
+            {m('voice.recording', { t: formatSeconds(elapsed) })}
+          </Text>
+        </View>
 
-        <Pressable
-          onPress={() => void finish(false)}
-          style={styles.secondaryButton}
-          accessibilityRole="button"
-          accessibilityLabel={m('voice.cancel')}
-        >
-          <Text style={styles.secondaryText}>{m('common.cancel')}</Text>
-        </Pressable>
+        <View style={styles.recordingActions}>
+          <Pressable
+            onPress={() => void finish(false)}
+            style={({ pressed }) => [styles.actionButton, styles.secondaryButton, pressed ? styles.pressed : null]}
+            accessibilityRole="button"
+            accessibilityLabel={m('voice.cancel')}
+          >
+            <Text style={styles.secondaryText}>{m('common.cancel')}</Text>
+          </Pressable>
 
-        <Pressable
-          onPress={() => void finish(true)}
-          style={styles.primaryButton}
-          accessibilityRole="button"
-        >
-          <Text style={styles.primaryText}>{m('common.send')}</Text>
-        </Pressable>
+          <Pressable
+            onPress={() => void finish(true)}
+            style={({ pressed }) => [styles.actionButton, styles.primaryButton, pressed ? styles.pressed : null]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryText}>{m('common.send')}</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -308,6 +379,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     marginTop: spacing.sm,
+    // Тот же зазор до ленты комментариев, что и у панели записи: кнопка лежала прямо на черте.
+    marginBottom: spacing.md,
   },
   recordText: {
     ...typography.body,
@@ -316,11 +389,20 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: opacity.pressed,
   },
+  recording: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    // Отбивка от первого комментария: без неё кнопки ложились на его черту.
+    marginBottom: spacing.md,
+  },
   recordingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.sm,
+  },
+  recordingActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   recordingDot: {
     width: 8,
@@ -332,27 +414,34 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.danger,
     flex: 1,
+    fontVariant: ['tabular-nums'],
+  },
+  /* Подпись по центру кнопки: без `justifyContent` она садилась к верху на 9 px. */
+  actionButton: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
   },
   secondaryButton: {
-    minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   secondaryText: {
-    ...typography.caption,
-    color: colors.textMuted,
+    ...typography.body,
+    color: colors.textSecondary,
   },
   primaryButton: {
-    minHeight: 44,
     backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
   },
   primaryText: {
-    ...typography.caption,
+    ...typography.body,
+    // Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным.
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
-    fontWeight: '600',
   },
   player: {
     minHeight: 44,

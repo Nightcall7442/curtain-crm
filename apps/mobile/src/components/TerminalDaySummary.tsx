@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
-import { colors, hairline, spacing, typography } from '../theme';
+import { colors, fonts, hairline, spacing, typography } from '../theme';
 import { PayTypeBadge } from './PayTypeBadge';
 
 /**
@@ -25,7 +25,7 @@ export function TerminalDaySummary({
   return (
     <View style={styles.host}>
       <View style={styles.totalRow}>
-        <View>
+        <View style={styles.totalText}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.count}>{m('terminal.checks', { n: summary.count })}</Text>
         </View>
@@ -33,11 +33,18 @@ export function TerminalDaySummary({
       </View>
       {summary.byType.map((line) => (
         <View key={line.payType ?? 'none'} style={styles.line}>
-          {terminalPayTypeOf(line.payType) === null ? (
-            <Text style={styles.noType}>{m('terminal.noType')}</Text>
-          ) : (
-            <PayTypeBadge type={line.payType} />
-          )}
+          {/*
+            Значок — в ячейке одной ширины на всех строках: «× N» шёл сразу
+            за значком, и у click, payme и «Наличные» начинался в трёх разных
+            местах — столбец счётчиков ломался лесенкой на полсотни точек.
+          */}
+          <View style={styles.typeCell}>
+            {terminalPayTypeOf(line.payType) === null ? (
+              <Text style={styles.noType}>{m('terminal.noType')}</Text>
+            ) : (
+              <PayTypeBadge type={line.payType} />
+            )}
+          </View>
           <Text style={styles.lineCount}>× {line.count}</Text>
           <Text style={styles.lineAmount}>{money(line.amount)}</Text>
         </View>
@@ -45,6 +52,12 @@ export function TerminalDaySummary({
     </View>
   );
 }
+
+/**
+ * Ширина ячейки значка — по самому широкому из них, «Наличные» с купюрой
+ * (около 90 точек). Значок короче остаётся у левого края ячейки.
+ */
+const TYPE_CELL_WIDTH = 96;
 
 const styles = StyleSheet.create({
   host: {
@@ -58,15 +71,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  totalText: {
+    flexShrink: 1,
+  },
+  /*
+    Заголовок блока — главнее счётчика под ним. Было наоборот: «Итого за
+    день» мелкой сноской, а «чеков: 3» под ним крупнее и темнее, и подпись
+    читалась примечанием к числу чеков.
+  */
   title: {
-    ...typography.footnote,
-    color: colors.textMuted,
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   count: {
-    ...typography.caption,
-    color: colors.textSecondary,
+    ...typography.footnote,
+    color: colors.textMuted,
   },
   total: {
     ...typography.title,
@@ -76,6 +100,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  // `minWidth`, а не `width`: значок шире ячейки (новый тип, крупный шрифт
+  // в системе) сдвинет «× N», но не наедет на него.
+  typeCell: {
+    minWidth: TYPE_CELL_WIDTH,
+    alignItems: 'flex-start',
   },
   noType: {
     ...typography.caption,

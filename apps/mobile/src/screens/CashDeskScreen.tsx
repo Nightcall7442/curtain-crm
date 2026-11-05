@@ -19,6 +19,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle } from '../components/Card';
 import { CashCollectionCard } from '../components/CashCollectionCard';
@@ -42,7 +43,6 @@ import {
   opacity,
   radius,
   spacing,
-  tabBarSpace,
   typography,
   fonts,
 } from '../theme';
@@ -79,6 +79,7 @@ export function CashDeskScreen(): ReactElement {
   const navigation = useNavigation();
   const utils = trpc.useUtils();
   const isManager = useIsManagement();
+  const insets = useSafeAreaInsets();
 
   const [lines, setLines] = useState<readonly CartLine[]>([emptyLine()]);
   const [method, setMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
@@ -112,7 +113,7 @@ export function CashDeskScreen(): ReactElement {
 
   const filled = lines.filter((line) => line.code.trim() !== '' && quantityOf(line) > 0);
   /* Подытог нужен и внизу экрана, и полю скидки: процент считается от него. */
-  const subtotal = useCartSubtotal(filled);
+  const { subtotal, priced } = useCartSubtotal(filled);
   const subtotalInput = (subtotal / 100).toString();
   const discountSum = discountPayload(subtotalInput, discount).discountAmount;
 
@@ -175,7 +176,9 @@ export function CashDeskScreen(): ReactElement {
             />
           </Field>
 
-          <Field label={m('sale.comment')}>
+          {/* Последнее поле карточки — без своего нижнего отступа, иначе
+              снизу у карточки выходило 32 при 16 сверху. */}
+          <Field label={m('sale.comment')} last>
             <Input
               value={comment}
               onChangeText={setComment}
@@ -213,10 +216,15 @@ export function CashDeskScreen(): ReactElement {
         строку и тут же видит сумму, а способ спрашивается в момент, когда
         клиент достаёт деньги или телефон.
       */}
-      <View style={styles.footer}>
-        <TotalRow lines={filled} subtotal={subtotal} discount={discountSum} />
+      <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
+        <TotalRow count={priced} subtotal={subtotal} discount={discountSum} />
 
-        <Field label={m('cash.method')}>
+        {/*
+          `last` — без нижнего отступа поля: он складывался с зазором
+          подвала, и между чипами и кнопкой выходило 28 при 12 между
+          остальными частями подвала.
+        */}
+        <Field label={m('cash.method')} last>
           <ChipSelect
             value={method}
             onChange={setMethod}
@@ -285,6 +293,12 @@ function quantityOf(line: CartLine): number {
  * Код ищется на складе по мере набора — описание, цена и единица
  * появляются под полем, и продавец видит, что набрал правильно, до того
  * как нажмёт «Пробить». Код без цены подсвечивается сразу.
+ *
+ * Строка в три этажа: поля ввода, что за товар, деньги. Сумма раньше
+ * стояла в одном ряду с полями и была колонкой переменной ширины: крупная
+ * сумма сжимала поле кода до 72 точек, код с бирки обрезался
+ * («FAUDIT-TL…»), а поле количества прыгало от строки к строке. Теперь у
+ * полей ряд целиком, и колонки стоят на одном месте во всех строках.
  */
 function CodeLine({
   line,
@@ -308,6 +322,12 @@ function CodeLine({
   const quantity = quantityOf(line);
   const price = item?.price == null ? null : parseMoney(item.price);
   const sum = price === null ? null : Math.round(price * quantity);
+  /* Ряд с деньгами — только у кода с ценой: пустой строке и неизвестному
+     коду показывать в нём нечего. */
+  const priceLabel =
+    code === '' || price === null || item?.unit == null
+      ? null
+      : `${money(price)} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`;
 
   return (
     <View style={styles.line}>
@@ -335,9 +355,6 @@ function CodeLine({
             keyboardType="decimal-pad"
           />
         </View>
-        <Text style={styles.lineSum} numberOfLines={1}>
-          {sum === null || quantity === 0 ? '—' : money(sum)}
-        </Text>
       </View>
 
       <View style={styles.lineMeta}>
@@ -350,49 +367,93 @@ function CodeLine({
                 ? m('cash.codeUnknown')
                 : item.price == null || item.unit == null
                   ? m('cash.codeNoPrice')
-                  : `${item.description ?? item.name} · ${money(parseMoney(item.price))} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
+                  : (item.description ?? item.name)}
         </Text>
+        {/*
+          Иконки — в настоящих кнопках 44×44, а не голые глифы 18×20 с
+          `hitSlop`: в браузере `hitSlop` не работает вовсе, а на телефоне
+          добирал только до 34. Обе иконки одного размера — разные (18 и 16)
+          рядом смотрелись случайными.
+        */}
         <Pressable
           onPress={onScan}
-          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={m('create.scanA11y')}
+          style={({ pressed }) => [styles.lineIcon, pressed ? styles.pressed : null]}
         >
-          <Icon name="camera" size={18} color={colors.accent} />
+          <Icon name="camera" size={LINE_ICON} color={colors.accent} />
         </Pressable>
         {canRemove && (
           <Pressable
             onPress={onRemove}
-            hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={m('common.close')}
+            style={({ pressed }) => [styles.lineIcon, pressed ? styles.pressed : null]}
           >
-            <Icon name="remove" size={16} color={colors.textMuted} />
+            <Icon name="remove" size={LINE_ICON} color={colors.textMuted} />
           </Pressable>
         )}
       </View>
+
+      {priceLabel !== null && (
+        <View style={styles.lineMoney}>
+          <Text style={styles.linePrice} numberOfLines={1}>
+            {priceLabel}
+          </Text>
+          {sum !== null && quantity > 0 && (
+            <Text style={styles.lineSum} numberOfLines={1}>
+              {money(sum)}
+            </Text>
+          )}
+        </View>
+      )}
     </View>
   );
 }
 
-/** Сумма строк чека — считается на клиенте по тем же ценам, что и на сервере. */
-function useCartSubtotal(lines: readonly CartLine[]): number {
-  const utils = trpc.useUtils();
+/** Размер иконок строки чека — камеры и корзины. */
+const LINE_ICON = 18;
 
-  return lines.reduce((sum, line) => {
-    const cached = utils.retail.codeLookup.getData({ code: line.code.trim() });
-    if (cached == null || cached.price == null) return sum;
-    return sum + Math.round(parseMoney(cached.price) * quantityOf(line));
-  }, 0);
+/**
+ * Сумма строк чека — считается на клиенте по тем же ценам, что и на сервере.
+ *
+ * `priced` — сколько строк в этой сумме. Внизу экрана считаются именно они:
+ * строка с неизвестным кодом ни цены, ни суммы не даёт, и «Позиций: 4» над
+ * суммой трёх строк читалось как ошибка кассы.
+ *
+ * Запросы кодов подписаны здесь же, а не только в строках: иначе итог
+ * пересчитывался лишь при следующем нажатии клавиши, и код, найденный уже
+ * после набора количества, в сумму не попадал до новой правки.
+ */
+function useCartSubtotal(lines: readonly CartLine[]): {
+  readonly subtotal: number;
+  readonly priced: number;
+} {
+  const lookups = trpc.useQueries((query) =>
+    lines.map((line) => query.retail.codeLookup({ code: line.code.trim() })),
+  );
+
+  return lines.reduce(
+    (total, line, index) => {
+      const found = lookups[index]?.data;
+      if (found == null || found.price == null) return total;
+      return {
+        subtotal: total.subtotal + Math.round(parseMoney(found.price) * quantityOf(line)),
+        priced: total.priced + 1,
+      };
+    },
+    { subtotal: 0, priced: 0 },
+  );
 }
 
 /** Итог у кнопки: к оплате, а под ним — сколько уступили, если уступили. */
 function TotalRow({
-  lines,
+  count,
   subtotal,
   discount,
 }: {
-  readonly lines: readonly CartLine[];
+  /** Строки с найденной ценой — те, что вошли в сумму. */
+  readonly count: number;
   readonly subtotal: number;
   /** Скидка в основных единицах — как её вводит продавец. */
   readonly discount: number;
@@ -404,7 +465,7 @@ function TotalRow({
     <View style={styles.totalRow}>
       <View style={styles.totalText}>
         <Text style={styles.totalLabel}>
-          {lines.length === 0 ? m('cash.nothingSelected') : m('cash.items', { n: lines.length })}
+          {count === 0 ? m('cash.nothingSelected') : m('cash.items', { n: count })}
         </Text>
         {discountMinor > 0 && (
           <Text style={styles.totalDiscount}>
@@ -434,7 +495,7 @@ function MySales(): ReactElement | null {
   return (
     <Card>
       <CardTitle title={m('cash.myReceipts')} icon="paid" />
-      {rows.map((sale) => (
+      {rows.map((sale, index) => (
         <Pressable
           key={sale.id}
           onPress={() => {
@@ -442,7 +503,13 @@ function MySales(): ReactElement | null {
           }}
           accessibilityRole="button"
           accessibilityLabel={m('cash.openReceipt', { n: sale.id })}
-          style={({ pressed }) => [styles.saleRow, pressed ? styles.salePressed : null]}
+          style={({ pressed }) => [
+            styles.saleRow,
+            // Разделитель — только между чеками: у последнего линия
+            // висела над скруглённым низом карточки лишней чертой.
+            index === rows.length - 1 ? styles.saleRowLast : null,
+            pressed ? styles.salePressed : null,
+          ]}
         >
           <View style={styles.itemText}>
             <Text style={styles.itemName}>{m('cash.receiptN', { n: sale.id })}</Text>
@@ -465,10 +532,15 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  /*
+    Снизу — обычный отступ, а не место под панель вкладок: касса открыта
+    поверх вкладок, панели под ней нет, а свой низ держит подвал с кнопкой.
+    С `tabBarSpace` список кончался полосой пустоты в 114 точек.
+  */
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
+    paddingBottom: spacing.xl,
   },
   hint: {
     ...typography.caption,
@@ -489,26 +561,45 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  /* Под самую длинную подсказку единиц — узбекскую «Metr/dona»: в 88 она
+     обрезалась на «Metr/dor». */
   lineQuantity: {
-    width: 88,
-  },
-  lineSum: {
-    ...typography.value,
-    color: colors.textPrimary,
-    minWidth: 96,
-    textAlign: 'right',
+    width: 100,
   },
   lineMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
     marginTop: spacing.xs,
   },
   lineDescription: {
     ...typography.caption,
     color: colors.textSecondary,
     flex: 1,
+    minWidth: 0,
+    marginRight: spacing.xs,
+  },
+  lineIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineMoney: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.md,
+  },
+  linePrice: {
+    ...typography.caption,
+    color: colors.textMuted,
+    flex: 1,
+    minWidth: 0,
+  },
+  lineSum: {
+    ...typography.value,
+    color: colors.textPrimary,
+    flexShrink: 0,
+    fontVariant: ['tabular-nums'],
   },
   addLine: {
     flexDirection: 'row',
@@ -539,6 +630,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
+  saleRowLast: {
+    borderBottomWidth: 0,
+  },
   salePressed: {
     opacity: opacity.pressed,
   },
@@ -566,13 +660,17 @@ const styles = StyleSheet.create({
     borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
+  /* Зазор обязателен: в узбекском со скидкой левый столбец доходил до
+     самой суммы — между ними не оставалось ни точки. */
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.md,
   },
   totalText: {
     flex: 1,
+    minWidth: 0,
   },
   totalDiscount: {
     ...typography.footnote,
@@ -587,6 +685,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: colors.textPrimary,
+    flexShrink: 0,
   },
   submit: {
     flexDirection: 'row',

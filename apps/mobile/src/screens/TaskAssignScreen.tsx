@@ -17,6 +17,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
@@ -24,7 +25,7 @@ import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 /**
  * Поручения: выдать задачу и посмотреть, что уже выдано.
@@ -40,6 +41,7 @@ export function TaskAssignScreen(): ReactElement {
   const { t, m } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
@@ -86,7 +88,12 @@ export function TaskAssignScreen(): ReactElement {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* Экран открыт поверх вкладок: снизу — обычный отступ и безопасная
+          зона, а не место под панель, которой здесь нет. */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Card>
           <CardTitle title={m('assign.new')} icon="assigned" />
 
@@ -177,100 +184,131 @@ export function TaskAssignScreen(): ReactElement {
           ) : tasks.data.items.length === 0 ? (
             <Empty message={m('assign.none')} hint={m('assign.noneHint')} />
           ) : (
-            tasks.data.items.map((task) => (
-              <View key={task.id}>
-                <View style={styles.taskRow}>
-                  {/*
-                    Строка открывает поручение: руководителю нужно видеть, что
-                    ответил исполнитель и что он приложил. Без этого выданная
-                    задача была для автора такой же немой, как для адресата.
-                  */}
-                  <Pressable
-                    onPress={() => {
-                      navigation.navigate('TaskDetail', { taskId: task.id });
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={m('assign.open', { title: task.title })}
-                    style={({ pressed }) => [styles.taskText, pressed ? styles.pressed : null]}
+            /*
+              Строка поручения — столбиком: название во всю ширину, под ним
+              плашка статуса, исполнитель и срок; кнопка отмены — справа по
+              центру строки. В один ряд с плашкой названию оставалось 86
+              точек: «Убрать рабочее место» ложилось по слову на строку, а
+              плашка стояла сверху, когда корзина — посередине.
+            */
+            tasks.data.items.map((task, index, all) => {
+              const isCancelling = cancelling === task.id;
+              const isLast = index === all.length - 1;
+              /* Срок не отрывается от «до»: пробелы внутри — неразрывные,
+                 перенос возможен только перед ним. */
+              const due =
+                task.dueDate === null
+                  ? ''
+                  : ` ${m('assign.until', { date: formatIsoDate(task.dueDate) }).trimStart().replace(/ /g, '\u00A0')}`;
+
+              return (
+                <View key={task.id}>
+                  <View
+                    style={[
+                      styles.taskRow,
+                      // Линия — между поручениями. Под открытой формой отмены
+                      // её рисует сама форма, под последним — никто.
+                      isCancelling || isLast ? styles.taskRowPlain : null,
+                    ]}
                   >
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                    <Text style={styles.taskMeta}>
-                      {`${task.assignee.fullName}${
-                        task.dueDate === null ? '' : m('assign.until', { date: formatIsoDate(task.dueDate) })
-                      }`}
-                    </Text>
-                  </Pressable>
-
-                  <Pill text={t(TASK_STATUS_LABELS, task.status)} tone={toneOf(task.status)} />
-
-                  {isTaskActive(task.status) && cancelling !== task.id && (
+                    {/*
+                      Строка открывает поручение: руководителю нужно видеть, что
+                      ответил исполнитель и что он приложил. Без этого выданная
+                      задача была для автора такой же немой, как для адресата.
+                    */}
                     <Pressable
                       onPress={() => {
-                        setCancelling(task.id);
-                        setCancelReason('');
+                        navigation.navigate('TaskDetail', { taskId: task.id });
                       }}
-                      disabled={cancel.isPending}
                       accessibilityRole="button"
-                      accessibilityLabel={m('assign.cancelA11y', { title: task.title })}
-                      style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
+                      accessibilityLabel={m('assign.open', { title: task.title })}
+                      style={({ pressed }) => [styles.taskText, pressed ? styles.pressed : null]}
                     >
-                      <Icon name="remove" size={16} color={colors.textMuted} />
+                      <Text style={styles.taskTitle}>{task.title}</Text>
+                      <View style={styles.taskMetaRow}>
+                        {/* Обёртка — чтобы плашка встала по центру строки, а
+                            не к её верху (`Pill` прижат к началу). */}
+                        <View>
+                          <Pill text={t(TASK_STATUS_LABELS, task.status)} tone={toneOf(task.status)} />
+                        </View>
+                        <Text style={styles.taskMeta}>{`${task.assignee.fullName}${due}`}</Text>
+                      </View>
                     </Pressable>
+
+                    {isTaskActive(task.status) &&
+                      (isCancelling ? (
+                        /* Место кнопки держится, пока открыта форма: иначе
+                           строка расползалась вправо и плашка прыгала. */
+                        <View style={styles.cancel} />
+                      ) : (
+                        <Pressable
+                          onPress={() => {
+                            setCancelling(task.id);
+                            setCancelReason('');
+                          }}
+                          disabled={cancel.isPending}
+                          accessibilityRole="button"
+                          accessibilityLabel={m('assign.cancelA11y', { title: task.title })}
+                          style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
+                        >
+                          <Icon name="remove" size={18} color={colors.textMuted} />
+                        </Pressable>
+                      ))}
+                  </View>
+
+                  {/*
+                    Причина отмены обязательна на сервере, и это правильно:
+                    поручение уже видел исполнитель, и молча исчезнувшая
+                    задача выглядит как сбой, а не как решение руководителя.
+                  */}
+                  {isCancelling && (
+                    <View style={[styles.cancelBox, isLast ? styles.taskRowPlain : null]}>
+                      <Field label={m('assign.why')}>
+                        <Input
+                          value={cancelReason}
+                          onChangeText={setCancelReason}
+                          placeholder={m('assign.whyPlaceholder')}
+                          autoFocus
+                        />
+                      </Field>
+
+                      <View style={styles.cancelActions}>
+                        <Pressable
+                          onPress={() => {
+                            setCancelling(null);
+                            setCancelReason('');
+                          }}
+                          accessibilityRole="button"
+                          style={({ pressed }) => [
+                            styles.cancelButton,
+                            styles.cancelGhost,
+                            pressed ? styles.pressed : null,
+                          ]}
+                        >
+                          <Text style={styles.cancelGhostText}>{m('assign.keep')}</Text>
+                        </Pressable>
+
+                        <Pressable
+                          onPress={() => {
+                            cancel.mutate({ id: task.id, reason: cancelReason.trim() });
+                          }}
+                          disabled={cancelReason.trim().length === 0 || cancel.isPending}
+                          accessibilityRole="button"
+                          style={({ pressed }) => [
+                            styles.cancelButton,
+                            styles.cancelDanger,
+                            cancelReason.trim().length === 0 ? styles.submitOff : null,
+                            pressed ? styles.pressed : null,
+                          ]}
+                        >
+                          <Text style={styles.submitText}>{m('assign.cancel')}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                   )}
                 </View>
-
-                {/*
-                  Причина отмены обязательна на сервере, и это правильно:
-                  поручение уже видел исполнитель, и молча исчезнувшая
-                  задача выглядит как сбой, а не как решение руководителя.
-                */}
-                {cancelling === task.id && (
-                  <View style={styles.cancelBox}>
-                    <Field label={m('assign.why')}>
-                      <Input
-                        value={cancelReason}
-                        onChangeText={setCancelReason}
-                        placeholder={m('assign.whyPlaceholder')}
-                        autoFocus
-                      />
-                    </Field>
-
-                    <View style={styles.cancelActions}>
-                      <Pressable
-                        onPress={() => {
-                          setCancelling(null);
-                          setCancelReason('');
-                        }}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [
-                          styles.cancelButton,
-                          styles.cancelGhost,
-                          pressed ? styles.pressed : null,
-                        ]}
-                      >
-                        <Text style={styles.cancelGhostText}>{m('assign.keep')}</Text>
-                      </Pressable>
-
-                      <Pressable
-                        onPress={() => {
-                          cancel.mutate({ id: task.id, reason: cancelReason.trim() });
-                        }}
-                        disabled={cancelReason.trim().length === 0 || cancel.isPending}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [
-                          styles.cancelButton,
-                          styles.cancelDanger,
-                          cancelReason.trim().length === 0 ? styles.submitOff : null,
-                          pressed ? styles.pressed : null,
-                        ]}
-                      >
-                        <Text style={styles.submitText}>{m('assign.cancel')}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                )}
-              </View>
-            ))
+              );
+            })
           )}
         </Card>
       </ScrollView>
@@ -293,7 +331,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   people: {
     flexDirection: 'row',
@@ -346,13 +383,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  taskRowPlain: {
+    borderBottomWidth: 0,
   },
   taskText: {
     flex: 1,
     minWidth: 0,
+  },
+  taskMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing.sm,
+    rowGap: spacing.xs,
+    marginTop: spacing.xs,
   },
   taskTitle: {
     ...typography.body,
@@ -361,10 +409,15 @@ const styles = StyleSheet.create({
   taskMeta: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginTop: 1,
+    flexShrink: 1,
   },
+  /* Форма отмены продолжает свою строку и сама отчёркивает её от
+     следующей; сверху — воздух, чтобы подпись не липла к строке. */
   cancelBox: {
+    paddingTop: spacing.xs,
     paddingBottom: spacing.md,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
   },
   cancelActions: {
     flexDirection: 'row',
@@ -389,8 +442,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   cancel: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

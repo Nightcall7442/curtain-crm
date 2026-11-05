@@ -85,12 +85,14 @@ export const UNRATED_ROLE_REASON: Readonly<Record<Locale, Readonly<Record<string
   ru: {
     ceo: 'Директор не участвует в конкурсе: заказы на него не назначаются',
     admin: 'Администратор не участвует в конкурсе: измеримых метрик по нему система не ведёт',
-    smm: 'Функционал роли SMM не определён — измерять пока нечего',
+    // Формулировка для самого сотрудника, а не заметка разработчика: прежнее
+    // «функционал не определён — измерять нечего» читалось как недоделка.
+    smm: 'SMM-менеджер не участвует в конкурсе: рейтинг цеха считается по заказам',
   },
   uz: {
     ceo: "Direktor tanlovda qatnashmaydi: unga buyurtma tayinlanmaydi",
     admin: "Administrator tanlovda qatnashmaydi: tizim uning bo'yicha o'lchanadigan ko'rsatkich yuritmaydi",
-    smm: "SMM rolining vazifalari hali belgilanmagan — o'lchaydigan narsa yo'q",
+    smm: "SMM-menejer tanlovda qatnashmaydi: sex reytingi buyurtmalar bo'yicha hisoblanadi",
   },
 };
 

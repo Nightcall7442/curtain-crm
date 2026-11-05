@@ -1,4 +1,5 @@
-import { ORDER_ITEM_KIND_LABELS_RU, type OrderItemKind } from '../enums/orderItemKind.enum';
+import { ORDER_ITEM_KIND_LABELS, type OrderItemKind } from '../enums/orderItemKind.enum';
+import type { Locale } from '../i18n/locale';
 import type { OrderItemAccessory } from '../types/orderItemAccessory';
 import { formatMaterial, type OrderItemMaterial } from '../types/orderItemMaterial';
 
@@ -53,18 +54,40 @@ const detailOf = (parts: readonly (string | null)[]): string | null => {
   return text === '' ? null : text;
 };
 
-const itemTitle = (item: PackListItem): string =>
-  `${ORDER_ITEM_KIND_LABELS_RU[item.kind]} ${(item.position + 1).toString()}`;
+/**
+ * Слова листа на обоих языках.
+ *
+ * Лист собирается на сервере и приходит готовыми строками, поэтому язык
+ * передаётся сюда. Без него узбекский интерфейс показывал русские «Окно 1 —
+ * шторы» и «2 шт» под переведённым заголовком «Chiqishga yig'ish». Названия
+ * моделей, тканей и аксессуаров — данные заказа, их не переводят.
+ */
+const PACK_WORDS: Readonly<
+  Record<Locale, { readonly goods: string; readonly cornice: string; readonly plastic: string; readonly pipe: string; readonly pieces: string }>
+> = {
+  ru: { goods: 'шторы', cornice: 'карниз', plastic: 'пластик', pipe: 'труба', pieces: 'шт' },
+  uz: { goods: 'pardalar', cornice: 'karniz', plastic: 'plastik', pipe: 'truba', pieces: 'dona' },
+};
+
+const itemTitle = (item: PackListItem, locale: Locale): string =>
+  `${ORDER_ITEM_KIND_LABELS[locale][item.kind]} ${(item.position + 1).toString()}`;
 
 /**
  * Строки листа в том порядке, в котором вещи кладут в машину: сначала сами
  * шторы, потом карниз с крепежом, потом мелочь.
+ *
+ * Ключи строк от языка не зависят: отметка «взял», поставленная в русском
+ * интерфейсе, видна и в узбекском.
  */
-export function buildPackList(items: readonly PackListItem[]): readonly PackListRow[] {
+export function buildPackList(
+  items: readonly PackListItem[],
+  locale: Locale = 'ru',
+): readonly PackListRow[] {
   const rows: PackListRow[] = [];
+  const words = PACK_WORDS[locale];
 
   for (const item of items) {
-    const title = itemTitle(item);
+    const title = itemTitle(item, locale);
 
     /*
       Готовое изделие одной строкой, даже если ткани в нём две: в машину
@@ -78,18 +101,18 @@ export function buildPackList(items: readonly PackListItem[]): readonly PackList
     if (fabrics.length > 0 || item.model !== null) {
       rows.push({
         key: `item:${item.id.toString()}:goods`,
-        label: `${title} — шторы${item.model === null ? '' : `, ${item.model}`}`,
+        label: `${title} — ${words.goods}${item.model === null ? '' : `, ${item.model}`}`,
         detail: detailOf([
-          item.quantity > 1 ? `${item.quantity.toString()} шт` : null,
+          item.quantity > 1 ? `${item.quantity.toString()} ${words.pieces}` : null,
           ...fabrics.map((material) => formatMaterial(material)),
         ]),
       });
     }
 
     const hardware = [
-      { slot: 'cornice', label: 'карниз', material: item.cornice },
-      { slot: 'plastic', label: 'пластик', material: item.plastic },
-      { slot: 'pipe', label: 'труба', material: item.pipe },
+      { slot: 'cornice', label: words.cornice, material: item.cornice },
+      { slot: 'plastic', label: words.plastic, material: item.plastic },
+      { slot: 'pipe', label: words.pipe, material: item.pipe },
     ] as const;
 
     for (const part of hardware) {
@@ -105,7 +128,7 @@ export function buildPackList(items: readonly PackListItem[]): readonly PackList
       rows.push({
         key: `item:${item.id.toString()}:acc:${index.toString()}`,
         label: `${title} — ${accessory.name}`,
-        detail: detailOf([`${accessory.quantity.toString()} шт`, accessory.code]),
+        detail: detailOf([`${accessory.quantity.toString()} ${words.pieces}`, accessory.code]),
       });
     });
   }

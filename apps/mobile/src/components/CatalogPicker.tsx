@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, hairline, radius, spacing, typography } from '../theme';
 
@@ -23,12 +23,22 @@ export function CatalogPicker({
   options,
   onChange,
   sheetTitle,
+  loading = false,
 }: {
   readonly value: string;
   readonly placeholder: string;
   readonly options: readonly string[];
   readonly onChange: (value: string) => void;
   readonly sheetTitle: string;
+  /**
+   * Справочник ещё грузится.
+   *
+   * Пока запрос не вернулся, вызывающие экраны передают пустой список, и
+   * шторка, открытая в эту секунду, писала «Справочник пуст» — продавец
+   * читал это как «моделей нет». Пустой и ещё не пришедший справочник —
+   * разные вещи, и выглядеть они обязаны по-разному.
+   */
+  readonly loading?: boolean;
 }): ReactElement {
   const { m } = useLocale();
   const [open, setOpen] = useState(false);
@@ -57,7 +67,11 @@ export function CatalogPicker({
         }}
       >
         <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
-          {options.length === 0 ? (
+          {loading && options.length === 0 ? (
+            <View style={styles.loading} accessibilityRole="progressbar">
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : options.length === 0 ? (
             <Text style={styles.empty}>{m('catalog.empty')}</Text>
           ) : (
             options.map((option) => (
@@ -105,8 +119,15 @@ const styles = StyleSheet.create({
   placeholder: {
     color: colors.textMuted,
   },
+  /*
+    Список шире содержимого шторки на отступ строки с каждой стороны: у
+    строки свой отступ под подсветку нажатия, и без этого текст вариантов
+    стоял на 8 точек правее заголовка шторки. Теперь край текста — общий
+    с заголовком, а подсветка выходит за него, как в системных списках.
+  */
   sheetScroll: {
     maxHeight: 380,
+    marginHorizontal: -spacing.sm,
   },
   option: {
     flexDirection: 'row',
@@ -128,5 +149,11 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     paddingVertical: spacing.md,
     textAlign: 'center',
+  },
+  // Та же высота, что у строки «Справочник пуст», — шторка не прыгает.
+  loading: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

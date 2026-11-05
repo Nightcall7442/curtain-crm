@@ -18,13 +18,17 @@ import {
   stageFeesOfOrderType,
   TransitionKind,
   INSTALLATION_SCHEDULABLE_STATUSES,
+  isActiveStatus,
+  isOverdueDate,
 } from '@curtain-crm/shared';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,7 +39,7 @@ import {
 
 import { BottomSheet } from '../components/BottomSheet';
 import { OrderPayments } from '../components/OrderPayments';
-import { Card, CardTitle, Empty, Pill, Row } from '../components/Card';
+import { Card, CardTitle, Empty, ErrorState, Pill, Row } from '../components/Card';
 import { OrderManagement } from '../components/OrderManagement';
 import { OrderCommentsCard } from '../components/order/OrderCommentsCard';
 import { OrderCorniceCard } from '../components/order/OrderCorniceCard';
@@ -108,7 +112,17 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
               accessibilityRole="button"
               accessibilityLabel={m('order.edit')}
               hitSlop={10}
-              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+              /*
+                В браузере `hitSlop` не работает, и карандаш был целью 22×24,
+                прижатой к правому краю экрана, тогда как стрелка «назад»
+                слева стоит в рамке 48×48. Здесь та же рамка и тот же отступ,
+                что у значков шапки в `RootNavigator`. На телефоне отступы
+                шапки даёт система, а цель добирает `hitSlop`.
+              */
+              style={({ pressed }) => [
+                Platform.OS === 'web' ? styles.webHeaderButton : null,
+                pressed ? { opacity: opacity.pressed } : null,
+              ]}
             >
               <Icon name="edit" size={22} color={colors.headerText} />
             </Pressable>
@@ -168,18 +182,40 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
     );
   }
 
-  if (order.isError || order.data === undefined) {
+  /*
+    «Не найден» — только когда сервер так и ответил (или закрыл доступ).
+
+    Прежде любая ошибка рисовалась серой заглушкой с текстом сервера: при
+    сбое API узбекский интерфейс показывал английское «Internal server
+    error», а подсказка «вы больше не участвуете в заказе» стояла и при
+    обрыве связи. Сбой — это `ErrorState`: своё оформление, понятный текст
+    и кнопка повтора.
+  */
+  const errorCode = order.error?.data?.code;
+  if (order.data === undefined && (errorCode === 'NOT_FOUND' || errorCode === 'FORBIDDEN')) {
     return (
       <View style={styles.loading}>
-        <Empty
-          message={order.error?.message ?? m('order.notFound')}
-          hint={m('order.notFoundHint')}
+        <Empty message={m('order.notFound')} hint={m('order.notFoundHint')} />
+      </View>
+    );
+  }
+
+  if (order.data === undefined) {
+    return (
+      <View style={styles.loading}>
+        <ErrorState
+          onRetry={() => Promise.all([order.refetch(), transitions.refetch()])}
         />
       </View>
     );
   }
 
   const data = order.data;
+  /*
+    У отменённого заказа нет этапов. Деньги по нему — как на сайте и на
+    сервере: «Остаток» и приём оплаты остаются (бывает плата за отмену).
+  */
+  const isCancelled = data.status === OrderStatusValue.CANCELLED;
 
   /*
     Расценки, которые видно этому сотруднику: скрытые пришли с сервера как
@@ -223,7 +259,10 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             {isAwaitingPayment(data) && (
               <Pill text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />
             )}
-            <Pill text={t(ORDER_STATUS_LABELS, data.status)} tone="info" />
+            <Pill
+              text={t(ORDER_STATUS_LABELS, data.status)}
+              tone={statusTone(data.status, data.deadline)}
+            />
           </View>
         </View>
 
@@ -267,14 +306,20 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
               <Row label={m('order.price')} value={money(parseMoney(data.workPrice))} />
               {/* Цена уже со скидкой; сколько сняли и за что — строкой рядом. */}
               {data.discountAmount !== null && parseMoney(data.discountAmount) > 0 && (
-                <Row
-                  label={
-                    data.discountReason === null
-                      ? m('order.discount')
-                      : `${m('order.discount')} · ${data.discountReason}`
-                  }
-                  value={`−${money(parseMoney(data.discountAmount))}`}
-                />
+                <>
+                  <Row
+                    label={m('order.discount')}
+                    value={`−${money(parseMoney(data.discountAmount))}`}
+                  />
+                  {/*
+                    Причина — своей строкой под суммой, а не хвостом подписи:
+                    в подписи длинная причина («Постоянный клиент, акция на
+                    тюль и карнизы») разрасталась в три этажа и теснила сумму.
+                  */}
+                  {data.discountReason !== null && (
+                    <Text style={styles.discountReason}>{data.discountReason}</Text>
+                  )}
+                </>
               )}
               <Row label={m('order.paid')} value={money(parseMoney(data.paidAmount))} />
               <Row
@@ -323,7 +368,17 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             </Pressable>
 
             <View>
-              <BlurTargetView ref={feesTarget}>
+              {/*
+                В браузере размывается само содержимое, а не подложка под
+                заслонкой. `backdrop-filter` у заслонки оставлял резкими
+                крайние буквы каждой строки, а верхняя строка, уезжая под
+                шапку при прокрутке, читалась целиком — суммы угадывались.
+                `filter` размывает текст на всю ширину и при любой прокрутке.
+              */}
+              <BlurTargetView
+                ref={feesTarget}
+                style={Platform.OS === 'web' && !feesShown ? styles.feesWebBlur : null}
+              >
                 {visibleStageFees.map(([stage, value]) => (
                   <Row
                     key={stage}
@@ -346,7 +401,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                 вокруг строк. Делитель интенсивности 1 вместо 4 по умолчанию —
                 чтобы суммы не читались, а не слегка расплывались.
               */}
-              {!feesShown && (
+              {!feesShown && Platform.OS !== 'web' && (
                 <BlurView
                   intensity={24}
                   tint="light"
@@ -361,15 +416,34 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
           </View>
         )}
 
+        {/*
+          Метка — значок из того же набора Ionicons, что и остальные, а не
+          эмодзи 📍: тот рисовался системным цветным шрифтом, на Android и в
+          браузере по-разному, и выбивался из зелёных линейных значков.
+          В `Icon` метки нет, поэтому набор взят напрямую.
+        */}
         {data.installAddress !== null && (
-          <Text style={styles.address}>{`📍 ${data.installAddress}`}</Text>
+          <View style={styles.addressRow}>
+            <Ionicons
+              name="location-outline"
+              size={16}
+              color={colors.textMuted}
+              accessible={false}
+              style={styles.addressIcon}
+            />
+            <Text style={styles.address}>{data.installAddress}</Text>
+          </View>
         )}
       </Card>
 
       {/* --- Этапы конвейера --------------------------------------------- */}
-      <Card>
-        <Stepper status={data.status} />
-      </Card>
+      {/* У отменённого заказа этапов нет: `Stepper` пуст, и карточка вокруг
+          него оставалась бы пустой белой полосой. */}
+      {!isCancelled && (
+        <Card>
+          <Stepper status={data.status} />
+        </Card>
+      )}
 
       {/* --- Действия ---------------------------------------------------- */}
       <Card>
@@ -562,19 +636,24 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
       {/* --- Исполнители --------------------------------------------------- */}
       <Card>
         <CardTitle title={m('order.executors')} icon="people" />
-        <Row
-          label={t(ROLE_LABELS, Role.MASTER)}
-          value={data.master?.fullName ?? m('order.notAssignedM')}
-        />
-        <Row
-          label={t(ROLE_LABELS, Role.SEWER)}
-          value={data.sewer?.fullName ?? m('order.notAssignedF')}
-        />
-        <Row label={t(ROLE_LABELS, Role.QC)} value={data.qc?.fullName ?? m('order.notAssignedM')} />
-        <Row
-          label={t(ROLE_LABELS, Role.INSTALLER)}
-          value={data.installer?.fullName ?? m('order.notAssignedM')}
-        />
+        {/* «не назначен» — приглушённо, как в карточке «Назначение»: иначе
+            заглушка набрана тем же жирным чёрным, что и имена, и читается
+            как фамилия. */}
+        {(
+          [
+            [Role.MASTER, data.master, m('order.notAssignedM')],
+            [Role.SEWER, data.sewer, m('order.notAssignedF')],
+            [Role.QC, data.qc, m('order.notAssignedM')],
+            [Role.INSTALLER, data.installer, m('order.notAssignedM')],
+          ] as const
+        ).map(([role, person, placeholder]) => (
+          <Row
+            key={role}
+            label={t(ROLE_LABELS, role)}
+            value={person?.fullName ?? placeholder}
+            {...(person === null ? { valueColor: colors.textMuted } : {})}
+          />
+        ))}
       </Card>
 
       {/*
@@ -665,7 +744,41 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
   );
 }
 
+/**
+ * Тон плашки статуса — то же правило, что у чипа в списке заказов
+ * (`OrderCard`): ждёт решения — янтарный, в работе — зелёный, брак и
+ * просрочка — терракота, закрытые — нейтральный.
+ *
+ * Прежде карточка красила любой статус в синий: «Отменён» и «Выполнен»
+ * выглядели как работа в процессе, и статус менял цвет при открытии заказа.
+ */
+const WAITING_STATUSES: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+  OrderStatusValue.NEW,
+  OrderStatusValue.PENDING_ADMIN_REVIEW,
+  OrderStatusValue.REJECTED_TO_CEO,
+  OrderStatusValue.PENDING_SEWING_ASSIGNMENT,
+  OrderStatusValue.PENDING_INSTALLATION_ASSIGNMENT,
+]);
+
+function statusTone(
+  status: OrderStatus,
+  deadline: string | null,
+): 'positive' | 'warning' | 'danger' | 'neutral' {
+  const isOverdue = deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
+  if (isOverdue || status === OrderStatusValue.QC_FAILED) return 'danger';
+  if (!isActiveStatus(status)) return 'neutral';
+  if (WAITING_STATUSES.has(status)) return 'warning';
+  return 'positive';
+}
+
 const styles = StyleSheet.create({
+  webHeaderButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.xs,
+  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
@@ -682,7 +795,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.sm,
+    // Не поместились рядом с номером — плашки переносятся под него целиком,
+    // а не режутся многоточием: статус — главное, что есть в карточке.
+    flexWrap: 'wrap',
+    columnGap: spacing.sm,
+    rowGap: spacing.xs,
   },
   typeRow: {
     flexDirection: 'row',
@@ -716,6 +833,9 @@ const styles = StyleSheet.create({
   },
   callText: {
     ...typography.caption,
+    // Насыщенность — семейством: у каждого начертания свой файл, и вес на
+    // семействе Medium браузер рисовал бы поддельным жирным.
+    fontFamily: fonts.semibold,
     color: colors.accentStrong,
     fontWeight: '600',
   },
@@ -732,22 +852,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.xs,
+    // Цель в палец ростом, а строка — прежней высоты: лишнее забирают
+    // отрицательные поля (`hitSlop` в браузере не работает).
+    minHeight: 44,
+    marginTop: -spacing.md,
+    marginBottom: spacing.xs - spacing.md,
   },
   feesTitle: {
     ...typography.caption,
+    fontFamily: fonts.bold,
     color: colors.textSecondary,
     fontWeight: '700',
+  },
+  feesWebBlur: {
+    filter: 'blur(6px)',
   },
   feesVeil: {
     borderRadius: radius.sm,
     backgroundColor: 'rgba(246, 248, 246, 0.72)',
     overflow: 'hidden',
   },
+  discountReason: {
+    ...typography.caption,
+    color: colors.textMuted,
+    // Подтянута к своей строке «Скидка»: это пояснение к ней, а не новая.
+    marginTop: -spacing.xs,
+    paddingBottom: spacing.xs,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  addressIcon: {
+    // Значок по центру первой строки адреса: строка 18, значок 16.
+    marginTop: 1,
+  },
   address: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginTop: spacing.md,
+    flex: 1,
+    minWidth: 0,
   },
   actions: {
     gap: spacing.sm,
@@ -765,6 +911,7 @@ const styles = StyleSheet.create({
   },
   primaryActionText: {
     ...typography.headline,
+    fontFamily: fonts.bold,
     color: colors.onAccent,
     fontWeight: '700',
   },
@@ -777,6 +924,7 @@ const styles = StyleSheet.create({
   },
   moreActionText: {
     ...typography.caption,
+    fontFamily: fonts.bold,
     color: colors.textSecondary,
     fontWeight: '700',
   },
@@ -831,6 +979,7 @@ const styles = StyleSheet.create({
   },
   reasonTitle: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.warning,
     fontWeight: '600',
   },

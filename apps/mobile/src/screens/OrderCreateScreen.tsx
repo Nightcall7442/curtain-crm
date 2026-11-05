@@ -8,7 +8,7 @@ import {
   Priority,
   PRIORITY_LABELS,
 } from '@curtain-crm/shared';
-import { useNavigation } from '@react-navigation/native';
+import { StackActions, useNavigation } from '@react-navigation/native';
 import { useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -34,6 +34,8 @@ import { CodeScanner } from '../components/CodeScanner';
 import { DateField } from '../components/DateField';
 import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
+import { Icon } from '../components/Icon';
+import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -91,12 +93,30 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
 
   const catalog = useOrderCatalog();
 
+  /*
+    Без открытой смены сервер заказ не примет (412 «Сначала начните смену»),
+    а узнавал об этом продавец только на «Создать заказ» — заполнив всю
+    длинную форму. Баннер говорит об этом сразу, как на «Работе», и ведёт
+    туда, где смену начинают. Руководству смена не нужна.
+  */
+  const isManager = useIsManagement();
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
+
+  /*
+    Карточка заказа встаёт НА МЕСТО формы, а не поверх неё. При обычном
+    переходе «назад» из карточки возвращал к заполненной форме, и второе
+    касание «Создать заказ» заводило тот же заказ ещё раз.
+  */
+  const openCreated = (orderId: number): void => {
+    navigation.dispatch(StackActions.replace('OrderDetail', { orderId }));
+  };
+
   const create = trpc.orders.create.useMutation({
     async onSuccess(order) {
       await utils.orders.list.invalidate();
       // Уходим сразу в карточку: следующий шаг продавца — приложить фото
       // и отправить заказ админу, и оба действия там.
-      navigation.navigate('OrderDetail', { orderId: order.id });
+      openCreated(order.id);
     },
     onError(error) {
       Alert.alert(m('create.error'), error.message);
@@ -106,7 +126,7 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
   const produceForStock = trpc.orders.produceForStock.useMutation({
     async onSuccess(order) {
       await utils.orders.list.invalidate();
-      navigation.navigate('OrderDetail', { orderId: order.id });
+      openCreated(order.id);
     },
     onError(error) {
       Alert.alert(m('create.error'), error.message);
@@ -154,6 +174,19 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {!isManager && shift.data === null && (
+          <Pressable
+            onPress={() => {
+              navigation.navigate('CheckInOut');
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.shiftBanner, pressed ? styles.pressed : null]}
+          >
+            <Icon name="checkin" size={18} color={colors.warning} />
+            <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
+          </Pressable>
+        )}
+
         {/* У пошива для склада клиента нет: заказ существует не для него. */}
         {!forStock && (
           <Card>
@@ -166,8 +199,8 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
                   onPress={() => {
                     navigation.navigate('SellReadyMade');
                   }}
-                  hitSlop={8}
                   accessibilityRole="link"
+                  style={({ pressed }) => [styles.readyMadeLink, pressed ? styles.pressed : null]}
                 >
                   <Text style={styles.addItemText}>{m('work.readyMade')} →</Text>
                 </Pressable>
@@ -324,6 +357,27 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: opacity.pressed,
+  },
+  /* Тот же баннер, что на «Работе»: одно предупреждение — один вид. */
+  shiftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  shiftBannerText: {
+    ...typography.caption,
+    color: colors.warning,
+    flex: 1,
+  },
+  /* Цель для пальца — 44, без `hitSlop` (в браузере его нет); лишняя высота
+     уходит в отрицательные поля и шапку карточки не раздувает. */
+  readyMadeLink: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginVertical: -spacing.md,
   },
   addItemText: {
     ...typography.body,

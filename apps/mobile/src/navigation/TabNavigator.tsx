@@ -1,6 +1,6 @@
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, type BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, type ReactElement } from 'react';
 
@@ -14,7 +14,7 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { WorkScreen } from '../screens/WorkScreen';
 import { useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, radius } from '../theme';
+import { colors, fonts, radius, TAB_BAR_HEIGHT, typography } from '../theme';
 import type { TabParamList } from '../types';
 import { useLocale } from '../hooks/useLocale';
 
@@ -90,6 +90,8 @@ export function TabNavigator(): ReactElement {
          */
         tabBarLabelPosition: 'below-icon',
         tabBarBackground: () => <TabBarGlass />,
+        // В браузере вкладка — кнопка, а не ссылка (см. `WebTabButton`).
+        ...(Platform.OS === 'web' ? { tabBarButton: WebTabButton } : null),
         sceneStyle: { backgroundColor: colors.background },
       }}
     >
@@ -147,6 +149,7 @@ export function TabNavigator(): ReactElement {
         component={NotificationsScreen}
         options={{
           title: m('tabs.notifications'),
+          tabBarLabel: m('tabs.notificationsShort'),
           tabBarIcon: ({ color }) => <TabGlyph name="notifications" color={color} />,
           // Показываем точку, а не число: точное количество непрочитанных
           // на бейдже вкладки не помогает — важен сам факт.
@@ -196,11 +199,16 @@ export function TabNavigator(): ReactElement {
  * а это ровно те телефоны, что в цехе. Поэтому там панель делается почти
  * непрозрачной без размытия: выглядит так же аккуратно, а список не дёргается.
  *
+ * Браузер получает ту же сплошную панель, что Android: PWA ставят на те же
+ * телефоны, и выглядеть она обязана как APK. Ветка со стеклом давала в
+ * браузере серо-зелёную муть (#404E47 вместо хвои шапки), а неактивные
+ * подписи на ней падали до 3,5:1.
+ *
  * Поверх размытия на iOS лежит хвойная полупрозрачная заливка: голое стекло
  * над светлым списком было бы светлым, а панель по макету — тёмная.
  */
 function TabBarGlass(): ReactElement {
-  if (Platform.OS === 'android') {
+  if (Platform.OS !== 'ios') {
     return <View style={[StyleSheet.absoluteFill, styles.glassRound, styles.tabBarSolid]} />;
   }
 
@@ -209,6 +217,24 @@ function TabBarGlass(): ReactElement {
       <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, styles.tabBarTint]} />
     </View>
+  );
+}
+
+/**
+ * Кнопка вкладки в браузере — без ссылки.
+ *
+ * По умолчанию навигатор рисует вкладку тегом `<a href="/Tabs/Profile">`.
+ * Долгое нажатие на ссылку в Chrome на телефоне открывает меню браузера
+ * «Открыть в новой вкладке / Копировать ссылку» — ровно на «Профиле», где
+ * долгое нажатие должно открывать список входов, — а адрес в подсказке
+ * вёл мимо приложения. Приложению ссылки не нужны: вкладка переключается
+ * нажатием, как в APK.
+ */
+function WebTabButton({ href: _href, children, style, ...rest }: BottomTabBarButtonProps): ReactElement {
+  return (
+    <Pressable {...rest} style={style}>
+      {children}
+    </Pressable>
   );
 }
 
@@ -242,7 +268,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderTopWidth: 0,
     borderRadius: 26,
-    height: 64,
+    // Высота — `TAB_BAR_HEIGHT` из темы: под неё каждый экран оставляет место снизу.
+    height: TAB_BAR_HEIGHT,
     paddingBottom: 8,
     paddingTop: 6,
     // Тень самой панели: плавающий элемент без тени выглядит наклейкой.
@@ -266,20 +293,20 @@ const styles = StyleSheet.create({
   /**
    * Подписи вкладок.
    *
-   * 10 px и короткие слова: на узком экране пять подписей не помещались и
-   * обрезались до «Гл…», «Ра…», «Ch…». Самой длинной была «Check In/Out» —
-   * её заменили на «Смена», «Мой профиль» на «Профиль». Заголовок экрана
-   * при этом остался полным: там места достаточно.
+   * Короткие слова, а не мелкий кегль. Самые длинные подписи заменены на
+   * короткие («Check In/Out» → «Смена», «Мой профиль» → «Профиль»,
+   * «Уведомления» → «Лента»), заголовок экрана при этом остался полным.
+   *
+   * Было 9 px, чтобы втиснуть «Уведомления»: на 360-точечном Android слово
+   * всё равно обрезалось до «Уведомлен…», а 9 px в цеху не читаются. 12 —
+   * размер подписи навигации в Material; самая длинная из коротких подписей
+   * («Профиль», «Davomat») занимает 53 точки из 57, что дают ячейке
+   * 360-точечного экрана.
    */
   tabLabel: {
-    /*
-      9 пикселей, а не 10: на 375-точечном экране пять ячеек оставляют
-      подписи 60 точек, а «Уведомлениям» при десяти нужно 64 — и панель
-      показывала «Уведомле…». Сокращать слово до «Уведомл.» значило бы
-      написать в интерфейсе то, что человек не говорит вслух.
-    */
     fontFamily: fonts.semibold,
-    fontSize: 9,
+    fontSize: typography.footnote.fontSize,
+    lineHeight: typography.footnote.lineHeight,
     paddingHorizontal: 0,
     marginHorizontal: 0,
   },

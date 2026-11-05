@@ -12,7 +12,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { type LocaleMoney, useLocale, type Translate } from '../hooks/useLocale';
 import { useToday } from '../hooks/useToday';
 import { trpc, type RouterOutputs } from '../lib/trpc';
-import { colors, hairline, spacing, typography } from '../theme';
+import { colors, fonts, hairline, spacing, typography } from '../theme';
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { DateField } from './DateField';
 import { Field } from './Field';
@@ -55,10 +55,15 @@ export function CashDayReport(): ReactElement {
         <CardTitle title={m('cashDay.title')} icon="paid" />
 
         <Field label={m('cashDay.day')}>
+          {/*
+            «Очистить» возвращает к сегодняшнему дню: касса без даты не
+            бывает. Пустая дата уходила на сервер, тот отвечал 400, и в трёх
+            карточках вставало «Некорректная дата».
+          */}
           <DateField
             value={day}
             onChange={(value) => {
-              setPicked(value === today ? null : value);
+              setPicked(value === '' || value === today ? null : value);
             }}
             placeholder={m('cashDay.day')}
           />
@@ -165,14 +170,20 @@ export function CashDayReport(): ReactElement {
                 muted
               />
             ))}
-            <Line label={m('cashDay.total')} value={money(data.total)} strong />
+            <Line label={m('cashDay.total')} value={money(data.total)} total />
           </>
         )}
       </Card>
 
       <Card>
         <CardTitle title={m('cashDay.collections')} icon="paid" />
-        {collections.isLoading ? (
+        {/*
+          Сбой — ошибкой: упавший запрос показывал «никто не сдавал», и
+          строка «Сдано» пропадала, будто день пустой.
+        */}
+        {collections.isError ? (
+          <ErrorState message={collections.error.message} />
+        ) : collections.isLoading ? (
           <Skeleton />
         ) : (collections.data?.rows.length ?? 0) === 0 ? (
           <Empty message={m('cashDay.nobodyHanded')} />
@@ -190,14 +201,16 @@ export function CashDayReport(): ReactElement {
           <Line
             label={m('cashDay.handed')}
             value={money(parseMoney(collections.data.total))}
-            strong
+            total
           />
         )}
       </Card>
 
       <Card>
         <CardTitle title={m('cashDay.onHands')} icon="people" />
-        {onHands.isLoading ? (
+        {onHands.isError ? (
+          <ErrorState message={onHands.error.message} />
+        ) : onHands.isLoading ? (
           <Skeleton />
         ) : byUser.length === 0 ? (
           <Empty message={m('cashDay.allHanded')} />
@@ -207,7 +220,6 @@ export function CashDayReport(): ReactElement {
               key={row.userId}
               label={row.fullName}
               value={money(parseMoney(row.onHands))}
-              strong
             />
           ))
         )}
@@ -262,25 +274,34 @@ function Line({
   label,
   hint,
   value,
-  strong = false,
+  total = false,
   muted = false,
 }: {
   readonly label: string;
   readonly hint?: string;
   readonly value: string;
-  readonly strong?: boolean;
+  /** Итог карточки: «Всего», «Сдано». */
+  readonly total?: boolean;
   readonly muted?: boolean;
 }): ReactElement {
   return (
-    <View style={styles.line}>
+    <View style={[styles.line, total ? styles.lineTotal : null]}>
       <View style={styles.lineText}>
-        <Text style={[styles.lineLabel, muted ? styles.lineMuted : null]}>{label}</Text>
+        <Text
+          style={[
+            styles.lineLabel,
+            total ? styles.lineTotalLabel : null,
+            muted ? styles.lineMuted : null,
+          ]}
+        >
+          {label}
+        </Text>
         {hint !== undefined && <Text style={styles.lineHint}>{hint}</Text>}
       </View>
       <Text
         style={[
           styles.lineValue,
-          strong ? styles.lineStrong : null,
+          total ? styles.lineTotalValue : null,
           muted ? styles.lineMuted : null,
         ]}
       >
@@ -335,8 +356,24 @@ const styles = StyleSheet.create({
     ...typography.value,
     color: colors.textPrimary,
   },
-  lineStrong: {
-    fontWeight: '700',
+  /*
+    Итог отличается от строк над ним и подписью, и суммой. Прежний «жирный»
+    ничего не менял — сумма в строке и так жирная, — и «Всего» терялось
+    среди источников: итог карточки не находился взглядом.
+  */
+  lineTotal: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+  },
+  lineTotalLabel: {
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  lineTotalValue: {
+    fontFamily: fonts.extrabold,
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: '800',
+    letterSpacing: typography.sectionTitle.letterSpacing,
   },
   lineMuted: {
     color: colors.textMuted,

@@ -199,7 +199,7 @@ export function OrderManagement({
                   ? '—'
                   : economics.data.marginPercent === null
                     ? economics.data.marginFormatted
-                    : `${economics.data.marginFormatted} · ${economics.data.marginPercent.toString()} %`
+                    : `${economics.data.marginFormatted} · ${formatPercent(economics.data.marginPercent)}`
               }
               valueColor={
                 (economics.data.marginMinor ?? 0) < 0 ? colors.danger : colors.textPrimary
@@ -468,6 +468,17 @@ function draftMoney(raw: string): number {
   }
 }
 
+/**
+ * Процент наценки с десятичной запятой: «96,99 %».
+ *
+ * `toString()` давал «96.99 %» с точкой, а соседние числа в приложении —
+ * площадь «11,48 м²», суммы — пишутся с запятой. Пробел перед знаком
+ * неразрывный: «%» не уезжает на строку один.
+ */
+function formatPercent(value: number): string {
+  return `${value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}\u00A0%`;
+}
+
 function trimAmount(value: string): string {
   return groupDigits(Number.parseFloat(value).toString());
 }
@@ -504,8 +515,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
+  // 44 — общая высота цели нажатия в приложении; 40 рядом со строками в 46
+  // выглядело недоделкой и промахивалось пальцем.
   chip: {
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     borderRadius: radius.pill,

@@ -9,7 +9,7 @@ import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, typography, fonts } from '../theme';
 
-import { Card, CardTitle, Pill, Row } from './Card';
+import { Card, CardTitle, ErrorState, Pill, Row } from './Card';
 import { ShiftRing } from './ShiftRing';
 import { SlideToConfirm } from './SlideToConfirm';
 import { useLocale } from '../hooks/useLocale';
@@ -95,6 +95,17 @@ export function ShiftControl({
 
   const isBusy = isRequesting || checkIn.isPending || checkOut.isPending;
   const shift = current.data ?? null;
+  /*
+    Состояние смены ИЗВЕСТНО только по ответу сервера.
+
+    Пока запрос летит или упал, `current.data` равен `undefined`, и прежнее
+    `?? null` превращало «не знаю» в «смены нет»: швея с открытой с 06:52
+    сменой видела «Не открыта», кольцо «Смена не открыта 00:00:00» и
+    приглашение «Проведите, чтобы начать смену» — а при обрыве связи
+    видела это как факт и шла отмечаться второй раз. Пока состояние
+    неизвестно, ничего про смену не утверждаем и жест не предлагаем.
+  */
+  const isKnown = current.data !== undefined;
 
   const handleCheckIn = (): void => {
     setServerError(null);
@@ -116,7 +127,8 @@ export function ShiftControl({
       return null;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // Массив типов, а не `MediaTypeOptions`: тот объявлен устаревшим и пишет предупреждение.
+      mediaTypes: ['images'],
       quality: 0.6,
       base64: true,
       exif: false,
@@ -166,19 +178,30 @@ export function ShiftControl({
   return (
     <>
       <Card>
+        {/*
+          «Текущая смена», а не «Смена»: на экране «Смена» заголовок карточки
+          повторял шапку экрана слово в слово. Так же карточка называется на
+          главной и в профиле.
+        */}
         <CardTitle
-          title={m('shift.title')}
+          title={m('shift.current')}
           icon="shift"
           action={
-            <Pill
-              text={shift === null ? m('shift.notOpen') : m('shift.open')}
-              tone={shift === null ? 'neutral' : 'positive'}
-            />
+            isKnown ? (
+              <Pill
+                text={shift === null ? m('shift.notOpen') : m('shift.open')}
+                tone={shift === null ? 'neutral' : 'positive'}
+              />
+            ) : undefined
           }
         />
 
-        {current.isLoading ? (
-          <ActivityIndicator color={colors.accent} style={styles.loader} />
+        {!isKnown ? (
+          current.isError ? (
+            <ErrorState />
+          ) : (
+            <ActivityIndicator color={colors.accent} style={styles.loader} />
+          )
         ) : shift === null ? (
           <Text style={styles.description}>{m('shift.closedHint')}</Text>
         ) : (
@@ -198,7 +221,7 @@ export function ShiftControl({
         )}
       </Card>
 
-      {showTimer && (
+      {showTimer && isKnown && (
         <Card>
           <ShiftRing
             startedAt={startedAt}
@@ -209,7 +232,8 @@ export function ShiftControl({
         </Card>
       )}
 
-      {children}
+      {/* Выезд и отлучка зависят от того же ответа: до него они тоже показали бы «смены нет». */}
+      {isKnown && children}
 
       {(locationError !== null || serverError !== null) && (
         <View style={styles.error} accessibilityRole="alert">
@@ -223,14 +247,19 @@ export function ShiftControl({
         естественный момент запросить геолокацию. Для экранного диктора
         компонент остаётся обычной кнопкой.
       */}
-      <SlideToConfirm
-        label={shift === null ? m('shift.slideStart') : m('shift.slideEnd')}
-        onConfirm={shift === null ? handleCheckIn : handleCheckOut}
-        disabled={current.isLoading}
-        busy={isBusy}
-      />
+      {isKnown && (
+        <>
+          <SlideToConfirm
+            label={shift === null ? m('shift.slideStart') : m('shift.slideEnd')}
+            onConfirm={shift === null ? handleCheckIn : handleCheckOut}
+            busy={isBusy}
+          />
 
-      <Text style={styles.footnote}>{isRequesting ? m('shift.locating') : m('shift.geoNote')}</Text>
+          <Text style={styles.footnote}>
+            {isRequesting ? m('shift.locating') : m('shift.geoNote')}
+          </Text>
+        </>
+      )}
     </>
   );
 }

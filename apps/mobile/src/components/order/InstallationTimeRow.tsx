@@ -1,15 +1,21 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { formatInstallSlot, installSlotInputValue, parseInstallSlotInput } from '@curtain-crm/shared';
-import { useState, type ReactElement } from 'react';
+import {
+  formatInstallSlot,
+  formatIsoDate,
+  installSlotInputValue,
+  parseInstallSlotInput,
+} from '@curtain-crm/shared';
+import { useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
 import { notifyError, notifySuccess } from '../../lib/haptics';
 import { trpc } from '../../lib/trpc';
-import { colors, hairline, radius, spacing, typography } from '../../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../../theme';
 
 import { BottomSheet } from '../BottomSheet';
-import { Icon } from '../Icon';
+import { Icon, type IconName } from '../Icon';
+import { SubmitButton } from '../SubmitButton';
 
 /** «15.10 в 10:30» на языке приложения. */
 export function useInstallSlotLabel(): (at: Date) => string {
@@ -34,10 +40,13 @@ function toPickerDate(at: Date): Date {
   return new Date(year, month - 1, date, hours, minutes);
 }
 
+/** Части даты пикера — строкой `YYYY-MM-DDTHH:mm`, как пишет поле браузера. */
+function toInputValue(local: Date): string {
+  return `${local.getFullYear().toString()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}T${pad(local.getHours())}:${pad(local.getMinutes())}`;
+}
+
 function fromPickerDate(local: Date): Date | null {
-  return parseInstallSlotInput(
-    `${local.getFullYear().toString()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}T${pad(local.getHours())}:${pad(local.getMinutes())}`,
-  );
+  return parseInstallSlotInput(toInputValue(local));
 }
 
 /** Завтра в 10:00 — с чего начинать выбор, если времени ещё нет. */
@@ -90,7 +99,9 @@ export function InstallationTimeRow({
 
   const open = (): void => {
     setDraft(installationAt === null ? defaultDraft() : toPickerDate(installationAt));
-    setWebValue(installationAt === null ? '' : installSlotInputValue(installationAt));
+    // В браузере — тот же черновик, что у телефона: «завтра в 10:00», а не
+    // пустое поле, на котором «Сохранить» молча ничего не делал.
+    setWebValue(installationAt === null ? toInputValue(defaultDraft()) : installSlotInputValue(installationAt));
     setStep('date');
   };
 
@@ -161,16 +172,35 @@ export function InstallationTimeRow({
             setStep(null);
           }}
         >
+          {/*
+            В браузере — два наших поля, дата и время, а не голый
+            `datetime-local`: тот рисовал «10/26/2026, 05:14 AM» — американский
+            порядок и 12-часовое время — под строкой «26.10 в 05:14», высотой
+            23 точки и с чужим значком. Календарь и часы по-прежнему берутся
+            у браузера (на телефоне это системные), но открывает их наше поле
+            той же высоты и того же вида, что и остальные поля приложения.
+          */}
           {Platform.OS === 'web' ? (
-            <View style={styles.webControl}>
-              <input
-                type="datetime-local"
-                value={webValue}
-                aria-label={m('install.pick')}
-                onChange={(event) => {
-                  setWebValue(event.target.value);
+            <View style={styles.webRow}>
+              <WebPickerField
+                type="date"
+                value={webValue.slice(0, 10)}
+                shown={formatIsoDate(webValue.slice(0, 10))}
+                icon="calendar"
+                label={m('install.pick')}
+                onChange={(date) => {
+                  setWebValue(`${date}T${webValue.slice(11, 16)}`);
                 }}
-                style={webInput}
+              />
+              <WebPickerField
+                type="time"
+                value={webValue.slice(11, 16)}
+                shown={webValue.slice(11, 16)}
+                icon="shift"
+                label={m('install.pick')}
+                onChange={(time) => {
+                  setWebValue(`${webValue.slice(0, 10)}T${time}`);
+                }}
               />
             </View>
           ) : (
@@ -198,7 +228,9 @@ export function InstallationTimeRow({
               />
             </>
           )}
-          <Pressable
+          <SubmitButton
+            label={m('install.save')}
+            pending={schedule.isPending}
             onPress={() => {
               if (Platform.OS === 'web') {
                 const at = parseInstallSlotInput(webValue);
@@ -207,11 +239,7 @@ export function InstallationTimeRow({
               }
               save(draft);
             }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.done, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.doneText}>{m('install.save')}</Text>
-          </Pressable>
+          />
           {installationAt !== null && (
             <Pressable
               onPress={() => {
@@ -229,15 +257,88 @@ export function InstallationTimeRow({
   );
 }
 
-const webInput = {
-  flex: 1,
-  minWidth: 0,
+/**
+ * Поле даты или времени для браузера: наш вид, системный выбор.
+ *
+ * Поле браузера под ним невидимо и служит только якорем: `showPicker()`
+ * открывает его календарь или часы, а показывает значение наш текст —
+ * «26.10.2026» и «05:14», в 24 часа, как в строке над шторкой.
+ */
+function WebPickerField({
+  type,
+  value,
+  shown,
+  icon,
+  label,
+  onChange,
+}: {
+  readonly type: 'date' | 'time';
+  readonly value: string;
+  readonly shown: string;
+  readonly icon: IconName;
+  readonly label: string;
+  readonly onChange: (value: string) => void;
+}): ReactElement {
+  const input = useRef<HTMLInputElement | null>(null);
+
+  const openPicker = (): void => {
+    const element = input.current;
+    if (element === null) return;
+    // `showPicker` есть во всех живых браузерах; старым хватает фокуса и клика.
+    if (typeof element.showPicker === 'function') {
+      try {
+        element.showPicker();
+        return;
+      } catch {
+        // Браузер не признал нажатие жестом пользователя — пробуем по-старому.
+      }
+    }
+    element.focus();
+    element.click();
+  };
+
+  return (
+    <View style={styles.webField}>
+      <Pressable
+        onPress={openPicker}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${shown}`}
+        style={({ pressed }) => [styles.webFieldPress, pressed ? styles.pressed : null]}
+      >
+        <Text style={styles.webFieldText} numberOfLines={1}>
+          {shown}
+        </Text>
+        <Icon name={icon} size={18} color={colors.textMuted} />
+      </Pressable>
+      <input
+        ref={input}
+        type={type}
+        value={value}
+        tabIndex={-1}
+        aria-hidden
+        onChange={(event) => {
+          // Пустое значение — «очистить» в календаре браузера: время у установки
+          // убирает отдельная кнопка, поле его не стирает.
+          if (event.target.value !== '') onChange(event.target.value);
+        }}
+        style={webPickerAnchor}
+      />
+    </View>
+  );
+}
+
+/** Невидимое поле браузера под нашим — только якорь для его календаря и часов. */
+const webPickerAnchor = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  width: '100%',
+  height: '100%',
+  margin: 0,
+  padding: 0,
   border: 'none',
-  outline: 'none',
-  background: 'transparent',
-  color: colors.textPrimary,
-  fontFamily: typography.body.fontFamily,
-  fontSize: typography.body.fontSize,
+  opacity: 0,
+  pointerEvents: 'none',
 } as const;
 
 const styles = StyleSheet.create({
@@ -257,6 +358,7 @@ const styles = StyleSheet.create({
   },
   value: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -264,45 +366,52 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textMuted,
   },
+  // 44 — полная цель для пальца: `hitSlop` браузер не знает.
   change: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 36,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
   },
   changeText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.accentStrong,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
-  webControl: {
-    minHeight: 46,
+  webRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  /* Мерка `DateField`: 46 в высоту, волосяная рамка, скругление `md`. */
+  webField: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 46,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  done: {
-    marginTop: spacing.md,
-    minHeight: 46,
+  webFieldPress: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  doneText: {
+  webFieldText: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
+    color: colors.textPrimary,
+    flex: 1,
+    // Табличные цифры: «05:14» и «26.10.2026» не дрожат при смене значения.
+    fontVariant: ['tabular-nums'],
   },
   clear: {
     marginTop: spacing.sm,

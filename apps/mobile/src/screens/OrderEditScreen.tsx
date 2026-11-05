@@ -1,4 +1,6 @@
 import {
+  formatPhone,
+  normalizePhone,
   OrderType,
   parseMoney,
   PRIORITIES,
@@ -84,7 +86,9 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
   const discountMinor = parseMoney(order.discountAmount ?? '0');
 
   const [clientName, setClientName] = useState(order.clientName);
-  const [clientPhone, setClientPhone] = useState(order.clientPhone);
+  // Номер — в том же виде, что в карточке заказа («+998 90 577 45 27»), а не
+  // как хранится в базе («+998905774527»).
+  const [clientPhone, setClientPhone] = useState(() => formatPhone(order.clientPhone));
   const [installAddress, setInstallAddress] = useState(order.installAddress ?? '');
   const [priority, setPriority] = useState<Priority>(order.priority);
   const [deadline, setDeadline] = useState(order.deadline ?? '');
@@ -144,7 +148,11 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
 
     const changes = {
       ...(!forStock && clientName.trim() !== order.clientName ? { clientName: clientName.trim() } : {}),
-      ...(!forStock && clientPhone.trim() !== order.clientPhone ? { clientPhone: clientPhone.trim() } : {}),
+      // Сравнение — по номеру, а не по записи: отформатированный «+998 90 …»
+      // тот же номер, что «+998905774527» в базе, и правкой он не считается.
+      ...(!forStock && (normalizePhone(clientPhone) ?? clientPhone.trim()) !== order.clientPhone
+        ? { clientPhone: clientPhone.trim() }
+        : {}),
       ...(!forStock && installAddress.trim() !== (order.installAddress ?? '')
         ? { installAddress: installAddress.trim() }
         : {}),

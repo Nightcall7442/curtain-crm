@@ -3020,7 +3020,7 @@ async function run(db: Database): Promise<void> {
   );
   // Старое приложение (APK до 05.11) поля не знает: его чек принимается
   // без типа — ошибки у продавца быть не должно, тип спросит новая сборка.
-  const legacy = await sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 } as never);
+  const legacy = await sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 });
   const afterLegacy = await caller.terminalChecks.byDay({ day: workshopDayIso(new Date()) });
   const legacyRow = afterLegacy.rows.find((row) => row.id === legacy.id);
   check(

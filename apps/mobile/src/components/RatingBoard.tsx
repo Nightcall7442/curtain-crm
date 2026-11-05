@@ -1,10 +1,10 @@
 import { PLURAL_POINTS, pluralize } from '@curtain-crm/shared';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, radius, spacing, typography } from '../theme';
 
-import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
+import { Card, CardLink, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { Icon } from './Icon';
 import type { RouterOutputs } from '../lib/trpc';
 import { useLocale } from '../hooks/useLocale';
@@ -48,26 +48,32 @@ export function RatingBoard({
    */
   const isInPodium = data?.podium.some((entry) => entry.isMe) ?? false;
   const showOwnRow = me !== null && me.unratedReason === null && !isInPodium;
+  /*
+    Ни у кого ни балла — соревнование ещё не началось.
+
+    Иначе табло показывало пятерых на первом месте с «0 баллов» и кубком у
+    каждого, а ниже — «⋯» и «Вы», тоже первым: разрыв, которого нет.
+  */
+  const nobodyScored = (data?.podium ?? []).every((entry) => (entry.score ?? 0) <= 0);
+  /* Кубок — только единоличному лидеру: у ничьей за первое место его нет. */
+  const leaders = (data?.podium ?? []).filter((entry) => entry.place === 1).length;
+  const lastPodiumPlace = data?.podium.at(-1)?.place ?? null;
+  /* «⋯» означает «ниже пятёрки» — при равном с ней месте разрыва нет. */
+  const showGap = me?.place != null && lastPodiumPlace !== null && me.place > lastPodiumPlace;
 
   return (
     <Card>
       <CardTitle
         title={m('rating.title')}
         icon="rating"
-        action={
-          <Pressable onPress={onPressAll} accessibilityRole="button" hitSlop={8}>
-            {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>{m('rating.more')}</Text>
-            )}
-          </Pressable>
-        }
+        action={<CardLink label={m('rating.more')} onPress={onPressAll} />}
       />
 
       {isError ? (
         <ErrorState />
       ) : isLoading || data === undefined ? (
         <Skeleton rows={4} />
-      ) : data.podium.length === 0 ? (
+      ) : data.podium.length === 0 || nobodyScored ? (
         <Empty
           message={m('rating.notStarted')}
           hint={m('rating.notStartedHint')}
@@ -82,6 +88,7 @@ export function RatingBoard({
               score={entry.score}
               isMe={entry.isMe}
               isLast={index === data.podium.length - 1 && !showOwnRow}
+              medal={entry.place === 1 && leaders === 1 && (entry.score ?? 0) > 0}
             />
           ))}
 
@@ -92,7 +99,7 @@ export function RatingBoard({
                 Без него строка читалась бы как шестое место, хотя между ними
                 могут быть десятки других.
               */}
-              <Text style={styles.gap}>⋯</Text>
+              {showGap && <Text style={styles.gap}>⋯</Text>}
 
               <BoardRow
                 place={me.place}
@@ -100,6 +107,7 @@ export function RatingBoard({
                 score={me.score}
                 isMe
                 isLast
+                medal={false}
               />
             </>
           )}
@@ -125,12 +133,15 @@ function BoardRow({
   score,
   isMe,
   isLast,
+  medal,
 }: {
   readonly place: number | null;
   readonly name: string;
   readonly score: number | null;
   readonly isMe: boolean;
   readonly isLast: boolean;
+  /** Кубок лидера: только у единственного первого места с баллами. */
+  readonly medal: boolean;
 }): ReactElement {
   const { locale } = useLocale();
   return (
@@ -145,7 +156,7 @@ function BoardRow({
         </Text>
 
         {/* Медаль только у первого: три подряд превращают список в ёлку. */}
-        {place === 1 && <Icon name="rating" size={15} color={colors.accentStrong} />}
+        {medal && <Icon name="rating" size={15} color={colors.accentStrong} />}
 
         <Text style={styles.score}>
           {score === null ? '—' : locale === 'uz' ? `${score.toString()} ball` : pluralize(score, PLURAL_POINTS)}
@@ -156,14 +167,6 @@ function BoardRow({
 }
 
 const styles = StyleSheet.create({
-  link: {
-    ...typography.caption,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  linkPressed: {
-    opacity: opacity.pressed,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -204,6 +207,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   nameMine: {
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
   score: {

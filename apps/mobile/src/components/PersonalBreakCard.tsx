@@ -1,12 +1,13 @@
 import { formatTime, PERSONAL_BREAK_DURATION_OPTIONS } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, opacity, radius, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
+import { SubmitButton } from './SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -83,6 +84,11 @@ export function PersonalBreakCard({
       <Card>
         <CardTitle title={m('break.title')} icon="deadline" />
         <Text style={styles.hint}>{m('break.hint')}</Text>
+        {/*
+          Все сроки — одним рядом равных кнопок. В перенос по ширине подписи
+          они ложились 4 + 1: «30 мин» оставалась одна на второй строке, а
+          кнопки первой были разной ширины и не доходили до края карточки.
+        */}
         <View style={styles.chips}>
           {PERSONAL_BREAK_DURATION_OPTIONS.map((minutes) => (
             <Pressable
@@ -94,7 +100,9 @@ export function PersonalBreakCard({
               accessibilityRole="button"
               style={({ pressed }) => [styles.chip, pressed ? styles.pressed : null]}
             >
-              <Text style={styles.chipText}>{m('shift.minutes', { n: minutes })}</Text>
+              <Text style={styles.chipText} numberOfLines={2}>
+                {m('shift.minutes', { n: minutes })}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -124,26 +132,24 @@ export function PersonalBreakCard({
       <Text style={[styles.timer, overdue ? styles.timerOverdue : null]}>
         {overdue ? `−${formatDuration(overdueSeconds)}` : formatDuration(remainingSeconds)}
       </Text>
-      <Text style={styles.hint}>
+      <Text style={[styles.hint, styles.timerHint]}>
         {overdue
           ? m('break.overdueHint')
           : m('break.returnBy', { time: formatTime(expectedReturn) })}
       </Text>
 
-      <Pressable
+      {/*
+        Общая кнопка приложения, а не своя: на экране смены эта карточка
+        стоит под карточкой выезда, и две главные кнопки с разным
+        скруглением и весом подписи выглядели взятыми из разных наборов.
+      */}
+      <SubmitButton
+        label={m('break.back')}
         onPress={() => {
           endBreak.mutate();
         }}
-        disabled={endBreak.isPending}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.returnButton, pressed ? styles.pressed : null]}
-      >
-        {endBreak.isPending ? (
-          <ActivityIndicator color={colors.onAccent} />
-        ) : (
-          <Text style={styles.returnButtonText}>{m('break.back')}</Text>
-        )}
-      </Pressable>
+        pending={endBreak.isPending}
+      />
     </Card>
   );
 }
@@ -163,15 +169,15 @@ const styles = StyleSheet.create({
   },
   chips: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   chip: {
+    flex: 1,
+    minWidth: 0,
     minHeight: 44,
-    minWidth: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.xs,
     borderRadius: radius.pill,
     borderWidth: hairline,
     borderColor: colors.border,
@@ -179,12 +185,19 @@ const styles = StyleSheet.create({
   },
   chipText: {
     ...typography.caption,
-    color: colors.textPrimary,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
   },
   pressed: {
     opacity: opacity.pressed,
   },
+  /*
+    Таймер — общий с выездом (`InstallationTripCard`): тот же кегль, по
+    центру, подсказка под ним тоже по центру. Два «я не на месте» на одном
+    экране были набраны по-разному: здесь 34 по центру, там 22 слева.
+  */
   timer: {
     fontFamily: fonts.bold,
     fontSize: 34,
@@ -197,17 +210,8 @@ const styles = StyleSheet.create({
   timerOverdue: {
     color: colors.danger,
   },
-  returnButton: {
-    minHeight: 48,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  returnButtonText: {
-    ...typography.body,
-    color: colors.onAccent,
-    fontWeight: '600',
+  timerHint: {
+    textAlign: 'center',
+    marginBottom: spacing.xs,
   },
 });

@@ -51,8 +51,16 @@ export function ShiftInfoCard({
     return `${weekday}, ${startedAt.getDate().toString()} ${month}`;
   })();
 
+  /*
+    Высота — по содержимому, без `flex: 1`.
+
+    Растяжение осталось с тех пор, как карточка стояла в ряд с «Зарплатой»
+    и обе выравнивались по высоте. В профиле пара давно стала колонкой, и
+    `flex: 1` делил её высоту поровну: этой карточке не хватало 37 px, и
+    строка «Заказов у меня в работе» уходила под следующую карточку.
+  */
   return (
-    <Card style={styles.card}>
+    <Card>
       <CardTitle
         title={m('shift.current')}
         icon="shift"
@@ -87,9 +95,6 @@ export function ShiftInfoCard({
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-  },
   closed: {
     ...typography.body,
     color: colors.textSecondary,

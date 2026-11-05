@@ -1,53 +1,82 @@
 import { useNavigation } from '@react-navigation/native';
-import { MonitorGroup, type MonitorGroup as MonitorGroupName } from '@curtain-crm/shared';
+import {
+  LIVE_STATUS_LABELS,
+  LiveStatus,
+  MONITOR_GROUP_LABELS,
+  MonitorGroup,
+  type LiveStatus as LiveStatusName,
+  type MonitorGroup as MonitorGroupName,
+} from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
 import { trpc } from '../../lib/trpc';
-import { colors, fonts, spacing, typography } from '../../theme';
+import { colors, radius, spacing, typography } from '../../theme';
 
 import { Card } from '../Card';
 import { Icon, type IconName } from '../Icon';
 import { PressableScale } from '../PressableScale';
 
-const TILES: readonly { group: MonitorGroupName; icon: IconName; title: 'monitor.sewers' | 'monitor.installers' }[] = [
-  { group: MonitorGroup.WORKSHOP, icon: 'people', title: 'monitor.sewers' },
-  { group: MonitorGroup.INSTALLATION, icon: 'work', title: 'monitor.installers' },
+/**
+ * Плитки группы и то, что под числом «на смене».
+ *
+ * Под числом — не повтор его же словами («на смене 0 из 6» под «0 / 6»), а
+ * то, чего в нём нет: сколько швей шьют прямо сейчас и сколько выездных на
+ * объекте. Это и есть первый вопрос руководителя к табло.
+ */
+const TILES: readonly { group: MonitorGroupName; icon: IconName; detail: LiveStatusName }[] = [
+  { group: MonitorGroup.WORKSHOP, icon: 'people', detail: LiveStatus.WORKING },
+  { group: MonitorGroup.INSTALLATION, icon: 'work', detail: LiveStatus.TRIP },
 ];
 
 function Tile({
   group,
   icon,
-  title,
+  detail,
 }: {
   readonly group: MonitorGroupName;
   readonly icon: IconName;
-  readonly title: string;
+  readonly detail: LiveStatusName;
 }): ReactElement {
-  const { m } = useLocale();
+  const { m, locale } = useLocale();
   const navigation = useNavigation();
   const board = trpc.monitor.board.useQuery({ group });
-  const summary = board.data?.summary;
+  const data = board.data;
+  /*
+    Подпись — та же, что в шапке табло, куда плитка ведёт: плитка «Швеи»
+    открывала экран «Цех», и было неясно, туда ли попал.
+  */
+  const title = MONITOR_GROUP_LABELS[locale][group];
 
   return (
     <PressableScale
       onPress={() => {
         navigation.navigate('MonitorBoard', { group });
       }}
-      accessibilityLabel={title}
+      accessibilityLabel={
+        data === undefined
+          ? title
+          : `${title}, ${m('monitor.onShift', { n: data.summary.onShift, total: data.summary.headcount })}`
+      }
       style={styles.tileWrap}
     >
       <Card style={styles.tile}>
         <View style={styles.icon}>
           <Icon name={icon} size={17} color={colors.accent} />
         </View>
-        <Text style={styles.title}>{title}</Text>
         <Text style={styles.value}>
-          {summary === undefined ? '—' : `${summary.onShift.toString()} / ${summary.headcount.toString()}`}
+          {data === undefined
+            ? '—'
+            : `${data.summary.onShift.toString()} / ${data.summary.headcount.toString()}`}
         </Text>
-        <Text style={styles.hint} numberOfLines={1}>
-          {summary === undefined ? ' ' : m('monitor.onShift', { n: summary.onShift, total: summary.headcount })}
+        <Text style={styles.label} numberOfLines={2}>
+          {title}
+        </Text>
+        <Text style={styles.detail} numberOfLines={1}>
+          {data === undefined
+            ? ' '
+            : `${LIVE_STATUS_LABELS[locale][detail]} ${data.statusCounts[detail].toString()}`}
         </Text>
       </Card>
     </PressableScale>
@@ -56,16 +85,21 @@ function Tile({
 
 /** Две плитки «Табло» — швеи и выездные: кто на смене и вход в табло группы. */
 export function MonitorTiles(): ReactElement {
-  const { m } = useLocale();
   return (
     <View style={styles.row}>
       {TILES.map((tile) => (
-        <Tile key={tile.group} group={tile.group} icon={tile.icon} title={m(tile.title)} />
+        <Tile key={tile.group} group={tile.group} icon={tile.icon} detail={tile.detail} />
       ))}
     </View>
   );
 }
 
+/*
+  Плитка — по той же мерке, что плитки сводки на главной (`StatTile`):
+  значок 34 × 34 со скруглением `md`, крупное число, подпись под ним. Рядом
+  на одном экране стояли две сетки разных систем — значок 32 со скруглением
+  10, число 24 и подпись над ним.
+*/
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
@@ -75,31 +109,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tile: {
-    gap: 4,
+    flex: 1,
   },
   icon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accentSoft,
-    marginBottom: spacing.xs,
-  },
-  title: {
-    ...typography.caption,
-    fontWeight: '600',
-    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   value: {
-    fontFamily: fonts.bold,
-    fontWeight: '700',
-    fontSize: 24,
+    ...typography.largeTitle,
     color: colors.textPrimary,
+    // Табличные цифры: «1 / 6» и «0 / 6» в соседних плитках одной ширины.
+    fontVariant: ['tabular-nums'],
   },
-  hint: {
+  label: {
     ...typography.caption,
-    fontSize: 12,
     color: colors.textMuted,
+  },
+  detail: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
 });

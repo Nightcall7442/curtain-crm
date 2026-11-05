@@ -4,7 +4,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardTitle, Skeleton } from './Card';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, hairline, opacity, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -69,8 +69,15 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
           {/* Галочка нарисована рамкой и заливкой, без значка из набора:
               квадрат с птичкой и так читается, а лишний глиф в списке из
               пятнадцати строк — рябь. */}
-          <View style={[styles.box, row.checked ? styles.boxChecked : null]}>
-            {row.checked && <Text style={styles.tick}>✓</Text>}
+          {/*
+            Квадрат — по центру ПЕРВОЙ строки подписи: ячейка высотой в
+            строку (21), квадрат в ней посередине. С отступом сверху в 1
+            точку он стоял на полторы ниже середины строки.
+          */}
+          <View style={styles.boxSlot}>
+            <View style={[styles.box, row.checked ? styles.boxChecked : null]}>
+              {row.checked && <Text style={styles.tick}>✓</Text>}
+            </View>
           </View>
 
           <View style={styles.text}>
@@ -93,6 +100,14 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
   );
 }
 
+/**
+ * Квадрат отметки. Скругление — меньше токена `radius.sm` (10): на стороне
+ * 22 оно превращало квадрат в кружок, и список читался как выбор одного
+ * варианта из многих, а не как отметки.
+ */
+const CHECKBOX_SIZE = 22;
+const CHECKBOX_RADIUS = 6;
+
 const styles = StyleSheet.create({
   counter: {
     ...typography.footnote,
@@ -110,16 +125,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
+  boxSlot: {
+    height: typography.body.lineHeight,
+    justifyContent: 'center',
+  },
   box: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.sm,
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: CHECKBOX_RADIUS,
     borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
   },
   boxChecked: {
     backgroundColor: colors.accent,

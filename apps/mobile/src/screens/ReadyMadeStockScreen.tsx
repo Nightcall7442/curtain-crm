@@ -27,9 +27,10 @@ import { CatalogPicker } from '../components/CatalogPicker';
 import { BottomSheet } from '../components/BottomSheet';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -272,13 +273,23 @@ export function ReadyMadeStockScreen(): ReactElement {
     });
   };
 
-  if (items.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={items.error.message} />
-      </View>
-    );
-  }
+  /** Размер шторы — «300×260 см»: в строке списка и в шапке шторки. */
+  const sizeOf = (item: { readonly widthCm: string; readonly heightCm: string }): string =>
+    m('sell.cm', { w: Number.parseFloat(item.widthCm), h: Number.parseFloat(item.heightCm) });
+
+  /*
+    Какую штору правят в шторке. Список под ней затемнён, а две позиции
+    комплекта бывают одной модели и с одним кодом — без этой строки
+    «Пересчитать остаток» не говорил, чей остаток пересчитывают.
+  */
+  const counted = items.data?.find((entry) => entry.id === counting) ?? null;
+  const priced = items.data?.find((entry) => entry.id === pricing) ?? null;
+  const subjectOf = (
+    item: NonNullable<typeof counted>,
+  ): { readonly title: string; readonly meta: string } => ({
+    title: item.code === null ? item.model : `${item.model} · ${item.code}`,
+    meta: `${t(ORDER_ITEM_KIND_LABELS, item.kind)} · ${sizeOf(item)}`,
+  });
 
   return (
     <KeyboardAvoidingView
@@ -290,6 +301,12 @@ export function ReadyMadeStockScreen(): ReactElement {
           Склад — единственный вход во всё про готовые шторы. Две кнопки рядом:
           продать то, что лежит, и заказать цеху ещё. На экране «Работа» они
           стояли двумя одинаковыми кнопками и читались как одно действие.
+
+          Без значков: в половину ширины телефона значок, промежуток, подпись
+          «Пошив для склада» и поля кнопки не помещаются — подпись либо
+          упиралась в рамку вплотную, либо ломалась на две строки рядом с
+          однострочной соседкой. Прежний значок к тому же был тем же «плюсом»,
+          что у «Добавить готовые шторы», — третье действие с одним знаком.
         */}
         <View style={styles.actions}>
           <Pressable
@@ -299,7 +316,6 @@ export function ReadyMadeStockScreen(): ReactElement {
             accessibilityRole="button"
             style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
           >
-            <Icon name="paid" size={18} color={colors.accentStrong} />
             <Text style={styles.actionText}>{m('stock.sell')}</Text>
           </Pressable>
 
@@ -310,7 +326,6 @@ export function ReadyMadeStockScreen(): ReactElement {
             accessibilityRole="button"
             style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
           >
-            <Icon name="assigned" size={18} color={colors.accentStrong} />
             <Text style={styles.actionText}>{m('stock.produce')}</Text>
           </Pressable>
         </View>
@@ -320,9 +335,11 @@ export function ReadyMadeStockScreen(): ReactElement {
             setAdding((open) => !open);
           }}
           accessibilityRole="button"
+          accessibilityState={{ expanded: adding }}
           style={({ pressed }) => [styles.add, pressed ? styles.pressed : null]}
         >
-          <Icon name="assigned" size={18} color={colors.onAccent} />
+          {/* Открытая форма — крестик «свернуть», а не тот же «плюс». */}
+          <Icon name={adding ? 'close' : 'assigned'} size={18} color={colors.onAccent} />
           <Text style={styles.addText}>{adding ? m('stock.collapse') : m('stock.add')}</Text>
         </Pressable>
 
@@ -473,18 +490,16 @@ export function ReadyMadeStockScreen(): ReactElement {
               <View key={mate.id} style={styles.mate}>
                 <View style={styles.mateHead}>
                   <Text style={styles.mateTitle}>{m('stock.mate', { n: index + 2 })}</Text>
+                  {/* Полная цель для пальца: `hitSlop` в браузере не работает, и в PWA
+                      попадать приходилось в строку текста высотой 18. */}
                   <Pressable
                     onPress={() => {
                       patch({ mates: form.mates.filter((entry) => entry.id !== mate.id) });
                     }}
                     accessibilityRole="button"
-                    hitSlop={8}
+                    style={({ pressed }) => [styles.mateRemove, pressed ? styles.pressed : null]}
                   >
-                    {({ pressed }) => (
-                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                        {m('create.remove')}
-                      </Text>
-                    )}
+                    <Text style={styles.mateRemoveText}>{m('create.remove')}</Text>
                   </Pressable>
                 </View>
                 <Field label={m('create.kind')}>
@@ -622,29 +637,26 @@ export function ReadyMadeStockScreen(): ReactElement {
               accessibilityRole="button"
               style={({ pressed }) => [styles.addMate, pressed ? styles.pressed : null]}
             >
-              <Icon name="assigned" size={18} color={colors.accent} />
+              <Icon name="assigned" size={18} color={colors.accentStrong} />
               <Text style={styles.addMateText}>{m('stock.addMate')}</Text>
             </Pressable>
 
-            <Pressable
-              disabled={create.isPending}
-              onPress={submit}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.submit,
-                pressed ? styles.pressed : null,
-                create.isPending ? styles.disabled : null,
-              ]}
-            >
-              <Text style={styles.submitText}>{m('stock.submit')}</Text>
-            </Pressable>
+            <SubmitButton label={m('stock.submit')} onPress={submit} pending={create.isPending} />
           </Card>
         )}
 
         <Card>
           <CardTitle title={m('stock.title')} icon="orders" />
 
-          {items.data === undefined ? (
+          {/*
+            Ошибка — внутри карточки списка, а не вместо всего экрана: кнопки
+            «Продать», «Пошив для склада» и «Добавить» от списка не зависят и
+            при сбое загрузки оставаться обязаны. Текст — свой, локализованный:
+            сообщение сервера при сбое бывает английским «Internal server error».
+          */}
+          {items.isError ? (
+            <ErrorState />
+          ) : items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty message={m('stock.none')} hint={m('stock.noneHint')} />
@@ -676,6 +688,15 @@ export function ReadyMadeStockScreen(): ReactElement {
                     </Text>
                   </View>
                 )}
+                {/*
+                  Строка — сеткой: модель и цена в первой строке, код и остаток
+                  во второй, вид · размер · филиал одной строкой ниже.
+
+                  Раньше цена стояла колонкой справа от ВСЕГО текста и сжимала
+                  его до 124 px: модель с кодом ломалась на три строки прямо по
+                  дефисам кода, описание обрезалось, а цена с миниатюрой висели
+                  по центру блока — на полсотни точек ниже названия.
+                */}
                 <View style={styles.itemHead}>
                   {item.photoUrl === null ? (
                     <View style={[styles.thumb, styles.thumbEmpty]}>
@@ -688,33 +709,32 @@ export function ReadyMadeStockScreen(): ReactElement {
                   )}
 
                   <View style={styles.itemBody}>
-                    <Text style={styles.itemTitle}>
-                      {item.code === null ? item.model : `${item.model} · ${item.code}`}
-                    </Text>
-                    <Text style={styles.itemMeta}>{t(ORDER_ITEM_KIND_LABELS, item.kind)}</Text>
-                    <Text style={styles.itemMeta}>
-                      {m('sell.cm', {
-                        w: Number.parseFloat(item.widthCm),
-                        h: Number.parseFloat(item.heightCm),
-                      })}
-                    </Text>
-                    {item.comment !== null && (
-                      <Text style={styles.itemMeta} numberOfLines={2}>
-                        {item.comment}
+                    <View style={styles.itemLine}>
+                      <Text style={styles.itemTitle}>{item.model}</Text>
+                      <Text style={styles.itemPrice}>{money(parseMoney(item.price))}</Text>
+                    </View>
+                    <View style={styles.itemLine}>
+                      <Text style={styles.itemCode}>{item.code ?? ''}</Text>
+                      <Text style={styles.itemQuantity}>
+                        {m('stock.pcsOnly', { n: item.quantity })}
                       </Text>
-                    )}
-                    <Text style={styles.itemMeta}>{item.branchName}</Text>
-                  </View>
-
-                  <View style={styles.itemNumbers}>
-                    <Text style={styles.itemPrice}>{money(parseMoney(item.price))}</Text>
-                    <Text style={styles.itemQuantity}>
-                      {m('stock.pcsOnly', { n: item.quantity })}
+                    </View>
+                    <Text style={styles.itemMeta}>
+                      {`${t(ORDER_ITEM_KIND_LABELS, item.kind)} · ${sizeOf(item)} · ${item.branchName}`}
                     </Text>
+                    {/* Описание — целиком: по нему продавец отличает штору на полке. */}
+                    {item.comment !== null && <Text style={styles.itemComment}>{item.comment}</Text>}
                   </View>
                 </View>
 
                 {/* Остаток и ценник правятся в шторке: строка внизу списка уезжала под клавиатуру. */}
+                {/*
+                  Действия — кнопками с полной высотой пальца, а не строками
+                  текста: `hitSlop` браузер не знает, и в PWA цель была высотой
+                  18 точек. Кнопки растягиваются по ряду, а не лежат рваной
+                  строкой: три подписи в ширину телефона не помещаются ни
+                  на одном из языков.
+                */}
                 <View style={styles.actionsRow}>
                   {item.quantity > 0 && (
                     <Pressable
@@ -722,13 +742,9 @@ export function ReadyMadeStockScreen(): ReactElement {
                         navigation.navigate('SellReadyMade', { readyMadeItemId: item.id });
                       }}
                       accessibilityRole="button"
-                      hitSlop={8}
+                      style={({ pressed }) => [styles.rowAction, pressed ? styles.pressed : null]}
                     >
-                      {({ pressed }) => (
-                        <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                          {m('stock.sell')}
-                        </Text>
-                      )}
+                      <Text style={styles.rowActionText}>{m('stock.sell')}</Text>
                     </Pressable>
                   )}
                   <Pressable
@@ -737,13 +753,9 @@ export function ReadyMadeStockScreen(): ReactElement {
                       setCountValue(item.quantity.toString());
                     }}
                     accessibilityRole="button"
-                    hitSlop={8}
+                    style={({ pressed }) => [styles.rowAction, pressed ? styles.pressed : null]}
                   >
-                    {({ pressed }) => (
-                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                        {m('stock.recount')}
-                      </Text>
-                    )}
+                    <Text style={styles.rowActionText}>{m('stock.recount')}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => {
@@ -753,13 +765,11 @@ export function ReadyMadeStockScreen(): ReactElement {
                       );
                     }}
                     accessibilityRole="button"
-                    hitSlop={8}
+                    style={({ pressed }) => [styles.rowAction, pressed ? styles.pressed : null]}
                   >
-                    {({ pressed }) => (
-                      <Text style={[styles.countOpen, pressed ? styles.pressed : null]}>
-                        {parseMoney(item.price) > 0 ? m('stock.changePrice') : m('stock.setPrice')}
-                      </Text>
-                    )}
+                    <Text style={styles.rowActionText}>
+                      {parseMoney(item.price) > 0 ? m('stock.changePrice') : m('stock.setPrice')}
+                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -774,6 +784,7 @@ export function ReadyMadeStockScreen(): ReactElement {
             setCounting(null);
           }}
         >
+          {counted !== null && <SheetSubject {...subjectOf(counted)} />}
           <Field label={m('stock.quantity')}>
             <Input
               value={countValue}
@@ -783,8 +794,10 @@ export function ReadyMadeStockScreen(): ReactElement {
               autoFocus
             />
           </Field>
-          <Pressable
-            disabled={setQuantity.isPending || counting === null}
+          <SubmitButton
+            label={m('emp.save')}
+            disabled={counting === null}
+            pending={setQuantity.isPending}
             onPress={() => {
               if (counting === null) return;
               setQuantity.mutate({
@@ -792,48 +805,66 @@ export function ReadyMadeStockScreen(): ReactElement {
                 quantity: Math.max(0, Number.parseInt(countValue, 10) || 0),
               });
             }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.sheetSave, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.sheetSaveText}>{m('emp.save')}</Text>
-          </Pressable>
+          />
         </BottomSheet>
 
         <BottomSheet
           visible={pricing !== null}
-          title={m('stock.changePrice')}
+          // Заголовок — тем же словом, что и кнопка, которой шторку открыли.
+          title={
+            priced !== null && parseMoney(priced.price) <= 0
+              ? m('stock.setPrice')
+              : m('stock.changePrice')
+          }
           onClose={() => {
             setPricing(null);
           }}
         >
+          {priced !== null && <SheetSubject {...subjectOf(priced)} />}
           <Field label={m('sell.price')}>
             <MoneyInput value={priceValue} onChangeText={setPriceValue} placeholder="0" autoFocus />
           </Field>
-          <Pressable
-            disabled={setPrice.isPending || pricing === null || inputToMajor(priceValue) <= 0}
+          <SubmitButton
+            label={m('emp.save')}
+            disabled={pricing === null || inputToMajor(priceValue) <= 0}
+            pending={setPrice.isPending}
             onPress={() => {
               if (pricing === null) return;
               setPrice.mutate({ id: pricing, price: inputToMajor(priceValue) });
             }}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.sheetSave,
-              pressed ? styles.pressed : null,
-              inputToMajor(priceValue) <= 0 ? styles.disabled : null,
-            ]}
-          >
-            <Text style={styles.sheetSaveText}>{m('emp.save')}</Text>
-          </Pressable>
+          />
         </BottomSheet>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+/** Какую штору правят: модель с кодом и вид с размером — над полем шторки. */
+function SheetSubject({
+  title,
+  meta,
+}: {
+  readonly title: string;
+  readonly meta: string;
+}): ReactElement {
+  return (
+    <View style={styles.subject}>
+      <Text style={styles.subjectTitle}>{title}</Text>
+      <Text style={styles.subjectMeta}>{meta}</Text>
+    </View>
+  );
+}
+
+/*
+  Кнопки экрана — одной системой, как на «Работе», откуда сюда приходят:
+  крупные — 48 точек и таблеткой (как общая `SubmitButton`), кнопки строки
+  списка — 44, тоже таблеткой. Прежде на одном экране жили четыре разных
+  кнопки: 44 и 48 в высоту, скругление 14 и 999, с рамкой и без.
+*/
 const styles = StyleSheet.create({
   mate: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
     borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
@@ -841,67 +872,111 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.xs,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   mateTitle: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
+    flexShrink: 1,
   },
+  /* Справа заходит на поле карточки ровно на свой отступ — подпись стоит
+     по правому краю полей формы, а цель для пальца остаётся полной. */
+  mateRemove: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    marginRight: -spacing.md,
+  },
+  mateRemoveText: {
+    ...typography.caption,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.accentStrong,
+  },
+  /* Та же «добавить строку», что «Добавить позицию» в продаже с полки. */
   addMate: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    marginVertical: spacing.sm,
-    borderRadius: radius.md,
+    gap: spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: radius.pill,
+    borderWidth: hairline,
+    borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
   },
   addMateText: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accentStrong,
+    flexShrink: 1,
+    textAlign: 'center',
   },
-  sheetSave: {
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
+  subject: {
+    marginBottom: spacing.md,
+    gap: 2,
   },
-  sheetSaveText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
+  subjectTitle: {
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  subjectMeta: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   setHead: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.xs,
     borderRadius: radius.md,
     backgroundColor: colors.accentSoft,
   },
+  /* 13, а не сноска: шапка комплекта и его сумма — то, что читают. */
   setTitle: {
-    ...typography.footnote,
+    ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accentStrong,
     flex: 1,
+    minWidth: 0,
   },
   setTotal: {
-    ...typography.footnote,
+    ...typography.caption,
+    fontFamily: fonts.bold,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentStrong,
   },
-  // Переносом: по-узбекски «Narxni o'zgartirish» длиннее, и в одну строку
-  // три действия не помещались — последнее обрезалось на полуслове.
-  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.xs },
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  rowAction: {
+    flexGrow: 1,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  rowActionText: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.accentStrong,
+    textAlign: 'center',
+  },
   flex: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   content: {
     padding: spacing.lg,
     paddingBottom: tabBarSpace,
@@ -911,22 +986,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  /* Свои поля по бокам: без них узбекская подпись «Ombor uchun tikuv»
+     упиралась в рамку кнопки вплотную. Восемь, а не двенадцать: при
+     двенадцати она в половину ширины 360 уже не помещалась в строку. */
   action: {
     flex: 1,
-    flexDirection: 'row',
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    borderRadius: radius.md,
+    minHeight: 48,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
     borderWidth: hairline,
     borderColor: colors.accent,
     backgroundColor: colors.surface,
   },
   actionText: {
     ...typography.body,
-    color: colors.accentStrong,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.accentStrong,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   add: {
     flexDirection: 'row',
@@ -934,13 +1015,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     minHeight: 48,
-    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.accent,
   },
   addText: {
-    ...typography.headline,
-    color: colors.onAccent,
+    ...typography.body,
+    fontFamily: fonts.bold,
     fontWeight: '700',
+    color: colors.onAccent,
   },
   row: {
     flexDirection: 'row',
@@ -973,29 +1056,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surfaceMuted,
   },
-  submit: {
-    minHeight: 48,
-    marginTop: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitText: {
-    ...typography.headline,
-    color: colors.onAccent,
-    fontWeight: '700',
-  },
   item: {
     paddingVertical: spacing.md,
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   itemHead: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
   thumb: {
     width: 48,
@@ -1013,31 +1083,48 @@ const styles = StyleSheet.create({
     ...typography.title,
     color: colors.accentStrong,
   },
-  itemBody: { flex: 1 },
+  itemBody: { flex: 1, minWidth: 0, gap: 2 },
+  /* Строка «слева — своё, справа — число»: верхним краем, а не по центру. */
+  itemLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
   itemTitle: {
     ...typography.headline,
-    color: colors.textPrimary,
+    fontFamily: fonts.bold,
     fontWeight: '700',
+    color: colors.textPrimary,
+    flex: 1,
+    minWidth: 0,
+  },
+  itemCode: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    flex: 1,
+    minWidth: 0,
   },
   itemMeta: {
     ...typography.caption,
     color: colors.textSecondary,
   },
-  itemNumbers: { alignItems: 'flex-end' },
+  itemComment: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
   itemPrice: {
     ...typography.headline,
-    color: colors.textPrimary,
+    fontFamily: fonts.bold,
     fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'right',
   },
   itemQuantity: {
     ...typography.caption,
     color: colors.textSecondary,
-  },
-  countOpen: {
-    ...typography.caption,
-    color: colors.accentStrong,
-    fontWeight: '700',
+    textAlign: 'right',
   },
   pressed: { opacity: opacity.pressed },
-  disabled: { opacity: opacity.disabled },
 });

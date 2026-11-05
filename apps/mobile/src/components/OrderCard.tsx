@@ -19,7 +19,7 @@ import type { ReactElement } from 'react';
 import { useLocale } from '../hooks/useLocale';
 import { cardShadow, colors, radius, spacing, typography, fonts } from '../theme';
 
-import { Pill } from './Card';
+import { Icon, type IconName } from './Icon';
 import { PressableScale } from './PressableScale';
 import { SwipeableRow } from './SwipeableRow';
 
@@ -100,52 +100,72 @@ export function OrderCard({
         />
       )}
 
-      <View style={styles.header}>
+      {/*
+        Шапка — две строки по две колонки: «номер — статус» и «клиент —
+        исполнитель». Раньше клиент стоял под всей стопкой плашек, и у
+        заказа с исполнителем отъезжал от своего номера на 30 точек вместо
+        шести: соседние карточки одного списка различались по высоте, а
+        имя клиента «плавало». Теперь клиент всегда строкой ниже номера,
+        а исполнитель — по-прежнему сразу под статусом, у правого края.
+      */}
+      <View style={styles.headerRow}>
         <Text style={styles.number} numberOfLines={1}>
           {orderNumber}
         </Text>
-        <View style={styles.badges}>
-          <Pill
+        <View style={styles.statusSlot}>
+          <Chip
             text={t(ORDER_STATUS_LABELS, status)}
             tone={statusTone(status, isOverdue)}
+            wrap
           />
-          {awaitingPayment && <Pill text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />}
-          {/* Кто сейчас ведёт заказ — сразу под статусом, как просил заказчик. */}
-          {executor != null &&
-            (executor.name === null ? (
-              <Text style={styles.executorNone} numberOfLines={1}>
-                {EXECUTOR_NOT_ASSIGNED_LABEL[locale]}
-              </Text>
-            ) : (
-              <Text style={styles.executor} numberOfLines={1}>
-                {executor.name}
-              </Text>
-            ))}
         </View>
       </View>
 
-      <Text style={styles.client} numberOfLines={1}>
-        {clientName}
-      </Text>
+      <View style={[styles.headerRow, styles.clientRow]}>
+        <Text style={styles.client} numberOfLines={1}>
+          {clientName}
+        </Text>
+        {(awaitingPayment || executor != null) && (
+          <View style={styles.sideChips}>
+            {awaitingPayment && <Chip text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />}
+            {/* Кто сейчас ведёт заказ — сразу под статусом, как просил заказчик. */}
+            {executor != null &&
+              (executor.name === null ? (
+                <Chip text={EXECUTOR_NOT_ASSIGNED_LABEL[locale]} tone="neutral" icon="profile" />
+              ) : (
+                <Chip text={executor.name} tone="accent" icon="profile" />
+              ))}
+          </View>
+        )}
+      </View>
 
       <View style={styles.footer}>
-        {slot === null ? (
-          <Text style={[styles.deadline, isOverdue ? styles.overdue : null]} numberOfLines={1}>
-            {isOverdue ? m('orderCard.overdue', { date: formatIsoDateShort(deadline) }) : deadlineLabel}
-          </Text>
-        ) : (
-          <Text style={[styles.deadline, styles.slot]} numberOfLines={1}>
-            {m('install.at', { date: slot.date, time: slot.time })}
-          </Text>
-        )}
+        <View style={styles.when}>
+          {/*
+            Просрочка пишется словом и тогда, когда назначена установка:
+            прошедшее время выезда спокойным зелёным выглядело как «всё по
+            плану», и тревогу несла одна только плашка.
+          */}
+          {(slot === null || isOverdue) && (
+            <Text style={[styles.deadline, isOverdue ? styles.overdue : null]} numberOfLines={1}>
+              {isOverdue ? m('orderCard.overdue', { date: formatIsoDateShort(deadline) }) : deadlineLabel}
+            </Text>
+          )}
+          {slot !== null && (
+            <Text style={[styles.deadline, isOverdue ? null : styles.slot]} numberOfLines={1}>
+              {m('install.at', { date: slot.date, time: slot.time })}
+            </Text>
+          )}
+        </View>
         {workPrice !== null && (
           <View style={styles.money}>
-            <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice))}</Text>
+            {/* Единицы — на языке экрана: без локали узбек видел «млн сум». */}
+            <Text style={styles.price}>{formatMoneyShort(parseMoney(workPrice), { locale })}</Text>
             {/* Продавцу важно с первого взгляда: взяли деньги или нет. */}
             {remaining != null &&
               (parseMoney(remaining) > 0 ? (
                 <Text style={styles.unpaid}>
-                  {m('orderCard.remaining', { sum: formatMoneyShort(parseMoney(remaining)) })}
+                  {m('orderCard.remaining', { sum: formatMoneyShort(parseMoney(remaining), { locale }) })}
                 </Text>
               ) : (
                 <Text style={styles.paid}>{m('orderCard.paid')}</Text>
@@ -189,6 +209,65 @@ export function OrderCard({
   );
 }
 
+type ChipTone = 'positive' | 'warning' | 'danger' | 'neutral' | 'info' | 'accent';
+
+/**
+ * Плашка в шапке карточки: статус, «Ждёт оплаты», исполнитель.
+ *
+ * Своя, а не общий `Pill`, по двум причинам. Первая — ширина: `Pill` в
+ * одну строку и в вебе шире своей колонки не сжимается, поэтому «Отклонён,
+ * решение за директором» уезжала за край карточки и обрезалась на
+ * «директоро». Здесь плашка не шире колонки, а длинный статус переносится
+ * на вторую строку целиком — статус в списке заказов читают, многоточие
+ * съело бы как раз главное. Вторая — единый размер: исполнитель раньше
+ * был текстом на подложке другой высоты (20 против 25) и другого кегля,
+ * и стопка под номером выглядела собранной из разных наборов.
+ *
+ * Скругление `radius.md`, а не «пилюля»: у плашки в строку высотой 24 оно
+ * всё равно даёт полукруглые торцы, а у перенесённой в две строки — ровный
+ * прямоугольник вместо вытянутого овала.
+ */
+function Chip({
+  text,
+  tone,
+  icon,
+  wrap = false,
+}: {
+  readonly text: string;
+  readonly tone: ChipTone;
+  /** Иконка вместо точки-индикатора — у плашки, которая не статус. */
+  readonly icon?: IconName;
+  /** Разрешить вторую строку. Имя исполнителя — в одну, с многоточием. */
+  readonly wrap?: boolean;
+}): ReactElement {
+  const palette = CHIP_PALETTE[tone];
+
+  return (
+    <View style={[styles.chip, { backgroundColor: palette.bg }]}>
+      {icon === undefined ? (
+        <View style={[styles.chipDot, { backgroundColor: palette.fg }]} />
+      ) : (
+        <View style={styles.chipIcon}>
+          <Icon name={icon} size={12} color={palette.fg} />
+        </View>
+      )}
+      <Text style={[styles.chipText, { color: palette.fg }]} numberOfLines={wrap ? 2 : 1}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+/** Те же пары «подложка — текст», что у `Pill`, плюс зелёная — для исполнителя. */
+const CHIP_PALETTE: Record<ChipTone, { readonly bg: string; readonly fg: string }> = {
+  neutral: { bg: colors.surfaceMuted, fg: colors.textSecondary },
+  positive: { bg: colors.positiveSoft, fg: colors.positive },
+  warning: { bg: colors.warningSoft, fg: colors.warning },
+  danger: { bg: colors.dangerSoft, fg: colors.danger },
+  info: { bg: colors.infoSoft, fg: colors.info },
+  accent: { bg: colors.accentSoft, fg: colors.accentStrong },
+};
+
 /**
  * Статусы, в которых заказ СТОИТ и ждёт чьего-то решения, — им янтарный чип.
  * Работа в движении — зелёный, брак — терракота, закрытые — нейтральный.
@@ -206,10 +285,7 @@ const WAITING_STATUSES: ReadonlySet<OrderStatusName> = new Set<OrderStatusName>(
  *
  * Просрочка перекрашивает чип в терракоту независимо от статуса — она важнее.
  */
-function statusTone(
-  status: OrderStatusName,
-  isOverdue: boolean,
-): 'positive' | 'warning' | 'danger' | 'neutral' | 'info' {
+function statusTone(status: OrderStatusName, isOverdue: boolean): ChipTone {
   if (isOverdue || status === OrderStatus.QC_FAILED) return 'danger';
   if (!isActiveStatus(status)) return 'neutral';
   if (WAITING_STATUSES.has(status)) return 'warning';
@@ -240,43 +316,81 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 4,
     borderBottomRightRadius: 4,
   },
-  header: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  badges: {
+  clientRow: {
+    marginTop: spacing.xs,
+  },
+  /*
+    Колонка статуса забирает всё место справа от номера и не шире его:
+    `minWidth: 0` разрешает ей быть уже своего содержимого, иначе в вебе
+    ширину диктует длина статуса в одну строку.
+  */
+  statusSlot: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'flex-end',
-    gap: 4,
+  },
+  /*
+    Плашки справа от клиента — не шире половины карточки, чтобы имя
+    клиента не сжималось в многоточие из-за длинного имени исполнителя.
+    Саму плашку держит `maxWidth: '100%'`: без него в вебе она шире
+    колонки, если имя не помещается в одну строку.
+  */
+  sideChips: {
     flexShrink: 1,
+    maxWidth: '50%',
+    gap: spacing.xs,
   },
-  executor: {
-    ...typography.caption,
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    alignSelf: 'flex-end',
+    maxWidth: '100%',
+    flexShrink: 1,
+    minWidth: 0,
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+  },
+  /* Точка и иконка — по центру ПЕРВОЙ строки текста (высота строки 16). */
+  chipDot: {
+    width: 6,
+    height: 6,
+    marginTop: 5,
+    borderRadius: radius.pill,
+  },
+  chipIcon: {
+    height: 16,
+    justifyContent: 'center',
+  },
+  chipText: {
+    ...typography.footnote,
     fontFamily: fonts.semibold,
-    color: colors.accent,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    overflow: 'hidden',
-    maxWidth: 180,
-  },
-  executorNone: {
-    ...typography.caption,
-    color: colors.textMuted,
+    fontWeight: '600',
+    flexShrink: 1,
+    minWidth: 0,
   },
   number: {
     fontFamily: fonts.extrabold,
     fontSize: 15,
     fontWeight: '800',
+    // Высота строки = высоте плашки (16 + 2 × 4): номер стоит по центру
+    // статуса, а не прижат к его верху.
+    lineHeight: 24,
     color: colors.textPrimary,
     flexShrink: 0,
   },
   client: {
     ...typography.body,
+    lineHeight: 24,
     color: colors.textSecondary,
-    marginTop: 2,
+    flex: 1,
+    minWidth: 0,
   },
   footer: {
     marginTop: spacing.md,
@@ -285,11 +399,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
+  when: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
   deadline: {
     ...typography.caption,
     color: colors.textMuted,
     fontWeight: '500',
-    flexShrink: 1,
   },
   slot: {
     color: colors.accentStrong,
@@ -302,15 +419,17 @@ const styles = StyleSheet.create({
   money: {
     alignItems: 'flex-end',
   },
+  // Остаток — то, что продавец ищет глазами первым, поэтому не мельче
+  // подписи (13), а не сноской в 11, как было.
   unpaid: {
+    ...typography.caption,
     fontFamily: fonts.semibold,
-    fontSize: 11,
     fontWeight: '600',
     color: colors.warning,
   },
   paid: {
+    ...typography.caption,
     fontFamily: fonts.semibold,
-    fontSize: 11,
     fontWeight: '600',
     color: colors.positive,
   },

@@ -1,7 +1,8 @@
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import type { ReactElement, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { isValidElement, useState, type ReactElement, type ReactNode } from 'react';
 
-import { cardShadow, colors, hairline, radius, spacing, typography, fonts } from '../theme';
+import { cardShadow, colors, hairline, opacity, radius, spacing, typography, fonts } from '../theme';
 
 import { Icon, type IconName } from './Icon';
 import { useLocale } from '../hooks/useLocale';
@@ -66,6 +67,21 @@ export function SectionHeader({
   );
 }
 
+/**
+ * Заголовок карточки с действием справа.
+ *
+ * Раньше ужималось действие: плашка статуса («Ждёт подтверждения»)
+ * выезжала за белый край карточки, а переключатель «‹ Ноябрь 2026 ›»
+ * заезжал на внутренний отступ. Теперь действие своей ширины не отдаёт и
+ * не обрезается: если рядом с заголовком ему места нет, оно уходит на
+ * строку ниже, к правому краю. Заголовок берёт, что осталось, и
+ * переносится по словам.
+ *
+ * Плашке статуса (`Pill`) заголовок уступает охотнее: она остаётся в
+ * строку, пока заголовку достаётся хотя бы 40% ширины. Так в списке
+ * карточек (отгулы, зарплата) статус стоит на одном месте у всех, а не
+ * прыгает вниз у каждого длинного имени.
+ */
 export function CardTitle({
   title,
   icon,
@@ -76,6 +92,8 @@ export function CardTitle({
   readonly icon?: IconName;
   readonly action?: ReactNode;
 }): ReactElement {
+  const isStatus = isValidElement(action) && action.type === Pill;
+
   return (
     <View>
       {/*
@@ -92,12 +110,64 @@ export function CardTitle({
             <Icon name={icon} size={16} color={colors.accent} />
           </View>
         )}
-        <Text style={styles.title}>{title}</Text>
+        <Text style={[styles.title, isStatus ? styles.titleBesideStatus : null]}>{title}</Text>
         {action !== undefined && <View style={styles.titleAction}>{action}</View>}
       </View>
     </View>
   );
 }
+
+/**
+ * Ссылка-действие в шапке карточки: «Подробнее», «Мои задачи», «+ Мероприятие».
+ *
+ * Голая подпись давала цель нажатия 18 точек в высоту — мимо неё промахивались
+ * пальцем. `hitSlop` не спасал: в браузере его нет вовсе, а на
+ * телефоне он добирал только до 34. Здесь зона нажатия — настоящие 44 точки,
+ * а отрицательный вертикальный отступ возвращает строке заголовка прежнюю
+ * высоту: карточка не становится выше от того, что в неё легче попасть.
+ */
+export function CardLink({
+  label,
+  onPress,
+  accessibilityLabel,
+  tone = 'accent',
+}: {
+  readonly label: string;
+  readonly onPress: () => void;
+  /** Если подпись сама по себе непонятна вне карточки («Убрать»). */
+  readonly accessibilityLabel?: string;
+  readonly tone?: 'accent' | 'danger';
+}): ReactElement {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      style={styles.link}
+    >
+      {({ pressed }) => (
+        <Text
+          style={[
+            styles.linkText,
+            tone === 'danger' ? styles.linkDanger : null,
+            pressed ? styles.linkPressed : null,
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * Пробел, на котором строку можно перенести.
+ *
+ * Суммы собираются через неразрывные пробелы (`486\u00A0380\u00A0414\u00A0сум`),
+ * поэтому значение без обычного пробела — одно неделимое слово.
+ */
+const BREAKABLE_SPACE = /[ \n]/;
 
 /** Строка «подпись — значение». */
 export function Row({
@@ -109,10 +179,26 @@ export function Row({
   readonly value: string;
   readonly valueColor?: string;
 }): ReactElement {
+  /*
+    Кто уступает место, решает ЗНАЧЕНИЕ. Имя или адрес переносятся по
+    словам — тогда ужимается значение, а подпись из словаря остаётся в одну
+    строку. Сумму перенести нельзя: она собрана неразрывными пробелами, и
+    пока подпись не уступала, «На руках · У 4 сотрудников, сейчас» вытолкнула
+    «486 380 414 сум» за край карточки и экрана. Для неделимого значения
+    переносится подпись.
+  */
+  const unbreakable = !BREAKABLE_SPACE.test(value);
+
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, valueColor === undefined ? null : { color: valueColor }]}>
+      <Text style={[styles.rowLabel, unbreakable ? styles.rowLabelWrap : null]}>{label}</Text>
+      <Text
+        style={[
+          styles.rowValue,
+          unbreakable ? styles.rowValueWhole : null,
+          valueColor === undefined ? null : { color: valueColor },
+        ]}
+      >
         {value}
       </Text>
     </View>
@@ -206,18 +292,73 @@ export function Empty({
 export function ErrorState({
   message,
   hint,
+  onRetry,
 }: {
   readonly message?: string;
   readonly hint?: string;
+  /**
+   * Свой повтор, если экрану мало перезапроса упавших запросов
+   * (например, нужно сбросить фильтр).
+   */
+  readonly onRetry?: () => unknown;
 }): ReactElement {
   const { m } = useLocale();
-  message ??= m('common.loadError');
-  hint ??= m('common.retryHint');
+  const queryClient = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+
+  /*
+    Подсказка по умолчанию — только к общему «Не удалось загрузить». Своё
+    сообщение (сеть, сервер) уже говорит, что делать, и вторая строка
+    «Проверьте связь» под «Нет связи с сервером. Проверьте интернет» лишь
+    повторяла его.
+  */
+  const shownHint = hint ?? (message === undefined ? m('common.retryHint') : undefined);
+
+  /*
+    Кнопка, а не «потяните вниз». В браузере жеста обновления нет вовсе:
+    `RefreshControl` в react-native-web — пустая обёртка, а собственный жест
+    браузера выключен (`overscroll-behavior`), и экран ошибки в PWA был
+    тупиком. Кнопка работает одинаково на обеих платформах.
+
+    По умолчанию перезапрашивается всё, что сейчас на экране и упало: экран
+    не обязан передавать свой `refetch`, а повтор делает ровно то же, что
+    сделал бы жест обновления.
+  */
+  const retry = (): void => {
+    setRetrying(true);
+    const run =
+      onRetry === undefined
+        ? queryClient.refetchQueries({
+            type: 'active',
+            predicate: (query) => query.state.status === 'error',
+          })
+        : Promise.resolve(onRetry());
+    void run
+      .catch(() => undefined)
+      .finally(() => {
+        setRetrying(false);
+      });
+  };
 
   return (
     <View style={styles.empty} accessibilityRole="alert" accessibilityLiveRegion="polite">
-      <Text style={styles.errorText}>{message}</Text>
-      <Text style={styles.emptyHint}>{hint}</Text>
+      <Text style={styles.errorText}>{message ?? m('common.loadError')}</Text>
+      {shownHint !== undefined && <Text style={styles.emptyHint}>{shownHint}</Text>}
+      <Pressable
+        onPress={retry}
+        disabled={retrying}
+        accessibilityRole="button"
+        accessibilityState={{ busy: retrying, disabled: retrying }}
+        style={({ pressed }) => [styles.retry, pressed ? styles.retryPressed : null]}
+      >
+        {/* Подпись остаётся под индикатором прозрачной — кнопка не меняет ширину. */}
+        <Text style={[styles.retryText, retrying ? styles.retryTextHidden : null]}>
+          {m('common.retry')}
+        </Text>
+        {retrying && (
+          <ActivityIndicator size="small" color={colors.accentStrong} style={StyleSheet.absoluteFill} />
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -343,6 +484,9 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Перенос — вместо ужимания: не поместившееся действие встаёт ниже.
+    flexWrap: 'wrap',
+    rowGap: spacing.sm,
     marginBottom: spacing.md,
   },
   titleIcon: {
@@ -351,14 +495,50 @@ const styles = StyleSheet.create({
   title: {
     ...typography.sectionTitle,
     color: colors.textPrimary,
+    flexGrow: 1,
     flexShrink: 1,
+    // В браузере у элемента flex минимум ширины — по самому длинному слову,
+    // и заголовок толкал соседей за край вместо переноса.
+    minWidth: 0,
+  },
+  titleBesideStatus: {
+    // По этой доле решается, влезает ли плашка в строку (см. `CardTitle`).
+    flexBasis: '40%',
   },
   titleAction: {
-    marginLeft: 'auto',
     // Без отступа заголовок слипается с действием: в карточке зарплаты
     // выходило «ЗарплатаАвгуст 2026» без пробела между ними.
     paddingLeft: spacing.sm,
+    // В строку с заголовком и на своей строке — у правого края.
+    marginLeft: 'auto',
+    // Строкой и с правом ужаться — только на случай, когда действие не
+    // помещается даже одно во всю ширину: тогда плашка обрежется
+    // многоточием, а не вылезет за карточку.
     flexShrink: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  link: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    // Зона нажатия шире подписи и влево — туда, где палец, а не к краю
+    // карточки; вертикальный «минус» возвращает строке её высоту.
+    paddingLeft: spacing.sm,
+    marginVertical: -spacing.md,
+  },
+  linkText: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  linkDanger: {
+    color: colors.danger,
+  },
+  linkPressed: {
+    opacity: opacity.pressed,
   },
   row: {
     flexDirection: 'row',
@@ -374,6 +554,13 @@ const styles = StyleSheet.create({
     // Улугбекович» разъезжалась в три этажа и переставала читаться.
     flexShrink: 0,
     marginRight: spacing.md,
+  },
+  rowLabelWrap: {
+    flexShrink: 1,
+  },
+  rowValueWhole: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   rowValue: {
     ...typography.value,
@@ -436,6 +623,25 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.danger,
     textAlign: 'center',
+  },
+  retry: {
+    minHeight: 44,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  retryPressed: {
+    opacity: opacity.pressed,
+  },
+  retryText: {
+    ...typography.headline,
+    color: colors.accentStrong,
+  },
+  retryTextHidden: {
+    opacity: 0,
   },
   listCard: {
     padding: 0,

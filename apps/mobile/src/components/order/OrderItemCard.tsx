@@ -15,7 +15,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
 import { colors, hairline, opacity, radius, spacing, typography } from '../../theme';
-import { Card, CardTitle } from '../Card';
+import { Card, CardLink, CardTitle } from '../Card';
 import { CatalogPicker } from '../CatalogPicker';
 import { ChipSelect, Field, Input } from '../Field';
 import { Icon } from '../Icon';
@@ -242,6 +242,8 @@ export interface ItemCatalog {
   readonly knownMountOf: (model: string) => CurtainMountKind | null;
   /** Описание кода со склада — подсказка под полем. */
   readonly describeCode: (kind: string, code: string) => string | null;
+  /** Справочник ещё грузится: шторка выбора покажет загрузку, а не «пусто». */
+  readonly loading?: boolean;
 }
 
 /**
@@ -290,22 +292,19 @@ export function OrderItemCard({
       <CardTitle
         title={m('create.item', { n: index + 1 })}
         icon="window"
+        /*
+          Текстовые действия — через `CardLink`: у голой подписи с `hitSlop`
+          зона нажатия в браузере была ровно с текст (51×18), `hitSlop` там
+          не работает вовсе. У ссылки настоящие 44 точки в высоту.
+        */
         action={
           canRemove ? (
-            <Pressable
-              onPress={() => {
-                onRemove();
-              }}
-              accessibilityRole="button"
+            <CardLink
+              label={m('create.remove')}
+              tone="danger"
               accessibilityLabel={m('create.removeItem', { n: index + 1 })}
-              hitSlop={8}
-            >
-              {({ pressed }) => (
-                <Text style={[styles.remove, pressed ? styles.pressed : null]}>
-                  {m('create.remove')}
-                </Text>
-              )}
-            </Pressable>
+              onPress={onRemove}
+            />
           ) : undefined
         }
       />
@@ -329,6 +328,7 @@ export function OrderItemCard({
           placeholder={m('create.notChosen')}
           options={modelOptions}
           sheetTitle={m('create.model')}
+          loading={catalog.loading ?? false}
           onChange={(model) => {
             onChange({ model });
           }}
@@ -385,20 +385,13 @@ export function OrderItemCard({
       <View style={styles.accessories}>
         <View style={styles.accessoriesHeader}>
           <Text style={styles.accessoriesTitle}>{m('create.portiere')}</Text>
-          <Pressable
+          <CardLink
+            label={m('create.addPortiere')}
             onPress={() => {
               const nextId = item.portieres.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
               onChange({ portieres: [...item.portieres, emptyPortiere(nextId)] });
             }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            {({ pressed }) => (
-              <Text style={[styles.addAccessory, pressed ? styles.pressed : null]}>
-                {m('create.addPortiere')}
-              </Text>
-            )}
-          </Pressable>
+          />
         </View>
 
         {/*
@@ -408,50 +401,50 @@ export function OrderItemCard({
         */}
         <Text style={styles.accessoriesHint}>{m('create.codeHint')}</Text>
 
-        {item.portieres.length === 0
-          ? null
-          : item.portieres.map((portiere) => (
-              <View key={portiere.id} style={styles.accessoryRow}>
-                <View style={styles.accessoryName}>
-                  <CodeInput
-                    value={portiere.code}
-                    placeholder={m('create.examplePortiere')}
-                    onChangeText={(code) => {
-                      onPortiere(portiere.id, { code });
-                    }}
-                    onScan={() => {
-                      askScan(m('create.portiere'), (code) => {
-                        onPortiere(portiere.id, { code });
-                      });
-                    }}
-                  />
-                  <CodeDescription
-                    code={portiere.code}
-                    description={describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code)}
-                  />
-                </View>
-                {item.portieres.length > 1 ? (
-                  <Pressable
-                    onPress={() => {
-                      onChange({
-                        portieres: item.portieres.filter((entry) => entry.id !== portiere.id),
-                      });
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={m('create.removePortiere')}
-                    hitSlop={8}
-                    style={styles.accessoryRemove}
-                  >
-                    <Icon name="remove" size={18} color={colors.danger} />
-                  </Pressable>
-                ) : null}
-                {/*
-                Пустого места под кнопку удаления не оставляем: с ним
-                поле единственной портьеры было короче остальных пяти
-                кодов — ряд полей переставал держать общий край.
-              */}
+        {/*
+          Удаление портьеры — подписью над её полем, а не корзиной справа.
+          Корзина в ряду сужала поле кода до 204 точек против 244 у тюля,
+          защиты и карниза ниже: правые края полей шли лесенкой. Над полем
+          же у каждой из нескольких портьер появляется и номер — какая из
+          тканей первая, какая вторая.
+        */}
+        {item.portieres.map((portiere, portiereIndex) => (
+          <View key={portiere.id} style={styles.portiere}>
+            {item.portieres.length > 1 && (
+              <View style={styles.entryHeader}>
+                <Text style={styles.entryLabel}>
+                  {`${m('create.portiere')} ${(portiereIndex + 1).toString()}`}
+                </Text>
+                <CardLink
+                  label={m('create.remove')}
+                  tone="danger"
+                  accessibilityLabel={m('create.removePortiere')}
+                  onPress={() => {
+                    onChange({
+                      portieres: item.portieres.filter((entry) => entry.id !== portiere.id),
+                    });
+                  }}
+                />
               </View>
-            ))}
+            )}
+            <CodeInput
+              value={portiere.code}
+              placeholder={m('create.examplePortiere')}
+              onChangeText={(code) => {
+                onPortiere(portiere.id, { code });
+              }}
+              onScan={() => {
+                askScan(m('create.portiere'), (code) => {
+                  onPortiere(portiere.id, { code });
+                });
+              }}
+            />
+            <CodeDescription
+              code={portiere.code}
+              description={describeCode(MATERIAL_CODE_KINDS.portiere, portiere.code)}
+            />
+          </View>
+        ))}
       </View>
 
       <MaterialFields
@@ -568,71 +561,73 @@ export function OrderItemCard({
       <View style={styles.accessories}>
         <View style={styles.accessoriesHeader}>
           <Text style={styles.accessoriesTitle}>{m('create.accessories')}</Text>
-          <Pressable
+          <CardLink
+            label={m('create.add')}
             onPress={() => {
               const nextId =
                 item.accessories.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
               onChange({ accessories: [...item.accessories, emptyAccessory(nextId)] });
             }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            {({ pressed }) => (
-              <Text style={[styles.addAccessory, pressed ? styles.pressed : null]}>
-                {m('create.add')}
-              </Text>
-            )}
-          </Pressable>
+          />
         </View>
 
         {item.accessories.length === 0 ? (
           <Text style={styles.accessoriesHint}>{m('create.accessoriesHint')}</Text>
         ) : (
-          item.accessories.map((accessory) => (
-            <View key={accessory.id} style={styles.accessoryRow}>
-              <View style={styles.accessoryName}>
-                <CatalogPicker
-                  value={accessory.name}
-                  placeholder={m('create.accessory')}
-                  options={accessoryOptions}
-                  sheetTitle={m('create.accessory')}
-                  onChange={(name) => {
-                    onAccessory(accessory.id, { name });
-                  }}
-                />
-              </View>
-              <View style={styles.accessoryQuantity}>
-                <Input
-                  value={accessory.quantity}
-                  onChangeText={(quantity) => {
-                    onAccessory(accessory.id, { quantity });
-                  }}
-                  keyboardType="number-pad"
-                  placeholder="1"
-                />
-              </View>
-              <View style={styles.accessoryCode}>
-                <Input
-                  value={accessory.code}
-                  onChangeText={(code) => {
-                    onAccessory(accessory.id, { code });
-                  }}
-                  placeholder={m('create.code')}
-                />
-              </View>
-              <Pressable
-                onPress={() => {
-                  onChange({
-                    accessories: item.accessories.filter((entry) => entry.id !== accessory.id),
-                  });
+          /*
+            Аксессуар — в две строки: выбор из справочника во всю ширину,
+            под ним количество, код и удаление. В одну строку выбору
+            доставался остаток рядом с тремя полями, и «Шторный шнур»
+            обрезался до «Штор…».
+          */
+          item.accessories.map((accessory, accessoryIndex) => (
+            <View
+              key={accessory.id}
+              style={[styles.accessory, accessoryIndex > 0 ? styles.accessoryNext : null]}
+            >
+              <CatalogPicker
+                value={accessory.name}
+                placeholder={m('create.accessory')}
+                options={accessoryOptions}
+                sheetTitle={m('create.accessory')}
+                loading={catalog.loading ?? false}
+                onChange={(name) => {
+                  onAccessory(accessory.id, { name });
                 }}
-                accessibilityRole="button"
-                accessibilityLabel={m('create.removeAccessory')}
-                hitSlop={8}
-                style={styles.accessoryRemove}
-              >
-                <Icon name="remove" size={18} color={colors.danger} />
-              </Pressable>
+              />
+              <View style={styles.accessoryRow}>
+                <View style={styles.accessoryQuantity}>
+                  <Input
+                    value={accessory.quantity}
+                    onChangeText={(quantity) => {
+                      onAccessory(accessory.id, { quantity });
+                    }}
+                    keyboardType="number-pad"
+                    placeholder="1"
+                  />
+                </View>
+                <View style={styles.accessoryCode}>
+                  <Input
+                    value={accessory.code}
+                    onChangeText={(code) => {
+                      onAccessory(accessory.id, { code });
+                    }}
+                    placeholder={m('create.code')}
+                  />
+                </View>
+                <Pressable
+                  onPress={() => {
+                    onChange({
+                      accessories: item.accessories.filter((entry) => entry.id !== accessory.id),
+                    });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={m('create.removeAccessory')}
+                  style={({ pressed }) => [styles.accessoryRemove, pressed ? styles.pressed : null]}
+                >
+                  <Icon name="remove" size={18} color={colors.danger} />
+                </Pressable>
+              </View>
             </View>
           ))
         )}
@@ -664,6 +659,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.xs,
   },
+  /* Одна портьера: подпись с удалением (если их несколько), поле, описание. */
+  portiere: {
+    marginTop: spacing.sm,
+  },
+  entryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  entryLabel: {
+    ...typography.footnote,
+    color: colors.textMuted,
+  },
+  /* Аксессуар — блок из двух строк; соседние разделены линией, иначе
+     строка количества одного читалась как начало следующего. */
+  accessory: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  accessoryNext: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
+  },
   accessoriesHint: {
     ...typography.footnote,
     color: colors.textMuted,
@@ -673,16 +694,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   accessoryCode: {
-    width: 84,
-  },
-  accessoryName: {
     flex: 1,
+    minWidth: 0,
   },
   accessoryQuantity: {
-    width: 56,
+    width: 72,
   },
+  // Высота — как у полей рядом (46), ширина — не меньше пальца.
   accessoryRemove: {
-    width: 32,
+    width: 44,
     height: 46,
     alignItems: 'center',
     justifyContent: 'center',
@@ -691,13 +711,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  addAccessory: {
-    ...typography.caption,
-    color: colors.accentStrong,
-    fontWeight: '600',
-    marginLeft: 'auto',
   },
   codeDescription: {
     ...typography.footnote,
@@ -727,13 +740,11 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: opacity.pressed,
   },
-  remove: {
-    ...typography.caption,
-    color: colors.danger,
-  },
+  // Квадрат той же высоты, что и поле кода рядом (46): при 44 кнопка
+  // была на две точки ниже поля и не держала с ним общий край.
   scanButton: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,

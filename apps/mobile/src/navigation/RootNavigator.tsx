@@ -1,7 +1,8 @@
 import { MONITOR_GROUP_LABELS } from '@curtain-crm/shared';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import type { ReactElement } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { createNativeStackNavigator, type NativeStackHeaderLeftProps } from '@react-navigation/native-stack';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import type { ReactElement, ReactNode } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
 import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
@@ -28,7 +29,7 @@ import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { TerminalChecksScreen } from '../screens/TerminalChecksScreen';
-import { colors, fonts, opacity } from '../theme';
+import { colors, fonts, opacity, spacing } from '../theme';
 import type { RootStackParamList } from '../types';
 
 import { TabNavigator } from './TabNavigator';
@@ -61,12 +62,31 @@ export function RootNavigator(): ReactElement {
 
   return (
     <Stack.Navigator
-      screenOptions={{
+      screenOptions={({ navigation }) => ({
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
         headerTitleStyle: { fontFamily: fonts.bold, fontSize: 17, fontWeight: '700' },
         contentStyle: { backgroundColor: colors.background },
-      }}
+        /*
+          Кнопка «назад» в браузере — своя.
+
+          Шапку на вебе рисует не система, а react-navigation, и его кнопка
+          была ссылкой 30×30 (меньше пальца) с подписью для программы
+          чтения с экрана «Tabs, back» — по-английски и именем маршрута.
+          Здесь — цель 48×48 и стрелка там же, где у шапки Android (16 от
+          края). На телефоне остаётся системная кнопка — она и так такая.
+        */
+        ...(Platform.OS === 'web'
+          ? {
+              headerLeft: ({ canGoBack }: NativeStackHeaderLeftProps) =>
+                canGoBack === true ? (
+                  <HeaderIconButton label={m('common.back')} edge="left" onPress={navigation.goBack}>
+                    <Ionicons name="arrow-back" size={24} color={colors.headerText} />
+                  </HeaderIconButton>
+                ) : null,
+            }
+          : null),
+      })}
     >
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
       <Stack.Screen
@@ -108,19 +128,15 @@ export function RootNavigator(): ReactElement {
         options={({ navigation }) => ({
           title: m('nav.readyMade'),
           headerRight: () => (
-            <Pressable
+            <HeaderIconButton
+              label={m('nav.readyMadeStock')}
+              edge="right"
               onPress={() => {
                 navigation.navigate('ReadyMadeStock');
               }}
-              accessibilityRole="button"
-              accessibilityLabel={m('nav.readyMadeStock')}
-              hitSlop={10}
-              /* Нажатие показывается прозрачностью, а не цветом: на тёмной
-                 шапке любой акцентный зелёный темнее её же текста. */
-              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
             >
               <Icon name="orders" size={22} color={colors.headerText} />
-            </Pressable>
+            </HeaderIconButton>
           ),
         })}
       />
@@ -201,7 +217,57 @@ export function RootNavigator(): ReactElement {
   );
 }
 
+/**
+ * Значок-кнопка в шапке.
+ *
+ * В браузере у неё своя рамка 48×48 с отступом от края: `hitSlop` веб не
+ * поддерживает, и значок «склада» в шапке продажи был целью 22×24,
+ * прижатой вплотную к правому краю экрана. На телефоне шапку раскладывает
+ * система — с её отступами, а `hitSlop` добирает цель до пальца.
+ */
+function HeaderIconButton({
+  label,
+  edge,
+  onPress,
+  children,
+}: {
+  readonly label: string;
+  readonly edge: 'left' | 'right';
+  readonly onPress: () => void;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={10}
+      /* Нажатие показывается прозрачностью, а не цветом: на тёмной
+         шапке любой акцентный зелёный темнее её же текста. */
+      style={({ pressed }) => [
+        Platform.OS === 'web' ? styles.webHeaderButton : null,
+        Platform.OS === 'web' ? (edge === 'left' ? styles.webHeaderLeft : styles.webHeaderRight) : null,
+        pressed ? { opacity: opacity.pressed } : null,
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  webHeaderButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  webHeaderLeft: {
+    marginLeft: spacing.xs,
+  },
+  webHeaderRight: {
+    marginRight: spacing.xs,
+  },
   splash: {
     flex: 1,
     alignItems: 'center',

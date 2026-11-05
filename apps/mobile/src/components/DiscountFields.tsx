@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
-import { spacing } from '../theme';
+import { colors, spacing } from '../theme';
 import { ChipSelect, Field, Input, MoneyInput } from './Field';
 
 /**
@@ -117,6 +117,12 @@ export function DiscountFields({
           }}
           placeholder={m('discount.reasonPlaceholder')}
           editable={discountAmount > 0}
+          /*
+            Пока скидки нет, причина не вводится — и поле обязано выглядеть
+            выключенным. Прежде оно ничем не отличалось от живого: нажатие
+            ничего не делало, и непонятно было почему.
+          */
+          style={discountAmount > 0 ? undefined : styles.inputOff}
         />
       </Field>
     </>
@@ -131,5 +137,9 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+  },
+  inputOff: {
+    backgroundColor: colors.surfaceMuted,
+    color: colors.textMuted,
   },
 });

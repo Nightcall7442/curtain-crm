@@ -1,13 +1,14 @@
 import { formatTime } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { useLocation } from '../hooks/useLocation';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
+import { SubmitButton } from './SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -107,72 +108,63 @@ export function InstallationTripCard({
 
         {locationError !== null && <Text style={styles.error}>{locationError}</Text>}
 
-        <Pressable
-          disabled={busy}
-          onPress={() => {
-            withPosition((position) => {
-              startTrip.mutate(position);
-            });
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.action,
-            pressed ? styles.pressed : null,
-            busy ? styles.disabled : null,
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.actionText}>{m('trip.start')}</Text>
-          )}
-        </Pressable>
+        {/* Общая кнопка приложения — та же, что «Я вернулся» у отлучки ниже. */}
+        <View style={styles.actionSlot}>
+          <SubmitButton
+            label={m('trip.start')}
+            onPress={() => {
+              withPosition((position) => {
+                startTrip.mutate(position);
+              });
+            }}
+            pending={busy}
+          />
+        </View>
       </Card>
     );
   }
 
   const startedAt = new Date(active.startedAt);
   const minutes = Math.max(0, Math.floor((now - startedAt.getTime()) / 60_000));
-  const away = m('trip.away', { h: Math.floor(minutes / 60), m: minutes % 60 });
+  // Первый час — без «0 ч»: нулевые часы ничего не сообщают.
+  const away =
+    minutes < 60
+      ? m('shift.minutes', { n: minutes })
+      : m('trip.away', { h: Math.floor(minutes / 60), m: minutes % 60 });
 
   return (
     <Card>
       <CardTitle
         title={m('trip.title')}
         icon="deadline"
-        action={<Pill text={m('trip.onSite')} tone="info" />}
+        /*
+          Янтарный, как кольцо таймера на этом же экране: и выезд, и
+          отлучка ставят рабочее время на паузу. Синяя плашка под янтарным
+          кольцом читалась как третье, отдельное состояние.
+        */
+        action={<Pill text={m('trip.onSite')} tone="warning" />}
       />
 
-      <View style={styles.status}>
-        <Text style={styles.away}>{away}</Text>
-        <Text style={styles.hint}>
-          {m('trip.since', { time: formatTime(startedAt) })}
-          {active.orderNumber === null ? '' : m('trip.order', { n: active.orderNumber })}
-        </Text>
-      </View>
+      {/* Таймер — как у личной отлучки: тот же кегль и по центру. */}
+      <Text style={styles.away}>{away}</Text>
+      <Text style={[styles.hint, styles.awayHint]}>
+        {m('trip.since', { time: formatTime(startedAt) })}
+        {active.orderNumber === null ? '' : m('trip.order', { n: active.orderNumber })}
+      </Text>
 
       {locationError !== null && <Text style={styles.error}>{locationError}</Text>}
 
-      <Pressable
-        disabled={busy}
-        onPress={() => {
-          withPosition((position) => {
-            endTrip.mutate(position);
-          });
-        }}
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.action,
-          pressed ? styles.pressed : null,
-          busy ? styles.disabled : null,
-        ]}
-      >
-        {busy ? (
-          <ActivityIndicator color={colors.onAccent} />
-        ) : (
-          <Text style={styles.actionText}>{m('trip.end')}</Text>
-        )}
-      </Pressable>
+      <View style={styles.actionSlot}>
+        <SubmitButton
+          label={m('trip.end')}
+          onPress={() => {
+            withPosition((position) => {
+              endTrip.mutate(position);
+            });
+          }}
+          pending={busy}
+        />
+      </View>
     </Card>
   );
 }
@@ -181,33 +173,27 @@ const styles = StyleSheet.create({
   hint: {
     ...typography.caption,
     color: colors.textSecondary,
-    lineHeight: 18,
   },
-  status: {
-    marginTop: spacing.sm,
-  },
+  /* Тот же таймер, что у `PersonalBreakCard`. */
   away: {
-    ...typography.title,
+    fontFamily: fonts.bold,
+    fontSize: 34,
+    fontWeight: '700',
     color: colors.textPrimary,
+    textAlign: 'center',
+    marginVertical: spacing.sm,
+    fontVariant: ['tabular-nums'],
+  },
+  awayHint: {
+    textAlign: 'center',
   },
   error: {
     ...typography.caption,
     color: colors.danger,
     marginTop: spacing.sm,
   },
-  action: {
-    minHeight: 48,
-    marginTop: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+  /* Кнопка сама даёт 8 сверху; вместе выходит 12 — как было. */
+  actionSlot: {
+    marginTop: spacing.xs,
   },
-  actionText: {
-    ...typography.headline,
-    color: colors.onAccent,
-    fontWeight: '700',
-  },
-  pressed: { opacity: opacity.pressed },
-  disabled: { opacity: opacity.disabled },
 });

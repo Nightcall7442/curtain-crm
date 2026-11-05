@@ -8,6 +8,7 @@ import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
+import { fonts, radius, spacing } from '../theme';
 import { Icon } from './Icon';
 
 /**
@@ -54,23 +55,33 @@ export function PayTypeBadge({
 }
 
 const styles = StyleSheet.create({
+  /*
+    Без `alignSelf`: значок встаёт так, как строка ставит соседей. Прежний
+    `flex-start` прижимал его к верху строки с `alignItems: 'center'`, и
+    значок высотой 20 сидел на полточки выше середины строки в 21.
+  */
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 4,
+    gap: spacing.xs,
     height: 20,
-    paddingHorizontal: 7,
-    borderRadius: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
   },
   large: {
     height: 30,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    paddingHorizontal: spacing.md,
     alignSelf: 'center',
   },
+  /*
+    Гарнитура — та же Manrope, что во всём приложении. Без `fontFamily`
+    подпись бралась из системного шрифта (Roboto, Arial), и «Наличные»
+    рядом с остальным текстом смотрелись чужими. Кегль 12 — нижняя граница
+    читаемого текста в приложении (см. `typography.footnote`).
+  */
   mark: {
-    fontSize: 11,
+    fontFamily: fonts.extrabold,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.2,
   },

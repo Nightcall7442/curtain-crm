@@ -1,4 +1,4 @@
-import { parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
+import { groupDigits, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
@@ -19,7 +20,7 @@ import { Icon } from '../components/Icon';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 /**
  * Витрина глазами руководителя: остатки, цена и чужие чеки.
@@ -41,6 +42,7 @@ export function RetailStockScreen({
   const { t, m, money } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   /** Позиция, которой добавляют приход. `null` — никакая. */
   const [stocking, setStocking] = useState<number | null>(null);
@@ -55,13 +57,20 @@ export function RetailStockScreen({
       setStocking(null);
       setDelta('');
       await utils.retail.items.list.invalidate();
-      Alert.alert(m('retail.stockUpdated'), `${item.name}: ${item.stockQuantity}`);
+      Alert.alert(
+        m('retail.stockUpdated'),
+        `${item.name}: ${formatQuantity(Number.parseFloat(item.stockQuantity))}`,
+      );
     },
     onError(error) {
       notifyError();
       Alert.alert(m('retail.receiveError'), error.message);
     },
   });
+
+  /* Приход: число со знаком, не ноль. `null` — оприходовать нечего. */
+  const parsedDelta = Number.parseFloat(delta.replace(',', '.'));
+  const deltaValue = Number.isFinite(parsedDelta) && parsedDelta !== 0 ? parsedDelta : null;
 
   if (items.isError) {
     return (
@@ -76,7 +85,12 @@ export function RetailStockScreen({
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* Экран открыт поверх вкладок: снизу — обычный отступ, а не место
+          под панель, которой здесь нет (было 114 точек пустоты). */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {header}
 
         <Card>
@@ -87,24 +101,29 @@ export function RetailStockScreen({
           ) : items.data.length === 0 ? (
             <Empty message={m('cash.priceEmpty')} hint={m('retail.emptyHint')} />
           ) : (
-            items.data.map((item) => {
+            items.data.map((item, index, all) => {
               const stock = Number.parseFloat(item.stockQuantity);
+              const isLast = index === all.length - 1;
 
               return (
                 <View key={item.id}>
-                  <View style={styles.itemRow}>
+                  {/*
+                    Под последней строкой линии нет — её роль делить строки,
+                    а не дублировать низ карточки. У открытой формы прихода
+                    своя линия не нужна: форма и так продолжает строку.
+                  */}
+                  <View style={[styles.itemRow, isLast && stocking !== item.id ? styles.itemRowLast : null]}>
                     <View style={styles.itemText}>
-                      <Text
-                        style={[styles.itemName, item.isActive ? null : styles.itemOff]}
-                        numberOfLines={2}
-                      >
+                      {/* Название целиком: обрезка на второй строке съедала
+                          ровно то, чем товары и различаются. */}
+                      <Text style={[styles.itemName, item.isActive ? null : styles.itemOff]}>
                         {item.name}
                       </Text>
                       <Text style={styles.itemMeta}>
                         {m('retail.stockMeta', {
                           price: money(parseMoney(item.price)),
                           unit: t(PURCHASE_UNIT_LABELS, item.unit),
-                          n: stock,
+                          n: formatQuantity(stock),
                         })}
                       </Text>
                     </View>
@@ -134,15 +153,24 @@ export function RetailStockScreen({
                         />
                       </Field>
 
+                      {/*
+                        Пока количество не набрано (или ноль), кнопка
+                        неактивна и выглядит так. Раньше она молча ничего не
+                        делала — без ошибки и без отклика.
+                      */}
                       <Pressable
                         onPress={() => {
-                          const quantity = Number.parseFloat(delta.replace(',', '.'));
-                          if (!Number.isFinite(quantity) || quantity === 0) return;
-                          addStock.mutate({ id: item.id, quantity });
+                          if (deltaValue === null) return;
+                          addStock.mutate({ id: item.id, quantity: deltaValue });
                         }}
-                        disabled={addStock.isPending}
+                        disabled={deltaValue === null || addStock.isPending}
                         accessibilityRole="button"
-                        style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
+                        accessibilityState={{ disabled: deltaValue === null }}
+                        style={({ pressed }) => [
+                          styles.submit,
+                          deltaValue === null ? styles.submitOff : null,
+                          pressed ? styles.pressed : null,
+                        ]}
                       >
                         {addStock.isPending ? (
                           <ActivityIndicator color={colors.onAccent} size="small" />
@@ -166,7 +194,7 @@ export function RetailStockScreen({
           ) : sales.data.items.length === 0 ? (
             <Empty message={m('retail.noReceipts')} />
           ) : (
-            sales.data.items.map((sale) => (
+            sales.data.items.map((sale, index, all) => (
               <Pressable
                 key={sale.id}
                 onPress={() => {
@@ -174,7 +202,11 @@ export function RetailStockScreen({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('cash.openReceipt', { n: sale.id })}
-                style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
+                style={({ pressed }) => [
+                  styles.itemRow,
+                  index === all.length - 1 ? styles.itemRowLast : null,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <View style={styles.itemText}>
                   <Text style={styles.itemName}>{m('cash.receiptN', { n: sale.id })}</Text>
@@ -193,6 +225,19 @@ export function RetailStockScreen({
   );
 }
 
+/**
+ * Количество — так же, как суммы: разряды и десятичная запятая.
+ *
+ * Остаток приходил строкой из базы и печатался как есть — «остаток 232.75»
+ * с точкой рядом с «12 500 сум», где разряды и запятая уже по-русски.
+ * И в русском, и в узбекском дробная часть отделяется запятой.
+ */
+function formatQuantity(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  const sign = value < 0 ? '−' : '';
+  return `${sign}${groupDigits(Math.abs(value).toString()).replace('.', ',')}`;
+}
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -205,7 +250,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   itemRow: {
     flexDirection: 'row',
@@ -214,6 +258,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  itemRowLast: {
+    borderBottomWidth: 0,
   },
   itemText: {
     flex: 1,
@@ -236,11 +283,13 @@ const styles = StyleSheet.create({
     ...typography.value,
     color: colors.textPrimary,
   },
+  // 44, как чипы разделов над ним и любая цель для пальца: при 40 кнопка
+  // была ниже соседей и под порогом нажатия.
   stockButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
@@ -260,6 +309,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  submitOff: {
+    opacity: opacity.disabled,
   },
   submitText: {
     ...typography.body,

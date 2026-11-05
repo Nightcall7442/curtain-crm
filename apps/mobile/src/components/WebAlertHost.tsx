@@ -63,7 +63,11 @@ export function WebAlertHost(): ReactElement | null {
                   press(button);
                 }}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.button, pressed ? styles.buttonPressed : null]}
+                style={({ pressed }) => [
+                  styles.button,
+                  stacked ? styles.buttonStacked : null,
+                  pressed ? styles.buttonPressed : null,
+                ]}
               >
                 <Text
                   style={[
@@ -120,8 +124,22 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginRight: -spacing.md,
   },
+  /*
+    Три и больше действий — столбцом во всю ширину окна, как список действий
+    в диалоге Android. Раньше столбец ужимался по самой длинной подписи и
+    висел посередине: правый край кнопок не совпадал ни с заголовком, ни с
+    краем окна. Подпись прижата вправо, как у кнопок в строку; отступ
+    отрицательный с обеих сторон — подсветка нажатия ровная, а текст
+    стоит на линии содержимого.
+  */
   buttonsStacked: {
     flexDirection: 'column',
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+    gap: 0,
+    marginHorizontal: -spacing.md,
+  },
+  buttonStacked: {
     alignItems: 'flex-end',
   },
   button: {

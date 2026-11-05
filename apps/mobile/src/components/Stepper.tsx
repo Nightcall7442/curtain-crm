@@ -11,7 +11,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
 import { useLocale } from '../hooks/useLocale';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, fonts, radius, spacing, typography } from '../theme';
 
 import { Icon } from './Icon';
 
@@ -65,9 +65,16 @@ export function Stepper({ status }: { readonly status: OrderStatusName }): React
                 )}
               </View>
             </View>
+            {/*
+              Две строки, а не одна с многоточием: «Контроль качества» в
+              четверть ширины не помещается (нужно 106 точек при 74) и
+              резался до «Контроль к…» на каждом заказе. Места по высоте у
+              степпера хватает, а сокращать название этапа значило бы
+              разойтись с остальным приложением.
+            */}
             <Text
               style={[styles.label, isNow ? styles.labelNow : null]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {t(ORDER_PHASE_LABELS, phase)}
             </Text>
@@ -128,8 +135,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.accent,
   },
+  // Начертание — семейством, а не только `fontWeight`: Android у своего
+  // шрифта вес не подбирает и рисовал цифры и подписи обычным Medium.
   dotText: {
     ...typography.footnote,
+    fontFamily: fonts.extrabold,
     fontWeight: '800',
     color: colors.textMuted,
   },
@@ -138,12 +148,15 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textMuted,
     maxWidth: '100%',
+    textAlign: 'center',
   },
   labelNow: {
     color: colors.accent,
+    fontFamily: fonts.bold,
     fontWeight: '700',
   },
 });

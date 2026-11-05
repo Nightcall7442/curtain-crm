@@ -15,7 +15,7 @@ import { useAuth, useIsCeo } from '../hooks/useAuth';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { accountStorage, tokenStorage, type SavedAccount } from '../lib/storage';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, fonts } from '../theme';
+import { colors, radius, spacing, TAB_BAR_HEIGHT, typography, fonts } from '../theme';
 
 import { Avatar } from './Avatar';
 import { useLocale } from '../hooks/useLocale';
@@ -235,7 +235,9 @@ export function AccountSwitcher({
           {
             // Столбик начинается над панелью вкладок, а не под ней: панель
             // плавает с отступом от края, и её высоту нужно прибавить.
-            bottom: Math.max(insets.bottom, 10) + TAB_BAR_HEIGHT + spacing.sm,
+            // Поля прокрутки под тень (`SHADOW_ROOM`) вычитаются, чтобы круги
+            // остались на прежнем месте — в 8 точках над панелью.
+            bottom: Math.max(insets.bottom, 10) + TAB_BAR_HEIGHT + spacing.sm - SHADOW_ROOM,
             opacity: appear,
             transform: [
               {
@@ -320,24 +322,33 @@ function initials(fullName: string): string {
 
 const CIRCLE = 56;
 
-/** Высота плавающей панели вкладок — от неё столбик и отсчитывается. */
-const TAB_BAR_HEIGHT = 64;
+/**
+ * Поля вокруг кругов внутри прокрутки — место под их тень.
+ *
+ * Прокрутка обрезает всё, что за её краем, и тень кругов (радиус 8,
+ * сдвиг 4 вниз) обрывалась у квадратной границы списка: вокруг «+» сбоку
+ * и снизу стоял серый прямоугольник с жёсткими углами. Поле в 12 точек
+ * вмещает тень целиком.
+ */
+const SHADOW_ROOM = spacing.md;
 
 const styles = StyleSheet.create({
   column: {
     position: 'absolute',
-    // Над вкладкой «Профиль» — она крайняя справа.
-    right: spacing.lg,
+    // Над вкладкой «Профиль» — она крайняя справа. Поле под тень
+    // вычитается, чтобы круги стояли там же, где и без него.
+    right: spacing.lg - SHADOW_ROOM,
     alignItems: 'center',
   },
   /* Столбик не должен упираться в шапку: с большим цехом список
      прокручивается, а не уползает под приветствие. */
   scroll: {
-    maxHeight: 420,
+    maxHeight: 420 + SHADOW_ROOM * 2,
   },
   scrollContent: {
     alignItems: 'center',
     gap: spacing.sm,
+    padding: SHADOW_ROOM,
     // Список прижат к низу: при переполнении первыми видны ближние к пальцу.
     flexGrow: 1,
     justifyContent: 'flex-end',

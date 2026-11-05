@@ -11,7 +11,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
 import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle, Empty, Skeleton } from './Card';
@@ -63,15 +63,19 @@ export function DisciplineCard({
       ) : (
         <>
           <View style={styles.stats}>
+            {/*
+              Цвет — только у ненулевого числа. Ноль штрафных терракотой
+              читался как штраф: чистый месяц показывал красную цифру.
+            */}
             <Stat
               label={m('discipline.penalty')}
               value={formatDisciplinePoints(summary.penalty)}
-              tone="danger"
+              tone={summary.penalty === 0 ? 'plain' : 'danger'}
             />
             <Stat
               label={m('discipline.bonus')}
               value={formatDisciplinePoints(summary.bonus)}
-              tone="positive"
+              tone={summary.bonus === 0 ? 'plain' : 'positive'}
             />
             <Stat label={m('discipline.net')} value={formatDisciplinePoints(summary.net)} />
           </View>
@@ -108,8 +112,7 @@ export function DisciplineCard({
                         });
                       }}
                       accessibilityRole="button"
-                      hitSlop={6}
-                      style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+                      style={({ pressed }) => [styles.linkTarget, pressed ? styles.pressed : null]}
                     >
                       <Text style={styles.link}>{m('discipline.explain')}</Text>
                     </Pressable>
@@ -199,6 +202,10 @@ function Stat({
   );
 }
 
+/** Цель нажатия ссылки и запас по вертикали вокруг строки подписи (16). */
+const LINK_TARGET = 44;
+const LINK_SLACK = (LINK_TARGET - typography.footnote.lineHeight) / 2;
+
 const styles = StyleSheet.create({
   stats: {
     flexDirection: 'row',
@@ -262,11 +269,31 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  /*
+    Зона нажатия «Объяснить» — настоящие 44 точки. На `hitSlop` надежды
+    нет: в браузере его нет вовсе (цель была 17 точек в высоту), а на
+    телефоне он добирал до 29. Отрицательные отступы возвращают строке
+    прежнюю высоту и прежнее место подписи. `flex-start` — чтобы нажатие
+    в пустоту справа от слова ничего не открывало: раньше кнопкой была
+    вся ширина строки.
+  */
+  linkTarget: {
+    alignSelf: 'flex-start',
+    minHeight: LINK_TARGET,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    marginHorizontal: -spacing.sm,
+    marginTop: 2 - LINK_SLACK,
+    marginBottom: -LINK_SLACK,
+  },
   link: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.accent,
-    marginTop: 2,
+  },
+  pressed: {
+    opacity: opacity.pressed,
   },
   points: {
     ...typography.value,

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -25,7 +26,9 @@ import {
   type PaymentMethod as PaymentMethodName,
 } from '@curtain-crm/shared';
 
-import { Card, CardTitle } from '../components/Card';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Card, CardLink, CardTitle } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
 import {
   DiscountFields,
@@ -35,9 +38,10 @@ import {
 } from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import type { RootStackParamList } from '../types';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
@@ -79,6 +83,21 @@ export function SellReadyMadeScreen(): ReactElement {
   const [needsRework, setNeedsRework] = useState<'no' | 'yes'>('no');
   const [installAddress, setInstallAddress] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  /*
+    Куда прокрутить при ошибке: «Продать» стоит в самом низу формы, а
+    ошибки — у полей наверху, за тысячу точек от кнопки. Нажатие выглядело
+    мёртвым: экран не двигался, рядом с кнопкой ничего не появлялось.
+    Здесь запоминается, где лежит каждая карточка с проверяемыми полями.
+  */
+  const scroll = useRef<ScrollView>(null);
+  const sectionY = useRef<Partial<Record<'client' | 'payment' | 'installation', number>>>({});
+  const rememberY =
+    (section: 'client' | 'payment' | 'installation') =>
+    (event: LayoutChangeEvent): void => {
+      sectionY.current[section] = event.nativeEvent.layout.y;
+    };
 
   /*
     Модельный ряд — тот же справочник, что и в заказе на пошив
@@ -182,7 +201,13 @@ export function SellReadyMadeScreen(): ReactElement {
   });
 
   const errors = validate({ clientName, clientPhone, needsInstallation, installAddress }, m);
-  const hasErrors = Object.keys(errors).length > 0;
+  /*
+    Штора со склада без цены не продаётся. Иначе она уходила с полки
+    даром: заказ закрывался со «Стоимость 0 сум», и это никто не замечал.
+  */
+  const priceMissing =
+    items.some((item) => item.readyMadeItemId !== null) && inputToMajor(workPrice) <= 0;
+  const hasErrors = Object.keys(errors).length > 0 || priceMissing;
 
   /*
     Без установки и переделки продажа закрывается сразу, а заказ с долгом
@@ -192,9 +217,26 @@ export function SellReadyMadeScreen(): ReactElement {
   const paidInFull = needsInstallation === 'no' && needsRework === 'no';
   const priceDue = discountPayload(workPrice, discount).workPrice;
 
+  /** Цена со склада: ценник строки на количество, плюс шторы комплекта. */
+  const stockPrice = (price: string, quantity: string, extra = 0): string =>
+    (Number.parseFloat(price) * Math.max(1, Number.parseInt(quantity, 10) || 1) + extra).toString();
+
   const submit = (): void => {
     setShowErrors(true);
-    if (hasErrors || discountMissingReason(workPrice, discount)) return;
+    const reasonMissing = discountMissingReason(workPrice, discount);
+    if (hasErrors || reasonMissing) {
+      notifyError();
+      const target =
+        errors.clientName !== undefined || errors.clientPhone !== undefined
+          ? sectionY.current.client
+          : priceMissing || reasonMissing
+            ? sectionY.current.payment
+            : sectionY.current.installation;
+      if (target !== undefined) {
+        scroll.current?.scrollTo({ y: Math.max(0, target - spacing.lg), animated: true });
+      }
+      return;
+    }
 
     sell.mutate({
       clientName: clientName.trim(),
@@ -235,109 +277,129 @@ export function SellReadyMadeScreen(): ReactElement {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Card>
-          <CardTitle title={m('create.client')} icon="person" />
+      <ScrollView
+        ref={scroll}
+        /*
+          Снизу — безопасная зона и обычный отступ, а не место под панель
+          вкладок: это экран стека, панели под ним нет, и прежний отступ
+          оставлял под кнопкой пустую полосу в 114 точек.
+        */
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View onLayout={rememberY('client')}>
+          <Card>
+            <CardTitle title={m('create.client')} icon="person" />
 
-          <Field
-            label={m('create.name')}
-            required
-            error={showErrors ? errors.clientName : undefined}
-          >
-            <Input
-              value={clientName}
-              onChangeText={setClientName}
-              placeholder={m('create.namePlaceholder')}
-              autoCapitalize="words"
-              invalid={showErrors && errors.clientName !== undefined}
-            />
-          </Field>
+            <Field
+              label={m('create.name')}
+              required
+              error={showErrors ? errors.clientName : undefined}
+            >
+              <Input
+                value={clientName}
+                onChangeText={setClientName}
+                placeholder={m('create.namePlaceholder')}
+                autoCapitalize="words"
+                invalid={showErrors && errors.clientName !== undefined}
+              />
+            </Field>
 
-          <Field
-            label={m('create.phone')}
-            required
-            hint={m('create.phoneHint')}
-            error={showErrors ? errors.clientPhone : undefined}
-          >
-            <Input
-              value={clientPhone}
-              onChangeText={setClientPhone}
-              placeholder="+998 __ ___ __ __"
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              invalid={showErrors && errors.clientPhone !== undefined}
-            />
-          </Field>
-        </Card>
+            <Field
+              label={m('create.phone')}
+              required
+              hint={m('create.phoneHint')}
+              error={showErrors ? errors.clientPhone : undefined}
+            >
+              <Input
+                value={clientPhone}
+                onChangeText={setClientPhone}
+                placeholder="+998 __ ___ __ __"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                invalid={showErrors && errors.clientPhone !== undefined}
+              />
+            </Field>
+          </Card>
+        </View>
 
         {/*
           Деньги — на всю продажу, а не на позицию: так же, как в заказе на
           пошив. Клиент платит одну сумму и оставляет один задаток, и
           раскладывать их по строкам продавцу на кассе не нужно.
         */}
-        <Card>
-          <CardTitle title={m('sell.payment')} icon="paid" />
+        <View onLayout={rememberY('payment')}>
+          <Card>
+            <CardTitle title={m('sell.payment')} icon="paid" />
 
-          <View style={styles.money}>
-            <View style={styles.moneyItem}>
-              <Field label={m('sell.price')}>
-                <MoneyInput value={workPrice} onChangeText={setWorkPrice} placeholder="0" />
-              </Field>
+            <View style={styles.money}>
+              <View style={styles.moneyItem}>
+                <Field label={m('sell.price')} required={items.some((item) => item.readyMadeItemId !== null)}>
+                  <MoneyInput
+                    value={workPrice}
+                    onChangeText={setWorkPrice}
+                    placeholder="0"
+                    invalid={showErrors && priceMissing}
+                  />
+                </Field>
+              </View>
+              <View style={styles.moneyItem}>
+                <Field
+                  label={paidInFull ? m('sell.paidInFull') : m('create.deposit')}
+                  {...(paidInFull ? { hint: m('sell.fullPaymentOnly') } : {})}
+                >
+                  {/* Подставленная сумма не правится — и выглядит не полем
+                      ввода, а справкой: приглушённая подложка и текст. */}
+                  <MoneyInput
+                    value={paidInFull ? (priceDue > 0 ? priceDue.toString() : '') : deposit}
+                    onChangeText={setDeposit}
+                    editable={!paidInFull}
+                    placeholder="0"
+                    style={paidInFull ? styles.inputReadOnly : undefined}
+                  />
+                </Field>
+              </View>
             </View>
-            <View style={styles.moneyItem}>
-              <Field
-                label={paidInFull ? m('sell.paidInFull') : m('create.deposit')}
-                {...(paidInFull ? { hint: m('sell.fullPaymentOnly') } : {})}
-              >
-                <MoneyInput
-                  value={paidInFull ? (priceDue > 0 ? priceDue.toString() : '') : deposit}
-                  onChangeText={setDeposit}
-                  editable={!paidInFull}
-                  placeholder="0"
-                />
-              </Field>
-            </View>
-          </View>
-          <DiscountFields
-            price={workPrice}
-            value={discount}
-            onChange={setDiscount}
-            showError={showErrors}
-          />
-          {/* Способ оплаты предоплаты — из него складывается касса дня. */}
-          <Field label={m('cash.method')}>
-            <ChipSelect
-              value={depositMethod}
-              onChange={setDepositMethod}
-              options={PAYMENT_METHODS.map((value) => ({
-                value,
-                label: t(PAYMENT_METHOD_LABELS, value),
-              }))}
+            <DiscountFields
+              price={workPrice}
+              value={discount}
+              onChange={setDiscount}
+              showError={showErrors}
             />
-          </Field>
-        </Card>
+            {/* Способ оплаты предоплаты — из него складывается касса дня. */}
+            <Field label={m('cash.method')}>
+              <ChipSelect
+                value={depositMethod}
+                onChange={setDepositMethod}
+                options={PAYMENT_METHODS.map((value) => ({
+                  value,
+                  label: t(PAYMENT_METHOD_LABELS, value),
+                }))}
+              />
+            </Field>
+          </Card>
+        </View>
 
         {items.map((item, index) => (
           <Card key={item.id}>
             <CardTitle
               title={m('create.item', { n: index + 1 })}
               icon="window"
+              /*
+                Ссылка шапки карточки — общая `CardLink`: цель в 44 точки (была
+                подпись 15 точек ростом, `hitSlop` в браузере не работает) и
+                тот же кегль, что у остальных действий в шапках карточек.
+              */
               action={
                 items.length > 1 ? (
-                  <Pressable
+                  <CardLink
+                    label={m('create.remove')}
+                    tone="danger"
+                    accessibilityLabel={m('create.removeItem', { n: index + 1 })}
                     onPress={() => {
                       setItems((current) => current.filter((entry) => entry.id !== item.id));
                     }}
-                    accessibilityRole="button"
-                    accessibilityLabel={m('create.removeItem', { n: index + 1 })}
-                    hitSlop={8}
-                  >
-                    {({ pressed }) => (
-                      <Text style={[styles.remove, pressed ? styles.pressed : null]}>
-                        {m('create.remove')}
-                      </Text>
-                    )}
-                  </Pressable>
+                  />
                 ) : undefined
               }
             />
@@ -357,10 +419,16 @@ export function SellReadyMadeScreen(): ReactElement {
                       const matching = (stock.data ?? []).filter(
                         (entry) => entry.model === model && entry.quantity > 0,
                       );
+                      const only = matching.length === 1 ? matching[0] : undefined;
                       updateItem(item.id, {
                         model,
-                        readyMadeItemId: matching.length === 1 ? (matching[0]?.id ?? null) : null,
+                        readyMadeItemId: only?.id ?? null,
                       });
+                      // Цена — как при нажатии на строку остатка: строка выбрана
+                      // сама, и без ценника продажа ушла бы за ноль.
+                      if (only !== undefined && workPrice.trim() === '') {
+                        setWorkPrice(stockPrice(only.price, item.quantity));
+                      }
                     }}
                   />
                 </Field>
@@ -497,14 +565,14 @@ export function SellReadyMadeScreen(): ReactElement {
                             // ценник со склада — обычное дело.
                             if (!chosen && workPrice.trim() === '') {
                               setWorkPrice(
-                                (
-                                  Number.parseFloat(entry.price) *
-                                    Math.max(1, Number.parseInt(item.quantity, 10) || 1) +
+                                stockPrice(
+                                  entry.price,
+                                  item.quantity,
                                   mates.reduce(
                                     (sum, mate) => sum + Number.parseFloat(mate.price),
                                     0,
-                                  )
-                                ).toString(),
+                                  ),
+                                ),
                               );
                             }
                           }}
@@ -516,14 +584,36 @@ export function SellReadyMadeScreen(): ReactElement {
                             pressed ? styles.pressed : null,
                           ]}
                         >
+                          {/*
+                            Выбор — кружком, как у переключателя: прежде
+                            выбранную строку отличала только бледная заливка,
+                            и на солнце её было не разглядеть.
+                          */}
+                          <View style={styles.stockMark}>
+                            {chosen ? (
+                              <Icon name="completed" size={22} color={colors.accent} />
+                            ) : (
+                              <View style={styles.stockRadio} />
+                            )}
+                          </View>
+                          {/*
+                            Размер и цена — одной строкой сверху, код и
+                            остальное — под ними во всю ширину. Прежде цена
+                            занимала свою колонку по центру строки, тексту
+                            оставалось 160 точек, и код с бирки рвался по
+                            дефису: «ГШ-015-» / «ЛЕН-ВЕНЕЦИЯ».
+                          */}
                           <View style={styles.stockBody}>
-                            <Text style={styles.stockName}>
-                              {m('sell.cm', {
-                                w: Number.parseFloat(entry.widthCm),
-                                h: Number.parseFloat(entry.heightCm),
-                              })}
-                              {entry.code === null ? '' : ` · ${entry.code}`}
-                            </Text>
+                            <View style={styles.stockHead}>
+                              <Text style={styles.stockName}>
+                                {m('sell.cm', {
+                                  w: Number.parseFloat(entry.widthCm),
+                                  h: Number.parseFloat(entry.heightCm),
+                                })}
+                              </Text>
+                              <Text style={styles.stockPrice}>{money(parseMoney(entry.price))}</Text>
+                            </View>
+                            {entry.code !== null && <Text style={styles.stockCode}>{entry.code}</Text>}
                             {entry.comment !== null && (
                               <Text style={styles.stockMeta} numberOfLines={2}>
                                 {entry.comment}
@@ -533,7 +623,6 @@ export function SellReadyMadeScreen(): ReactElement {
                               {m('sell.pcs', { branch: entry.branchName, n: entry.quantity })}
                             </Text>
                           </View>
-                          <Text style={styles.stockPrice}>{money(parseMoney(entry.price))}</Text>
                         </Pressable>
                       );
                     });
@@ -571,52 +660,54 @@ export function SellReadyMadeScreen(): ReactElement {
           <Text style={styles.addItemText}>{m('create.addItem')}</Text>
         </Pressable>
 
-        <Card>
-          <CardTitle title={m('sell.installation')} icon="deadline" />
+        <View onLayout={rememberY('installation')}>
+          <Card>
+            <CardTitle title={m('sell.installation')} icon="deadline" />
 
-          {/* Переделка — штору подгоняют в цеху; продажа уходит админу, как заказ. */}
-          <Field label={m('sell.needRework')}>
-            <ChipSelect
-              value={needsRework}
-              onChange={setNeedsRework}
-              options={[
-                { value: 'no', label: m('sell.reworkNo') },
-                { value: 'yes', label: m('sell.reworkYes') },
-              ]}
-            />
-          </Field>
+            {/* Переделка — штору подгоняют в цеху; продажа уходит админу, как заказ. */}
+            <Field label={m('sell.needRework')}>
+              <ChipSelect
+                value={needsRework}
+                onChange={setNeedsRework}
+                options={[
+                  { value: 'no', label: m('sell.reworkNo') },
+                  { value: 'yes', label: m('sell.reworkYes') },
+                ]}
+              />
+            </Field>
 
-          <Field label={m('sell.needInstall')}>
-            <ChipSelect
-              value={needsInstallation}
-              onChange={setNeedsInstallation}
-              options={[
-                { value: 'no', label: m('sell.installNo') },
-                { value: 'yes', label: m('sell.installYes') },
-              ]}
-            />
-          </Field>
+            <Field label={m('sell.needInstall')}>
+              <ChipSelect
+                value={needsInstallation}
+                onChange={setNeedsInstallation}
+                options={[
+                  { value: 'no', label: m('sell.installNo') },
+                  { value: 'yes', label: m('sell.installYes') },
+                ]}
+              />
+            </Field>
 
-          {needsInstallation === 'yes' ? (
-            <>
-              <Field
-                label={m('create.address')}
-                required
-                error={showErrors ? errors.installAddress : undefined}
-              >
-                <Input
-                  value={installAddress}
-                  onChangeText={setInstallAddress}
-                  placeholder={m('create.addressPlaceholder')}
-                  multiline
-                  invalid={showErrors && errors.installAddress !== undefined}
-                />
-              </Field>
-            </>
-          ) : (
-            <Text style={styles.hint}>{m('sell.closesNow')}</Text>
-          )}
-        </Card>
+            {needsInstallation === 'yes' ? (
+              <>
+                <Field
+                  label={m('create.address')}
+                  required
+                  error={showErrors ? errors.installAddress : undefined}
+                >
+                  <Input
+                    value={installAddress}
+                    onChangeText={setInstallAddress}
+                    placeholder={m('create.addressPlaceholder')}
+                    multiline
+                    invalid={showErrors && errors.installAddress !== undefined}
+                  />
+                </Field>
+              </>
+            ) : (
+              <Text style={styles.hint}>{m('sell.closesNow')}</Text>
+            )}
+          </Card>
+        </View>
 
         <Pressable
           onPress={submit}
@@ -720,7 +811,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   money: {
     flexDirection: 'row',
@@ -740,11 +830,6 @@ const styles = StyleSheet.create({
   quantityItem: {
     width: 80,
   },
-  remove: {
-    ...typography.footnote,
-    color: colors.danger,
-    fontWeight: '600',
-  },
   addItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -757,8 +842,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   stock: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
+    // Ритм полей формы: отступ снизу, как у `Field`, а не сверху. Прежде
+    // блок стоял в 24 точках от поля выше и вплотную к «Комментарию».
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   codeDescription: {
     ...typography.caption,
@@ -767,8 +854,12 @@ const styles = StyleSheet.create({
   },
   stockTitle: {
     ...typography.caption,
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.bold,
     color: colors.textSecondary,
     fontWeight: '700',
+    // Подпись к строкам — как подпись поля к полю (`Field`): 4 точки.
+    marginBottom: spacing.xs - spacing.sm,
   },
   stockHint: {
     ...typography.caption,
@@ -776,21 +867,50 @@ const styles = StyleSheet.create({
   },
   stockRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    padding: spacing.md,
     borderRadius: radius.md,
-    borderWidth: hairline,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   stockRowChosen: {
     borderColor: colors.accent,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.accentSoft,
   },
-  stockBody: { flex: 1 },
+  /** Колонка значка ростом в строку размера — кружок по её центру. */
+  stockMark: {
+    width: 22,
+    height: typography.body.lineHeight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stockRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  stockBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  stockHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   stockName: {
     ...typography.body,
+    color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  stockCode: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
   stockMeta: {
@@ -799,13 +919,20 @@ const styles = StyleSheet.create({
   },
   stockPrice: {
     ...typography.headline,
+    fontFamily: fonts.bold,
     color: colors.textPrimary,
     fontWeight: '700',
+    flexShrink: 0,
   },
   addItemText: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     color: colors.accentStrong,
     fontWeight: '600',
+  },
+  inputReadOnly: {
+    backgroundColor: colors.surfaceMuted,
+    color: colors.textSecondary,
   },
   hint: {
     ...typography.footnote,
@@ -826,6 +953,7 @@ const styles = StyleSheet.create({
   },
   submitText: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
     fontWeight: '600',
   },

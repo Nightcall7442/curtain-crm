@@ -91,7 +91,12 @@ const styles = StyleSheet.create({
     width: 38,
     height: 4,
     borderRadius: radius.pill,
-    backgroundColor: colors.border,
+    /*
+      Приглушённый текст на половине прозрачности — около 2:1 к белому.
+      Цвет рамки (`border`) давал 1,3:1, и ручка шторки почти не читалась.
+    */
+    backgroundColor: colors.textMuted,
+    opacity: 0.5,
     marginBottom: spacing.md,
   },
   title: {

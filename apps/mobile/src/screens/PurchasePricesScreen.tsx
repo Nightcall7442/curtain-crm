@@ -1,11 +1,11 @@
 import { parseMoney, PURCHASE_CATEGORY_LABELS, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,10 +14,12 @@ import {
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { ChipSelect, Field, MoneyInput } from '../components/Field';
+import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 
 import { FabricStockScreen } from './FabricStockScreen';
 import { RetailStockScreen } from './RetailStockScreen';
@@ -107,45 +109,63 @@ export function PurchasePricesScreen({
     },
   });
 
-  if (items.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={items.error.message} />
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={items.isRefetching}
+            onRefresh={() => {
+              void items.refetch();
+            }}
+            tintColor={colors.accent}
+          />
+        }
+      >
+        {/*
+          Переключатель разделов — и при ошибке. Прежде сбой загрузки закупки
+          возвращал экран без него, и до работающих «Витрины» и «Склада»
+          было уже не добраться.
+        */}
         {header}
 
         <Card>
           <CardTitle title={m('prices.title')} icon="paid" />
           <Text style={styles.hint}>{m('prices.hint')}</Text>
 
-          {items.data === undefined ? (
+          {/* Свой текст, а не сообщение сервера: при сбое оно бывает английским. */}
+          {items.isError ? (
+            <ErrorState />
+          ) : items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty message={m('prices.empty')} hint={m('prices.emptyHint')} />
           ) : (
             items.data.map((item) => (
               <View key={item.id}>
+                {/*
+                  Название — целиком: это главное на экране. Две подписанные
+                  кнопки справа оставляли ему 120–157 точек, и названия
+                  обрезались многоточием на второй строке. «Снять»/«Вернуть»
+                  теперь значок с полной целью 44 и подписью для чтения с
+                  экрана, а «Цена» — одна и та же ширина в каждой строке,
+                  поэтому кнопки стоят ровной колонкой.
+                */}
                 <View style={styles.row}>
                   <View style={styles.text}>
-                    <Text
-                      style={[styles.name, item.isActive ? null : styles.nameOff]}
-                      numberOfLines={2}
-                    >
+                    <Text style={[styles.name, item.isActive ? null : styles.nameOff]}>
                       {item.name}
                     </Text>
+                    {/* Цена с единицей — неразрывно: «сум /» и «м» не расходятся по строкам. */}
                     <Text style={styles.meta}>
                       {`${t(PURCHASE_CATEGORY_LABELS, item.category)} · ${money(
                         parseMoney(item.price),
-                      )} / ${t(PURCHASE_UNIT_LABELS, item.unit)}`}
+                      )}\u00A0/\u00A0${t(PURCHASE_UNIT_LABELS, item.unit)}`}
                     </Text>
                   </View>
 
@@ -156,7 +176,12 @@ export function PurchasePricesScreen({
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={m('prices.editA11y', { name: item.name })}
-                    style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
+                    accessibilityState={{ expanded: editing === item.id }}
+                    style={({ pressed }) => [
+                      styles.action,
+                      editing === item.id ? styles.actionActive : null,
+                      pressed ? styles.pressed : null,
+                    ]}
                   >
                     <Text style={styles.actionText}>{m('prices.price')}</Text>
                   </Pressable>
@@ -172,11 +197,13 @@ export function PurchasePricesScreen({
                         ? m('prices.removeA11y', { name: item.name })
                         : m('prices.restoreA11y', { name: item.name })
                     }
-                    style={({ pressed }) => [styles.action, pressed ? styles.pressed : null]}
+                    style={({ pressed }) => [styles.iconAction, pressed ? styles.pressed : null]}
                   >
-                    <Text style={styles.actionText}>
-                      {item.isActive ? m('prices.remove') : m('prices.restore')}
-                    </Text>
+                    <Icon
+                      name={item.isActive ? 'eyeOff' : 'rolledBack'}
+                      size={20}
+                      color={item.isActive ? colors.textSecondary : colors.accentStrong}
+                    />
                   </Pressable>
                 </View>
 
@@ -186,22 +213,15 @@ export function PurchasePricesScreen({
                       <MoneyInput value={price} onChangeText={setPrice} autoFocus />
                     </Field>
 
-                    <Pressable
+                    <SubmitButton
+                      label={m('emp.save')}
+                      pending={update.isPending}
                       onPress={() => {
                         const parsed = Number.parseFloat(price.replace(',', '.'));
                         if (!Number.isFinite(parsed) || parsed < 0) return;
                         update.mutate({ id: item.id, price: parsed });
                       }}
-                      disabled={update.isPending}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
-                    >
-                      {update.isPending ? (
-                        <ActivityIndicator color={colors.onAccent} size="small" />
-                      ) : (
-                        <Text style={styles.submitText}>{m('emp.save')}</Text>
-                      )}
-                    </Pressable>
+                    />
                   </View>
                 )}
               </View>
@@ -219,11 +239,6 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
   },
   content: {
     padding: spacing.lg,
@@ -258,35 +273,47 @@ const styles = StyleSheet.create({
   meta: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
   },
+  // 44 — порог пальца, как у чипов и полей приложения; было 40.
   action: {
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
+    alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
+  },
+  actionActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
   actionText: {
     ...typography.caption,
-    color: colors.accentStrong,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.accentStrong,
   },
-  editor: {
-    paddingBottom: spacing.md,
-  },
-  submit: {
-    minHeight: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
+  /* Значок «снять/вернуть» стоит в той же колонке у каждой строки: ширина
+     у него одна, и «Цена» рядом больше не прыгает между строками. */
+  iconAction: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: radius.pill,
+    // Сам значок — у правого края строки, вровень с линией под ней; цель
+    // для пальца заходит на поле карточки.
+    marginRight: -spacing.md,
   },
-  submitText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
+  /* Поле прижималось к линии строки вплотную — снизу у редактора отступ был,
+     сверху нет. Своя линия снизу держит его вместе со строкой. */
+  editor: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
   },
   pressed: {
     opacity: opacity.pressed,

@@ -78,19 +78,30 @@ export function StatusFilterSheet({
   );
 }
 
+/**
+ * Насколько строка выходит за поля шторки.
+ *
+ * Подсветка выбранной строки шире текста — так у системных списков, — но
+ * сам текст обязан стоять на одной линии с заголовком шторки. Раньше
+ * отступ строки прибавлялся к полю шторки, и этапы начинались на 12 точек
+ * правее «Фильтр по статусу».
+ */
+const ROW_BLEED = spacing.sm;
+
 const styles = StyleSheet.create({
   list: {
     maxHeight: 440,
+    marginHorizontal: -ROW_BLEED,
   },
   row: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: ROW_BLEED,
     borderRadius: radius.md,
   },
+  /* Статус внутри этапа — на ступень правее этапа и той же высоты: 44. */
   nested: {
-    paddingLeft: spacing.xl,
-    minHeight: 40,
+    paddingLeft: ROW_BLEED + spacing.md,
   },
   rowActive: {
     backgroundColor: colors.accentSoft,

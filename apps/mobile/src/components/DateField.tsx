@@ -1,10 +1,10 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { formatIsoDate } from '@curtain-crm/shared';
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
-import { colors, hairline, radius, spacing, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
@@ -49,75 +49,85 @@ export function DateField({
   /*
     В браузере (приложение на pardabozor.uz/app) календаря от
     `@react-native-community/datetimepicker` не существует вовсе: у пакета
-    нет веб-реализации, и шторка открывалась пустой — с одной кнопкой
-    «Подтвердить» и ничем над ней.
+    нет веб-реализации, и шторка открывалась пустой.
 
-    У браузера календарь свой, и на телефоне это тот же системный календарь.
-    Формат значения у `<input type="date">` — ровно `YYYY-MM-DD`, то есть
-    тот же, что уходит наружу.
+    Календарь берётся у браузера (на телефоне это тот же системный), но
+    само поле рисуется тем же, что в приложении, — подпись, дата
+    `ДД.ММ.ГГГГ` и значок. Голый `<input type="date">` показывал дату по
+    правилам браузера: «10/05/2026» вместо 05.10.2026 (читается как 10 мая),
+    «mm/dd/yyyy» вместо подсказки и чёрный значок браузера рядом с нашим.
+    Теперь поле браузера невидимо и только открывает свой календарь.
   */
-  if (Platform.OS === 'web') {
-    return (
+  const webInput = useRef<HTMLInputElement | null>(null);
+
+  const openPicker = (): void => {
+    if (Platform.OS !== 'web') {
+      setOpen(true);
+      return;
+    }
+    const input = webInput.current;
+    if (input === null) return;
+    // `showPicker` есть во всех живых браузерах; старым хватает фокуса и клика.
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // Браузер не признал нажатие жестом пользователя — пробуем по-старому.
+      }
+    }
+    input.focus();
+    input.click();
+  };
+
+  return (
+    <>
       <View style={[styles.control, invalid ? styles.invalid : null]}>
-        <input
-          type="date"
-          value={value}
-          aria-label={placeholder}
-          {...(minimumDate === undefined ? {} : { min: toIso(minimumDate) })}
-          onChange={(event) => {
-            onChange(event.target.value);
-          }}
-          style={webInput}
-        />
+        <Pressable
+          onPress={openPicker}
+          accessibilityRole="button"
+          accessibilityLabel={value === '' ? placeholder : `${placeholder}: ${formatIsoDate(value)}`}
+          style={({ pressed }) => [styles.field, pressed ? styles.pressed : null]}
+        >
+          <Text style={[styles.value, value === '' ? styles.placeholder : null]} numberOfLines={1}>
+            {value === '' ? placeholder : formatIsoDate(value)}
+          </Text>
+          {/*
+            Значок календаря — пока даты нет; с датой на его месте «очистить».
+            Оба сразу не помещались в половинное поле («С» / «По»): дата
+            обрезалась до «20.11.202».
+          */}
+          {value === '' && <Icon name="calendar" size={18} color={colors.textMuted} />}
+        </Pressable>
+
         {value !== '' && (
           <Pressable
             onPress={() => {
               onChange('');
             }}
-            hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={m('common.close')}
+            accessibilityLabel={m('common.clear')}
+            style={({ pressed }) => [styles.clear, pressed ? styles.pressed : null]}
           >
-            <Icon name="remove" size={16} color={colors.textMuted} />
+            <Icon name="close" size={18} color={colors.textMuted} />
           </Pressable>
         )}
-      </View>
-    );
-  }
 
-  return (
-    <>
-      <Pressable
-        onPress={() => {
-          setOpen(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={placeholder}
-        style={({ pressed }) => [
-          styles.control,
-          invalid ? styles.invalid : null,
-          pressed ? styles.pressed : null,
-        ]}
-      >
-        <Text style={[styles.value, value === '' ? styles.placeholder : null]}>
-          {value === '' ? placeholder : formatIsoDate(value)}
-        </Text>
-        <View style={styles.actions}>
-          {value !== '' && (
-            <Pressable
-              onPress={() => {
-                onChange('');
-              }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={m('common.close')}
-            >
-              <Icon name="remove" size={16} color={colors.textMuted} />
-            </Pressable>
-          )}
-          <Icon name="calendar" size={18} color={colors.textMuted} />
-        </View>
-      </Pressable>
+        {Platform.OS === 'web' && (
+          <input
+            ref={webInput}
+            type="date"
+            value={value}
+            tabIndex={-1}
+            aria-hidden
+            {...(minimumDate === undefined ? {} : { min: toIso(minimumDate) })}
+            onChange={(event) => {
+              onChange(event.target.value);
+            }}
+            style={webPickerAnchor}
+          />
+        )}
+      </View>
 
       {open && Platform.OS === 'android' && (
         <DateTimePicker
@@ -129,7 +139,7 @@ export function DateField({
         />
       )}
 
-      {Platform.OS !== 'android' && (
+      {Platform.OS === 'ios' && (
         <BottomSheet
           visible={open}
           title={placeholder}
@@ -165,16 +175,23 @@ export function DateField({
   );
 }
 
-/** Поле браузера стилей React Native не понимает — те же размеры, но CSS. */
-const webInput = {
-  flex: 1,
-  minWidth: 0,
+/**
+ * Невидимое поле браузера под нашим — только якорь для его календаря.
+ *
+ * Во всю ширину поля, чтобы всплывающий календарь на компьютере вставал
+ * под ним, а не в углу; нажатия до него не доходят — их ловит `Pressable`.
+ */
+const webPickerAnchor = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  width: '100%',
+  height: '100%',
+  margin: 0,
+  padding: 0,
   border: 'none',
-  outline: 'none',
-  background: 'transparent',
-  color: colors.textPrimary,
-  fontFamily: typography.body.fontFamily,
-  fontSize: typography.body.fontSize,
+  opacity: 0,
+  pointerEvents: 'none',
 } as const;
 
 /** Календарная дата по местному времени — без сдвига через UTC. */
@@ -187,11 +204,8 @@ function toIso(date: Date): string {
 const styles = StyleSheet.create({
   control: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    alignItems: 'stretch',
     minHeight: 46,
-    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
@@ -201,7 +215,15 @@ const styles = StyleSheet.create({
     borderColor: colors.danger,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
+  },
+  field: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   value: {
     ...typography.body,
@@ -211,10 +233,13 @@ const styles = StyleSheet.create({
   placeholder: {
     color: colors.textMuted,
   },
-  actions: {
-    flexDirection: 'row',
+  clear: {
+    // Полная цель для пальца; влево заходит на отступ поля, чтобы крестик
+    // стоял от рамки там же, где стоял значок календаря.
+    width: 44,
+    marginLeft: -spacing.md,
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'center',
   },
   done: {
     marginTop: spacing.sm,

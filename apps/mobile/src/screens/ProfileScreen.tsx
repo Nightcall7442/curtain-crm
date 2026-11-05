@@ -192,7 +192,7 @@ export function ProfileScreen(): ReactElement {
 
       <View style={styles.pair}>
         <KpiCard
-          periodLabel={formatMonthPeriod(period.year, period.month)}
+          periodLabel={formatMonthPeriod(period.year, period.month, locale)}
           targetAmount={targetAmount}
           calculatedAmount={currentPayroll?.calculatedAmount ?? null}
           kpiPercent={currentPayroll?.kpiPercent ?? null}
@@ -215,18 +215,27 @@ export function ProfileScreen(): ReactElement {
           <Empty message={m('profile.noActiveOrders')} />
         ) : (
           <View>
-            {activeOrders.slice(0, 3).map((order) => (
+            {activeOrders.slice(0, 3).map((order, index, shown) => (
               <Pressable
                 key={order.id}
                 onPress={() => {
                   navigation.navigate('OrderDetail', { orderId: order.id });
                 }}
-                style={({ pressed }) => [styles.orderRow, pressed ? styles.pressed : null]}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.orderRow,
+                  // Линия — только между заказами: под последним она
+                  // повторяла край карточки.
+                  index === shown.length - 1 ? styles.orderRowLast : null,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <Text style={styles.orderNumber}>
                   {order.orderNumber ?? `#${order.id.toString()}`}
                 </Text>
-                <Text style={styles.orderStatus} numberOfLines={1}>
+                {/* Статус целиком, в две строки: «Отклонён, решение за
+                    директором» многоточием съедался ровно на главном. */}
+                <Text style={styles.orderStatus} numberOfLines={2}>
                   {t(ORDER_STATUS_LABELS, order.status)}
                 </Text>
                 <Icon name="chevron" size={18} color={colors.textMuted} />
@@ -279,7 +288,7 @@ export function ProfileScreen(): ReactElement {
         предлагать подключение, которое ничем не кончится, незачем.
       */}
       {telegram.data?.enabled === true && (
-        <>
+        <View style={styles.section}>
           <SectionHeader title={m('profile.notifications')} />
           <Card>
             <CardTitle title="Telegram" icon="notifications" />
@@ -322,7 +331,7 @@ export function ProfileScreen(): ReactElement {
               </>
             )}
           </Card>
-        </>
+        </View>
       )}
 
       {/*
@@ -333,99 +342,109 @@ export function ProfileScreen(): ReactElement {
 
         Названия языков написаны на самих языках по той же причине.
       */}
-      <SectionHeader title={m('profile.language')} />
-      <Card>
-        <View style={styles.localeRow}>
-          {LOCALES.map((value) => {
-            const active = value === locale;
+      {/*
+        Заголовок секции и её карточка — одним блоком: так подпись стоит в 8
+        точках от своей карточки и в 24 от предыдущей. Отдельными детьми
+        списка они получали общий зазор 16, и подпись прилипала к карточке
+        выше, а не к той, которую называет.
+      */}
+      <View style={styles.section}>
+        <SectionHeader title={m('profile.language')} />
+        <Card>
+          <View style={styles.localeRow}>
+            {LOCALES.map((value) => {
+              const active = value === locale;
 
-            return (
-              <Pressable
-                key={value}
-                onPress={() => {
-                  setLocale(value);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={({ pressed }) => [
-                  styles.localeOption,
-                  active ? styles.localeOptionActive : null,
-                  pressed ? { opacity: opacity.pressed } : null,
-                ]}
-              >
-                <Text style={[styles.localeText, active ? styles.localeTextActive : null]}>
-                  {LOCALE_INFO[value].label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Card>
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => {
+                    setLocale(value);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.localeOption,
+                    active ? styles.localeOptionActive : null,
+                    pressed ? { opacity: opacity.pressed } : null,
+                  ]}
+                >
+                  <Text style={[styles.localeText, active ? styles.localeTextActive : null]}>
+                    {LOCALE_INFO[value].label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+      </View>
 
-      <SectionHeader title={m('profile.more')} />
-      <ListCard>
-        <ListRow
-          icon="rating"
-          label={m('profile.ratingKpi')}
-          onPress={() => {
-            navigation.navigate('Rating');
-          }}
-        />
-        {/* Директору — сводный рейтинг всех и очередь запросов на выходные с графиком отдыхающих. */}
-        {isCeo && (
+      <View style={styles.section}>
+        <SectionHeader title={m('profile.more')} />
+        <ListCard>
           <ListRow
-            icon="people"
-            label={m('profile.ratingBoard')}
+            icon="rating"
+            label={m('profile.ratingKpi')}
             onPress={() => {
-              navigation.navigate('RatingBoard');
+              navigation.navigate('Rating');
             }}
           />
-        )}
-        <ListRow
-          icon="orders"
-          label={m('profile.myTasks')}
-          onPress={() => {
-            navigation.navigate('TaskList');
-          }}
-        />
-        <ListRow
-          icon="calendar"
-          label={isCeo ? m('profile.dayOffQueue') : m('profile.dayOff')}
-          onPress={() => {
-            navigation.navigate(isCeo ? 'DayOffApprovals' : 'DayOff');
-          }}
-        />
-        {/*
-          Кадры — последним пунктом перед выходом и только директору.
-
-          Не «Руководство»: там сменные дела — отгулы, зарплата, поручения,
-          — а приём и увольнение человек делает редко и обдуманно. Место
-          перед выходом и подходит редкому действию: до него надо долистать.
-
-          Именно директору, а не всему руководству: `users.create`,
-          `setActive` и выдача ролей закрыты `ceoProcedure`, и админу этот
-          пункт обещал бы право, которого у него нет.
-        */}
-        {isCeo && (
+          {/* Директору — сводный рейтинг всех и очередь запросов на выходные с графиком отдыхающих. */}
+          {isCeo && (
+            <ListRow
+              icon="people"
+              label={m('profile.ratingBoard')}
+              onPress={() => {
+                navigation.navigate('RatingBoard');
+              }}
+            />
+          )}
           <ListRow
-            icon="people"
-            label={m('profile.employees')}
+            icon="orders"
+            label={m('profile.myTasks')}
             onPress={() => {
-              navigation.navigate('Employees');
+              navigation.navigate('TaskList');
             }}
           />
-        )}
+          <ListRow
+            icon="calendar"
+            label={isCeo ? m('profile.dayOffQueue') : m('profile.dayOff')}
+            onPress={() => {
+              navigation.navigate(isCeo ? 'DayOffApprovals' : 'DayOff');
+            }}
+          />
+          {/*
+            Кадры — последним пунктом перед выходом и только директору.
 
-        <ListRow
-          icon="logout"
-          label={m('profile.signOut')}
-          tone="danger"
-          isLast
-          onPress={() => {
-            void signOut();
-          }}
-        />
-      </ListCard>
+            Не «Руководство»: там сменные дела — отгулы, зарплата, поручения,
+            — а приём и увольнение человек делает редко и обдуманно. Место
+            перед выходом и подходит редкому действию: до него надо долистать.
+
+            Именно директору, а не всему руководству: `users.create`,
+            `setActive` и выдача ролей закрыты `ceoProcedure`, и админу этот
+            пункт обещал бы право, которого у него нет.
+          */}
+          {isCeo && (
+            <ListRow
+              icon="people"
+              label={m('profile.employees')}
+              onPress={() => {
+                navigation.navigate('Employees');
+              }}
+            />
+          )}
+
+          <ListRow
+            icon="logout"
+            label={m('profile.signOut')}
+            tone="danger"
+            isLast
+            onPress={() => {
+              void signOut();
+            }}
+          />
+        </ListCard>
+      </View>
 
       <Text style={styles.version}>{m('profile.version', { v: appVersion() })}</Text>
     </ScrollView>
@@ -501,15 +520,6 @@ const styles = StyleSheet.create({
    *
    * В ряду каждой карточке доставалось около 133 px под содержимое, а туда
    * кладут заголовок с плашкой состояния и сумму вида «2 790 000 сум».
-   * Заголовок разваливался по словам, плашка вылезала за край, а сумма
-   * переносилась посередине числа — в  все пробелы
-   * неразрывные, поэтому строка рвалась по произвольному знаку.
-   */
-  /**
-   * Зарплата и смена — В СТОЛБИК, а не в ряд.
-   *
-   * В ряду каждой карточке доставалось около 133 px под содержимое, а туда
-   * кладут заголовок с плашкой состояния и сумму вида «2 790 000 сум».
    * Заголовок разваливался по словам, плашка вылезала за белый край, а сумма
    * переносилась посередине числа: в денежном формате все пробелы
    * неразрывные, поэтому строка рвалась по произвольному знаку.
@@ -522,31 +532,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  orderRowLast: {
+    borderBottomWidth: 0,
+  },
+  /* Секция «подпись + карточка»: сверху добавка к общему зазору 16 — до 24. */
+  section: {
+    marginTop: spacing.sm,
   },
   pressed: {
     opacity: opacity.pressed,
   },
+  // Цифры одной ширины: у «DH-000486» и «DH-000471» колонка статуса
+  // начиналась с разницей в 4 точки и шла по строкам лесенкой.
   orderNumber: {
     ...typography.value,
     color: colors.header,
     marginRight: spacing.md,
+    fontVariant: ['tabular-nums'],
   },
   orderStatus: {
     ...typography.caption,
     color: colors.textSecondary,
     flex: 1,
+    minWidth: 0,
   },
   more: {
     ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.md,
   },
+  // Без своего отступа: карточка уже даёт 16, а с добавкой кнопки стояли
+  // в 28 от краёв — не так, как всё остальное на экране.
   localeRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    padding: spacing.md,
   },
   localeOption: {
     flex: 1,

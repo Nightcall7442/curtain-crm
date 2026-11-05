@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 import { notifySuccess } from '../lib/haptics';
-import { colors, opacity, radius, typography } from '../theme';
+import { colors, opacity, radius, spacing, typography } from '../theme';
 
 import { Icon } from './Icon';
 
@@ -34,24 +34,41 @@ export function SlideToConfirm({
   busy = false,
 }: {
   readonly label: string;
-  readonly onConfirm: () => void;
+  /**
+   * Действие по дотянутому бегунку. `false` (или обещание, которое им
+   * кончилось) — действие не состоялось, и бегунок сразу возвращается.
+   */
+  readonly onConfirm: () => void | boolean | Promise<void | boolean>;
   readonly disabled?: boolean;
   readonly busy?: boolean;
 }): ReactElement {
   const pos = useRef(new Animated.Value(0)).current;
   const current = useRef(0);
   const trackWidth = useRef(0);
+  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const text = label.replace(TRAILING_ARROW, '');
 
   const state = useRef({ disabled, busy, onConfirm });
   state.current = { disabled, busy, onConfirm };
 
+  const returnThumb = (): void => {
+    Animated.spring(pos, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 14 }).start();
+    current.current = 0;
+  };
+
   // Мутация завершилась (успехом или отказом) — бегунок возвращается.
   useEffect(() => {
-    if (!busy) {
-      Animated.spring(pos, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 14 }).start();
-      current.current = 0;
-    }
+    if (!busy) returnThumb();
+    // `returnThumb` пересоздаётся на каждом рендере, но держит только `pos`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, pos]);
+
+  useEffect(
+    () => () => {
+      if (graceTimer.current !== null) clearTimeout(graceTimer.current);
+    },
+    [],
+  );
 
   const responder = useRef(
     PanResponder.create({
@@ -103,7 +120,31 @@ export function SlideToConfirm({
           Animated.spring(pos, { toValue: max, useNativeDriver: true, bounciness: 0, speed: 20 }).start();
           current.current = max;
           notifySuccess();
-          state.current.onConfirm();
+          const result = state.current.onConfirm();
+          if (result === false) {
+            returnThumb();
+            return;
+          }
+          if (result instanceof Promise) {
+            void result.then((ok) => {
+              if (ok === false) returnThumb();
+            });
+          }
+          /*
+            Страховка: действие так и не началось.
+
+            Бегунок ждёт в конце, пока `busy` не станет true и снова false.
+            Но у швеи перед закрытием смены — диалог «сфотографируйте стол»,
+            и при «Отмене» (или закрытой камере) `busy` не менялся вовсе:
+            бегунок оставался в конце дорожки поверх подписи, хотя смена
+            открыта, и жест выглядел выполненным. Не начался запрос за
+            `CONFIRM_GRACE_MS` — бегунок возвращается сам.
+          */
+          if (graceTimer.current !== null) clearTimeout(graceTimer.current);
+          graceTimer.current = setTimeout(() => {
+            graceTimer.current = null;
+            if (!state.current.busy) returnThumb();
+          }, CONFIRM_GRACE_MS);
           return;
         }
         Animated.spring(pos, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
@@ -123,16 +164,25 @@ export function SlideToConfirm({
         trackWidth.current = event.nativeEvent.layout.width;
       }}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={text}
       accessibilityState={{ disabled: disabled || busy }}
-      accessibilityActions={[{ name: 'activate', label }]}
+      accessibilityActions={[{ name: 'activate', label: text }]}
       onAccessibilityAction={(event) => {
         if (event.nativeEvent.actionName === 'activate' && !disabled && !busy) {
-          onConfirm();
+          void onConfirm();
         }
       }}
     >
-      <Text style={styles.label}>{label}</Text>
+      {/*
+        Подпись — в свободной части дорожки, справа от бегунка, а не по
+        центру всей дорожки: на 360 точках она переносилась, и на второй
+        строке оставалась одна стрелка, а первая буква узбекской подписи
+        заходила под бегунок. Стрелка в конце подписи срезается: её и так
+        рисует бегунок, второй раз она лишь удлиняла строку.
+      */}
+      <Text style={styles.label} numberOfLines={2}>
+        {text}
+      </Text>
       <Animated.View
         style={[styles.thumb, { transform: [{ translateX: pos }] }]}
         // Палец редко попадает точно в кружок: смену отмечают на ходу, часто
@@ -153,6 +203,9 @@ export function SlideToConfirm({
 
 const THUMB = 48;
 const PAD = 5;
+/** Сколько ждать, что дотянутый жест запустил действие (`busy`). */
+const CONFIRM_GRACE_MS = 400;
+const TRAILING_ARROW = /\s*→\s*$/;
 
 const styles = StyleSheet.create({
   track: {
@@ -167,10 +220,12 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.headline,
+    lineHeight: 19,
     color: colors.headerText,
     textAlign: 'center',
-    // Подпись по центру всей дорожки; бегунок лежит поверх её начала.
-    paddingHorizontal: THUMB,
+    // Свободная часть дорожки: от правого края бегунка (с зазором) до конца.
+    paddingLeft: PAD + THUMB + PAD + spacing.sm,
+    paddingRight: spacing.lg,
   },
   thumb: {
     position: 'absolute',

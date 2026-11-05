@@ -9,7 +9,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
 
 import { Input } from './Field';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -181,16 +181,26 @@ export function ItemMeters({
   );
 }
 
+/*
+  Размеры — как у остальных форм на карточке заказа.
+
+  Кнопка была 40 точек с подписью мелкой сноской, а «Сохранить цену» и
+  «Сохранить расценки» в той же карточке — 48 с подписью основного кегля:
+  три кнопки одного смысла выглядели тремя разными. Поля стояли через 4
+  точки и сливались в столбик рамок.
+*/
 const styles = StyleSheet.create({
   block: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: hairline,
     borderTopColor: colors.border,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   title: {
-    ...typography.footnote,
+    ...typography.caption,
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -200,7 +210,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   label: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textSecondary,
     flex: 1,
   },
@@ -208,8 +218,7 @@ const styles = StyleSheet.create({
     width: 104,
   },
   submit: {
-    marginTop: spacing.xs,
-    height: 40,
+    minHeight: 48,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -219,7 +228,8 @@ const styles = StyleSheet.create({
     opacity: opacity.disabled,
   },
   submitText: {
-    ...typography.footnote,
+    ...typography.body,
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
     fontWeight: '600',
   },

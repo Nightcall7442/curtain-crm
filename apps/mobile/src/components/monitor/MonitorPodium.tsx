@@ -30,16 +30,38 @@ export function MonitorPodium({ board }: { readonly board: MonitorBoardData }): 
 
   const month = monthName(Number.parseInt(board.podium.month.slice(5, 7), 10), locale).toLowerCase();
   const unit = board.unit === 'pieces' ? m('monitor.pieces') : m('monitor.orders');
+  /*
+    Месяц строчными — для середины фразы («Лучшие за октябрь»). В узбекском
+    шаблоне месяц стоит ПЕРВЫМ словом, и заголовок начинался со строчной:
+    «oktabr oyining eng yaxshilari». Заглавная — первой букве готовой фразы.
+  */
+  const titleText = m('monitor.bestOf', { month });
+  const title = titleText.charAt(0).toLocaleUpperCase(locale) + titleText.slice(1);
 
   return (
     <Card>
       <View style={styles.titleRow}>
+        {/* Кубок, а не `badge`: тот в наборе — банковская карта, и над пьедесталом читался как «оплата». */}
         <View style={styles.trophy}>
-          <Icon name="badge" size={16} color="#3A2A08" />
+          <Icon name="rating" size={16} color="#3A2A08" />
         </View>
-        <Text style={styles.title}>{m('monitor.bestOf', { month })}</Text>
+        <Text style={styles.title}>{title}</Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+      {/*
+        Лента — во всю ширину карточки, отступ переехал внутрь прокрутки.
+
+        Прокрутка стояла внутри отступа карточки, и третья арка резалась по
+        невидимой линии в 16 px от края — посреди белого поля, вместе с
+        бронзовой рамкой. Такой срез читается как сбой отрисовки. Теперь
+        лента обрывается краем карточки, а четвёртое место выглядывает из-за
+        него — привычный знак «листай дальше».
+      */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.stripScroll}
+        contentContainerStyle={styles.strip}
+      >
         {board.podium.entries.slice(0, MONITOR_PODIUM_SIZE).map((entry, index) => {
           const place = index + 1;
           const metal = METAL[place] ?? PLAIN;
@@ -83,19 +105,26 @@ const styles = StyleSheet.create({
   trophy: {
     width: 28,
     height: 28,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#E9C46A',
   },
+  /* Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным. */
   title: {
     ...typography.body,
-    fontWeight: '600',
+    fontFamily: fonts.semibold,
     color: colors.textPrimary,
     flex: 1,
   },
+  stripScroll: {
+    marginHorizontal: -spacing.lg,
+  },
   strip: {
-    gap: spacing.md,
+    // 8, а не 12: при 12 на экране 360 четвёртая арка начиналась ровно на
+    // краю карточки и не выглядывала вовсе — ленту нечем было угадать.
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xs,
   },
   slot: {
@@ -131,7 +160,7 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.caption,
-    fontWeight: '600',
+    fontFamily: fonts.semibold,
     color: colors.textPrimary,
     marginTop: 14,
   },

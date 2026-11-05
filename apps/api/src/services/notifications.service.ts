@@ -348,12 +348,19 @@ export async function notifyOrderCommentAdded(
 export async function notifyShiftAdjusted(
   executor: DbExecutor,
   userId: number,
+  /** `shiftDate` — `YYYY-MM-DD`. */
   params: { readonly actorName: string; readonly reason: string; readonly shiftDate: string },
 ): Promise<void> {
   await createNotification(executor, {
     userId,
     type: NotificationType.SHIFT_ADJUSTED,
-    title: `Смена ${params.shiftDate} скорректирована`,
+    /*
+      Дата — как везде в приложении, «31.10», а не «2026-10-31». Сырая
+      ISO-дата в заголовке стояла рядом со временем ленты «31.10» и
+      читалась как служебная строка. Шаблон перевода (`{date}`) от формата
+      даты не зависит.
+    */
+    title: `Смена ${formatIsoDateShort(params.shiftDate)} скорректирована`,
     body: `${params.actorName} изменил время смены. Причина: ${params.reason}`,
   });
 }

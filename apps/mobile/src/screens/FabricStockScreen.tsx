@@ -11,14 +11,15 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
+import { Card, CardLink, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -43,6 +44,7 @@ export function FabricStockScreen({
 } = {}): ReactElement {
   const { m, t } = useLocale();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
 
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
@@ -97,6 +99,7 @@ export function FabricStockScreen({
 
   const all = (rows.data ?? []).filter((row) => (STOCK_KINDS as readonly string[]).includes(row.kind));
   const needle = search.trim().toLowerCase();
+  const canSave = code.trim() !== '' && !create.isPending && !update.isPending;
 
   const items = all.filter((row) => {
     const byKind = filter === 'all' || row.kind === filter;
@@ -111,33 +114,44 @@ export function FabricStockScreen({
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/*
+        Снизу — обычный отступ и безопасная зона, а не место под панель
+        вкладок: экран открыт поверх вкладок, и `tabBarSpace` оставлял
+        под списком пустую полосу в 114 точек.
+      */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {header}
 
         <Card>
+          {/*
+            «+ Позиция» — ссылкой в шапке, как «+ Мероприятие» на главной.
+            Была пилюля 74×32 с подписью 12 точек без плюса: ниже порога
+            нажатия, ниже чипов 44 под ней и читалась как метка, а не
+            действие.
+          */}
           <CardTitle
             title={m('fabric.title')}
             icon="window"
             action={
               formOpen ? undefined : (
-                <Pressable
+                <CardLink
+                  label={`+ ${m('fabric.item')}`}
                   onPress={() => {
                     create.reset();
                     update.reset();
                     closeForm();
                     setFormOpen(true);
                   }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [styles.addButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.addButtonText}>{m('fabric.item')}</Text>
-                </Pressable>
+                />
               )
             }
           />
 
           {formOpen && (
-            <>
+            <View style={styles.form}>
               {/* Вид у заведённого кода не меняется: это другой справочник. */}
               {editingId === null && (
                 <Field label={m('fabric.what')}>
@@ -193,6 +207,12 @@ export function FabricStockScreen({
                   <Text style={styles.cancelText}>{m('common.cancel')}</Text>
                 </Pressable>
 
+                {/*
+                  Без кода кнопка неактивна и выглядит неактивной. Раньше она
+                  была обычной зелёной и при пустом поле молча ничего не
+                  делала — ни ошибки, ни отклика: казалось, что приложение
+                  зависло.
+                */}
                 <Pressable
                   onPress={() => {
                     const name = code.trim();
@@ -208,11 +228,13 @@ export function FabricStockScreen({
                       update.mutate({ id: editingId, ...card });
                     }
                   }}
-                  disabled={create.isPending || update.isPending}
+                  disabled={!canSave}
                   accessibilityRole="button"
+                  accessibilityState={{ disabled: !canSave }}
                   style={({ pressed }) => [
                     styles.submit,
                     styles.submitFlex,
+                    code.trim() === '' ? styles.submitOff : null,
                     pressed ? styles.pressed : null,
                   ]}
                 >
@@ -225,7 +247,7 @@ export function FabricStockScreen({
                   )}
                 </Pressable>
               </View>
-            </>
+            </View>
           )}
 
           <Field label={m('fabric.filter')}>
@@ -264,7 +286,7 @@ export function FabricStockScreen({
               hint={all.length === 0 ? m('fabric.noCodesHint') : m('fabric.checkCode')}
             />
           ) : (
-            items.map((row) => (
+            items.map((row, index) => (
               <Pressable
                 key={row.id}
                 onLongPress={() => {
@@ -278,7 +300,13 @@ export function FabricStockScreen({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('fabric.rowA11y', { name: row.name })}
-                style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
+                style={({ pressed }) => [
+                  styles.itemRow,
+                  // Под последним кодом линии нет: её роль — делить коды, а
+                  // не отчёркивать список от сноски.
+                  index === items.length - 1 ? styles.itemRowLast : null,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <View style={styles.itemText}>
                   <Text style={styles.itemName}>{row.name}</Text>
@@ -319,7 +347,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    paddingBottom: tabBarSpace,
     gap: spacing.lg,
   },
   codeRow: {
@@ -340,6 +367,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /*
+    Форма отчёркнута от фильтра и списка: кнопки «Отмена / Завести» стояли
+    вплотную к подписи «Что смотрим» — ноль точек между ними, и форма
+    сливалась со списком под ней.
+  */
+  form: {
+    paddingBottom: spacing.lg,
+    marginBottom: spacing.lg,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
+  },
   formRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -356,6 +394,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
+  itemRowLast: {
+    borderBottomWidth: 0,
+  },
   itemText: {
     flex: 1,
   },
@@ -368,20 +409,6 @@ const styles = StyleSheet.create({
     ...typography.footnote,
     color: colors.textMuted,
   },
-  addButton: {
-    height: 32,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: hairline,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonText: {
-    ...typography.footnote,
-    color: colors.accentStrong,
-    fontWeight: '600',
-  },
   submit: {
     height: 44,
     borderRadius: radius.md,
@@ -391,6 +418,9 @@ const styles = StyleSheet.create({
   },
   submitFlex: {
     flex: 1,
+  },
+  submitOff: {
+    opacity: opacity.disabled,
   },
   submitText: {
     ...typography.body,

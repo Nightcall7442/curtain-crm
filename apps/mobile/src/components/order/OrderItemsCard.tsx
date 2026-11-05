@@ -29,7 +29,14 @@ export function OrderItemsCard({
         <Empty message={m('order.noItems')} />
       ) : (
         items.map((item, index) => (
-          <View key={item.id} style={styles.item}>
+          <View
+            key={item.id}
+            style={[
+              styles.item,
+              index === 0 ? styles.itemFirst : styles.itemDivided,
+              index === items.length - 1 ? styles.itemLast : null,
+            ]}
+          >
             <Text style={styles.itemTitle}>
               {`${(index + 1).toString()}. ${item.model ?? m('order.noModel')}`}
               {item.readyMadeCode === null ? '' : ` · ${item.readyMadeCode}`}
@@ -89,6 +96,18 @@ export function OrderItemsCard({
                 {m('order.pipe', { v: formatMaterial(item.pipe) })}
               </Text>
             )}
+            {/*
+                  Аксессуары — держатели, султанчики, сачак: их собирают на
+                  выезд и ставят на объекте, и без этих строк швея и
+                  установщик о них не узнавали — список сохранялся, но
+                  нигде в карточке не показывался.
+                */}
+            {item.accessories.map((accessory, accessoryIndex) => (
+              <Text key={`acc-${accessoryIndex.toString()}`} style={styles.itemDetail}>
+                {`${m('create.accessory')}: ${accessory.name} × ${accessory.quantity.toString()}`}
+                {accessory.code === null ? '' : ` · ${accessory.code}`}
+              </Text>
+            ))}
             {item.comment !== null && <Text style={styles.itemComment}>{item.comment}</Text>}
 
             {/*
@@ -121,11 +140,26 @@ function trimNumber(value: string, maxFractionDigits = 1): string {
   }).format(parsed);
 }
 
+/*
+  Разделитель — МЕЖДУ позициями, линией над каждой следующей.
+
+  Прежде у каждой позиции была линия снизу, включая последнюю, и она висела
+  у самого края карточки, дублируя его. Первая позиция начинается сразу под
+  заголовком, последняя кончается на внутреннем отступе карточки.
+*/
 const styles = StyleSheet.create({
   item: {
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  },
+  itemFirst: {
+    paddingTop: 0,
+  },
+  itemLast: {
+    paddingBottom: 0,
+  },
+  itemDivided: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   itemComment: {
     ...typography.caption,

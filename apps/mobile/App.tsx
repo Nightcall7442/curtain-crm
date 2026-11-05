@@ -5,7 +5,7 @@ import {
   Manrope_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/manrope';
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer, type LinkingOptions, type Theme } from '@react-navigation/native';
 import { focusManager, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
 import { StatusBar } from 'expo-status-bar';
@@ -15,13 +15,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
 import { WebAlertHost } from './src/components/WebAlertHost';
-import { AuthContext, type AuthState, type AuthUser } from './src/hooks/useAuth';
+import { AuthContext, useAuth, type AuthState, type AuthUser } from './src/hooks/useAuth';
 import { LocaleProvider, useLocale, type Translate } from './src/hooks/useLocale';
-import { authFetch, isUnauthorized, setSessionExpiredHandler } from './src/lib/authFetch';
+import { authFetch, endSession, isUnauthorized, setSessionExpiredHandler } from './src/lib/authFetch';
 import { accountStorage, tokenStorage } from './src/lib/storage';
 import { resolveApiUrl, trpc } from './src/lib/trpc';
 import { installWebAlert } from './src/lib/webAlert';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { colors } from './src/theme';
 
 /*
   Вернулся в приложение — данные обновляются.
@@ -48,6 +49,50 @@ if (Platform.OS !== 'web') {
     };
   });
 }
+
+/**
+ * Цвета навигации — из палитры «Хвоя», а не стандартные react-navigation.
+ *
+ * Главное здесь — `border`. Им навигатор в браузере рисует волосяную линию
+ * под шапкой, и по умолчанию она холодно-серая (#D8D8D8): под тёмной хвоей
+ * на льняном фоне выходил светлый шов, которого у APK нет. Линия цвета
+ * самой шапки не видна. `card`/`text` — тёмная поверхность навигации и
+ * текст на ней, как в шапке и панели вкладок.
+ */
+const navigationTheme: Theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.accent,
+    background: colors.background,
+    card: colors.header,
+    text: colors.headerText,
+    border: colors.header,
+    notification: colors.danger,
+  },
+};
+
+/**
+ * История браузера — чтобы «назад» в PWA закрывал экран, а не приложение.
+ *
+ * Без `linking` навигация браузерную историю не трогала вовсе: открыл
+ * «Рейтинг», нажал системное «назад» на Android — и PWA закрылась (во
+ * вкладке — пустая страница). Теперь каждый переход кладёт запись в
+ * историю, и «назад» снимает экран со стека, как кнопка «назад» в APK.
+ *
+ * Адрес при этом не меняется — всегда корень приложения. Глубокие адреса
+ * вроде `/app/order/5` сервер не отдаёт (он знает только `/app/`), и
+ * обновление страницы на них кончалось бы 404. Записи истории различаются
+ * не адресом, а сохранённым состоянием навигации; после перезагрузки
+ * приложение открывается с главной — как после перезапуска APK.
+ */
+const WEB_ROOT_PATH = `${process.env['EXPO_BASE_URL'] ?? ''}/`;
+
+const webLinking: LinkingOptions<ReactNavigation.RootParamList> = {
+  prefixes: [],
+  getStateFromPath: () => undefined,
+  getPathFromState: () => WEB_ROOT_PATH,
+};
 
 /**
  * Корень приложения: провайдеры, клиент tRPC и состояние аутентификации.
@@ -125,9 +170,7 @@ export default function App(): ReactElement | null {
                 про фон, и его никто не отменял.
               */}
               <StatusBar style="light" />
-              <NavigationContainer>
-                <RootNavigator />
-              </NavigationContainer>
+              <AppNavigation />
             </AuthGate>
             <WebAlertHost />
           </SafeAreaProvider>
@@ -136,6 +179,30 @@ export default function App(): ReactElement | null {
     </trpc.Provider>
   );
 }
+
+/**
+ * Контейнер навигации.
+ *
+ * История браузера ведётся только для вошедшего: на экране входа навигатора
+ * нет, и запись «назад» из прошлой сессии было бы не к чему применить.
+ */
+function AppNavigation(): ReactElement {
+  const { user } = useAuth();
+  const signedIn = user !== null;
+  const linking = useMemo(
+    () => (Platform.OS === 'web' ? { ...webLinking, enabled: signedIn } : undefined),
+    [signedIn],
+  );
+
+  return (
+    <NavigationContainer theme={navigationTheme} linking={linking}>
+      <RootNavigator />
+    </NavigationContainer>
+  );
+}
+
+/** Сколько ждать ответа сервера на выход, прежде чем выйти без него. */
+const LOGOUT_WAIT_MS = 3000;
 
 /**
  * «Сохранить этот вход?» — вопрос после первого входа под этой учётной записью.
@@ -189,21 +256,51 @@ function AuthGate({ children }: { readonly children: React.ReactNode }): ReactEl
   const loginMutation = trpc.auth.login.useMutation();
 
   const signOut = useCallback(async (): Promise<void> => {
-    const refreshToken = await tokenStorage.getRefreshToken();
+    /*
+      Сервер узнаёт о выходе ДО того, как стёрты токены.
 
-    // Токены чистим сразу: выход должен работать и при недоступном сервере.
+      `auth.logout` закрыт входом, а прежде его вызывали уже после очистки
+      хранилища — без access-токена. Сервер отвечал 401, refresh-токен
+      оставался живым, а в консоли браузера висели две ошибки.
+
+      Ждём не дольше `LOGOUT_WAIT_MS`: выход обязан работать и при
+      недоступном сервере.
+    */
+    const revoke = async (): Promise<void> => {
+      const refreshToken = await tokenStorage.getRefreshToken();
+      if (refreshToken === null) return;
+      await utils.client.auth.logout.mutate({ refreshToken });
+      /*
+        Если access-токен успел протухнуть, `authFetch` по дороге обновил
+        пару — и refresh-токен сменился. Старый сервер отозвал при
+        ротации, новый остался бы жить: гасим и его.
+      */
+      const rotated = await tokenStorage.getRefreshToken();
+      if (rotated !== null && rotated !== refreshToken) {
+        await utils.client.auth.logout.mutate({ refreshToken: rotated });
+      }
+    };
+    await Promise.race([
+      revoke().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, LOGOUT_WAIT_MS);
+      }),
+    ]);
+
+    // Обновление пары, не успевшее за отведённое время, токены не вернёт.
+    endSession();
     await tokenStorage.clear();
-    // И убираем аккаунт из быстрого переключения: сервер сейчас погасит его
+    // И убираем аккаунт из быстрого переключения: сервер погасил его
     // refresh-токен, и запись стала бы кнопкой, которая всегда падает.
     if (user !== null) await accountStorage.forget(user.id);
     setUser(null);
-    utils.invalidate().catch(() => undefined);
-
-    if (refreshToken !== null) {
-      // Сообщаем серверу «в фоне»: ответ на выход пользователю не нужен.
-      utils.client.auth.logout.mutate({ refreshToken }).catch(() => undefined);
-    }
-  }, [utils, user]);
+    /*
+      Кеш — целиком и без перезапросов. `invalidate()` перезапрашивал все
+      открытые запросы уже без токена: одиннадцать запросов, 401 на каждый.
+      Данные прежнего сотрудника следующему всё равно показывать нельзя.
+    */
+    queryClient.clear();
+  }, [utils, user, queryClient]);
 
   /**
    * Уйти на экран входа, оставив текущую сессию живой.

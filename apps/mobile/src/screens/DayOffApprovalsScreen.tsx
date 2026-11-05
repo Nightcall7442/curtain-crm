@@ -1,4 +1,9 @@
-import { DAY_OFF_STATUS_LABELS, formatIsoDate, type DayOffStatus } from '@curtain-crm/shared';
+import {
+  DAY_OFF_STATUS_LABELS,
+  DayOffStatus,
+  formatIsoDateShort,
+  type DayOffStatus as DayOffStatusName,
+} from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -9,6 +14,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { TeamDaysOff } from '../components/TeamDaysOff';
@@ -16,7 +22,7 @@ import { Input } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, opacity, radius, spacing, typography } from '../theme';
 
 /**
  * Заявки на отгул: одобрить или отклонить.
@@ -36,6 +42,10 @@ import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../th
 export function DayOffApprovalsScreen(): ReactElement {
   const { t, m } = useLocale();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
+  /* Снизу — безопасная зона и обычный отступ, а не место под панель
+     вкладок: это экран стека, панели под ним нет. */
+  const contentStyle = [styles.content, { paddingBottom: spacing.xl + insets.bottom }];
 
   /** Заявка, которой пишут причину отказа. `null` — никому. */
   const [rejecting, setRejecting] = useState<number | null>(null);
@@ -81,7 +91,7 @@ export function DayOffApprovalsScreen(): ReactElement {
 
   if (query.data === undefined) {
     return (
-      <View style={styles.content}>
+      <View style={contentStyle}>
         <Card>
           <Skeleton />
         </Card>
@@ -92,7 +102,7 @@ export function DayOffApprovalsScreen(): ReactElement {
   const isBusy = approve.isPending || reject.isPending;
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={contentStyle}>
       <TeamDaysOff />
 
       {query.data.items.length === 0 && (
@@ -102,7 +112,7 @@ export function DayOffApprovalsScreen(): ReactElement {
       )}
 
       {query.data.items.map((item) => {
-        const isPending = item.status === 'pending';
+        const isPending = item.status === DayOffStatus.PENDING;
 
         return (
           <Card key={item.id}>
@@ -114,11 +124,7 @@ export function DayOffApprovalsScreen(): ReactElement {
               }
             />
 
-            <Text style={styles.dates}>
-              {item.startDate === item.endDate
-                ? formatIsoDate(item.startDate)
-                : `${formatIsoDate(item.startDate)} — ${formatIsoDate(item.endDate)}`}
-            </Text>
+            <Text style={styles.dates}>{formatPeriod(item.startDate, item.endDate)}</Text>
 
             {item.reason !== null && <Text style={styles.reason}>{item.reason}</Text>}
 
@@ -223,10 +229,31 @@ export function DayOffApprovalsScreen(): ReactElement {
   );
 }
 
-function toneOf(status: DayOffStatus): 'positive' | 'danger' | 'neutral' {
-  if (status === 'approved') return 'positive';
-  if (status === 'rejected') return 'danger';
-  return 'neutral';
+/*
+  Период и тон статуса — те же, что у сотрудника в «Моих запросах»
+  (`DayOffScreen`).
+
+  Прежде одна и та же заявка выглядела на двух экранах по-разному: у
+  сотрудника «Ждёт решения» янтарная, у директора — серая, того же цвета,
+  что и «Отозван», и заявка, ждущая решения, сливалась с закрытыми; даты —
+  «18.11 – 19.11» там и «18.11.2026 — 19.11.2026» здесь.
+*/
+function formatPeriod(startDate: string, endDate: string): string {
+  if (startDate === endDate) return formatIsoDateShort(startDate);
+  return `${formatIsoDateShort(startDate)} – ${formatIsoDateShort(endDate)}`;
+}
+
+function toneOf(status: DayOffStatusName): 'neutral' | 'positive' | 'warning' | 'danger' {
+  switch (status) {
+    case DayOffStatus.APPROVED:
+      return 'positive';
+    case DayOffStatus.REJECTED:
+      return 'danger';
+    case DayOffStatus.CANCELLED:
+      return 'neutral';
+    default:
+      return 'warning';
+  }
 }
 
 const styles = StyleSheet.create({
@@ -238,7 +265,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   dates: {
     ...typography.value,
@@ -251,7 +277,8 @@ const styles = StyleSheet.create({
   },
   decision: {
     ...typography.caption,
-    color: colors.textMuted,
+    // Причина отказа — терракотой, как у сотрудника: это отказ, а не сноска.
+    color: colors.danger,
     marginTop: spacing.sm,
   },
   actions: {
@@ -261,7 +288,8 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -283,12 +311,14 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   buttonPrimaryText: {
-    ...typography.body,
-    fontWeight: '600',
+    ...typography.headline,
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
   },
   buttonGhostText: {
-    ...typography.body,
+    ...typography.headline,
+    fontFamily: fonts.semibold,
     color: colors.textSecondary,
   },
   rejectBox: {

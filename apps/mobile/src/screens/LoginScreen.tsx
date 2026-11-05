@@ -139,6 +139,9 @@ export function LoginScreen(): ReactElement {
   );
 }
 
+/** Высота полей и кнопки формы входа — одна на всех, на сетке 4/8. */
+const CONTROL_HEIGHT = 48;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -181,10 +184,12 @@ const styles = StyleSheet.create({
     // надпись под ним. Воздух отложен вниз, перед подзаголовком.
     marginTop: spacing.sm,
   },
+  // 12 — нижняя ступень шкалы (`footnote`): 11,5 на тёмном фоне при 55%
+  // белого читалось уже с трудом.
   brandTagline: {
     fontFamily: fonts.medium,
     color: 'rgba(255,255,255,0.55)',
-    fontSize: 11.5,
+    fontSize: typography.footnote.fontSize,
     marginTop: spacing.xs,
   },
   form: {
@@ -205,13 +210,21 @@ const styles = StyleSheet.create({
   labelSpacing: {
     marginTop: spacing.lg,
   },
+  /*
+    Поля и кнопка — одной высоты, 48. Высота складывалась из отступов и
+    строки текста: поле выходило 47 (12 + 21 + 12 + рамка 2), кнопка — 49
+    (`minHeight` 48 плюс отступы), и три элемента одной колонки стояли
+    разной высоты мимо сетки. Теперь высота задана явно, а текст в поле
+    центрируется по вертикали сам.
+  */
   input: {
     fontFamily: fonts.medium,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
+    height: CONTROL_HEIGHT,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: 0,
     fontSize: 15,
     color: colors.textPrimary,
     backgroundColor: colors.background,
@@ -231,10 +244,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     backgroundColor: colors.accent,
     borderRadius: radius.sm,
-    paddingVertical: spacing.md + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    height: CONTROL_HEIGHT,
   },
   buttonDisabled: {
     opacity: opacity.disabled,

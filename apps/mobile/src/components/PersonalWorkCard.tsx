@@ -1,6 +1,7 @@
 import {
   formatIsoDateShort,
   PERSONAL_WORK_STATUS_LABELS,
+  todayIso,
   PersonalWorkStatus,
   type PersonalWorkStatus as PersonalWorkStatusName,
 } from '@curtain-crm/shared';
@@ -18,7 +19,7 @@ import {
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, fonts, opacity, radius, spacing, typography } from '../theme';
 
 import { Pill } from './Card';
 import { Icon } from './Icon';
@@ -82,19 +83,32 @@ export function PersonalWorkCard({
   });
 
   const isOpen = work.status === PersonalWorkStatus.IN_PROGRESS;
+  const expandable = work.details !== null || work.cancellationReason !== null;
+  const toggle = (): void => {
+    if (expandable) setExpanded((current) => !current);
+  };
 
+  /*
+    Карточка — не кнопка целиком, а контейнер.
+
+    Прежде вся карточка была кнопкой, и «Отменить»/«Готово» оказывались
+    кнопкой внутри кнопки: в браузере это `<button>` в `<button>`, React
+    сыпал ошибками в консоль, а программа чтения с экрана читала карточку
+    одной кнопкой вместе с действиями. Раскрывают текст — заголовок и
+    подробности, — а действия стоят рядом, а не внутри.
+  */
   return (
-    <Pressable
-      onPress={() => {
-        if (work.details !== null || work.cancellationReason !== null) {
-          setExpanded((current) => !current);
-        }
-      }}
-      accessibilityRole={work.details === null ? undefined : 'button'}
-      style={[styles.card, !isOpen && styles.cardClosed]}
-    >
+    <View style={[styles.card, !isOpen && styles.cardClosed]}>
       <View style={styles.header}>
-        <Text style={[styles.title, !isOpen && styles.titleClosed]}>{work.title}</Text>
+        <Pressable
+          onPress={toggle}
+          disabled={!expandable}
+          accessibilityRole={expandable ? 'button' : undefined}
+          accessibilityState={expandable ? { expanded } : undefined}
+          style={styles.titleWrap}
+        >
+          <Text style={[styles.title, !isOpen && styles.titleClosed]}>{work.title}</Text>
+        </Pressable>
 
         {isOpen ? (
           <View style={styles.actions}>
@@ -167,20 +181,33 @@ export function PersonalWorkCard({
         </View>
       )}
 
-      {work.details !== null && (
-        <Text style={styles.details} numberOfLines={expanded ? undefined : 2}>
-          {work.details}
-        </Text>
-      )}
+      {/* Касание текста раскрывает его так же, как касание заголовка; для
+          программы чтения с экрана кнопка одна — заголовок. */}
+      <Pressable onPress={toggle} disabled={!expandable} accessible={false}>
+        {work.details !== null && (
+          <Text style={styles.details} numberOfLines={expanded ? undefined : 2}>
+            {work.details}
+          </Text>
+        )}
 
-      {work.cancellationReason !== null && (
-        <Text style={styles.reason} numberOfLines={expanded ? undefined : 1}>
-          {m('personal.cancelReason', { reason: work.cancellationReason })}
-        </Text>
-      )}
+        {work.cancellationReason !== null && (
+          <Text style={styles.reason} numberOfLines={expanded ? undefined : 1}>
+            {m('personal.cancelReason', { reason: work.cancellationReason })}
+          </Text>
+        )}
 
-      <Text style={styles.started}>{m('personal.started', { date: formatIsoDateShort(work.createdAt.toISOString()) })}</Text>
-    </Pressable>
+        {/*
+          Дата начала — местная календарная. `formatIsoDateShort` ждёт
+          «ГГГГ-ММ-ДД», а получал полную отметку времени, и на карточке
+          выходило «начата 05T06:37:25.244Z.11». `toISOString().slice(0, 10)`
+          тоже не годится: это дата по Гринвичу, и работа, начатая в Ташкенте
+          до пяти утра, показывалась бы вчерашней.
+        */}
+        <Text style={styles.started}>
+          {m('personal.started', { date: formatIsoDateShort(todayIso(work.createdAt)) })}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -206,27 +233,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  title: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
+  titleWrap: {
     flex: 1,
     minWidth: 0,
+  },
+  title: {
+    ...typography.body,
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
   titleClosed: {
     textDecorationLine: 'line-through',
   },
+  // 44 — порог пальца; 40 точек в перчатках в цеху промахивались.
   doneButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
@@ -234,7 +266,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   cancelBox: {
     marginTop: spacing.md,
@@ -262,6 +294,7 @@ const styles = StyleSheet.create({
   },
   cancelConfirmText: {
     ...typography.caption,
+    fontFamily: fonts.bold,
     fontWeight: '700',
     color: colors.onAccent,
   },

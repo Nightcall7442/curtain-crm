@@ -1,8 +1,9 @@
 import {
-  formatDayRange,
   formatDisciplinePoints,
   formatMonthPeriod,
+  type Locale,
   monthName,
+  monthNameGenitive,
   RATING_COMPONENT_LABELS,
   RATING_SCOPE_LABELS,
   RATING_SCOPES,
@@ -33,7 +34,7 @@ import { colors, radius, spacing, typography, fonts } from '../theme';
  * их невозможно достать, подобрав параметры запроса.
  */
 export function RatingScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { t, m, locale } = useLocale();
   const [scope, setScope] = useState<RatingScopeName>(RatingScope.MONTH);
 
   const rating = trpc.rating.me.useQuery({ scope });
@@ -80,9 +81,11 @@ export function RatingScreen(): ReactElement {
 
       {data !== undefined && (
         <Text style={styles.periodCaption}>
+          {/* Месяцы — на языке интерфейса: прежде узбекская подпись выходила
+              «Ноябрь 2026 · 20 ishtirokchi». */}
           {scope === RatingScope.WEEK
-            ? formatDayRange(new Date(data.period.start), new Date(data.period.end))
-            : `${monthName(new Date(data.period.start).getUTCMonth() + 1)} ${new Date(data.period.start).getUTCFullYear().toString()}`}
+            ? dayRange(new Date(data.period.start), new Date(data.period.end), locale)
+            : `${monthName(new Date(data.period.start).getUTCMonth() + 1, locale)} ${new Date(data.period.start).getUTCFullYear().toString()}`}
           {m('rating.participants', { n: data.participants })}
         </Text>
       )}
@@ -102,15 +105,21 @@ export function RatingScreen(): ReactElement {
 
         {data === undefined ? (
           <Empty message={m('rating.loading')} />
-        ) : data.podium.length === 0 ? (
+        ) : data.podium.every((entry) => (entry.score ?? 0) <= 0) ? (
+          /* Пусто и «у всех ноль» — одно и то же: пятеро на первом месте с
+             нулём баллов читались как ничья, хотя соревнование не началось. */
           <Empty
             message={m('rating.noOrders')}
             hint={m('rating.noOrdersHint')}
           />
         ) : (
           <View>
-            {data.podium.map((entry) => (
-              <PodiumRow key={entry.userId} entry={entry} />
+            {data.podium.map((entry, index) => (
+              <PodiumRow
+                key={entry.userId}
+                entry={entry}
+                isLast={index === data.podium.length - 1}
+              />
             ))}
           </View>
         )}
@@ -169,7 +178,7 @@ function MyPlaceCard({
   }
 
   return (
-    <Card style={styles.myCard}>
+    <Card>
       <View style={styles.myHeader}>
         <View>
           <Text style={styles.myLabel}>{m('rating.yourPlace')}</Text>
@@ -238,12 +247,21 @@ function MyPlaceCard({
 /** Одна строка пьедестала. */
 function PodiumRow({
   entry,
+  isLast,
 }: {
   readonly entry: RatingData['podium'][number];
+  /** Последняя строка — без линии: её край и так задаёт карточка. */
+  readonly isLast: boolean;
 }): ReactElement {
   const { m } = useLocale();
   return (
-    <View style={[styles.podiumRow, entry.isMe ? styles.podiumRowMine : null]}>
+    <View
+      style={[
+        styles.podiumRow,
+        isLast ? null : styles.podiumDivider,
+        entry.isMe ? styles.podiumRowMine : null,
+      ]}
+    >
       <Text style={styles.podiumPlace}>{entry.place === null ? '—' : entry.place.toString()}</Text>
 
       <Text style={styles.podiumName} numberOfLines={1}>
@@ -307,6 +325,24 @@ function Component({
   );
 }
 
+/**
+ * Подпись недели: «2 — 8 ноября», «2 — 8 noyabr».
+ *
+ * Своя, а не `formatDayRange` из общего пакета: та знает только русские
+ * названия месяцев. Конец периода — полуинтервал (первый день следующей
+ * недели), поэтому берётся предыдущий день, иначе неделя вышла бы
+ * восьмидневной.
+ */
+function dayRange(start: Date, end: Date, locale: Locale): string {
+  const last = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+  const lastPart = `${last.getUTCDate().toString()} ${monthNameGenitive(last.getUTCMonth() + 1, locale)}`;
+  const startPart =
+    start.getUTCMonth() === last.getUTCMonth()
+      ? start.getUTCDate().toString()
+      : `${start.getUTCDate().toString()} ${monthNameGenitive(start.getUTCMonth() + 1, locale)}`;
+  return `${startPart} — ${lastPart}`;
+}
+
 /* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
@@ -331,9 +367,11 @@ const styles = StyleSheet.create({
   scopeButton: {
     minHeight: 44,
     flex: 1,
-    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     alignItems: 'center',
+    // Подпись по центру кнопки: с одними вертикальными полями она стояла
+    // на 5 точек выше середины (8 сверху, 18 снизу).
+    justifyContent: 'center',
   },
   scopeButtonActive: {
     backgroundColor: colors.surface,
@@ -344,6 +382,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   scopeTextActive: {
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     color: colors.accent,
     fontWeight: '600',
   },
@@ -351,10 +391,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     marginTop: -spacing.sm,
-  },
-  myCard: {
-    borderWidth: 1,
-    borderColor: colors.accentSoft,
   },
   myHeader: {
     flexDirection: 'row',
@@ -393,6 +429,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    // Не помещаются в строку (узбекские подписи длиннее) — вторая встаёт
+    // под первую целиком, а не рвётся посередине с одинокой цифрой.
+    flexWrap: 'wrap',
+    columnGap: spacing.md,
+    rowGap: spacing.xs,
     marginTop: spacing.md,
   },
   myOrders: {
@@ -401,6 +442,7 @@ const styles = StyleSheet.create({
   },
   delta: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
   deltaNeutral: {
@@ -426,8 +468,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   componentLabel: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
+    ...typography.footnote,
     color: colors.textMuted,
   },
   componentValue: {
@@ -442,6 +483,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
+  },
+  podiumDivider: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -458,6 +501,7 @@ const styles = StyleSheet.create({
   },
   podiumMine: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.accentStrong,
     fontWeight: '600',
     marginHorizontal: spacing.sm,
@@ -472,9 +516,7 @@ const styles = StyleSheet.create({
     color: colors.accentStrong,
   },
   footnote: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    lineHeight: 16,
+    ...typography.footnote,
     color: colors.textMuted,
   },
 });
