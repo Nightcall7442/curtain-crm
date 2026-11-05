@@ -6,7 +6,7 @@ import {
   Role,
   summarizeTerminalChecks,
   TERMINAL_CHECKS_DAILY_TARGET,
-  TERMINAL_PAY_TYPES,
+  terminalPayTypeSchema,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { branches, userRoles, users, type DbExecutor } from '@curtain-crm/db';
@@ -96,7 +96,8 @@ export const terminalChecksRouter = router({
    *
    * Тип оплаты (Click, Payme, Uzum, Humo, Uzcard, наличные) спрашивается у
    * каждого нового чека — так попросил заказчик 05.11: у чека значок, по
-   * дню — сумма с разбивкой по типам.
+   * дню — сумма с разбивкой по типам. Чек старой сборки, где вопроса ещё
+   * нет, принимается «без типа».
    *
    * Чек — запись о пробитом фискальном чеке, а не деньги: в кассу и на счёт
    * он не идёт, в приход по источникам не входит. Прикрепить фото к приходу
@@ -107,11 +108,13 @@ export const terminalChecksRouter = router({
       z.object({
         photo: base64FileSchema,
         amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
-        // Без типа присылает только приложение до 05.11: продавцу — понятная
-        // просьба обновиться, а не «Поле обязательно».
-        payType: z.enum(TERMINAL_PAY_TYPES, {
-          required_error: 'Обновите приложение: в новой версии у чека выбирают тип оплаты',
-        }),
+        /*
+          Тип обязателен в новом приложении и на сайте — там без выбора
+          кнопка не нажимается. Без типа присылает только сборка до 05.11:
+          её чек принимаем «без типа», а не отказом — пробить чек продавец
+          должен в любом приложении, тип спросит новая сборка.
+        */
+        payType: terminalPayTypeSchema.optional(),
         comment: optionalText(200),
       }),
     )
@@ -133,7 +136,7 @@ export const terminalChecksRouter = router({
           method: 'card',
           amount: parseMoney(input.amount),
           photoKey: stored.key,
-          terminalPayType: input.payType,
+          terminalPayType: input.payType ?? null,
           actorId: ctx.user.id,
           comment: input.comment ?? null,
         });

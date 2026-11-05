@@ -241,7 +241,7 @@ refresh-токен. Предъявление уже отозванного refre
 
 | Процедура | Тип | Доступ | Назначение |
 |---|---|---|---|
-| `terminalChecks.create` | mutation | вошедший | Пробить чек: `photo`, `amount`, `payType` (обязателен: `click \| payme \| uzum \| humo \| uzcard \| cash`), `comment?`. Без `payType` — `BAD_REQUEST` «Обновите приложение: …» (старая сборка). В ответе `count` и `target` нормы дня |
+| `terminalChecks.create` | mutation | вошедший | Пробить чек: `photo`, `amount`, `payType?` (`click \| payme \| uzum \| humo \| uzcard \| cash`; приложение и сайт присылают всегда, без него — чек старой сборки, сохраняется `null`), `comment?`. В ответе `count` и `target` нормы дня |
 | `terminalChecks.today` | query | вошедший | Норма дня (`target`, `count`, `remaining`); `rows` и `summary` — продавцам и руководству, остальным `[]` и `null` |
 | `terminalChecks.byDay` | query | руководство | Чеки дня `day`: `rows`, `count`, `target`, `summary` |
 | `terminalChecks.list` | query | руководство | Архив за `from`–`to` (до 5000 чеков) |
