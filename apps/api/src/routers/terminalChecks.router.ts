@@ -6,7 +6,7 @@ import {
   Role,
   summarizeTerminalChecks,
   TERMINAL_CHECKS_DAILY_TARGET,
-  terminalPayTypeSchema,
+  TERMINAL_PAY_TYPES,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { branches, userRoles, users, type DbExecutor } from '@curtain-crm/db';
@@ -107,7 +107,11 @@ export const terminalChecksRouter = router({
       z.object({
         photo: base64FileSchema,
         amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
-        payType: terminalPayTypeSchema,
+        // Без типа присылает только приложение до 05.11: продавцу — понятная
+        // просьба обновиться, а не «Поле обязательно».
+        payType: z.enum(TERMINAL_PAY_TYPES, {
+          required_error: 'Обновите приложение: в новой версии у чека выбирают тип оплаты',
+        }),
         comment: optionalText(200),
       }),
     )

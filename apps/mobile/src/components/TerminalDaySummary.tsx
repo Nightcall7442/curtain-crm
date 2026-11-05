@@ -1,4 +1,4 @@
-import type { TerminalChecksSummary } from '@curtain-crm/shared';
+import { terminalPayTypeOf, type TerminalChecksSummary } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -33,7 +33,7 @@ export function TerminalDaySummary({
       </View>
       {summary.byType.map((line) => (
         <View key={line.payType ?? 'none'} style={styles.line}>
-          {line.payType === null ? (
+          {terminalPayTypeOf(line.payType) === null ? (
             <Text style={styles.noType}>{m('terminal.noType')}</Text>
           ) : (
             <PayTypeBadge type={line.payType} />

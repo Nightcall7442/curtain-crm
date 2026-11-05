@@ -43,7 +43,7 @@ export function TerminalChecksScreen(): ReactElement {
         <Field label={m('terminal.day')}>
           <DateField value={day} onChange={setDay} placeholder={m('terminal.day')} />
         </Field>
-        {query.data !== undefined && query.data.summary.count > 0 && (
+        {query.data?.summary != null && query.data.summary.count > 0 && (
           <TerminalDaySummary summary={query.data.summary} title={m('terminal.dayTotal')} />
         )}
       </Card>
@@ -65,7 +65,7 @@ export function TerminalChecksScreen(): ReactElement {
                   <Text style={styles.name} numberOfLines={1}>
                     {row.fullName}
                   </Text>
-                  {row.payType !== null && <PayTypeBadge type={row.payType} />}
+                  <PayTypeBadge type={row.payType} />
                 </View>
                 <Text style={styles.time}>
                   {formatTime(row.createdAt)}

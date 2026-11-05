@@ -3,8 +3,8 @@ import {
   TERMINAL_PAY_TYPE_LABELS_RU,
   TERMINAL_PAY_TYPE_STYLE,
   TerminalPayType,
+  terminalPayTypeOf,
   type TerminalChecksSummary,
-  type TerminalPayType as TerminalPayTypeName,
 } from '@curtain-crm/shared';
 import { Banknote } from 'lucide-react';
 import type { ReactElement } from 'react';
@@ -14,18 +14,22 @@ import type { ReactElement } from 'react';
  * или наличные (просьба заказчика 05.11). Цвета общие с приложением
  * (`TERMINAL_PAY_TYPE_STYLE`): фирменный цвет и название, у наличных —
  * купюра. Логотипы не рисуем — надпись читается с первого взгляда.
+ *
+ * Без типа (старый чек) или тип, которого сайт не знает (ответ сервера
+ * другой версии во время выката), — прочерк, а не падение страницы.
  */
-export function PayTypeBadge({ type }: { readonly type: TerminalPayTypeName | null }): ReactElement {
-  if (type === null) return <span className="text-caption text-muted">—</span>;
-  const style = TERMINAL_PAY_TYPE_STYLE[type];
+export function PayTypeBadge({ type }: { readonly type: string | null | undefined }): ReactElement {
+  const known = terminalPayTypeOf(type);
+  if (known === null) return <span className="text-caption text-muted">—</span>;
+  const style = TERMINAL_PAY_TYPE_STYLE[known];
 
   return (
     <span
       className="inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11px] font-extrabold tracking-[0.02em]"
       style={{ backgroundColor: style.background, color: style.color }}
-      title={TERMINAL_PAY_TYPE_LABELS_RU[type]}
+      title={TERMINAL_PAY_TYPE_LABELS_RU[known]}
     >
-      {type === TerminalPayType.CASH ? (
+      {known === TerminalPayType.CASH ? (
         <>
           <Banknote aria-hidden className="h-3.5 w-3.5" />
           {TERMINAL_PAY_TYPE_LABELS_RU.cash}

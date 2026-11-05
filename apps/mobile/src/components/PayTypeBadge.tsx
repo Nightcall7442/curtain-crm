@@ -2,7 +2,7 @@ import {
   TERMINAL_PAY_TYPE_LABELS,
   TERMINAL_PAY_TYPE_STYLE,
   TerminalPayType,
-  type TerminalPayType as TerminalPayTypeName,
+  terminalPayTypeOf,
 } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -16,24 +16,28 @@ import { Icon } from './Icon';
  * наличных — купюра; цвета общие с сайтом (`TERMINAL_PAY_TYPE_STYLE`).
  *
  * `size="lg"` — плитка выбора в «Пробить чек», обычный — у строки чека.
+ * Без типа (старый чек) или тип, которого это приложение ещё не знает, —
+ * значка нет: экран не падает, пока APK не обновили.
  */
 export function PayTypeBadge({
   type,
   size = 'sm',
 }: {
-  readonly type: TerminalPayTypeName;
+  readonly type: string | null | undefined;
   readonly size?: 'sm' | 'lg';
-}): ReactElement {
+}): ReactElement | null {
   const { locale } = useLocale();
-  const style = TERMINAL_PAY_TYPE_STYLE[type];
+  const known = terminalPayTypeOf(type);
+  if (known === null) return null;
+  const style = TERMINAL_PAY_TYPE_STYLE[known];
   const large = size === 'lg';
 
   return (
     <View
       style={[styles.badge, large ? styles.large : null, { backgroundColor: style.background }]}
-      accessibilityLabel={TERMINAL_PAY_TYPE_LABELS[locale][type]}
+      accessibilityLabel={TERMINAL_PAY_TYPE_LABELS[locale][known]}
     >
-      {type === TerminalPayType.CASH ? (
+      {known === TerminalPayType.CASH ? (
         <>
           <Icon name="paid" size={large ? 16 : 12} color={style.color} />
           <Text style={[styles.mark, large ? styles.markLarge : null, { color: style.color }]}>

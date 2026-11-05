@@ -68,6 +68,18 @@ export const TerminalPayType = {
 
 export const terminalPayTypeSchema = z.enum(TERMINAL_PAY_TYPES);
 
+/**
+ * Тип чека, если он из списка; иначе `null` — «без типа».
+ *
+ * Установленное приложение обновляется позже сервера: тип, добавленный
+ * после сборки (Paynet, Alif…), или ответ старого сервера без поля не
+ * должны ронять экран — такой чек показывается как старый, без значка.
+ */
+export const terminalPayTypeOf = (value: unknown): TerminalPayType | null => {
+  const parsed = terminalPayTypeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
 export const TERMINAL_PAY_TYPE_LABELS: Translated<TerminalPayType> = {
   ru: { click: 'Click', payme: 'Payme', uzum: 'Uzum', humo: 'Humo', uzcard: 'Uzcard', cash: 'Наличные' },
   uz: { click: 'Click', payme: 'Payme', uzum: 'Uzum', humo: 'Humo', uzcard: 'Uzcard', cash: 'Naqd' },

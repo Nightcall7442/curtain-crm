@@ -1,4 +1,4 @@
-import { TERMINAL_PAY_TYPES, type TerminalPayType } from '../enums/payment.enum';
+import { TERMINAL_PAY_TYPES, terminalPayTypeOf, type TerminalPayType } from '../enums/payment.enum';
 import { parseMoney, sumMoney, type MoneyMinor } from '../utils/money';
 
 /**
@@ -20,17 +20,20 @@ export interface TerminalChecksSummary {
 }
 
 export function summarizeTerminalChecks(
-  rows: readonly { readonly amount: string; readonly payType: TerminalPayType | null }[],
+  rows: readonly { readonly amount: string; readonly payType?: string | null }[],
 ): TerminalChecksSummary {
+  // Незнакомый тип и отсутствующее поле — в «без типа»: так строки
+  // разбивки всегда сходятся с итогом.
+  const typed = rows.map((row) => ({ payType: terminalPayTypeOf(row.payType), amount: parseMoney(row.amount) }));
   const byType = [...TERMINAL_PAY_TYPES, null].flatMap((payType) => {
-    const own = rows.filter((row) => row.payType === payType);
+    const own = typed.filter((row) => row.payType === payType);
     return own.length === 0
       ? []
-      : [{ payType, count: own.length, amount: sumMoney(own.map((row) => parseMoney(row.amount))) }];
+      : [{ payType, count: own.length, amount: sumMoney(own.map((row) => row.amount)) }];
   });
 
   return {
-    total: sumMoney(rows.map((row) => parseMoney(row.amount))),
+    total: sumMoney(typed.map((row) => row.amount)),
     count: rows.length,
     byType,
   };

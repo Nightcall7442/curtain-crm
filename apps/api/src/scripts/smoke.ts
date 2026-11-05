@@ -3018,8 +3018,18 @@ async function run(db: Database): Promise<void> {
     'терминал: на «Работе» у продавца — та же сумма дня',
     sellerToday.summary?.total === todayChecks.summary.total,
   );
-  await expectRejected('терминал: новый чек без типа оплаты не пробивается', () =>
-    sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 } as never),
+  // Старое приложение (APK до 05.11) поля не знает: ему — понятная просьба
+  // обновиться, а не «Поле обязательно».
+  await expectRejectedWith(
+    'терминал: новый чек без типа оплаты не пробивается — с просьбой обновить приложение',
+    () => sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 } as never),
+    (message) => message.includes('Обновите приложение'),
+  );
+  const sewerToday = await sewerCaller.terminalChecks.today();
+  check(
+    'терминал: швея видит норму, но не суммы, типы и фото',
+    sewerToday.count === todayChecks.count && sewerToday.rows.length === 0 && sewerToday.summary === null,
+    JSON.stringify({ count: sewerToday.count, rows: sewerToday.rows.length, summary: sewerToday.summary }),
   );
   await expectRejected('терминал: тип оплаты бывает только у терминального чека', () =>
     db.insert(payments).values({

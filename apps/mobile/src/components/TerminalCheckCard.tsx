@@ -133,20 +133,25 @@ export function TerminalCheckCard(): ReactElement {
               <Text style={styles.rowName} numberOfLines={1}>
                 {row.fullName}
               </Text>
-              {row.payType !== null && <PayTypeBadge type={row.payType} />}
+              <PayTypeBadge type={row.payType} />
               <Text style={styles.rowAmount}>{money(parseMoney(row.amount))}</Text>
               <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
               <Icon name="completed" size={16} color={colors.textMuted} />
             </View>
           ))}
 
-          {data.summary !== null && data.summary.count > 0 && (
+          {data.summary != null && data.summary.count > 0 && (
             <TerminalDaySummary summary={data.summary} title={m('terminal.todayTotal')} />
           )}
           {canCreate && (
             <Pressable
               onPress={() => {
+                // Каждый чек — с чистого листа: тип, фото и сумма от
+                // брошенной попытки не должны уйти со следующим клиентом.
                 setAmount('');
+                setPayType(null);
+                setPhoto(null);
+                setComment('');
                 setOpen(true);
               }}
               accessibilityRole="button"

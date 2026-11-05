@@ -318,7 +318,7 @@ export default function CashPage(): ReactElement {
             },
           ]}
         />
-        {checks.data !== undefined && <TerminalSummaryLine summary={checks.data.summary} label="Итого за день" />}
+        {checks.data?.summary != null && <TerminalSummaryLine summary={checks.data.summary} label="Итого за день" />}
       </Card>
 
       <Card>

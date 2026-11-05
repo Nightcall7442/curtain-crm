@@ -18,6 +18,7 @@ import { EventsBoard } from '../components/EventsBoard';
 import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { PayTypeBadge } from '../components/PayTypeBadge';
+import { TerminalDaySummary } from '../components/TerminalDaySummary';
 import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { MonitorTiles } from '../components/monitor/MonitorTiles';
@@ -715,7 +716,7 @@ function TerminalTodayCard(): ReactElement | null {
   const today = trpc.terminalChecks.today.useQuery();
 
   if (today.data === undefined) return null;
-  const { count, target, rows } = today.data;
+  const { count, target, rows, summary } = today.data;
 
   return (
     <Card>
@@ -753,11 +754,14 @@ function TerminalTodayCard(): ReactElement | null {
             <Text style={styles.terminalName} numberOfLines={1}>
               {row.fullName}
             </Text>
-            {row.payType !== null && <PayTypeBadge type={row.payType} />}
+            <PayTypeBadge type={row.payType} />
             <Text style={styles.terminalAmount}>{money(parseMoney(row.amount))}</Text>
             <Text style={styles.terminalTime}>{formatTime(row.createdAt)}</Text>
           </View>
         ))
+      )}
+      {summary != null && summary.count > 0 && (
+        <TerminalDaySummary summary={summary} title={m('terminal.todayTotal')} />
       )}
     </Card>
   );
