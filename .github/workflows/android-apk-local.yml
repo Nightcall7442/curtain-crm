@@ -1,0 +1,66 @@
+# Сборка APK без EAS — прямо на сервере GitHub, Gradle'ом.
+#
+# Запасной путь, когда нужен APK, а секрета EXPO_TOKEN нет. Подпись —
+# отладочным ключом шаблона Expo, а не ключом проекта на expo.dev, поэтому
+# поверх приложения из EAS этот APK НЕ встанет: старое приложение сначала
+# удаляют, потом ставят этот (данные на сервере, нужен только повторный
+# вход). Обычный путь — «APK для Android» (EAS): он ставится обновлением.
+#
+# Готовый APK — в артефакте «curtain-crm-apk» на странице запуска.
+name: APK для Android (без EAS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/keen-hamilton-1lz8tt]
+    paths: ['.github/workflows/android-apk-local.yml']
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.4'
+
+jobs:
+  apk:
+    name: Gradle assembleRelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Нативный проект не хранится в репозитории — его создаёт Expo из
+      # app.json, как это делает EAS перед своей сборкой.
+      - name: Нативный проект
+        working-directory: apps/mobile
+        env:
+          CI: '1'
+        run: npx expo prebuild --platform android --no-install
+
+      # Две архитектуры телефонов, без эмуляторных x86: вдвое быстрее и меньше.
+      - name: Сборка
+        working-directory: apps/mobile/android
+        env:
+          NODE_ENV: production
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: curtain-crm-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
