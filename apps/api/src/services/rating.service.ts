@@ -9,6 +9,7 @@ import {
   Role,
   sewerPiecesScore,
   unratedReason,
+  type Locale,
   type RatedRole,
   type RatingScope as RatingScopeName,
   type Role as RoleName,
@@ -429,6 +430,14 @@ export async function employeeRating(
    * Всем остальным показывающим балл вызовам карту надо передавать.
    */
   sewerCategoryOf?: ReadonlyMap<number, SewerCategory>,
+  /**
+   * Язык пояснения «почему вне конкурса» (`unratedReason`) — язык клиента,
+   * `ctx.locale`. Без него пояснение всегда уходило по-русски, и узбекская
+   * главная показывала русскую фразу посреди узбекского экрана, хотя перевод
+   * в `UNRATED_ROLE_REASON.uz` был. Отчётам и категориям швей текст не
+   * нужен — им достаточно русского по умолчанию.
+   */
+  locale: Locale = 'ru',
 ): Promise<RatingEntry[]> {
   const [byRole, discipline] = await Promise.all([collectRoleRows(db, bounds, branchId), disciplineByUser(db, bounds)]);
 
@@ -464,7 +473,7 @@ export async function employeeRating(
   }
 
   const entries = employees.map((employee) => {
-    const reason = unratedReason(employee.roles);
+    const reason = unratedReason(employee.roles, locale);
     // Роль могли снять после того, как заказы закрылись: показатели за период
     // остаются, но в конкурсе такой сотрудник уже не участвует.
     const roleEntries = reason === null ? (rowsByUser.get(employee.id) ?? []) : [];

@@ -19,6 +19,21 @@ import { tokenStorage } from './storage';
 
 let refreshInFlight: Promise<boolean> | null = null;
 
+/**
+ * Номер сессии: растёт на каждом выходе.
+ *
+ * Выход ждёт ответа сервера не дольше нескольких секунд, а обновление пары,
+ * начатое по дороге, может прийти позже — уже после очистки хранилища. Без
+ * этой проверки оно записало бы свежие токены обратно, и вышедший сотрудник
+ * на общем телефоне цеха остался бы «вошедшим».
+ */
+let sessionEpoch = 0;
+
+/** Сессия окончена: начатое до этого обновление токенов не сохраняется. */
+export function endSession(): void {
+  sessionEpoch += 1;
+}
+
 /** Вызывается, когда сессию восстановить не удалось: приложение уходит на вход. */
 let onSessionExpired: (() => void) | null = null;
 
@@ -39,6 +54,7 @@ export function setSessionExpiredHandler(handler: (() => void) | null): void {
 }
 
 async function refreshTokens(): Promise<boolean> {
+  const epoch = sessionEpoch;
   const refreshToken = await tokenStorage.getRefreshToken();
   if (refreshToken === null) return false;
 
@@ -54,6 +70,7 @@ async function refreshTokens(): Promise<boolean> {
     const payload: unknown = await response.json();
     const tokens = extractTokens(payload);
     if (tokens === null) return false;
+    if (epoch !== sessionEpoch) return false;
 
     await tokenStorage.save(tokens);
     return true;
@@ -95,6 +112,15 @@ const NO_CONNECTION: Readonly<Record<Locale, string>> = {
 };
 
 export const authFetch: typeof fetch = async (input, init) => {
+  /*
+    Язык — в КАЖДОМ запросе, а не только в повторе после обновления
+    токена: без заголовка сервер отвечает по-русски, и узбекский
+    сотрудник видел русские уведомления и ошибки входа.
+  */
+  const localized = new Headers(init?.headers);
+  localized.set('x-locale', requestLocale);
+  init = { ...init, headers: localized };
+
   let response: Response;
   try {
     response = await fetch(input, init);

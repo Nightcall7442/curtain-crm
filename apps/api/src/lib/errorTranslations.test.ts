@@ -5,7 +5,11 @@ import { ORDER_STATUS_LABELS } from '@curtain-crm/shared';
 import { describe, expect, it } from 'vitest';
 
 import { KNOWN_ERROR_MESSAGES, translateErrorMessage } from './errorTranslations';
-import { KNOWN_NOTIFICATION_TEXTS, translateNotificationText } from './notificationTranslations';
+import {
+  KNOWN_NOTIFICATION_TEXTS,
+  modernizeStoredNotification,
+  translateNotificationText,
+} from './notificationTranslations';
 
 /**
  * Таблица переводов ошибок обязана знать каждый текст из исходников.
@@ -159,6 +163,20 @@ describe('errorTranslations', () => {
     // Неизвестный текст остаётся как есть, а не превращается в пустоту.
     expect(translateErrorMessage('Нечто новое', 'uz')).toBe('Нечто новое');
   });
+
+  it('расстояние в отказе отметиться — с латинскими единицами', () => {
+    expect(
+      translateErrorMessage(
+        'Вы находитесь в 1,2\u00A0км от филиала «Чиланзар». Отметиться можно в пределах 150 м',
+        'uz',
+      ),
+    ).toBe("Siz «Чиланзар» filialidan 1,2\u00A0km masofadasiz. Belgilash 150 m radiusda mumkin");
+    expect(
+      translateErrorMessage('Вы находитесь в 850\u00A0м от филиала «Юнусабад». Отметиться можно в пределах 150 м', 'uz'),
+    ).toBe("Siz «Юнусабад» filialidan 850\u00A0m masofadasiz. Belgilash 150 m radiusda mumkin");
+    // «мин» — не метры.
+    expect(translateErrorMessage('Слишком много неудачных попыток входа. Повторите через 15 мин. или обратитесь к руководству', 'uz')).not.toContain(' m.');
+  });
 });
 
 describe('notificationTranslations', () => {
@@ -205,6 +223,70 @@ describe('notificationTranslations', () => {
     );
     expect(translateNotificationText('Aziza: «Перешить ламбрекен»', 'uz')).toBe(
       'Aziza: «Перешить ламбрекен»',
+    );
+  });
+
+  it('безличные тексты — с узбекской парой', () => {
+    expect(
+      translateNotificationText('Статус заказа изменён на «В пошиве» (Азизова Нигора). Причина: клиент просил', 'uz'),
+    ).toBe(`Buyurtma «${ORDER_STATUS_LABELS.uz.sewing_in_progress}» holatiga o'tkazildi (Азизова Нигора). Sabab: клиент просил`);
+    expect(translateNotificationText('Время смены изменено (Мирзаев Дилшод). Причина: забыл', 'uz')).toBe(
+      "Smena vaqti o'zgartirildi (Мирзаев Дилшод). Sabab: забыл",
+    );
+    expect(translateNotificationText('Запрос на 18.11 — 19.11 одобрен (Мирзаев Дилшод)', 'uz')).toBe(
+      "18.11 — 19.11 uchun so'rovingiz tasdiqlandi (Мирзаев Дилшод)",
+    );
+  });
+});
+
+describe('modernizeStoredNotification', () => {
+  const body = (type: Parameters<typeof modernizeStoredNotification>[0], text: string): string =>
+    modernizeStoredNotification(type, 'Заголовок', text).body;
+
+  it('переписывает старые формулировки, уже лежащие в базе', () => {
+    expect(modernizeStoredNotification('shift_adjusted', 'Смена 2026-10-25 скорректирована', '').title).toBe(
+      'Смена 25.10 скорректирована',
+    );
+    expect(
+      body('shift_adjusted', 'Система изменил время смены. Причина: Закрыта автоматически: сотрудник не отметил уход'),
+    ).toBe('Смена закрыта автоматически — вы не отметили уход');
+    expect(body('shift_adjusted', 'Мирзаев Дилшод изменил время смены. Причина: забыл')).toBe(
+      'Время смены изменено (Мирзаев Дилшод). Причина: забыл',
+    );
+    expect(body('order_completed', 'Нигора Азизова перевёл заказ в статус «Выполнен». Причина: оплачено')).toBe(
+      'Статус заказа изменён на «Выполнен» (Нигора Азизова). Причина: оплачено',
+    );
+    expect(body('role_changed', 'Директор назначил вам роль «Швея»')).toBe('Вам назначена роль «Швея» (Директор)');
+    expect(body('day_off_requested', 'Зухра Нормуродова просит выходные: 2026-11-18 — 2026-11-19')).toBe(
+      'Зухра Нормуродова просит выходные: 18.11 — 19.11',
+    );
+    expect(body('day_off_approved', 'Директор одобрил ваш запрос на 2026-11-18')).toBe('Запрос на 18.11 одобрен (Директор)');
+    expect(body('day_off_approved', 'Директор: 2026-11-18 — 2026-11-19')).toBe('Директор: 18.11 — 19.11');
+    expect(body('day_off_rejected', '2026-11-18 — 2026-11-19 — 2026-11-20 занят')).toBe('18.11 — 19.11 — 2026-11-20 занят');
+    expect(body('task_assigned', 'Директор: «Убрать склад» — срок до 2026-11-20')).toBe(
+      'Директор: «Убрать склад» — срок до 20.11',
+    );
+  });
+
+  it('не трогает чужой текст и нынешние записи', () => {
+    expect(body('order_comment_added', 'Азиз: 2026-11-20')).toBe('Азиз: 2026-11-20');
+    // Комментарий или поручение, написанные человеком, могут случайно
+    // совпасть со старым шаблоном — их текст не переписывается.
+    expect(body('order_comment_added', 'Азиз перевёл заказ в статус «Готов». Проверьте')).toBe(
+      'Азиз перевёл заказ в статус «Готов». Проверьте',
+    );
+    expect(body('task_replied', 'Я изменил время смены. Причина: пробки')).toBe(
+      'Я изменил время смены. Причина: пробки',
+    );
+    expect(body('order_comment_added', 'Бригадир назначил вам роль «старшего»')).toBe(
+      'Бригадир назначил вам роль «старшего»',
+    );
+    expect(body('task_replied', 'Шеф просит выходные: 2026-11-18')).toBe('Шеф просит выходные: 2026-11-18');
+    expect(body('order_comment_added', 'Азиз: «Замер» — срок до 2026-11-20')).toBe(
+      'Азиз: «Замер» — срок до 2026-11-20',
+    );
+    expect(body('order_completed', 'Статус заказа изменён на «Выполнен» (Директор).')).toBe(
+      'Статус заказа изменён на «Выполнен» (Директор).',
     );
   });
 });

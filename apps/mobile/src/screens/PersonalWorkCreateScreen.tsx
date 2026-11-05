@@ -4,21 +4,15 @@ import {
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-} from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, CardTitle } from '../components/Card';
+import { Card } from '../components/Card';
 import { Field, Input } from '../components/Field';
+import { ShiftRequiredBanner, useNeedsShift } from '../components/ShiftRequiredBanner';
+import { SubmitButton } from '../components/SubmitButton';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -34,8 +28,10 @@ import { useLocale } from '../hooks/useLocale';
  */
 export function PersonalWorkCreateScreen(): ReactElement {
   const { m } = useLocale();
+  const needsShift = useNeedsShift();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
 
   const [title, setTitle] = useState('');
   const [details, setDetails] = useState('');
@@ -68,10 +64,20 @@ export function PersonalWorkCreateScreen(): ReactElement {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* Снизу — безопасная зона и обычный отступ: это экран стека, панели
+          вкладок под ним нет, и место под неё оставляло пустую полосу. */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/*
+          Без заголовка карточки: «Личная работа» уже стоит в шапке экрана,
+          и карточка повторяла его слово в слово строкой ниже. Форма
+          начинается с пояснения, а кнопка — внутри карточки, как в
+          запросе на выходные и в поручениях: форма и её итог — одно целое.
+        */}
+        <ShiftRequiredBanner />
         <Card>
-          <CardTitle title={m('pw.title')} icon="window" />
-
           <Text style={styles.hint}>{m('pw.hint')}</Text>
 
           <Field label={m('pw.what')} required error={showErrors ? titleError : undefined}>
@@ -93,20 +99,15 @@ export function PersonalWorkCreateScreen(): ReactElement {
               multiline
             />
           </Field>
-        </Card>
 
-        <Pressable
-          onPress={submit}
-          disabled={create.isPending}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.submit, pressed ? styles.submitPressed : null]}
-        >
-          {create.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>{m('pw.submit')}</Text>
-          )}
-        </Pressable>
+          <SubmitButton
+            label={m('pw.submit')}
+            onPress={submit}
+            // Личная работа — тоже работа: без смены сервер её не запишет (412).
+            disabled={needsShift}
+            pending={create.isPending}
+          />
+        </Card>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -119,26 +120,11 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
+  // До первого поля — тот же шаг, что между полями.
   hint: {
     ...typography.caption,
     color: colors.textMuted,
-    marginBottom: spacing.md,
-  },
-  submit: {
-    minHeight: 52,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitPressed: {
-    opacity: opacity.pressed,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
+    marginBottom: spacing.lg,
   },
 });

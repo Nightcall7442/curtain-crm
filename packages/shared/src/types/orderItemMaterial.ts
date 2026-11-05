@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { PURCHASE_UNIT_LABELS } from '../enums/payroll.enum';
+import type { Locale } from '../i18n/locale';
+
 /**
  * Строка материала позиции: код с этикетки, метраж и описание.
  *
@@ -50,11 +53,19 @@ export type OrderItemMaterial = z.infer<typeof orderItemMaterialSchema>;
  * Одна функция на веб и мобильное приложение: код без метража и описания
  * читается одинаково в обоих, а разъехавшиеся форматы — верный способ
  * получить спор о том, где заказ показан «правильно».
+ *
+ * `locale` меняет только единицу: узбекский пишется латиницей, и «3,5 м»
+ * в узбекской строке — чужие буквы. Число — с запятой в обоих языках, как
+ * `formatDistance`; между числом и единицей — неразрывный пробел, чтобы
+ * «м» не уезжала на следующую строку одна. Код и описание — данные заказа,
+ * их не переводят.
  */
-export function formatMaterial(material: OrderItemMaterial): string {
+export function formatMaterial(material: OrderItemMaterial, locale: Locale = 'ru'): string {
   return [
     material.code,
-    material.meters === null ? null : `${material.meters.toLocaleString('ru-RU')} м`,
+    material.meters === null
+      ? null
+      : `${material.meters.toLocaleString('ru-RU')}\u00A0${PURCHASE_UNIT_LABELS[locale].m}`,
     material.description,
   ]
     .filter((part) => part !== null)

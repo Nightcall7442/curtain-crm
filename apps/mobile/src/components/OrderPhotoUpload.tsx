@@ -22,10 +22,11 @@ import {
   View,
 } from 'react-native';
 
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Empty, Pill } from './Card';
 
@@ -48,6 +49,7 @@ export function OrderPhotoUpload({
   readonly orderStatus: OrderStatus;
 }): ReactElement {
   const { t, m } = useLocale();
+  const needsShift = useNeedsShift();
   const { user } = useAuth();
   const roles = user?.roles ?? [];
 
@@ -82,9 +84,17 @@ export function OrderPhotoUpload({
     },
   });
 
+  /*
+    «Общее» — первым, а не последним.
+
+    Оно выбрано по умолчанию, а стояло в конце ленты этапов: у установщика
+    от него торчало «Общ» у правого края, у руководителя (девять этапов) его
+    не было видно вовсе — непонятно, под каким этапом уйдёт снимок. Первым
+    в ленте выбранный этап виден сразу; остальные идут в порядке работы.
+  */
   const allowedStages = PHOTO_STAGES.filter((value) =>
     hasAnyRole(roles, PHOTO_STAGE_UPLOADER_ROLES[value]),
-  );
+  ).sort((a, b) => Number(b === PhotoStage.GENERAL) - Number(a === PhotoStage.GENERAL));
 
   // То же правило, что применяет сервер: предупреждение «загрузка закроет
   // заказ» и фактическое закрытие не должны расходиться.
@@ -105,7 +115,8 @@ export function OrderPhotoUpload({
     }
 
     const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // Массив типов, а не `MediaTypeOptions`: тот объявлен устаревшим и на каждый выбор пишет предупреждение.
+      mediaTypes: ['images'],
       quality: 0.6,
       base64: true,
       exif: false,
@@ -171,7 +182,17 @@ export function OrderPhotoUpload({
       <CardTitle title={m('photo.title')} icon="camera" />
 
       <Text style={styles.label}>{m('photo.stage')}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stages}>
+      {/*
+        Лента во всю ширину карточки: иначе чип обрезался по линии
+        внутреннего отступа, посреди белого поля, и читался как сбой
+        отрисовки, а не как «листай дальше».
+      */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.stages}
+        contentContainerStyle={styles.stagesContent}
+      >
         {allowedStages.map((value) => {
           const active = value === stage;
           return (
@@ -200,11 +221,16 @@ export function OrderPhotoUpload({
 
       <View style={styles.actions}>
         <Pressable
-          disabled={upload.isPending}
+          disabled={upload.isPending || needsShift}
           onPress={() => {
             confirmAndSend(true);
           }}
-          style={({ pressed }) => [styles.action, styles.actionPrimary, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [
+            styles.action,
+            styles.actionPrimary,
+            pressed ? styles.pressed : null,
+            needsShift ? styles.off : null,
+          ]}
           accessibilityRole="button"
         >
           {upload.isPending ? (
@@ -215,11 +241,16 @@ export function OrderPhotoUpload({
         </Pressable>
 
         <Pressable
-          disabled={upload.isPending}
+          disabled={upload.isPending || needsShift}
           onPress={() => {
             confirmAndSend(false);
           }}
-          style={({ pressed }) => [styles.action, styles.actionSecondary, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [
+            styles.action,
+            styles.actionSecondary,
+            pressed ? styles.pressed : null,
+            needsShift ? styles.off : null,
+          ]}
           accessibilityRole="button"
         >
           <Text style={styles.actionSecondaryText}>{m('photo.gallery')}</Text>
@@ -249,6 +280,10 @@ export function OrderPhotoUpload({
 }
 
 const styles = StyleSheet.create({
+  // Без смены сервер действие отклонит (412) — кнопка гаснет, как «Отправить».
+  off: {
+    opacity: opacity.disabled,
+  },
   label: {
     ...typography.caption,
     color: colors.textMuted,
@@ -256,15 +291,21 @@ const styles = StyleSheet.create({
   },
   stages: {
     marginBottom: spacing.md,
+    marginHorizontal: -spacing.lg,
+  },
+  stagesContent: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
   stage: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    // Подпись по центру высоты: без этого строка садилась к верху чипа на 4 px.
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    marginRight: spacing.sm,
   },
   stageActive: {
     backgroundColor: colors.accent,
@@ -274,9 +315,10 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
+  /* Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным. */
   stageTextActive: {
+    fontFamily: fonts.semibold,
     color: colors.onAccent,
-    fontWeight: '600',
   },
   warning: {
     backgroundColor: colors.warningSoft,
@@ -293,32 +335,40 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.md,
   },
+  /*
+    Пара кнопок — система `SubmitButton`: высота `buttonHeight`, таблетка,
+    основной кегль жирным. Главная — акцентная, вторая — светло-зелёная.
+    Прежде здесь были 45 точек, скругление 10 и кегль 14, тогда как
+    остальные кнопки карточки заказа — 48 и крупнее: пара выглядела
+    кнопками из другого приложения.
+  */
   action: {
     flex: 1,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
   },
   actionPrimary: {
     backgroundColor: colors.accent,
   },
   actionSecondary: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.accentSoft,
   },
   actionPrimaryText: {
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
     color: colors.onAccent,
-    fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   actionSecondaryText: {
-    fontFamily: fonts.medium,
-    color: colors.textSecondary,
-    fontSize: 14,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    color: colors.accentStrong,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   pressed: {
     opacity: opacity.pressed,

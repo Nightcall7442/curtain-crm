@@ -79,7 +79,7 @@
       "output": "single",
       "lang": "ru",
       "description": "Мастерская штор: заказы, смены, касса.",
-      "themeColor": "#14504A"
+      "themeColor": "#142E24"
     },
     "experiments": {
       "baseUrl": "/app"

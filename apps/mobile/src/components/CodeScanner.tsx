@@ -1,9 +1,9 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notifySuccess } from '../lib/haptics';
-import { colors, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -25,17 +25,40 @@ import { useLocale } from '../hooks/useLocale';
 export function CodeScanner({
   visible,
   label,
+  hint,
   onScan,
   onClose,
 }: {
   readonly visible: boolean;
   /** Что сканируем — «Портьера», «Труба»: подпись в шапке. */
   readonly label: string;
+  /**
+   * Куда наводить камеру. По умолчанию — этикетка рулона; касса сканирует
+   * бирки товара, и ей нужна своя подсказка.
+   */
+  readonly hint?: string;
   readonly onScan: (code: string) => void;
   readonly onClose: () => void;
 }): ReactElement | null {
   const { m } = useLocale();
   const [permission, requestPermission] = useCameraPermissions();
+  /*
+    Камеры нет или она занята — разрешение есть, а кадра не будет. Без этого
+    флага модальное окно оставалось чёрным экраном с рамкой навсегда: сбой
+    видела только консоль браузера.
+  */
+  const [cameraFailed, setCameraFailed] = useState(false);
+  /*
+    Просили разрешение в браузере — и получили отказ. Браузер на повторный
+    запрос не отвечает (а `canAskAgain` в веб-версии всегда `true`), поэтому
+    кнопка «Разрешить камеру» после отказа ничего не делала. Дальше — только
+    настройки, о чём экран и говорит.
+
+    Только в браузере. Android после одного «Запретить» спросит ещё раз, и
+    кнопка там рабочая; когда система спрашивать перестанет, это скажет
+    сам `canAskAgain === false`.
+  */
+  const [refused, setRefused] = useState(false);
 
   /*
     Камера отдаёт кадры десятками в секунду, и один и тот же код прилетает
@@ -44,23 +67,33 @@ export function CodeScanner({
   */
   const handled = useRef(false);
 
-  useEffect(() => {
-    if (visible) handled.current = false;
-  }, [visible]);
-
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    handled.current = false;
+    setCameraFailed(false);
+    setRefused(false);
+    setError(null);
+  }, [visible]);
 
   if (!visible) return null;
 
   const granted = permission?.granted === true;
+  /** Кадр будет: разрешение есть, и камера запустилась. */
+  const live = granted && !cameraFailed;
+  const blocked = refused || permission?.canAskAgain === false;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.screen}>
-        {granted ? (
+        {live ? (
           <CameraView
             style={styles.camera}
             facing="back"
+            onMountError={() => {
+              setCameraFailed(true);
+            }}
             barcodeScannerSettings={{
               barcodeTypes: ['qr', 'datamatrix', 'ean13', 'ean8', 'code128', 'code39', 'itf14'],
             }}
@@ -77,17 +110,32 @@ export function CodeScanner({
               onClose();
             }}
           />
+        ) : cameraFailed ? (
+          /*
+            Разрешение есть, а кадра нет: камеры нет вовсе или её держит
+            другое приложение. «Нет доступа, разрешите в настройках» здесь
+            было неправдой — человек шёл в настройки и находил там уже
+            выданное разрешение. Выход один — набрать код руками.
+          */
+          <View style={styles.permission}>
+            <Text style={styles.permissionText}>{m('scanner.unavailable')}</Text>
+          </View>
+        ) : blocked ? (
+          <View style={styles.permission}>
+            <Text style={styles.permissionTitle}>{m('photo.noAccess')}</Text>
+            <Text style={styles.permissionText}>{m('photo.allowCamera')}</Text>
+          </View>
         ) : (
           <View style={styles.permission}>
             <Text style={styles.permissionText}>
-              {permission === null
-                ? m('scanner.checking')
-                : m('scanner.allowHint')}
+              {permission === null ? m('scanner.checking') : m('scanner.allowHint')}
             </Text>
             {permission !== null && !permission.granted && (
               <Pressable
                 onPress={() => {
-                  void requestPermission();
+                  void requestPermission().then((answer) => {
+                    if (Platform.OS === 'web' && !answer.granted) setRefused(true);
+                  });
                 }}
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.allow, pressed ? styles.pressed : null]}
@@ -98,13 +146,21 @@ export function CodeScanner({
           </View>
         )}
 
+        {/*
+          Заголовок и подсказка — одним блоком в потоке, а не подсказка
+          абсолютом поверх: на «top: 48» она наезжала на строку заголовка
+          в 22 точки на шесть точек. «Наведите камеру» — только когда
+          камера есть; без неё подсказка обещала то, чего не будет.
+        */}
         <View style={styles.overlay} pointerEvents="box-none">
-          <Text style={styles.title}>{label}</Text>
-          <Text style={styles.hint}>
-            {error ?? m('scanner.aim')}
-          </Text>
+          <View style={styles.head}>
+            <Text style={styles.title}>{label}</Text>
+            {(error !== null || live) && (
+              <Text style={styles.hint}>{error ?? hint ?? m('scanner.aim')}</Text>
+            )}
+          </View>
 
-          {granted && <View style={styles.frame} />}
+          {live && <View style={styles.frame} />}
 
           <Pressable
             onPress={onClose}
@@ -119,6 +175,10 @@ export function CodeScanner({
   );
 }
 
+/*
+  Кнопки — как во всём приложении: 48 и таблеткой (`SubmitButton`), подпись
+  15/700. Были 44 и 48 со скруглением 14.
+*/
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -138,20 +198,25 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
+  head: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  /* Своя высота строки: без неё строка 22-го кегля короче глифов, и то,
+     что стоит ниже, заезжает на заголовок. */
   title: {
     ...typography.title,
+    lineHeight: 28,
     color: '#fff',
     textAlign: 'center',
   },
+  /* 13, а не сноска, и без прозрачности: подсказку читают на чёрном фоне
+     с вытянутой руки. */
   hint: {
-    ...typography.footnote,
+    ...typography.caption,
     color: '#fff',
-    opacity: 0.85,
     textAlign: 'center',
-    position: 'absolute',
-    top: spacing.xl * 2,
-    left: spacing.lg,
-    right: spacing.lg,
   },
   /* Рамка не обрезает кадр — она подсказывает, куда целиться. */
   frame: {
@@ -163,17 +228,18 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   close: {
-    height: 48,
+    minHeight: sizes.buttonHeight,
     alignSelf: 'stretch',
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
     ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textPrimary,
-    fontWeight: '600',
   },
   permission: {
     position: 'absolute',
@@ -186,23 +252,29 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
   },
+  permissionTitle: {
+    ...typography.sectionTitle,
+    color: '#fff',
+    textAlign: 'center',
+  },
   permissionText: {
     ...typography.body,
     color: '#fff',
     textAlign: 'center',
   },
   allow: {
-    height: 44,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   allowText: {
     ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.onAccent,
-    fontWeight: '600',
   },
   pressed: {
     opacity: opacity.pressed,

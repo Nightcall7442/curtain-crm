@@ -10,10 +10,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Pill } from './Card';
 import { Icon } from './Icon';
@@ -60,32 +61,62 @@ export function TaskCard({
     },
   });
 
+  /*
+    Без открытой смены сервер не примет от сотрудника отметку «выполнено»
+    (`requiresOpenShift`) — и отвечал отказом уже после нажатия. Галочка
+    гаснет заранее, как кнопка «Выполнено» в самом поручении; о причине
+    говорит баннер «Смена не начата» над списком. Руководству смена для
+    поручений не нужна. Запрос тот же, что у экрана, — React Query отдаёт
+    всем карточкам один ответ.
+  */
+  const isBoss = useIsManagement();
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isBoss });
+  const needsShift = !isBoss && shift.data === null;
+
   const isOpen = task.status === TaskStatus.OPEN;
   /** Закрыто руководством — приглушаем; сданное на проверку ещё живое. */
   const isClosed = !isTaskActive(task.status);
   const overdue = isOpen && task.dueDate !== null && isOverdueDate(task.dueDate);
 
+  const open = (): void => {
+    navigation.navigate('TaskDetail', { taskId: task.id });
+  };
+
+  /*
+    Карточка — контейнер, а не кнопка целиком.
+
+    Прежде вся карточка была кнопкой, и галочка «выполнено» оказывалась
+    кнопкой внутри кнопки: в браузере это `<button>` в `<button>`, React
+    писал в консоль две ошибки при каждом открытии «Доп работ». Открывает
+    поручение касание заголовка или текста под ним; галочка стоит рядом,
+    а не внутри.
+  */
   return (
-    <Pressable
-      onPress={() => {
-        navigation.navigate('TaskDetail', { taskId: task.id });
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={m('taskCard.open', { title: task.title })}
-      style={[styles.card, isClosed && styles.cardClosed]}
-    >
+    <View style={[styles.card, isClosed && styles.cardClosed]}>
       <View style={styles.header}>
-        <Text style={[styles.title, isClosed && styles.titleClosed]}>{task.title}</Text>
+        <Pressable
+          onPress={open}
+          accessibilityRole="button"
+          accessibilityLabel={m('taskCard.open', { title: task.title })}
+          style={({ pressed }) => [styles.titleWrap, pressed ? styles.pressed : null]}
+        >
+          <Text style={[styles.title, isClosed && styles.titleClosed]}>{task.title}</Text>
+        </Pressable>
 
         {isOpen ? (
           <Pressable
             onPress={() => {
               complete.mutate({ id: task.id });
             }}
-            disabled={complete.isPending}
+            disabled={complete.isPending || needsShift}
             accessibilityRole="button"
             accessibilityLabel={m('taskCard.complete', { title: task.title })}
-            style={({ pressed }) => [styles.doneButton, pressed ? styles.doneButtonPressed : null]}
+            accessibilityState={{ disabled: complete.isPending || needsShift, busy: complete.isPending }}
+            style={({ pressed }) => [
+              styles.doneButton,
+              needsShift ? styles.off : null,
+              pressed ? styles.doneButtonPressed : null,
+            ]}
           >
             {complete.isPending ? (
               <ActivityIndicator color={colors.onAccent} size="small" />
@@ -94,42 +125,53 @@ export function TaskCard({
             )}
           </Pressable>
         ) : (
-          <Pill
-            text={t(TASK_STATUS_LABELS, task.status)}
-            tone={
-              task.status === TaskStatus.DONE
-                ? 'positive'
-                : task.status === TaskStatus.PENDING_REVIEW
-                  ? 'info'
-                  : 'neutral'
-            }
-          />
+          // Метка — по центру строки, как галочка у открытых: сама по себе она
+          // прижимается к верху и рядом с двухстрочным заголовком висела выше.
+          <View style={styles.status}>
+            <Pill
+              text={t(TASK_STATUS_LABELS, task.status)}
+              tone={
+                task.status === TaskStatus.DONE
+                  ? 'positive'
+                  : task.status === TaskStatus.PENDING_REVIEW
+                    ? 'info'
+                    : 'neutral'
+              }
+            />
+          </View>
         )}
       </View>
 
       {/*
         Две строки, без разворота: полное описание теперь на своём экране,
         и карточка обещает ровно то, что делает по нажатию, — открыть его.
+        Для программы чтения с экрана кнопка одна — заголовок.
       */}
-      {task.details !== null && (
-        <Text style={styles.details} numberOfLines={2}>
-          {task.details}
-        </Text>
-      )}
-
-      <View style={styles.footer}>
-        <Text style={styles.creator} numberOfLines={1}>
-          {m('taskCard.from', { name: task.creatorName })}
-        </Text>
-        {task.dueDate !== null && (
-          <Text style={[styles.due, overdue ? styles.dueOverdue : null]}>
-            {overdue
-              ? m('taskCard.overdue', { date: formatIsoDateShort(task.dueDate) })
-              : m('taskCard.until', { date: formatIsoDateShort(task.dueDate) })}
+      <Pressable
+        onPress={open}
+        accessible={false}
+        style={({ pressed }) => (pressed ? styles.pressed : null)}
+      >
+        {task.details !== null && (
+          <Text style={styles.details} numberOfLines={2}>
+            {task.details}
           </Text>
         )}
-      </View>
-    </Pressable>
+
+        <View style={styles.footer}>
+          <Text style={styles.creator} numberOfLines={1}>
+            {m('taskCard.from', { name: task.creatorName })}
+          </Text>
+          {task.dueDate !== null && (
+            <Text style={[styles.due, overdue ? styles.dueOverdue : null]}>
+              {overdue
+                ? m('taskCard.overdue', { date: formatIsoDateShort(task.dueDate) })
+                : m('taskCard.until', { date: formatIsoDateShort(task.dueDate) })}
+            </Text>
+          )}
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -150,18 +192,36 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  /*
+    Заголовок — кнопка «открыть поручение», и зона нажатия у неё полная:
+    однострочное «Замерить окно» было целью в 21 точку высотой. Рядом с
+    галочкой строка и так 44, а у закрытых поручений шапка теперь той же
+    высоты — карточки в списке идут одним ритмом.
+  */
+  titleWrap: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+  },
   title: {
     ...typography.headline,
     color: colors.textPrimary,
-    flex: 1,
+  },
+  status: {
+    alignSelf: 'center',
+  },
+  pressed: {
+    opacity: opacity.pressed,
   },
   titleClosed: {
     textDecorationLine: 'line-through',
     color: colors.textSecondary,
   },
+  // Порог пальца, как у «Отменить»/«Готово» в личных работах.
   doneButton: {
-    width: 40,
-    height: 40,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.pill,
     backgroundColor: colors.accentBright,
     alignItems: 'center',
@@ -169,6 +229,10 @@ const styles = StyleSheet.create({
   },
   doneButtonPressed: {
     backgroundColor: colors.accent,
+  },
+  // Одна прозрачность «недоступно» на всё приложение — как у `SubmitButton`.
+  off: {
+    opacity: opacity.disabled,
   },
   details: {
     ...typography.caption,
@@ -187,13 +251,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     flexShrink: 1,
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным жирным.
   due: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textMuted,
   },
   dueOverdue: {
-    color: colors.danger,
+    fontFamily: fonts.bold,
     fontWeight: '700',
+    color: colors.danger,
   },
 });

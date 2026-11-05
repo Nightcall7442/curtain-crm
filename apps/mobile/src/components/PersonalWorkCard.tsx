@@ -1,26 +1,21 @@
 import {
   formatIsoDateShort,
   PERSONAL_WORK_STATUS_LABELS,
+  todayIso,
   PersonalWorkStatus,
   type PersonalWorkStatus as PersonalWorkStatusName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Pill } from './Card';
+import { Input } from './Field';
 import { Icon } from './Icon';
 
 /**
@@ -81,20 +76,43 @@ export function PersonalWorkCard({
     },
   });
 
-  const isOpen = work.status === PersonalWorkStatus.IN_PROGRESS;
+  /*
+    Без открытой смены сервер не примет ни «Готово», ни отмену
+    (`requiresOpenShift`) и отвечал отказом уже после нажатия. Кнопки
+    гаснут заранее, как галочка доп. работы рядом; причину называет баннер
+    «Смена не начата» над списком. Запрос тот же, что у экрана.
+  */
+  const isBoss = useIsManagement();
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isBoss });
+  const needsShift = !isBoss && shift.data === null;
 
+  const isOpen = work.status === PersonalWorkStatus.IN_PROGRESS;
+  const expandable = work.details !== null || work.cancellationReason !== null;
+  const toggle = (): void => {
+    if (expandable) setExpanded((current) => !current);
+  };
+
+  /*
+    Карточка — не кнопка целиком, а контейнер.
+
+    Прежде вся карточка была кнопкой, и «Отменить»/«Готово» оказывались
+    кнопкой внутри кнопки: в браузере это `<button>` в `<button>`, React
+    сыпал ошибками в консоль, а программа чтения с экрана читала карточку
+    одной кнопкой вместе с действиями. Раскрывают текст — заголовок и
+    подробности, — а действия стоят рядом, а не внутри.
+  */
   return (
-    <Pressable
-      onPress={() => {
-        if (work.details !== null || work.cancellationReason !== null) {
-          setExpanded((current) => !current);
-        }
-      }}
-      accessibilityRole={work.details === null ? undefined : 'button'}
-      style={[styles.card, !isOpen && styles.cardClosed]}
-    >
+    <View style={[styles.card, !isOpen && styles.cardClosed]}>
       <View style={styles.header}>
-        <Text style={[styles.title, !isOpen && styles.titleClosed]}>{work.title}</Text>
+        <Pressable
+          onPress={toggle}
+          disabled={!expandable}
+          accessibilityRole={expandable ? 'button' : undefined}
+          accessibilityState={expandable ? { expanded } : undefined}
+          style={styles.titleWrap}
+        >
+          <Text style={[styles.title, !isOpen && styles.titleClosed]}>{work.title}</Text>
+        </Pressable>
 
         {isOpen ? (
           <View style={styles.actions}>
@@ -102,10 +120,15 @@ export function PersonalWorkCard({
               onPress={() => {
                 setCancelReason((current) => (current === null ? '' : null));
               }}
-              disabled={cancel.isPending}
+              disabled={cancel.isPending || needsShift}
               accessibilityRole="button"
               accessibilityLabel={m('personal.cancelA11y', { title: work.title })}
-              style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
+              accessibilityState={{ disabled: cancel.isPending || needsShift }}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                needsShift ? styles.off : null,
+                pressed ? styles.pressed : null,
+              ]}
             >
               <Icon name="cancelled" size={18} color={colors.danger} />
             </Pressable>
@@ -114,10 +137,15 @@ export function PersonalWorkCard({
               onPress={() => {
                 complete.mutate({ id: work.id });
               }}
-              disabled={complete.isPending}
+              disabled={complete.isPending || needsShift}
               accessibilityRole="button"
               accessibilityLabel={m('personal.completeA11y', { title: work.title })}
-              style={({ pressed }) => [styles.doneButton, pressed ? styles.pressed : null]}
+              accessibilityState={{ disabled: complete.isPending || needsShift, busy: complete.isPending }}
+              style={({ pressed }) => [
+                styles.doneButton,
+                needsShift ? styles.off : null,
+                pressed ? styles.pressed : null,
+              ]}
             >
               {complete.isPending ? (
                 <ActivityIndicator color={colors.onAccent} size="small" />
@@ -134,15 +162,20 @@ export function PersonalWorkCard({
         )}
       </View>
 
+      {/*
+        Поле — общее (`Input`), а не своё: со своим в браузере не было
+        видно, что оно в фокусе (рамку браузера снимает `index.html`, а
+        замену ей рисует только общее поле), и кегль 13 выбивался из всех
+        остальных полей приложения.
+      */}
       {cancelReason !== null && (
         <View style={styles.cancelBox}>
-          <TextInput
+          <Input
             value={cancelReason}
             onChangeText={setCancelReason}
             placeholder={m('personal.reasonPlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            style={styles.cancelInput}
             multiline
+            autoFocus
           />
           <Pressable
             onPress={() => {
@@ -152,9 +185,13 @@ export function PersonalWorkCard({
             // предлагать отправить то, что заведомо вернётся ошибкой.
             disabled={cancelReason.trim().length < 3 || cancel.isPending}
             accessibilityRole="button"
+            accessibilityState={{
+              disabled: cancelReason.trim().length < 3 || cancel.isPending,
+              busy: cancel.isPending,
+            }}
             style={({ pressed }) => [
               styles.cancelConfirm,
-              cancelReason.trim().length < 3 ? styles.cancelConfirmOff : null,
+              cancelReason.trim().length < 3 ? styles.off : null,
               pressed ? styles.pressed : null,
             ]}
           >
@@ -167,20 +204,33 @@ export function PersonalWorkCard({
         </View>
       )}
 
-      {work.details !== null && (
-        <Text style={styles.details} numberOfLines={expanded ? undefined : 2}>
-          {work.details}
-        </Text>
-      )}
+      {/* Касание текста раскрывает его так же, как касание заголовка; для
+          программы чтения с экрана кнопка одна — заголовок. */}
+      <Pressable onPress={toggle} disabled={!expandable} accessible={false}>
+        {work.details !== null && (
+          <Text style={styles.details} numberOfLines={expanded ? undefined : 2}>
+            {work.details}
+          </Text>
+        )}
 
-      {work.cancellationReason !== null && (
-        <Text style={styles.reason} numberOfLines={expanded ? undefined : 1}>
-          {m('personal.cancelReason', { reason: work.cancellationReason })}
-        </Text>
-      )}
+        {work.cancellationReason !== null && (
+          <Text style={styles.reason} numberOfLines={expanded ? undefined : 1}>
+            {m('personal.cancelReason', { reason: work.cancellationReason })}
+          </Text>
+        )}
 
-      <Text style={styles.started}>{m('personal.started', { date: formatIsoDateShort(work.createdAt.toISOString()) })}</Text>
-    </Pressable>
+        {/*
+          Дата начала — местная календарная. `formatIsoDateShort` ждёт
+          «ГГГГ-ММ-ДД», а получал полную отметку времени, и на карточке
+          выходило «начата 05T06:37:25.244Z.11». `toISOString().slice(0, 10)`
+          тоже не годится: это дата по Гринвичу, и работа, начатая в Ташкенте
+          до пяти утра, показывалась бы вчерашней.
+        */}
+        <Text style={styles.started}>
+          {m('personal.started', { date: formatIsoDateShort(todayIso(work.createdAt)) })}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -206,27 +256,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  title: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
+  /* Заголовок раскрывает подробности — цель для пальца полной высоты. */
+  titleWrap: {
     flex: 1,
     minWidth: 0,
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+  },
+  title: {
+    ...typography.body,
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
   titleClosed: {
     textDecorationLine: 'line-through',
   },
+  // Порог пальца; 40 точек в перчатках в цеху промахивались.
   doneButton: {
-    width: 40,
-    height: 40,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelButton: {
-    width: 40,
-    height: 40,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
@@ -234,36 +292,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
+  },
+  // Одна прозрачность «недоступно» на всё приложение — как у `SubmitButton`.
+  off: {
+    opacity: opacity.disabled,
   },
   cancelBox: {
     marginTop: spacing.md,
     gap: spacing.sm,
   },
-  cancelInput: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 44,
-  },
+  /*
+    Кнопка общей системы (`SubmitButton`): высота кнопки действия, таблетка,
+    подпись основным кеглем. Своя — только из-за цвета: отмена работы —
+    действие разрушительное, и зелёная кнопка звала бы нажать не глядя.
+    Было 44, скругление 14 и подпись 13.
+  */
   cancelConfirm: {
-    minHeight: 44,
-    borderRadius: radius.md,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelConfirmOff: {
-    opacity: 0.4,
-  },
   cancelConfirmText: {
-    ...typography.caption,
+    ...typography.body,
+    fontFamily: fonts.bold,
     fontWeight: '700',
     color: colors.onAccent,
+    textAlign: 'center',
   },
   details: {
     ...typography.caption,

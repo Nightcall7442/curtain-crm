@@ -1,7 +1,6 @@
 import { DAY_OFF_STATUS_LABELS, DayOffStatus, formatIsoDateShort } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -11,14 +10,16 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { DateField } from '../components/DateField';
 import { Field, Input } from '../components/Field';
 import { MonthSchedule } from '../components/MonthSchedule';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale, type Translate } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, sizes, spacing, typography } from '../theme';
 
 /**
  * Запрос на выходные.
@@ -35,6 +36,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
  */
 export function DayOffScreen(): ReactElement {
   const { t, m } = useLocale();
+  const insets = useSafeAreaInsets();
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -97,15 +99,25 @@ export function DayOffScreen(): ReactElement {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* Снизу — безопасная зона и обычный отступ, а не место под панель
+          вкладок: это экран стека, панели под ним нет, и под последней
+          карточкой оставалась пустая полоса в треть экрана. */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/*
           График — первым: чаще всего сюда заходят посмотреть, работаю ли я
           в четверг, а не просить новый выходной.
         */}
         <MonthSchedule />
 
+        {/*
+          У каждой карточки экрана свой значок: три календаря подряд читались
+          как одна и та же вещь, повторённая трижды.
+        */}
         <Card>
-          <CardTitle title={m('dayoff.new')} icon="calendar" />
+          <CardTitle title={m('dayoff.new')} icon="send" />
 
           <View style={styles.dates}>
             <View style={styles.dateItem}>
@@ -114,6 +126,7 @@ export function DayOffScreen(): ReactElement {
                   value={startDate}
                   onChange={setStartDate}
                   placeholder={m('dayoff.from')}
+                  emptyText={m('common.datePlaceholder')}
                   invalid={showErrors && errors.startDate !== undefined}
                   minimumDate={new Date()}
                 />
@@ -125,6 +138,7 @@ export function DayOffScreen(): ReactElement {
                   value={endDate}
                   onChange={setEndDate}
                   placeholder={m('dayoff.to')}
+                  emptyText={m('common.datePlaceholder')}
                   invalid={showErrors && errors.endDate !== undefined}
                   minimumDate={new Date()}
                 />
@@ -141,26 +155,12 @@ export function DayOffScreen(): ReactElement {
             />
           </Field>
 
-          <Pressable
-            onPress={submit}
-            disabled={request.isPending}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.submit,
-              request.isPending ? styles.submitBusy : null,
-              pressed ? styles.pressed : null,
-            ]}
-          >
-            {request.isPending ? (
-              <ActivityIndicator color={colors.onAccent} />
-            ) : (
-              <Text style={styles.submitText}>{m('dayoff.submit')}</Text>
-            )}
-          </Pressable>
+          {/* Общая кнопка формы: та же высота и таблетка, что на соседних экранах. */}
+          <SubmitButton label={m('dayoff.submit')} onPress={submit} pending={request.isPending} />
         </Card>
 
         <Card>
-          <CardTitle title={m('dayoff.mine')} icon="calendar" />
+          <CardTitle title={m('dayoff.mine')} icon="orders" />
 
           {myRequests.isLoading ? (
             <Skeleton />
@@ -169,11 +169,16 @@ export function DayOffScreen(): ReactElement {
           ) : (myRequests.data ?? []).length === 0 ? (
             <Empty message={m('dayoff.none')} />
           ) : (
-            (myRequests.data ?? []).map((item) => {
+            (myRequests.data ?? []).map((item, index, all) => {
               const period = formatPeriod(item.startDate, item.endDate);
 
               return (
-                <View key={item.id} style={styles.requestRow}>
+                <View
+                  key={item.id}
+                  // Линия — между запросами; под последним её рисовал бы
+                  // край карточки второй раз.
+                  style={[styles.requestRow, index === all.length - 1 ? styles.requestRowLast : null]}
+                >
                   <View style={styles.requestHeader}>
                     <Text style={styles.requestPeriod}>{period}</Text>
                     <Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={statusTone(item.status)} />
@@ -184,16 +189,24 @@ export function DayOffScreen(): ReactElement {
                     <Text style={styles.requestRejection}>{m('dayoff.rejection', { reason: item.rejectionReason })}</Text>
                   )}
 
+                  {/*
+                    Ссылка — по ширине своей подписи и высотой в полную
+                    зону нажатия. Прежде она тянулась на всю строку при
+                    высоте 24: касание пустого места справа от слова
+                    открывало «Отозвать запрос?», а `hitSlop` в браузере не
+                    работает вовсе.
+                  */}
                   {item.status === DayOffStatus.PENDING && (
                     <Pressable
                       onPress={() => {
                         confirmCancel(item.id, period);
                       }}
                       accessibilityRole="button"
-                      hitSlop={8}
+                      accessibilityLabel={`${m('dayoff.withdraw')}: ${period}`}
                       disabled={cancel.isPending}
+                      style={({ pressed }) => [styles.cancelLink, pressed ? styles.pressed : null]}
                     >
-                      <Text style={styles.cancelLink}>{m('dayoff.withdraw')}</Text>
+                      <Text style={styles.cancelLinkText}>{m('dayoff.withdraw')}</Text>
                     </Pressable>
                   )}
                 </View>
@@ -256,6 +269,13 @@ function validate(values: {
   return errors;
 }
 
+/**
+ * Насколько зона нажатия ссылки выходит за строку её подписи — сверху и
+ * снизу поровну. Отрицательный отступ возвращает строке запроса прежнюю
+ * высоту: ссылка стала крупнее для пальца, но не для глаза.
+ */
+const LINK_BLEED = (sizes.touchTarget - typography.caption.lineHeight) / 2;
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -263,7 +283,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   dates: {
     flexDirection: 'row',
@@ -275,25 +294,15 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: opacity.pressed,
   },
-  submit: {
-    minHeight: 52,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitBusy: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    color: colors.onAccent,
-    fontWeight: '600',
-  },
   requestRow: {
     paddingVertical: spacing.md,
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  /* Последний запрос — без линии и без нижнего отступа: его даёт карточка. */
+  requestRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
   },
   requestHeader: {
     flexDirection: 'row',
@@ -316,9 +325,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   cancelLink: {
-    ...typography.footnote,
-    color: colors.danger,
+    alignSelf: 'flex-start',
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    // Подпись стоит там же, где стояла, — в 8 точках под текстом выше.
+    marginTop: spacing.sm - LINK_BLEED,
+    marginBottom: -LINK_BLEED,
+  },
+  // Тот же вид, что у ссылок в шапках карточек (`CardLink`), только красный.
+  cancelLinkText: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
-    marginTop: spacing.sm,
+    color: colors.danger,
   },
 });

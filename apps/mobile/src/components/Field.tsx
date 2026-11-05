@@ -1,8 +1,17 @@
 import { groupDigits, ungroupDigits } from '@curtain-crm/shared';
-import { forwardRef, type ReactElement, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import {
+  forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Поля ввода.
@@ -22,16 +31,25 @@ export function Field({
   hint,
   error,
   required = false,
+  last = false,
   children,
 }: {
   readonly label: string;
   readonly hint?: string;
   readonly error?: string;
   readonly required?: boolean;
+  /**
+   * Последнее поле карточки — без нижнего отступа.
+   *
+   * Отступ поля складывался с внутренним отступом карточки, и снизу
+   * выходило 32 при 16 сверху: карточка «Клиент» стояла кривой рядом с
+   * «Товарами».
+   */
+  readonly last?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, last ? styles.fieldLast : null]}>
       <Text style={styles.label}>
         {label}
         {required && <Text style={styles.required}> *</Text>}
@@ -50,20 +68,105 @@ export function Field({
   );
 }
 
+/** Высота многострочного поля: от трёх строк текста до семи, дальше — прокрутка внутри. */
+const MULTILINE_MIN = typography.body.lineHeight * 3 + spacing.sm * 2;
+const MULTILINE_MAX = typography.body.lineHeight * 7 + spacing.sm * 2;
+
 /**
- * Однострочный ввод.
+ * Многострочное поле в браузере растёт вместе с текстом.
+ *
+ * На телефоне это делает сама система. В браузере `<textarea>` стоит
+ * фиксированной высоты в две строки: третья строка уезжала вверх, и
+ * первая видимая резалась рамкой пополам. Высота считается по содержимому
+ * после каждой правки — сначала поле схлопывается, чтобы `scrollHeight`
+ * умел и уменьшаться, когда текст стёрли.
+ *
+ * Отдельным хуком — для полей, которые собраны не на `Input` (поле
+ * комментария с кнопкой отправки): вторая копия того же расчёта рано или
+ * поздно разошлась бы с первой. Вне браузера и для однострочного поля
+ * возвращает `undefined` — высоту тогда ведёт сама платформа.
+ */
+export function useWebAutoGrow(
+  ref: RefObject<TextInput | null>,
+  value: string | undefined,
+  { enabled = true, min = MULTILINE_MIN, max = MULTILINE_MAX }: {
+    readonly enabled?: boolean;
+    readonly min?: number;
+    readonly max?: number;
+  } = {},
+): number | undefined {
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || !enabled) return;
+    const node = ref.current as unknown as HTMLTextAreaElement | null;
+    if (node === null) return;
+    const borders = node.offsetHeight - node.clientHeight;
+    const previous = node.style.height;
+    node.style.height = '0px';
+    const content = node.scrollHeight + borders;
+    node.style.height = previous;
+    // Та же высота — то же значение, и React повторный рендер пропускает:
+    // поле перерисовывается, только когда меняется число строк.
+    setHeight(Math.min(max, Math.max(min, content)));
+  }, [ref, value, enabled, min, max]);
+
+  return Platform.OS === 'web' && enabled ? height : undefined;
+}
+
+/**
+ * Однострочный (или с `multiline` — многострочный) ввод.
  *
  * `forwardRef` нужен для перевода фокуса по клавише «Далее»: без него форму
  * из десяти полей приходится проходить, целясь пальцем в каждое.
+ *
+ * Фокус показывается рамкой цвета акцента — так же на телефоне и в
+ * браузере. Своё кольцо браузера (оранжевое, поверх скруглённой рамки)
+ * снято глобально в `public/index.html`: оно выдавало в PWA веб-форму.
+ *
+ * Поле только для чтения (`editable={false}` или `readOnly`) приглушено:
+ * серая подложка и вторичный цвет текста. В белом поле вычисленную сумму
+ * пытались исправить — и не понимали, почему клавиатура не открывается.
  */
 export const Input = forwardRef<TextInput, TextInputProps & { readonly invalid?: boolean }>(
-  function Input({ invalid = false, style, ...rest }, ref): ReactElement {
+  function Input(
+    { invalid = false, style, onFocus, onBlur, multiline, value, editable, readOnly, ...rest },
+    ref,
+  ): ReactElement {
+    const [focused, setFocused] = useState(false);
+    const inner = useRef<TextInput>(null);
+    useImperativeHandle(ref, () => inner.current as TextInput);
+    const webHeight = useWebAutoGrow(inner, value, { enabled: multiline === true });
+    const locked = editable === false || readOnly === true;
+
     return (
       <TextInput
-        ref={ref}
+        ref={inner}
         {...rest}
+        value={value}
+        multiline={multiline}
+        {...(editable === undefined ? {} : { editable })}
+        {...(readOnly === undefined ? {} : { readOnly })}
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
         placeholderTextColor={colors.textMuted}
-        style={[styles.input, invalid ? styles.inputInvalid : null, style]}
+        style={[
+          styles.input,
+          multiline === true ? styles.inputMultiline : null,
+          // Рассчитанная высота идёт ДО стиля вызывающего экрана: высота,
+          // заданная экраном явно, главнее подсчёта по тексту.
+          webHeight === undefined ? null : { height: webHeight },
+          locked ? styles.inputReadOnly : null,
+          focused && !locked ? styles.inputFocused : null,
+          invalid ? styles.inputInvalid : null,
+          style,
+        ]}
       />
     );
   },
@@ -151,6 +254,9 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: spacing.lg,
   },
+  fieldLast: {
+    marginBottom: 0,
+  },
   label: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -168,8 +274,21 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     // Высота больше порога нажатия: поле — такая же цель для пальца, как кнопка.
-    minHeight: 46,
+    minHeight: sizes.controlHeight,
     paddingVertical: spacing.sm,
+  },
+  inputReadOnly: {
+    backgroundColor: colors.surfaceMuted,
+    color: colors.textSecondary,
+  },
+  inputMultiline: {
+    minHeight: MULTILINE_MIN,
+    maxHeight: MULTILINE_MAX,
+    // Android по умолчанию ставит текст многострочного поля по центру.
+    textAlignVertical: 'top',
+  },
+  inputFocused: {
+    borderColor: colors.accent,
   },
   inputInvalid: {
     borderColor: colors.danger,
@@ -190,9 +309,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chip: {
-    minHeight: 44,
+    // Высота поля, а не 44: чипы «сум / %» стоят в одной строке с полем
+    // суммы, и разница в два пикселя была видна по верхнему и нижнему краю.
+    minHeight: sizes.controlHeight,
+    // Не уже своей высоты: однобуквенный «%» был 38 × 46 — меньше пальца и
+    // вытянутым овалом рядом с круглым «сум». Так он — ровный круг.
+    minWidth: sizes.controlHeight,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    // 12, а не 16: на экране в 360 точек группа из трёх-четырёх вариантов
+    // («Обычный · Срочный · Критический», «Наличные · Карта · QR · Click»)
+    // не помещалась в строку на считанные пиксели, и последний вариант
+    // одиноко висел на второй строке.
+    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: hairline,
@@ -209,6 +338,9 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.headerText,
+    // Начертанием, а не `fontWeight` поверх Medium — иначе браузер
+    // дорисовывает ложный полужирный.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
 });

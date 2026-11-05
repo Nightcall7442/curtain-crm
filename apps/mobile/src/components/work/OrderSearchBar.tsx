@@ -1,8 +1,8 @@
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
-import { colors, radius, spacing, typography } from '../../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../../theme';
 import { Icon } from '../Icon';
 
 /**
@@ -11,6 +11,10 @@ import { Icon } from '../Icon';
  * Поле ищет по номеру, клиенту и телефону — на сервере, по всем заказам, а
  * не по загруженной странице. Чипы открывают шторки выбора; выбранное
  * показывается на самом чипе и снимается крестиком.
+ *
+ * Цели здесь — полные `sizes.touchTarget`, без `hitSlop`: в браузере его
+ * нет вовсе, и в PWA крестик был мишенью 14×15, а «Сбросить» — строкой
+ * высотой 18.
  */
 export function OrderSearchBar({
   search,
@@ -38,47 +42,66 @@ export function OrderSearchBar({
 }): ReactElement {
   const { m } = useLocale();
   const anyActive = search.length > 0 || statusLabel !== null || executorLabel !== null;
+  /*
+    Фокус — рамкой цвета акцента, как у общего поля (`Input`). Кольцо
+    браузера снято для всех полей в `public/index.html`, и без своей рамки
+    в PWA было не видно, что поиск ждёт ввода: с клавиатуры — вовсе никак.
+  */
+  const [focused, setFocused] = useState(false);
 
+  /*
+    Чип — не кнопка целиком, а пара кнопок рядом: подпись открывает шторку,
+    крестик снимает фильтр. Крестик внутри кнопки-чипа был `<button>` в
+    `<button>`: React сыпал ошибками в консоль, а промах мимо крестика
+    открывал шторку вместо того, чтобы снять фильтр.
+  */
   const chip = (
     label: string | null,
     placeholder: string,
     onPress: () => void,
     onClear: () => void,
   ): ReactElement => (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.chip,
-        label === null ? null : styles.chipActive,
-        pressed ? styles.pressed : null,
-      ]}
-    >
-      <Text style={[styles.chipText, label === null ? null : styles.chipTextActive]} numberOfLines={1}>
-        {label ?? placeholder}
-      </Text>
-      {label === null ? (
-        <Icon name="chevron" size={13} color={colors.textMuted} />
-      ) : (
+    <View style={[styles.chip, label === null ? null : styles.chipActive]}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.chipMain,
+          label === null ? null : styles.chipMainActive,
+          pressed ? styles.pressed : null,
+        ]}
+      >
+        <Text style={[styles.chipText, label === null ? null : styles.chipTextActive]} numberOfLines={1}>
+          {label ?? placeholder}
+        </Text>
+        {label === null && <Icon name="chevron" size={13} color={colors.textMuted} />}
+      </Pressable>
+      {label !== null && (
         <Pressable
           onPress={onClear}
-          hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel={m('work.filterReset')}
+          style={({ pressed }) => [styles.chipClear, pressed ? styles.pressed : null]}
         >
           <Icon name="close" size={14} color={colors.headerText} />
         </Pressable>
       )}
-    </Pressable>
+    </View>
   );
 
   return (
     <View style={styles.host}>
-      <View style={styles.field}>
-        <Icon name="search" size={17} color={colors.textMuted} />
+      <View style={[styles.field, focused ? styles.fieldFocused : null]}>
+        <Icon name="search" size={17} color={focused ? colors.accent : colors.textMuted} />
         <TextInput
           value={search}
           onChangeText={onSearch}
+          onFocus={() => {
+            setFocused(true);
+          }}
+          onBlur={() => {
+            setFocused(false);
+          }}
           placeholder={m('work.search')}
           placeholderTextColor={colors.textMuted}
           style={styles.input}
@@ -91,9 +114,9 @@ export function OrderSearchBar({
             onPress={() => {
               onSearch('');
             }}
-            hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel={m('work.filterReset')}
+            style={({ pressed }) => [styles.searchClear, pressed ? styles.pressed : null]}
           >
             <Icon name="close" size={16} color={colors.textMuted} />
           </Pressable>
@@ -104,7 +127,11 @@ export function OrderSearchBar({
         {chip(statusLabel, m('work.filterStatus'), onStatusPress, onStatusClear)}
         {showExecutor && chip(executorLabel, m('work.filterExecutor'), onExecutorPress, onExecutorClear)}
         {anyActive && (
-          <Pressable onPress={onReset} accessibilityRole="button" hitSlop={8} style={styles.reset}>
+          <Pressable
+            onPress={onReset}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.reset, pressed ? styles.pressed : null]}
+          >
             <Text style={styles.resetText}>{m('work.filterReset')}</Text>
           </Pressable>
         )}
@@ -119,16 +146,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
+  // Высота поля ввода — та же, что у всех полей приложения.
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 44,
+    minHeight: sizes.controlHeight,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  fieldFocused: {
+    borderColor: colors.accent,
   },
   input: {
     flex: 1,
@@ -136,19 +167,34 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     paddingVertical: spacing.sm,
   },
+  /* Крестик — во всю высоту поля и вплотную к его правому краю: значок
+     стоит там же, где стоял, а цель для пальца — полная. */
+  searchClear: {
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
+    marginRight: -spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
   },
+  /*
+    Высота — как у чипов фильтров строкой выше: прежние 36 рядом с ними
+    давали на одном экране две высоты одной и той же таблетки.
+
+    Ширина — до края строки, а не до 220: длинный статус по-узбекски
+    («Admin tekshiruvini kutmoqda») обрезался при свободной половине строки.
+  */
   chip: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-    maxWidth: 220,
-    paddingHorizontal: spacing.md,
+    alignItems: 'stretch',
+    minHeight: sizes.touchTarget,
+    maxWidth: '100%',
+    flexShrink: 1,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -158,6 +204,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.header,
     borderColor: colors.header,
   },
+  chipMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 1,
+    minWidth: 0,
+    paddingHorizontal: spacing.md,
+  },
+  /* Справа — крестик со своими полями: подпись ему место не уступает. */
+  chipMainActive: {
+    paddingRight: 0,
+  },
+  chipClear: {
+    width: sizes.touchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chipText: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -165,16 +228,20 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.headerText,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   reset: {
-    paddingHorizontal: spacing.xs,
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
   },
   resetText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.accent,
     fontWeight: '600',
   },

@@ -1,18 +1,18 @@
 import { inputToMajor, parseMoney, Role } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { useToday } from '../hooks/useToday';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, hairline, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { ShiftRequiredBanner, useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle } from './Card';
 import { Field, MoneyInput } from './Field';
-import { Icon } from './Icon';
 
 /**
  * Инкассация: наличные на руках у сотрудника и кнопка «сдал в кассу».
@@ -32,6 +32,7 @@ import { Icon } from './Icon';
  */
 export function CashCollectionCard(): ReactElement | null {
   const { m, money } = useLocale();
+  const needsShift = useNeedsShift();
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const handlesCash = (user?.roles ?? []).includes(Role.SELLER);
@@ -73,18 +74,20 @@ export function CashCollectionCard(): ReactElement | null {
         <Text style={styles.value}>{money(todayTotal)}</Text>
       </View>
 
+      {/*
+        Второстепенное действие кассы — та же таблетка в 48, что «+ Позиция»
+        над ней и «Пробить чек» в подвале. Была своя кнопка в 44 со
+        скруглением 14 — третья система кнопок на одном экране.
+      */}
       {onHandsValue > 0 && (
-        <Pressable
+        <SubmitButton
+          variant="secondary"
+          label={m('collection.create')}
           onPress={() => {
             setAmount(String(onHandsValue / 100));
             setOpen(true);
           }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
-        >
-          <Icon name="assigned" size={18} color={colors.accent} />
-          <Text style={styles.buttonText}>{m('collection.create')}</Text>
-        </Pressable>
+        />
       )}
 
       <BottomSheet
@@ -100,12 +103,19 @@ export function CashCollectionCard(): ReactElement | null {
         >
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
+        {/* Инкассация — касса, а касса — только на смене (412). */}
+        <ShiftRequiredBanner
+          style={styles.shiftBanner}
+          onNavigate={() => {
+            setOpen(false);
+          }}
+        />
         <SubmitButton
           label={m('collection.confirm')}
           onPress={() => {
             collect.mutate({ amount: inputToMajor(amount) });
           }}
-          disabled={inputToMajor(amount) <= 0}
+          disabled={inputToMajor(amount) <= 0 || needsShift}
           pending={collect.isPending}
         />
       </BottomSheet>
@@ -114,6 +124,10 @@ export function CashCollectionCard(): ReactElement | null {
 }
 
 const styles = StyleSheet.create({
+  // В шторке у полей свой нижний отступ, у баннера — этот: до кнопки тот же шаг.
+  shiftBanner: {
+    marginBottom: spacing.md,
+  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -129,23 +143,5 @@ const styles = StyleSheet.create({
   value: {
     ...typography.value,
     color: colors.textPrimary,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    marginTop: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
-  },
-  buttonText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  pressed: {
-    opacity: opacity.pressed,
   },
 });

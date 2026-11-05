@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactElement, type ReactNode } from 'react';
 import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { NATIVE_DRIVER } from '../lib/animation';
 import { colors, radius, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
@@ -37,7 +38,7 @@ export function BottomSheet({
   useEffect(() => {
     Animated.spring(slide, {
       toValue: visible ? 0 : SHEET_SHIFT,
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
       bounciness: 2,
       speed: 18,
     }).start();
@@ -91,7 +92,12 @@ const styles = StyleSheet.create({
     width: 38,
     height: 4,
     borderRadius: radius.pill,
-    backgroundColor: colors.border,
+    /*
+      Приглушённый текст на половине прозрачности — около 2:1 к белому.
+      Цвет рамки (`border`) давал 1,3:1, и ручка шторки почти не читалась.
+    */
+    backgroundColor: colors.textMuted,
+    opacity: 0.5,
     marginBottom: spacing.md,
   },
   title: {

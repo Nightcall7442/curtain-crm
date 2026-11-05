@@ -51,14 +51,28 @@ export function ShiftInfoCard({
     return `${weekday}, ${startedAt.getDate().toString()} ${month}`;
   })();
 
+  /*
+    Высота — по содержимому, без `flex: 1`.
+
+    Растяжение осталось с тех пор, как карточка стояла в ряд с «Зарплатой»
+    и обе выравнивались по высоте. В профиле пара давно стала колонкой, и
+    `flex: 1` делил её высоту поровну: этой карточке не хватало 37 px, и
+    строка «Заказов у меня в работе» уходила под следующую карточку.
+  */
   return (
-    <Card style={styles.card}>
+    <Card>
+      {/*
+        Плашка — та же пара подписей и тонов, что на вкладке «Смена» и на
+        главной: «Открыта» / «Не открыта», зелёная / серая. Здесь стояло
+        своё «Смена закрыта», и одно и то же состояние в трёх местах
+        называлось тремя словами.
+      */}
       <CardTitle
         title={m('shift.current')}
         icon="shift"
         action={
           <Pill
-            text={isOpen ? m('shift.isOpen') : m('shift.isClosed')}
+            text={isOpen ? m('shift.open') : m('shift.notOpen')}
             tone={isOpen ? 'positive' : 'neutral'}
           />
         }
@@ -87,13 +101,9 @@ export function ShiftInfoCard({
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-  },
   closed: {
     ...typography.body,
     color: colors.textSecondary,
-    lineHeight: 20,
   },
   footer: {
     marginTop: spacing.md,

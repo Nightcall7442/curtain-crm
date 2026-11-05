@@ -32,6 +32,7 @@ import {
   ORDER_STAGE_FEES,
   ORDER_STATUS_PHASE,
   PhotoStage,
+  transitionLabel,
   orderItemAccessorySchema,
   OrderItemKind,
   orderItemKindSchema,
@@ -1709,7 +1710,13 @@ export const ordersRouter = router({
 
       return availableTransitions(order.status, ctx.user.roles, order.orderType).map((transition) => ({
         to: transition.to,
-        label: transition.label,
+        /*
+          Подпись — на языке клиента (`x-locale`), как и `blockedReason`
+          ниже. Отдавалась русская строка из таблицы переходов: в
+          узбекском интерфейсе главная кнопка заказа и пункты «Все
+          действия» оставались по-русски посреди узбекской карточки.
+        */
+        label: transitionLabel(transition, ctx.locale),
         kind: transition.kind,
         requiresComment: transition.kind !== TransitionKind.FORWARD,
         /** Почему переход сейчас недоступен — кнопка видна, но неактивна. */
@@ -1847,7 +1854,7 @@ export const ordersRouter = router({
       }
       assertCanAccessOrder(order, ctx.user);
 
-      return loadPackList(ctx.db, input.id);
+      return loadPackList(ctx.db, input.id, ctx.locale);
     }),
 
   /**
@@ -1884,7 +1891,7 @@ export const ordersRouter = router({
           .where(and(eq(orderPackChecks.orderId, input.id), eq(orderPackChecks.key, input.key)));
       }
 
-      return loadPackList(ctx.db, input.id);
+      return loadPackList(ctx.db, input.id, ctx.locale);
     }),
 
   addTeamMember: orderDispatchProcedure

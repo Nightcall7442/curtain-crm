@@ -6,7 +6,7 @@ import {
   type DbExecutor,
   type Order,
 } from '@curtain-crm/db';
-import { buildPackList, isManagement, type PackListRow } from '@curtain-crm/shared';
+import { buildPackList, isManagement, type Locale, type PackListRow } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -30,10 +30,18 @@ export interface PackListEntry extends PackListRow {
   readonly checkedAt: Date | null;
 }
 
-/** Строки листа с отметками. Пустой список — у заказа нет ни одной позиции. */
+/**
+ * Строки листа с отметками. Пустой список — у заказа нет ни одной позиции.
+ *
+ * `locale` — язык клиента (`ctx.locale`): лист приходит готовыми строками,
+ * и без языка узбекский экран показывал «Окно 3 — шторы» под узбекской
+ * подсказкой. Ключи строк от языка не зависят, поэтому сверка ключа и
+ * проверка «всё собрано» могут звать функцию и без него.
+ */
 export async function loadPackList(
   executor: DbExecutor,
   orderId: number,
+  locale: Locale = 'ru',
 ): Promise<readonly PackListEntry[]> {
   const items = await executor
     .select()
@@ -53,7 +61,7 @@ export async function loadPackList(
 
   const byKey = new Map(checks.map((check) => [check.key, check]));
 
-  return buildPackList(items).map((row) => {
+  return buildPackList(items, locale).map((row) => {
     const check = byKey.get(row.key);
 
     return {

@@ -8,7 +8,7 @@ import type { ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
-import { colors, radius, spacing, typography } from '../../theme';
+import { colors, fonts, radius, sizes, spacing, typography } from '../../theme';
 import { BottomSheet } from '../BottomSheet';
 import type { StatusFilter } from './orderFilter';
 
@@ -78,19 +78,30 @@ export function StatusFilterSheet({
   );
 }
 
+/**
+ * Насколько строка выходит за поля шторки.
+ *
+ * Подсветка выбранной строки шире текста — так у системных списков, — но
+ * сам текст обязан стоять на одной линии с заголовком шторки. Раньше
+ * отступ строки прибавлялся к полю шторки, и этапы начинались на 12 точек
+ * правее «Фильтр по статусу».
+ */
+const ROW_BLEED = spacing.sm;
+
 const styles = StyleSheet.create({
   list: {
     maxHeight: 440,
+    marginHorizontal: -ROW_BLEED,
   },
   row: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: ROW_BLEED,
     borderRadius: radius.md,
   },
+  /* Статус внутри этапа — на ступень правее этапа и той же высоты. */
   nested: {
-    paddingLeft: spacing.xl,
-    minHeight: 40,
+    paddingLeft: ROW_BLEED + spacing.md,
   },
   rowActive: {
     backgroundColor: colors.accentSoft,
@@ -98,8 +109,11 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: colors.surfaceMuted,
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным
+  // жирным, и этапы в PWA были мутнее, чем в APK.
   stage: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
   },

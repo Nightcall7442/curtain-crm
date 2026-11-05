@@ -3018,17 +3018,25 @@ async function run(db: Database): Promise<void> {
     'терминал: на «Работе» у продавца — та же сумма дня',
     sellerToday.summary?.total === todayChecks.summary.total,
   );
-  // Старое приложение (APK до 05.11) поля не знает: ему — понятная просьба
-  // обновиться, а не «Поле обязательно».
-  await expectRejectedWith(
-    'терминал: новый чек без типа оплаты не пробивается — с просьбой обновить приложение',
-    () => sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 } as never),
-    (message) => message.includes('Обновите приложение'),
+  // Старое приложение (APK до 05.11) поля не знает: его чек принимается
+  // без типа — ошибки у продавца быть не должно, тип спросит новая сборка.
+  const legacy = await sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 });
+  const afterLegacy = await caller.terminalChecks.byDay({ day: workshopDayIso(new Date()) });
+  const legacyRow = afterLegacy.rows.find((row) => row.id === legacy.id);
+  check(
+    'терминал: чек старого приложения (без типа) принят и стоит «без типа»',
+    legacyRow !== undefined &&
+      legacyRow.payType === null &&
+      afterLegacy.summary.byType.at(-1)?.payType === null,
+    JSON.stringify(legacyRow?.payType),
+  );
+  await expectRejected('терминал: незнакомый тип оплаты не принимается', () =>
+    sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000, payType: 'visa' } as never),
   );
   const sewerToday = await sewerCaller.terminalChecks.today();
   check(
     'терминал: швея видит норму, но не суммы, типы и фото',
-    sewerToday.count === todayChecks.count && sewerToday.rows.length === 0 && sewerToday.summary === null,
+    sewerToday.count === afterLegacy.count && sewerToday.rows.length === 0 && sewerToday.summary === null,
     JSON.stringify({ count: sewerToday.count, rows: sewerToday.rows.length, summary: sewerToday.summary }),
   );
   await expectRejected('терминал: тип оплаты бывает только у терминального чека', () =>

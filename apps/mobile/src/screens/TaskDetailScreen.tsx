@@ -25,11 +25,14 @@ import {
 import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -49,6 +52,7 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const { taskId } = route.params;
+  const insets = useSafeAreaInsets();
 
   const [body, setBody] = useState('');
   /** Руководитель пишет, что доделать, — поле открыто. */
@@ -83,6 +87,14 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
   });
 
   const isBoss = isManagement(user?.roles ?? []);
+  /*
+    Без открытой смены сервер не примет от сотрудника ни ответа, ни отметки
+    «выполнено» — и отвечает отказом уже после нажатия. Экран говорит об
+    этом заранее, тем же баннером, что и «Работа», а кнопки выключает.
+    Руководителю смена для поручений не нужна.
+  */
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isBoss });
+  const needsShift = !isBoss && shift.data === null;
 
   const complete = trpc.tasks.complete.useMutation({
     async onSuccess() {
@@ -133,17 +145,20 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
     });
   };
 
+  const contentStyle = [styles.content, { paddingBottom: spacing.xl + insets.bottom }];
+
+  /* Без текста сервера: служебный ответ бывает по-английски и ничего не объясняет. */
   if (task.isError) {
     return (
       <View style={styles.center}>
-        <ErrorState message={task.error.message} />
+        <ErrorState />
       </View>
     );
   }
 
   if (task.data === undefined) {
     return (
-      <View style={styles.content}>
+      <View style={contentStyle}>
         <Card>
           <Skeleton />
         </Card>
@@ -159,18 +174,30 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
     сданное или закрыть открытое за сотрудника.
   */
   const canComplete = isBoss ? isTaskActive(data.status) : isOpen;
-  const canSend = (body.trim().length > 0 || attachment !== null) && !reply.isPending;
+  const canSend =
+    (body.trim().length > 0 || attachment !== null) && !reply.isPending && !needsShift;
 
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/*
+        Снизу — безопасная зона и обычный отступ: это экран стека, панели
+        вкладок под ним нет, и место под неё оставляло пустую полосу.
+      */}
+      <ScrollView contentContainerStyle={contentStyle} keyboardShouldPersistTaps="handled">
+        <ShiftRequiredBanner />
+
         <Card>
+          {/*
+            Значок поручения — тот же, что у пункта «Поручения» в разделе
+            руководителя. Был «+» назначения: заголовок самого поручения
+            читался как кнопка «добавить».
+          */}
           <CardTitle
             title={data.title}
-            icon="assigned"
+            icon="task"
             action={<Pill text={t(TASK_STATUS_LABELS, data.status)} tone={toneOf(data.status)} />}
           />
 
@@ -195,16 +222,23 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               onPress={() => {
                 complete.mutate({ id: taskId });
               }}
-              disabled={complete.isPending}
+              disabled={complete.isPending || needsShift}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.done, pressed ? styles.pressed : null]}
+              accessibilityState={{ disabled: complete.isPending || needsShift }}
+              style={({ pressed }) => [
+                styles.button,
+                styles.buttonPrimary,
+                styles.done,
+                needsShift ? styles.off : null,
+                pressed ? styles.pressed : null,
+              ]}
             >
               {complete.isPending ? (
                 <ActivityIndicator color={colors.onAccent} size="small" />
               ) : (
                 <>
                   <Icon name="completed" size={18} color={colors.onAccent} />
-                  <Text style={styles.doneText}>
+                  <Text style={styles.buttonPrimaryText}>
                     {isBoss && isSubmitted ? m('task.approve') : m('task.done')}
                   </Text>
                 </>
@@ -223,9 +257,14 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
                 setReturnReason('');
               }}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.sendBack, pressed ? styles.pressed : null]}
+              style={({ pressed }) => [
+                styles.button,
+                styles.buttonOutline,
+                styles.sendBack,
+                pressed ? styles.pressed : null,
+              ]}
             >
-              <Text style={styles.sendBackText}>{m('task.sendBack')}</Text>
+              <Text style={styles.buttonOutlineText}>{m('task.sendBack')}</Text>
             </Pressable>
           )}
 
@@ -245,9 +284,14 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
                     setReturning(false);
                   }}
                   accessibilityRole="button"
-                  style={({ pressed }) => [styles.returnGhost, pressed ? styles.pressed : null]}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.buttonOutline,
+                    styles.flexButton,
+                    pressed ? styles.pressed : null,
+                  ]}
                 >
-                  <Text style={styles.returnGhostText}>{m('common.cancel')}</Text>
+                  <Text style={styles.buttonOutlineMutedText}>{m('common.cancel')}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -256,15 +300,19 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
                   disabled={returnReason.trim().length < 3 || sendBack.isPending}
                   accessibilityRole="button"
                   style={({ pressed }) => [
-                    styles.returnConfirm,
-                    returnReason.trim().length < 3 ? styles.sendOff : null,
+                    styles.button,
+                    styles.buttonPrimary,
+                    styles.flexButton,
+                    returnReason.trim().length < 3 ? styles.off : null,
                     pressed ? styles.pressed : null,
                   ]}
                 >
                   {sendBack.isPending ? (
                     <ActivityIndicator color={colors.onAccent} size="small" />
                   ) : (
-                    <Text style={styles.doneText}>{m('task.sendBackConfirm')}</Text>
+                    <Text style={styles.buttonPrimaryText} numberOfLines={1}>
+                      {m('task.sendBackConfirm')}
+                    </Text>
                   )}
                 </Pressable>
               </View>
@@ -281,58 +329,67 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               hint={m('task.noMessagesHint')}
             />
           ) : (
-            data.messages.map((message) => {
-              const isMine = message.authorId === user?.id;
+            <View style={styles.messages}>
+              {data.messages.map((message) => {
+                const isMine = message.authorId === user?.id;
+                const hasPhoto = message.url !== null && isImage(message.mimeType);
 
-              return (
-                <View
-                  key={message.id}
-                  style={[styles.message, isMine ? styles.messageMine : null]}
-                >
-                  <Text style={styles.messageAuthor}>
-                    {isMine ? m('task.you') : message.author.fullName}
-                  </Text>
+                return (
+                  <View
+                    key={message.id}
+                    style={[
+                      styles.message,
+                      isMine ? styles.messageMine : styles.messageTheirs,
+                      hasPhoto ? styles.messageWithPhoto : null,
+                    ]}
+                  >
+                    <Text style={[styles.messageAuthor, isMine ? styles.messageAuthorMine : null]}>
+                      {isMine ? m('task.you') : message.author.fullName}
+                    </Text>
 
-                  {message.body !== null && (
-                    <Text style={styles.messageBody}>{message.body}</Text>
-                  )}
+                    {message.body !== null && (
+                      <Text style={styles.messageBody}>{message.body}</Text>
+                    )}
 
-                  {message.url !== null && isImage(message.mimeType) && (
-                    <Image
-                      source={{ uri: message.url }}
-                      style={styles.messagePhoto}
-                      resizeMode="cover"
-                    />
-                  )}
+                    {message.url !== null && hasPhoto && (
+                      <Image
+                        source={{ uri: message.url }}
+                        style={styles.messagePhoto}
+                        resizeMode="cover"
+                      />
+                    )}
 
-                  {/*
-                    Не-картинку показать нечем — открываем во внешнем
-                    приложении. Свой просмотрщик PDF на телефоне в цеху ничего
-                    не добавит: накладную всё равно смотрят и пересылают
-                    системными средствами.
-                  */}
-                  {message.url !== null && !isImage(message.mimeType) && (
-                    <Pressable
-                      onPress={() => {
-                        void Linking.openURL(message.url ?? '');
-                      }}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [styles.file, pressed ? styles.pressed : null]}
-                    >
-                      <Icon name="order" size={16} color={colors.accentStrong} />
-                      <Text style={styles.fileText} numberOfLines={1}>
-                        {message.originalFileName ?? m('task.openFile')}
-                      </Text>
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })
+                    {/*
+                      Не-картинку показать нечем — открываем во внешнем
+                      приложении. Свой просмотрщик PDF на телефоне в цеху ничего
+                      не добавит: накладную всё равно смотрят и пересылают
+                      системными средствами.
+                    */}
+                    {message.url !== null && !isImage(message.mimeType) && (
+                      <Pressable
+                        onPress={() => {
+                          void Linking.openURL(message.url ?? '');
+                        }}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [styles.file, pressed ? styles.pressed : null]}
+                      >
+                        <Icon name="order" size={16} color={colors.accentStrong} />
+                        <Text style={styles.fileText} numberOfLines={1}>
+                          {message.originalFileName ?? m('task.openFile')}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
           )}
         </Card>
 
         <Card>
-          <CardTitle title={m('task.reply')} icon="voice" />
+          {/* «Отправить», а не микрофон: голосового ответа здесь нет, а
+              пузырь «Переписки» уже занят карточкой выше. */}
+          <CardTitle title={m('task.reply')} icon="send" />
 
           <Input
             value={body}
@@ -362,9 +419,15 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               onPress={() => {
                 void pickPhoto();
               }}
-              disabled={reply.isPending}
+              disabled={reply.isPending || needsShift}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.attach, pressed ? styles.pressed : null]}
+              style={({ pressed }) => [
+                styles.button,
+                styles.buttonOutline,
+                styles.attach,
+                needsShift ? styles.off : null,
+                pressed ? styles.pressed : null,
+              ]}
             >
               <Icon name="photo" size={18} color={colors.accentStrong} />
               <Text style={styles.attachText}>{m('task.photo')}</Text>
@@ -388,16 +451,19 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
               }}
               disabled={!canSend}
               accessibilityRole="button"
+              accessibilityState={{ disabled: !canSend }}
               style={({ pressed }) => [
-                styles.send,
-                canSend ? null : styles.sendOff,
+                styles.button,
+                styles.buttonPrimary,
+                styles.flexButton,
+                canSend ? null : styles.off,
                 pressed ? styles.pressed : null,
               ]}
             >
               {reply.isPending ? (
                 <ActivityIndicator color={colors.onAccent} size="small" />
               ) : (
-                <Text style={styles.sendText}>{m('common.send')}</Text>
+                <Text style={styles.buttonPrimaryText}>{m('common.send')}</Text>
               )}
             </Pressable>
           </View>
@@ -416,6 +482,17 @@ function toneOf(status: TaskStatusName): 'positive' | 'danger' | 'neutral' | 'in
   return 'neutral';
 }
 
+/*
+  Кнопки экрана — одна система, и она же общая для приложения
+  (`SubmitButton`): высота кнопки действия, таблетка, подпись основным
+  кеглем жирным начертанием.
+
+  Прежде у каждой кнопки были свои размеры: «Принять» 48, «Вернуть» под
+  ней 44, «Фото» и «Отправить» 46; подписи 15/700, 15/600, 15/400 и 13/600
+  в соседних кнопках, рамки то волосяные, то в точку. Потом экран собрался
+  в свою систему со скруглением 14 — и стал выглядеть взятым из другого
+  приложения рядом с таблетками карточки заказа и кассы.
+*/
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -428,27 +505,62 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   details: {
     ...typography.body,
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
-  done: {
+  button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    marginTop: spacing.md,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
   },
-  doneText: {
+  buttonPrimary: {
+    backgroundColor: colors.accent,
+  },
+  buttonOutline: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  buttonPrimaryText: {
     ...typography.body,
+    fontFamily: fonts.bold,
     fontWeight: '700',
     color: colors.onAccent,
+    flexShrink: 1,
+  },
+  buttonOutlineText: {
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  buttonOutlineMutedText: {
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  /*
+    Растёт от своей подписи, а не делит ряд поровну: при равных долях
+    «Вернуть в работу» не помещалась рядом с «Отменой» и резалась
+    многоточием, хотя места в ряду хватало.
+  */
+  flexButton: {
+    flexGrow: 1,
+    flexShrink: 1,
+  },
+  off: {
+    opacity: opacity.disabled,
+  },
+  done: {
+    marginTop: spacing.md,
   },
   waiting: {
     ...typography.caption,
@@ -456,18 +568,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   sendBack: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-    borderRadius: radius.md,
-    borderWidth: hairline,
-    borderColor: colors.border,
     marginTop: spacing.sm,
-  },
-  sendBackText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
   },
   returnBox: {
     marginTop: spacing.md,
@@ -475,6 +576,7 @@ const styles = StyleSheet.create({
   },
   returnLabel: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textSecondary,
   },
@@ -482,58 +584,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  returnGhost: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-    borderRadius: radius.md,
-    borderWidth: hairline,
-    borderColor: colors.border,
-  },
-  returnGhostText: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  returnConfirm: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
+  /*
+    Переписка — пузырями: своё справа на зелёной подложке, чужое слева на
+    серой. Прежде своё сообщение отличал только сдвиг на 16 точек, и он
+    читался как случайный отступ, а линия под последним сообщением висела
+    у самого края карточки.
+  */
+  messages: {
+    gap: spacing.sm,
   },
   message: {
+    maxWidth: '85%',
     paddingVertical: spacing.sm,
-    borderBottomWidth: hairline,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
   },
   messageMine: {
-    // Своё сообщение помечено сдвигом, а не цветным пузырём: лента здесь
-    // короткая и деловая, мессенджер из неё делать незачем.
-    paddingLeft: spacing.lg,
+    alignSelf: 'flex-end',
+    backgroundColor: colors.accentSoft,
+  },
+  messageTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surfaceMuted,
+  },
+  /** С фото пузырь во всю допустимую ширину: снимку нужна ширина, а не подпись. */
+  messageWithPhoto: {
+    width: '85%',
   },
   messageAuthor: {
-    ...typography.caption,
+    ...typography.footnote,
     color: colors.textMuted,
+  },
+  messageAuthorMine: {
+    color: colors.accentStrong,
   },
   messageBody: {
     ...typography.body,
     color: colors.textPrimary,
-    marginTop: 1,
+    marginTop: 2,
   },
   messagePhoto: {
     width: '100%',
     height: 200,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     marginTop: spacing.sm,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.surface,
   },
   file: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    minHeight: sizes.touchTarget,
   },
   fileText: {
     ...typography.caption,
@@ -553,8 +654,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   previewRemove: {
-    width: 36,
-    height: 36,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -565,35 +666,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   attach: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 46,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   attachText: {
-    ...typography.caption,
-    color: colors.accentStrong,
-    fontWeight: '600',
-  },
-  send: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendOff: {
-    opacity: 0.4,
-  },
-  sendText: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.accentStrong,
   },
   pressed: {
     opacity: opacity.pressed,

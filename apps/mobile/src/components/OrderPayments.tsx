@@ -12,10 +12,11 @@ import {
 import { useState, type ReactElement } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
 import { SubmitButton } from './SubmitButton';
 import { ChipSelect, Field, MoneyInput } from './Field';
@@ -43,6 +44,7 @@ export function OrderPayments({
   readonly canAccept: boolean;
 }): ReactElement | null {
   const { t, m, money } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const history = trpc.payments.byOrder.useQuery({ orderId });
 
@@ -99,14 +101,17 @@ export function OrderPayments({
 
       {canAccept && remainingValue > 0 && (
         <Pressable
+          // Без смены оплату не примут (412): кнопка гаснет, баннер сверху экрана говорит почему.
+          disabled={needsShift}
           onPress={() => {
             setAmount(String(remainingValue / 100));
             setOpen(true);
           }}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.button, pressed ? styles.pressed : null]}
+          accessibilityState={{ disabled: needsShift }}
+          style={({ pressed }) => [styles.button, pressed ? styles.pressed : null, needsShift ? styles.off : null]}
         >
-          <Icon name="paid" size={18} color={colors.accent} />
+          <Icon name="paid" size={18} color={colors.accentStrong} />
           <Text style={styles.buttonText}>{m('payment.accept')}</Text>
         </Pressable>
       )}
@@ -148,6 +153,10 @@ export function OrderPayments({
 }
 
 const styles = StyleSheet.create({
+  // Без смены сервер действие отклонит (412) — кнопка гаснет, как «Отправить».
+  off: {
+    opacity: opacity.disabled,
+  },
   wrap: {
     gap: spacing.sm,
     marginTop: spacing.sm,
@@ -179,19 +188,30 @@ const styles = StyleSheet.create({
   rowRefund: {
     color: colors.danger,
   },
+  /*
+    Второе действие карточки заказа — та же светло-зелёная таблетка, что у
+    `SubmitButton variant="secondary"`, только со значком (у общей кнопки
+    его нет). Была ниже остальных кнопок экрана и с другим скруглением.
+  */
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    borderRadius: radius.md,
+    gap: spacing.sm,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
   },
   buttonText: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.accent,
+    // Начертанием, а не `fontWeight` поверх Medium: браузер рисовал ложный полужирный.
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.accentStrong,
+    // Длинная узбекская подпись переносится, а не выталкивает значок за край.
+    flexShrink: 1,
+    textAlign: 'center',
   },
   pressed: {
     opacity: opacity.pressed,

@@ -12,11 +12,12 @@ import { useNavigation } from '@react-navigation/native';
 import { useEffect, useState, type ReactElement } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Empty, ErrorState, Skeleton } from '../components/Card';
+import { Empty, ErrorState } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
 import { TerminalCheckCard } from '../components/TerminalCheckCard';
-import { OrderCard } from '../components/OrderCard';
+import { OrderCard, OrderCardSeparator } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
 import { ExecutorFilterSheet } from '../components/work/ExecutorFilterSheet';
 import { OrderSearchBar } from '../components/work/OrderSearchBar';
@@ -24,7 +25,7 @@ import { statusFilterInput, statusFilterLabel, type StatusFilter } from '../comp
 import { StatusFilterSheet } from '../components/work/StatusFilterSheet';
 import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { cardShadow, colors, fonts, opacity, radius, sizes, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 
@@ -167,21 +168,21 @@ export function WorkScreen(): ReactElement {
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const filtersActive = debouncedSearch.length > 0 || statusFilter !== null || executor !== null;
 
+  /*
+    Баннер «Смена не начата» — первой строкой списка, а не над фильтрами.
+
+    Прибитый сверху, он вместе с кнопками и поиском занимал половину
+    экрана: под заказы оставалось 290 точек из 780, полторы карточки.
+    В списке он виден при входе на вкладку и уезжает, когда сотрудник
+    листает заказы. Неподвижным остаётся только ряд фильтров.
+  */
+  const shiftBanner = !isManager && shift.data === null ? <ShiftRequiredBanner /> : null;
+  /* Шапка списков, где кроме баннера ничего нет: карнизы и доп. работы. */
+  const bannerHeader =
+    shiftBanner === null ? null : <View style={styles.listHeader}>{shiftBanner}</View>;
+
   return (
     <View style={styles.container}>
-      {!isManager && shift.data === null && (
-        <Pressable
-          onPress={() => {
-            navigation.navigate('CheckInOut');
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.shiftBanner, pressed ? styles.createPressed : null]}
-        >
-          <Icon name="checkin" size={18} color={colors.warning} />
-          <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
-        </Pressable>
-      )}
-
       {/*
         Фильтры прокручиваются по горизонтали.
 
@@ -234,9 +235,10 @@ export function WorkScreen(): ReactElement {
             void corniceQueue.refetch();
             void corniceDone.refetch();
           }}
+          ListHeaderComponent={bannerHeader}
           ListEmptyComponent={
             corniceQueue.isLoading ? (
-              <Skeleton />
+              <OrderListSkeleton />
             ) : corniceQueue.isError ? (
               <ErrorState />
             ) : (
@@ -246,28 +248,27 @@ export function WorkScreen(): ReactElement {
               />
             )
           }
+          ItemSeparatorComponent={OrderCardSeparator}
           renderItem={({ item }) => (
-            <View>
-              <OrderCard
-                orderNumber={item.orderNumber ?? `#${item.id.toString()}`}
-                clientName={item.clientName}
-                clientPhone={item.clientPhone}
-                status={item.status}
-                priority={item.priority}
-                deadline={item.deadline}
-                workPrice={item.workPrice}
-                onPress={() => {
-                  navigation.navigate('OrderDetail', { orderId: item.id });
-                }}
-              />
-              <Text style={styles.corniceNote}>
-                {item.corniceStatus === CorniceStatus.PENDING
+            <OrderCard
+              orderNumber={item.orderNumber ?? `#${item.id.toString()}`}
+              clientName={item.clientName}
+              clientPhone={item.clientPhone}
+              status={item.status}
+              priority={item.priority}
+              deadline={item.deadline}
+              workPrice={item.workPrice}
+              note={
+                item.corniceStatus === CorniceStatus.PENDING
                   ? t(CORNICE_STATUS_LABELS, CorniceStatus.PENDING)
                   : `${t(CORNICE_STATUS_LABELS, item.corniceStatus)} · ${
                       item.corniceInstallerName ?? m('work.corniceNoWorker')
-                    }`}
-              </Text>
-            </View>
+                    }`
+              }
+              onPress={() => {
+                navigation.navigate('OrderDetail', { orderId: item.id });
+              }}
+            />
           )}
         />
       ) : filter === 'tasks' ? (
@@ -279,9 +280,10 @@ export function WorkScreen(): ReactElement {
           onRefresh={() => {
             void tasksQuery.refetch();
           }}
+          ListHeaderComponent={bannerHeader}
           ListEmptyComponent={
             tasksQuery.isLoading ? (
-              <Skeleton />
+              <OrderListSkeleton />
             ) : tasksQuery.isError ? (
               <ErrorState />
             ) : (
@@ -308,24 +310,23 @@ export function WorkScreen(): ReactElement {
             экран, когда работ накопилось много.
           */
           ListHeaderComponent={
-            <Pressable
-              onPress={() => {
-                navigation.navigate('PersonalWorkCreate');
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.create,
-                styles.personalCreate,
-                pressed ? styles.createPressed : null,
-              ]}
-            >
-              <Icon name="assigned" size={18} color={colors.onAccent} />
-              <Text style={styles.createText}>{m('work.addPersonal')}</Text>
-            </Pressable>
+            <View style={styles.listHeader}>
+              {shiftBanner}
+              <Pressable
+                onPress={() => {
+                  navigation.navigate('PersonalWorkCreate');
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.create, pressed ? styles.createPressed : null]}
+              >
+                <Icon name="assigned" size={18} color={colors.onAccent} />
+                <Text style={styles.createText}>{m('work.addPersonal')}</Text>
+              </Pressable>
+            </View>
           }
           ListEmptyComponent={
             personalQuery.isLoading ? (
-              <Skeleton />
+              <OrderListSkeleton />
             ) : personalQuery.isError ? (
               <ErrorState />
             ) : (
@@ -339,122 +340,6 @@ export function WorkScreen(): ReactElement {
         />
       ) : (
       <>
-      {canCreate && (
-        <View style={styles.createRow}>
-          <Pressable
-            onPress={() => {
-              navigation.navigate('OrderCreate');
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.create,
-              styles.createFlex,
-              pressed ? styles.createPressed : null,
-            ]}
-          >
-            <Icon name="assigned" size={18} color={colors.onAccent} />
-            <Text style={styles.createText}>{m('work.newOrder')}</Text>
-          </Pressable>
-
-          {/*
-            Одна кнопка на всё про готовые шторы. Раньше их было две —
-            «Готовые шторы» (пошив для склада) и «Продать» (с полки), — с
-            одним значком и одной интонацией: владелец увидел в них одно и то
-            же. Теперь кнопка ведёт на склад, а там уже — продать или заказать
-            цеху ещё.
-          */}
-          <Pressable
-            onPress={() => {
-              navigation.navigate('ReadyMadeStock');
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.createSecondary,
-              styles.createFlex,
-              pressed ? styles.createPressed : null,
-            ]}
-          >
-            <Icon name="orders" size={18} color={colors.accentStrong} />
-            <Text style={styles.createSecondaryText}>{m('work.readyMade')}</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/*
-        Касса и раздел руководителя — одной строкой, ниже приёма заказа.
-
-        Рядом с «Новым заказом» их ставить нельзя: заказ и чек — события
-        разного веса, и две одинаковые кнопки в ряд заставляют читать
-        подписи вместо того, чтобы нажимать не глядя. А между собой они
-        равны: обе уводят в соседний раздел, и каждой отдельная строка
-        стоила слишком дорого — до заказов приходилось прокручивать треть
-        экрана. Отдельной вкладки руководителю не дали намеренно: нижняя
-        панель одна на всех, и пятая вкладка, видимая двоим из восемнадцати,
-        сделала бы её разной у разных людей.
-      */}
-      {(canCreate || isManager) && (
-        <View style={styles.createRow}>
-          {canCreate && (
-            <Pressable
-              onPress={() => {
-                navigation.navigate('CashDesk');
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.createSecondary,
-                styles.createFlex,
-                pressed ? styles.createPressed : null,
-              ]}
-            >
-              <Icon name="paid" size={18} color={colors.accentStrong} />
-              <Text style={styles.createSecondaryText}>{m('work.cashDesk')}</Text>
-            </Pressable>
-          )}
-
-          {isManager && (
-            <Pressable
-              onPress={() => {
-                navigation.navigate('Management');
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.createSecondary,
-                styles.createFlex,
-                pressed ? styles.createPressed : null,
-              ]}
-            >
-              <Icon name="roles" size={18} color={colors.accentStrong} />
-              <Text style={styles.createSecondaryText}>{m('work.management')}</Text>
-            </Pressable>
-          )}
-        </View>
-      )}
-
-      <OrderSearchBar
-        search={search}
-        onSearch={setSearch}
-        statusLabel={statusFilter === null ? null : statusFilterLabel(statusFilter, locale)}
-        onStatusPress={() => {
-          setSheet('status');
-        }}
-        onStatusClear={() => {
-          setStatusFilter(null);
-        }}
-        executorLabel={executor?.fullName ?? null}
-        onExecutorPress={() => {
-          setSheet('executor');
-        }}
-        onExecutorClear={() => {
-          setExecutor(null);
-        }}
-        showExecutor={canDispatch}
-        onReset={() => {
-          setSearch('');
-          setDebouncedSearch('');
-          setStatusFilter(null);
-          setExecutor(null);
-        }}
-      />
       <StatusFilterSheet
         visible={sheet === 'status'}
         value={statusFilter}
@@ -485,6 +370,9 @@ export function WorkScreen(): ReactElement {
         data={items}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
+        // Шаг между заказами задаёт список, а не карточка: у неё своего
+        // нижнего отступа больше нет, и без разделителя заказы слипались.
+        ItemSeparatorComponent={OrderCardSeparator}
         refreshing={query.isRefetching && !query.isFetchingNextPage}
         onRefresh={() => {
           void query.refetch();
@@ -497,13 +385,140 @@ export function WorkScreen(): ReactElement {
           query.isFetchingNextPage ? <ActivityIndicator style={styles.more} color={colors.accent} /> : null
         }
         /*
-          Терминальные чеки — задание продавцов на день, поэтому в «Работе»,
-          над заказами: это обязанность, а не касса. Остальным ролям — нет.
+          Над заказами — всё, что раньше стояло неподвижно: баннер смены,
+          «Новый заказ», «Касса», поиск. Теперь они уезжают вместе со
+          списком, и на экране 360×780 под заказы остаётся почти весь
+          экран, а не его треть. Терминальные чеки — задание продавцов на
+          день, поэтому тоже здесь, над заказами: это обязанность, а не
+          касса. Остальным ролям — нет.
         */
-        ListHeaderComponent={filter === 'active' && isSeller ? <TerminalCheckCard /> : null}
+        ListHeaderComponent={
+          <View style={styles.listHeader}>
+            {shiftBanner}
+            {canCreate && (
+              <View style={styles.createRow}>
+                <Pressable
+                  onPress={() => {
+                    navigation.navigate('OrderCreate');
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.create,
+                    styles.createFlex,
+                    pressed ? styles.createPressed : null,
+                  ]}
+                >
+                  <Icon name="assigned" size={18} color={colors.onAccent} />
+                  <Text style={styles.createText}>{m('work.newOrder')}</Text>
+                </Pressable>
+
+                {/*
+                  Одна кнопка на всё про готовые шторы. Раньше их было две —
+                  «Готовые шторы» (пошив для склада) и «Продать» (с полки), — с
+                  одним значком и одной интонацией: владелец увидел в них одно и то
+                  же. Теперь кнопка ведёт на склад, а там уже — продать или заказать
+                  цеху ещё.
+                */}
+                <Pressable
+                  onPress={() => {
+                    navigation.navigate('ReadyMadeStock');
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.createSecondary,
+                    styles.createFlex,
+                    pressed ? styles.createPressed : null,
+                  ]}
+                >
+                  <Icon name="orders" size={18} color={colors.accentStrong} />
+                  <Text style={styles.createSecondaryText}>{m('work.readyMade')}</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/*
+              Касса и раздел руководителя — одной строкой, ниже приёма заказа.
+
+              Рядом с «Новым заказом» их ставить нельзя: заказ и чек — события
+              разного веса, и две одинаковые кнопки в ряд заставляют читать
+              подписи вместо того, чтобы нажимать не глядя. А между собой они
+              равны: обе уводят в соседний раздел, и каждой отдельная строка
+              стоила слишком дорого — до заказов приходилось прокручивать треть
+              экрана. Отдельной вкладки руководителю не дали намеренно: нижняя
+              панель одна на всех, и пятая вкладка, видимая двоим из восемнадцати,
+              сделала бы её разной у разных людей.
+            */}
+            {(canCreate || isManager) && (
+              <View style={styles.createRow}>
+                {canCreate && (
+                  <Pressable
+                    onPress={() => {
+                      navigation.navigate('CashDesk');
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.createSecondary,
+                      styles.createFlex,
+                      pressed ? styles.createPressed : null,
+                    ]}
+                  >
+                    <Icon name="paid" size={18} color={colors.accentStrong} />
+                    <Text style={styles.createSecondaryText}>{m('work.cashDesk')}</Text>
+                  </Pressable>
+                )}
+
+                {isManager && (
+                  <Pressable
+                    onPress={() => {
+                      navigation.navigate('Management');
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.createSecondary,
+                      styles.createFlex,
+                      pressed ? styles.createPressed : null,
+                    ]}
+                  >
+                    <Icon name="roles" size={18} color={colors.accentStrong} />
+                    <Text style={styles.createSecondaryText}>{m('work.management')}</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+            {/* У строки поиска свои поля по краям — в списке они уже есть. */}
+            <View style={styles.searchInList}>
+              <OrderSearchBar
+                search={search}
+                onSearch={setSearch}
+                statusLabel={statusFilter === null ? null : statusFilterLabel(statusFilter, locale)}
+                onStatusPress={() => {
+                  setSheet('status');
+                }}
+                onStatusClear={() => {
+                  setStatusFilter(null);
+                }}
+                executorLabel={executor?.fullName ?? null}
+                onExecutorPress={() => {
+                  setSheet('executor');
+                }}
+                onExecutorClear={() => {
+                  setExecutor(null);
+                }}
+                showExecutor={canDispatch}
+                onReset={() => {
+                  setSearch('');
+                  setDebouncedSearch('');
+                  setStatusFilter(null);
+                  setExecutor(null);
+                }}
+              />
+            </View>
+            {filter === 'active' && isSeller ? <TerminalCheckCard /> : null}
+          </View>
+        }
         ListEmptyComponent={
           query.isLoading ? (
-            <Skeleton />
+            <OrderListSkeleton />
           ) : query.isError ? (
             <ErrorState />
           ) : (
@@ -544,6 +559,35 @@ export function WorkScreen(): ReactElement {
   );
 }
 
+/**
+ * Заглушка списка заказов на время первой загрузки — в форме карточек.
+ *
+ * Общий `Skeleton` рисует строки списка внутри карточки: серые полоски
+ * прямо на льняном фоне экрана почти не видны, ничем не похожи на белые
+ * карточки заказов, и когда заказы приезжали, экран перестраивался
+ * целиком. Здесь — те же белые карточки, что придут на их место: номер и
+ * плашка статуса, клиент, срок и сумма.
+ */
+function OrderListSkeleton(): ReactElement {
+  return (
+    <View accessibilityRole="progressbar">
+      {[0, 1, 2].map((index) => (
+        <View key={index} style={styles.skeletonCard}>
+          <View style={styles.skeletonRow}>
+            <View style={[styles.skeletonBlock, styles.skeletonNumber]} />
+            <View style={[styles.skeletonBlock, styles.skeletonPill]} />
+          </View>
+          <View style={[styles.skeletonBlock, styles.skeletonClient]} />
+          <View style={styles.skeletonRow}>
+            <View style={[styles.skeletonBlock, styles.skeletonMeta]} />
+            <View style={[styles.skeletonBlock, styles.skeletonMoney]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -568,10 +612,15 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  // Подпись — по центру чипа. Без `justifyContent` лишняя до 44 высота
+  // уходила вниз: текст стоял в 9 точках от верха и в 17 от низа. Своих
+  // вертикальных полей у чипа нет — высоту держит `minHeight`, и подпись
+  // не может сместиться от того, что поля и высота разошлись.
   filter: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -591,43 +640,47 @@ const styles = StyleSheet.create({
   filterText: {
     ...typography.caption,
     color: colors.textSecondary,
-    fontWeight: '500',
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным
+  // жирным, и выбранный чип в PWA был шире и мутнее, чем в APK.
   filterTextActive: {
-    color: colors.headerText,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.headerText,
   },
-  shiftBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  /* Шапка списка: баннер, кнопки, поиск, чеки — через равный зазор, и
+     от первой карточки — тот же шаг, что между карточками. */
+  listHeader: {
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.warningSoft,
-  },
-  shiftBannerText: {
-    ...typography.caption,
-    color: colors.warning,
-    flex: 1,
+    marginBottom: spacing.md,
   },
   createRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
+  },
+  // Строка поиска рисует свои поля по краям и сверху, будучи над списком;
+  // внутри списка их уже даёт сам список.
+  searchInList: {
+    marginHorizontal: -spacing.lg,
+    marginTop: -spacing.sm,
   },
   createFlex: {
     flex: 1,
   },
+  /*
+    Кнопки раздела — высоты кнопки действия и таблеткой, как общая
+    `SubmitButton`. Подпись полужирная, а не жирная: в половине ширины 360
+    со значком «Tayyor pardalar» и «Yangi buyurtma» жирным уже не
+    помещались в строку. Поля по краям — узкие по той же причине.
+  */
   create: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
     backgroundColor: colors.accent,
   },
   createSecondary: {
@@ -635,36 +688,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.accentSoft,
     backgroundColor: colors.surface,
   },
-  // Кнопка внутри списка: нижний отступ отделяет её от первой карточки.
-  personalCreate: {
-    marginBottom: spacing.md,
-  },
   createPressed: {
     opacity: opacity.pressed,
   },
+  // Насыщенность — семейством: `fontWeight` поверх Medium из `body` браузер
+  // дорисовывал поддельным жирным, и подписи в PWA расплывались.
   createText: {
     ...typography.body,
-    color: colors.onAccent,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.onAccent,
+    flexShrink: 1,
   },
   createSecondaryText: {
     ...typography.body,
-    color: colors.accentStrong,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.accentStrong,
+    flexShrink: 1,
   },
-  corniceNote: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
+  /*
+    Состояние карниза — подписью ПОД своей карточкой: 4 точки от неё и 16
+    до следующей. Было ровно посередине между двумя (8 и 8), и подпись
+    читалась как относящаяся к любой из них. Отступ слева — как у текста
+    в карточке. Своего нижнего отступа у `OrderCard` больше нет, поэтому
+    сверху — просто `spacing.xs`, без вычитания.
+  */
   more: {
     paddingVertical: spacing.lg,
   },
@@ -673,5 +729,42 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     flexGrow: 1,
     paddingBottom: tabBarSpace,
+  },
+  skeletonCard: {
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    ...cardShadow,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  skeletonBlock: {
+    height: 12,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+  },
+  skeletonNumber: {
+    width: '34%',
+    height: 18,
+  },
+  skeletonPill: {
+    width: '28%',
+    height: 24,
+    borderRadius: radius.pill,
+  },
+  skeletonClient: {
+    width: '52%',
+  },
+  skeletonMeta: {
+    width: '30%',
+  },
+  skeletonMoney: {
+    width: '22%',
+    height: 16,
   },
 });

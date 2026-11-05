@@ -46,12 +46,21 @@ export function DiscountFields({
   value,
   onChange,
   showError = false,
+  last = false,
 }: {
   /** Цена до скидки — текст поля «Стоимость». */
   readonly price: string;
   readonly value: DiscountDraft;
   readonly onChange: (next: DiscountDraft) => void;
   readonly showError?: boolean;
+  /**
+   * Скидка — последнее в карточке: у поля причины нет нижнего отступа.
+   *
+   * Сами поля не знают, что идёт за ними: в кассе это конец карточки
+   * «Скидка», а в продаже и в новом заказе ниже ещё «Способ оплаты».
+   * Без этого карточка в кассе была снизу в 32 точки при 16 сверху.
+   */
+  readonly last?: boolean;
 }): ReactElement {
   const { m, money } = useLocale();
   const { workPrice, discountAmount } = discountFromInput(price, value.value, value.mode);
@@ -104,6 +113,7 @@ export function DiscountFields({
       <Field
         label={m('discount.reason')}
         required={discountAmount > 0}
+        last={last}
         error={
           showError && discountMissingReason(price, value)
             ? m('discount.reasonRequired')
@@ -116,6 +126,12 @@ export function DiscountFields({
             onChange({ ...value, reason: next });
           }}
           placeholder={m('discount.reasonPlaceholder')}
+          /*
+            Пока скидки нет, причина не вводится — и поле выглядит
+            выключенным: приглушённый вид `Input` даёт сам по `editable`,
+            один на всё приложение. Прежде поле ничем не отличалось от
+            живого: нажатие ничего не делало, и непонятно было почему.
+          */
           editable={discountAmount > 0}
         />
       </Field>

@@ -374,13 +374,14 @@ export const purchasesRouter = router({
 
         // Закупки — всем участникам заказа.
         costMinor: cost,
-        costFormatted: formatMoney(cost),
+        // Валюта — на языке клиента: строка показывается в приложении как есть.
+        costFormatted: formatMoney(cost, { locale: ctx.locale }),
 
         // Управленческие цифры — только руководству.
         revenueMinor: showsManagementFigures ? revenue : null,
-        revenueFormatted: showsManagementFigures ? formatMoney(revenue) : null,
+        revenueFormatted: showsManagementFigures ? formatMoney(revenue, { locale: ctx.locale }) : null,
         marginMinor: showsManagementFigures ? margin : null,
-        marginFormatted: showsManagementFigures ? formatMoney(margin) : null,
+        marginFormatted: showsManagementFigures ? formatMoney(margin, { locale: ctx.locale }) : null,
         /**
          * Рентабельность в процентах. `null` и когда цифра не положена
          * вызывающему, и когда сумма работ ещё не проставлена.

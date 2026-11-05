@@ -14,6 +14,8 @@
  *    (как в оригинале) и средним радиусом Земли по IUGG.
  */
 
+import type { Locale } from '../i18n/locale';
+
 /** Средний радиус Земли (IUGG mean radius), метры. */
 export const EARTH_RADIUS_METERS = 6_371_008.8;
 
@@ -148,9 +150,23 @@ export function isWithinBranchRadius(position: GeoPoint, branch: GeoBranch<unkno
   return haversineDistanceMeters(position, branch) <= branch.radiusMeters;
 }
 
-/** Форматирование расстояния для сообщений пользователю: «85 м» / «1.2 км». */
-export function formatDistance(distanceMeters: number): string {
+/** Единицы расстояния по языку: узбекский пишется латиницей, «км» в нём — чужие буквы. */
+const DISTANCE_UNITS: Readonly<Record<Locale, { readonly m: string; readonly km: string }>> = {
+  ru: { m: 'м', km: 'км' },
+  uz: { m: 'm', km: 'km' },
+};
+
+/**
+ * Форматирование расстояния для сообщений пользователю: «85 м» / «1,2 км».
+ *
+ * Дробная часть — через запятую: и по-русски, и по-узбекски пишут «7,5 км»,
+ * а «7.5 км» с точкой читалось как программный вывод. Между числом и
+ * единицей — неразрывный пробел (U+00A0, записан escape-последовательностью):
+ * «км» не должно уезжать на следующую строку без числа.
+ */
+export function formatDistance(distanceMeters: number, locale: Locale = 'ru'): string {
   if (!isFiniteNumber(distanceMeters) || distanceMeters < 0) return '—';
-  if (distanceMeters < 1_000) return `${Math.round(distanceMeters).toString()} м`;
-  return `${(distanceMeters / 1_000).toFixed(1)} км`;
+  const units = DISTANCE_UNITS[locale];
+  if (distanceMeters < 1_000) return `${Math.round(distanceMeters).toString()}\u00A0${units.m}`;
+  return `${(distanceMeters / 1_000).toFixed(1).replace('.', ',')}\u00A0${units.km}`;
 }

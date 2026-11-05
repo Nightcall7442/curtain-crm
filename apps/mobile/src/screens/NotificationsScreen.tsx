@@ -22,13 +22,14 @@ import {
   View,
 } from 'react-native';
 
-import { Empty, ErrorState, Skeleton } from '../components/Card';
+import { Empty, ErrorState } from '../components/Card';
 import { Icon, NOTIFICATION_ICONS, type IconName } from '../components/Icon';
 import { trpc } from '../lib/trpc';
 import {
   cardShadow,
   colors,
   radius,
+  sizes,
   spacing,
   tabBarSpace,
   typography,
@@ -189,7 +190,7 @@ export function NotificationsScreen(): ReactElement {
         }}
         ListEmptyComponent={
           query.isLoading ? (
-            <Skeleton />
+            <NotificationSkeleton />
           ) : query.isError ? (
             <ErrorState />
           ) : (
@@ -221,17 +222,27 @@ export function NotificationsScreen(): ReactElement {
               <TypeTile type={item.type} />
 
               <View style={styles.body}>
+                {/*
+                  Заголовок переносится, а не обрезается.
+
+                  В одну строку от «Заказ DH-000527: Ждёт назначения
+                  установщика» оставалось «Заказ DH-000527: Ждёт назн…» —
+                  новый статус, то есть сама новость, уходил в многоточие.
+                  Карточка ленты растёт по содержимому, места под вторую и
+                  третью строку у неё хватает.
+                */}
                 <View style={styles.titleRow}>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {item.title}
+                  <Text style={styles.title}>
+                    {keepOrderNumbers(item.title)}
                   </Text>
                   <Text style={styles.time}>
                     {shortTime(item.createdAt, m('common.yesterday'))}
                   </Text>
                 </View>
 
-                <Text style={styles.text} numberOfLines={2}>
-                  {item.body}
+                {/* Четыре строки вмещают причину целиком; длиннее бывает только комментарий — его читают в заказе. */}
+                <Text style={styles.text} numberOfLines={4}>
+                  {keepOrderNumbers(item.body)}
                 </Text>
 
                 {/*
@@ -283,6 +294,30 @@ export function NotificationsScreen(): ReactElement {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Заглушка ленты на время первой загрузки — по форме карточки уведомления.
+ *
+ * Общий `Skeleton` — полосы «подпись — значение» прямо на фоне экрана:
+ * светлые полосы на льне почти не видны (1,03:1), и экран выглядел пустым,
+ * а потом вместо полос появлялись карточки совсем другой формы. Здесь те
+ * же белые карточки с плиткой и двумя строками, что приедут с сервера.
+ */
+function NotificationSkeleton(): ReactElement {
+  return (
+    <View>
+      {Array.from({ length: 4 }, (_unused, index) => (
+        <View key={index} style={styles.card}>
+          <View style={[styles.tile, styles.skeletonTile]} />
+          <View style={styles.body}>
+            <View style={[styles.skeletonBar, { width: index % 2 === 0 ? '62%' : '48%' }]} />
+            <View style={[styles.skeletonBar, styles.skeletonBarLast, { width: index % 2 === 0 ? '86%' : '74%' }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** Цветная плитка со значком типа события. */
 function TypeTile({ type }: { readonly type: NotificationType }): ReactElement {
   // Тип может оказаться новее сборки приложения — тогда рядовой тон и колокольчик.
@@ -329,6 +364,22 @@ function shortTime(value: string | Date, yesterdayLabel: string): string {
   return formatIsoDateShort(todayIso(date));
 }
 
+/**
+ * Номер заказа — одним куском: «DH-000491», «TDH-000012».
+ *
+ * Обычный дефис — законное место переноса, и узкая лента рвала номер
+ * посередине: «…шторы для DH-» в конце строки и «000491 и сдать…» в начале
+ * следующей. Номер по частям не читается и не ищется глазами. Дефис после
+ * префикса меняется на неразрывный (U+2011): выглядит так же, но строку на
+ * нём не переносят ни браузер, ни Android. Глиф есть в Manrope, подмены
+ * шрифта не будет.
+ */
+const ORDER_NUMBER_HYPHEN = /\b(T?DH)-(?=\d)/g;
+
+function keepOrderNumbers(text: string): string {
+  return text.replace(ORDER_NUMBER_HYPHEN, '$1\u2011');
+}
+
 function emptyMessage(filter: FilterKey): MessageKey {
   if (filter === 'unread') return 'notif.noUnread';
   if (filter === 'important') return 'notif.noImportant';
@@ -350,9 +401,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   chip: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    // Подпись по центру высоты: при `minHeight` без центрирования строка
+    // в 18 px садилась к верху — 9 px сверху, 17 снизу.
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -365,24 +419,24 @@ const styles = StyleSheet.create({
   chipText: {
     ...typography.caption,
     color: colors.textSecondary,
-    fontWeight: '500',
   },
+  /* Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным. */
   chipTextActive: {
+    fontFamily: fonts.semibold,
     color: colors.headerText,
-    fontWeight: '600',
   },
   /* Текстовая ссылка, а не ещё одна карточка: белая плашка с зелёной
      подписью читалась третьей кнопкой над списком. */
   markAll: {
-    minHeight: 40,
+    minHeight: sizes.touchTarget,
     marginHorizontal: spacing.lg,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
   markAllText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.accent,
-    fontWeight: '600',
   },
   pressed: {
     opacity: opacity.pressed,
@@ -422,8 +476,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   time: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
+    ...typography.footnote,
     color: colors.textMuted,
   },
   text: {
@@ -435,7 +488,7 @@ const styles = StyleSheet.create({
   confirm: {
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
-    minHeight: 40,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
@@ -447,12 +500,23 @@ const styles = StyleSheet.create({
   },
   confirmText: {
     ...typography.caption,
-    fontWeight: '700',
+    fontFamily: fonts.bold,
     color: colors.onAccent,
   },
   confirmed: {
     ...typography.caption,
     color: colors.positive,
+    marginTop: spacing.sm,
+  },
+  skeletonTile: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  skeletonBar: {
+    height: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+  },
+  skeletonBarLast: {
     marginTop: spacing.sm,
   },
   dot: {

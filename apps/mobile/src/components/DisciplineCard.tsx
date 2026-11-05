@@ -11,10 +11,11 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { ShiftRequiredBanner, useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
-import { Card, CardTitle, Empty, Skeleton } from './Card';
+import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { Field, Input } from './Field';
 
 /**
@@ -31,6 +32,7 @@ export function DisciplineCard({
   readonly period: { year: number; month: number };
 }): ReactElement {
   const { m, t } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const query = trpc.discipline.my.useQuery(period);
   const [explaining, setExplaining] = useState<{ id: number; title: string } | null>(null);
@@ -55,23 +57,34 @@ export function DisciplineCard({
 
   return (
     <Card>
-      <CardTitle title={m('discipline.title')} icon="badge" />
+      {/*
+        Свой значок — щит с галочкой. Был `badge`: в наборе это банковская
+        карта, и над баллами дисциплины она читалась как «оплата».
+      */}
+      <CardTitle title={m('discipline.title')} icon="discipline" />
       {query.isLoading ? (
         <Skeleton rows={2} />
+      ) : query.isError ? (
+        /* Не загрузилось — не «баллов нет»: пустое состояние при обрыве связи читалось как чистый месяц. */
+        <ErrorState />
       ) : summary === null ? (
         <Empty message={m('discipline.empty')} />
       ) : (
         <>
           <View style={styles.stats}>
+            {/*
+              Цвет — только у ненулевого числа. Ноль штрафных терракотой
+              читался как штраф: чистый месяц показывал красную цифру.
+            */}
             <Stat
               label={m('discipline.penalty')}
               value={formatDisciplinePoints(summary.penalty)}
-              tone="danger"
+              tone={summary.penalty === 0 ? 'plain' : 'danger'}
             />
             <Stat
               label={m('discipline.bonus')}
               value={formatDisciplinePoints(summary.bonus)}
-              tone="positive"
+              tone={summary.bonus === 0 ? 'plain' : 'positive'}
             />
             <Stat label={m('discipline.net')} value={formatDisciplinePoints(summary.net)} />
           </View>
@@ -108,8 +121,7 @@ export function DisciplineCard({
                         });
                       }}
                       accessibilityRole="button"
-                      hitSlop={6}
-                      style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
+                      style={({ pressed }) => [styles.linkTarget, pressed ? styles.pressed : null]}
                     >
                       <Text style={styles.link}>{m('discipline.explain')}</Text>
                     </Pressable>
@@ -146,13 +158,20 @@ export function DisciplineCard({
             style={styles.textarea}
           />
         </Field>
+        {/* Объяснение — тоже действие на смене: без неё сервер его не примет (412). */}
+        <ShiftRequiredBanner
+          style={styles.shiftBanner}
+          onNavigate={() => {
+            setExplaining(null);
+          }}
+        />
         <SubmitButton
           label={m('discipline.send')}
           onPress={() => {
             if (explaining === null) return;
             explain.mutate({ id: explaining.id, comment: comment.trim() });
           }}
-          disabled={comment.trim().length === 0}
+          disabled={comment.trim().length === 0 || needsShift}
           pending={explain.isPending}
         />
       </BottomSheet>
@@ -199,7 +218,14 @@ function Stat({
   );
 }
 
+/** Запас по вертикали вокруг строки подписи (16) до цели нажатия. */
+const LINK_SLACK = (sizes.touchTarget - typography.footnote.lineHeight) / 2;
+
 const styles = StyleSheet.create({
+  // В шторке у полей свой нижний отступ, у баннера — этот: до кнопки тот же шаг.
+  shiftBanner: {
+    marginBottom: spacing.md,
+  },
   stats: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -233,8 +259,10 @@ const styles = StyleSheet.create({
   levelDanger: {
     backgroundColor: colors.dangerSoft,
   },
+  // Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным.
   levelText: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -262,11 +290,31 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  /*
+    Зона нажатия «Объяснить» — настоящие 44 точки. На `hitSlop` надежды
+    нет: в браузере его нет вовсе (цель была 17 точек в высоту), а на
+    телефоне он добирал до 29. Отрицательные отступы возвращают строке
+    прежнюю высоту и прежнее место подписи. `flex-start` — чтобы нажатие
+    в пустоту справа от слова ничего не открывало: раньше кнопкой была
+    вся ширина строки.
+  */
+  linkTarget: {
+    alignSelf: 'flex-start',
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    marginHorizontal: -spacing.sm,
+    marginTop: 2 - LINK_SLACK,
+    marginBottom: -LINK_SLACK,
+  },
   link: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.accent,
-    marginTop: 2,
+  },
+  pressed: {
+    opacity: opacity.pressed,
   },
   points: {
     ...typography.value,

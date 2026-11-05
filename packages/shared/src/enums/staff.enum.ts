@@ -53,11 +53,11 @@ export const DEPARTMENT_LABELS: Translated<Department> = {
     other: 'Другое',
   },
   uz: {
-    sewing: 'Tikuv bo‘limi',
+    sewing: "Tikuv bo'limi",
     installation: "O'rnatish",
     cutting: 'Bichish',
     sales: 'Sotuv',
-    administration: 'Ma’muriyat',
+    administration: "Ma'muriyat",
     quality: 'Sifat nazorati',
     other: 'Boshqa',
   },
@@ -155,7 +155,7 @@ export const PRESENCE_STATUS_LABELS: Translated<PresenceStatus> = {
     at_work: 'Ishda',
     on_break: 'Vaqtincha chiqib ketgan',
     finished: 'Smena yopilgan',
-    absent: 'Yo‘q',
+    absent: "Yo'q",
   },
 };
 

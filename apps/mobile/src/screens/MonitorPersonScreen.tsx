@@ -9,7 +9,7 @@ import {
   PLAN_PACE_LABELS,
   ROLE_LABELS,
 } from '@curtain-crm/shared';
-import type { ReactElement } from 'react';
+import { useLayoutEffect, type ReactElement } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, ErrorState, Skeleton } from '../components/Card';
@@ -19,7 +19,7 @@ import { PersonPhoto } from '../components/monitor/PersonPhoto';
 import { PlanRing } from '../components/monitor/PlanRing';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 type DetailWork = MonitorDetail['queueAll'][number];
@@ -37,6 +37,16 @@ export function MonitorPersonScreen({ route, navigation }: RootStackScreenProps<
     { userId },
     { refetchInterval: focused ? MONITOR_POLL_MS : false, refetchOnWindowFocus: focused },
   );
+
+  /*
+    В шапке — чьё это табло. Пока данных нет, остаётся общее «Табло» из
+    навигатора; с ответом — имя человека. Иначе, пролистав фото с именем,
+    уже не видно, чей это график и чья очередь.
+  */
+  const fullName = person.data?.fullName;
+  useLayoutEffect(() => {
+    if (fullName !== undefined) navigation.setOptions({ title: fullName });
+  }, [navigation, fullName]);
 
   if (person.data === undefined) {
     return <View style={styles.content}>{person.isError ? <ErrorState /> : <Skeleton rows={6} />}</View>;
@@ -116,7 +126,10 @@ export function MonitorPersonScreen({ route, navigation }: RootStackScreenProps<
           initials={{ size: 48, color: colors.accentOnDark, lift: 110 }}
         />
         <View style={styles.heroShade}>
-          <Text style={styles.heroPlace}>{m('monitor.place', { n: data.place })}</Text>
+          {/* Место — только за сделанное: с нулём за месяц его делят все, у кого ноль. */}
+          {data.counts.month > 0 && (
+            <Text style={styles.heroPlace}>{m('monitor.place', { n: data.place })}</Text>
+          )}
           <Text style={styles.heroName} numberOfLines={1}>
             {data.fullName}
           </Text>
@@ -194,8 +207,16 @@ export function MonitorPersonScreen({ route, navigation }: RootStackScreenProps<
         </Card>
 
         <Card>
-          <CardTitle title={m('monitor.days30')} icon="calendar" />
-          <Text style={styles.muted}>{`${total30.toString()} ${unit}`}</Text>
+          {/*
+            Итог — в строке заголовка, как значение при подписи: «За 30 дней
+            … 8 шт». Голое «8 шт» под заголовком у левого края графика
+            читалось подписью шкалы, а не суммой за период.
+          */}
+          <CardTitle
+            title={m('monitor.days30')}
+            icon="calendar"
+            action={<Text style={styles.total30}>{`${total30.toString()} ${unit}`}</Text>}
+          />
           <View style={styles.bars} accessibilityLabel={`${m('monitor.days30')}: ${total30.toString()} ${unit}`}>
             {data.daily.map((day, index) => (
               <View key={day.day} style={styles.barSlot}>
@@ -272,9 +293,9 @@ const styles = StyleSheet.create({
     gap: 2,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
+  // 12 — нижняя ступень шкалы, и на затемнённом фото тоже: 11 там читалось с трудом.
   heroPlace: {
-    ...typography.caption,
-    fontSize: 11,
+    ...typography.footnote,
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.75)',
@@ -300,8 +321,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
+  /*
+    Вес везде ниже — семейством, а не одним `fontWeight` поверх Medium:
+    браузер дорисовывает такой вес ложным жирным, Android не применяет вовсе.
+  */
   heroPillText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: '#FFFFFF',
   },
@@ -328,9 +354,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.textPrimary,
   },
+  // Внутри жирного числа: без явного веса браузер наследует 700 родителя
+  // и дорисовывает «шт» ложным жирным.
   countUnit: {
-    ...typography.caption,
-    fontSize: 12,
+    ...typography.footnote,
+    fontFamily: fonts.medium,
+    fontWeight: '500',
     color: colors.textSecondary,
   },
   countLabel: {
@@ -348,10 +377,12 @@ const styles = StyleSheet.create({
   },
   pace: {
     ...typography.body,
+    fontFamily: fonts.bold,
     fontWeight: '700',
   },
   planValue: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -371,7 +402,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   workText: {
     flex: 1,
@@ -385,6 +416,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   rework: {
+    fontFamily: fonts.semibold,
     color: colors.danger,
     fontWeight: '600',
   },
@@ -402,6 +434,7 @@ const styles = StyleSheet.create({
   },
   openText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.accentStrong,
   },
@@ -428,9 +461,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   axisText: {
-    ...typography.caption,
-    fontSize: 11,
+    ...typography.footnote,
     color: colors.textMuted,
+  },
+  total30: {
+    ...typography.value,
+    fontVariant: ['tabular-nums'],
   },
   photos: {
     flexDirection: 'row',

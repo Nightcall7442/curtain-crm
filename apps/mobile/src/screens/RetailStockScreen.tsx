@@ -1,25 +1,27 @@
-import { parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
+import { formatQuantity, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Витрина глазами руководителя: остатки, цена и чужие чеки.
@@ -41,6 +43,7 @@ export function RetailStockScreen({
   const { t, m, money } = useLocale();
   const utils = trpc.useUtils();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   /** Позиция, которой добавляют приход. `null` — никакая. */
   const [stocking, setStocking] = useState<number | null>(null);
@@ -55,7 +58,10 @@ export function RetailStockScreen({
       setStocking(null);
       setDelta('');
       await utils.retail.items.list.invalidate();
-      Alert.alert(m('retail.stockUpdated'), `${item.name}: ${item.stockQuantity}`);
+      Alert.alert(
+        m('retail.stockUpdated'),
+        `${item.name}: ${formatQuantity(Number.parseFloat(item.stockQuantity))}`,
+      );
     },
     onError(error) {
       notifyError();
@@ -63,48 +69,71 @@ export function RetailStockScreen({
     },
   });
 
-  if (items.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={items.error.message} />
-      </View>
-    );
-  }
+  /* Приход: число со знаком, не ноль. `null` — оприходовать нечего. */
+  const parsedDelta = Number.parseFloat(delta.replace(',', '.'));
+  const deltaValue = Number.isFinite(parsedDelta) && parsedDelta !== 0 ? parsedDelta : null;
 
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* Экран открыт поверх вкладок: снизу — обычный отступ, а не место
+          под панель, которой здесь нет (было 114 точек пустоты). */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={items.isRefetching || sales.isRefetching}
+            onRefresh={() => {
+              void Promise.all([items.refetch(), sales.refetch()]);
+            }}
+            tintColor={colors.accent}
+          />
+        }
+      >
         {header}
 
         <Card>
           <CardTitle title={m('retail.title')} icon="orders" />
 
-          {items.data === undefined ? (
+          {/*
+            Ошибка — внутри карточки, а не вместо всего экрана: переключатель
+            разделов сверху от списка не зависит, и при сбое до «Закупки» и
+            «Склада» было не добраться. Текст — свой, локализованный: ответ
+            сервера при сбое бывает английским.
+          */}
+          {items.isError ? (
+            <ErrorState />
+          ) : items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty message={m('cash.priceEmpty')} hint={m('retail.emptyHint')} />
           ) : (
-            items.data.map((item) => {
+            items.data.map((item, index, all) => {
               const stock = Number.parseFloat(item.stockQuantity);
+              const isLast = index === all.length - 1;
 
               return (
                 <View key={item.id}>
-                  <View style={styles.itemRow}>
+                  {/*
+                    Под последней строкой линии нет — её роль делить строки,
+                    а не дублировать низ карточки. У открытой формы прихода
+                    своя линия не нужна: форма и так продолжает строку.
+                  */}
+                  <View style={[styles.itemRow, isLast && stocking !== item.id ? styles.itemRowLast : null]}>
                     <View style={styles.itemText}>
-                      <Text
-                        style={[styles.itemName, item.isActive ? null : styles.itemOff]}
-                        numberOfLines={2}
-                      >
+                      {/* Название целиком: обрезка на второй строке съедала
+                          ровно то, чем товары и различаются. */}
+                      <Text style={[styles.itemName, item.isActive ? null : styles.itemOff]}>
                         {item.name}
                       </Text>
                       <Text style={styles.itemMeta}>
                         {m('retail.stockMeta', {
                           price: money(parseMoney(item.price)),
                           unit: t(PURCHASE_UNIT_LABELS, item.unit),
-                          n: stock,
+                          n: formatQuantity(stock),
                         })}
                       </Text>
                     </View>
@@ -134,22 +163,22 @@ export function RetailStockScreen({
                         />
                       </Field>
 
-                      <Pressable
+                      {/*
+                        Пока количество не набрано (или ноль), кнопка
+                        неактивна и выглядит так. Раньше она молча ничего не
+                        делала — без ошибки и без отклика. Кнопка — общая, 48
+                        и таблеткой: своя была в 46 со скруглением поля и
+                        читалась ещё одним полем ввода.
+                      */}
+                      <SubmitButton
+                        label={m('retail.submit')}
                         onPress={() => {
-                          const quantity = Number.parseFloat(delta.replace(',', '.'));
-                          if (!Number.isFinite(quantity) || quantity === 0) return;
-                          addStock.mutate({ id: item.id, quantity });
+                          if (deltaValue === null) return;
+                          addStock.mutate({ id: item.id, quantity: deltaValue });
                         }}
-                        disabled={addStock.isPending}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [styles.submit, pressed ? styles.pressed : null]}
-                      >
-                        {addStock.isPending ? (
-                          <ActivityIndicator color={colors.onAccent} size="small" />
-                        ) : (
-                          <Text style={styles.submitText}>{m('retail.submit')}</Text>
-                        )}
-                      </Pressable>
+                        disabled={deltaValue === null}
+                        pending={addStock.isPending}
+                      />
                     </View>
                   )}
                 </View>
@@ -161,12 +190,14 @@ export function RetailStockScreen({
         <Card>
           <CardTitle title={m('retail.lastReceipts')} icon="paid" />
 
-          {sales.data === undefined ? (
+          {sales.isError ? (
+            <ErrorState />
+          ) : sales.data === undefined ? (
             <Skeleton />
           ) : sales.data.items.length === 0 ? (
             <Empty message={m('retail.noReceipts')} />
           ) : (
-            sales.data.items.map((sale) => (
+            sales.data.items.map((sale, index, all) => (
               <Pressable
                 key={sale.id}
                 onPress={() => {
@@ -174,7 +205,11 @@ export function RetailStockScreen({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('cash.openReceipt', { n: sale.id })}
-                style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
+                style={({ pressed }) => [
+                  styles.itemRow,
+                  index === all.length - 1 ? styles.itemRowLast : null,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <View style={styles.itemText}>
                   <Text style={styles.itemName}>{m('cash.receiptN', { n: sale.id })}</Text>
@@ -197,15 +232,9 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   itemRow: {
     flexDirection: 'row',
@@ -214,6 +243,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  itemRowLast: {
+    borderBottomWidth: 0,
   },
   itemText: {
     flex: 1,
@@ -236,35 +268,27 @@ const styles = StyleSheet.create({
     ...typography.value,
     color: colors.textPrimary,
   },
+  // 44, как чипы разделов над ним и любая цель для пальца: при 40 кнопка
+  // была ниже соседей и под порогом нажатия.
   stockButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 40,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  // Вес — семейством: `fontWeight` поверх Medium браузер дорисовывает ложным жирным.
   stockButtonText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.accentStrong,
     fontWeight: '600',
   },
   stockBox: {
     paddingBottom: spacing.md,
-  },
-  submit: {
-    minHeight: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
   },
   pressed: {
     opacity: opacity.pressed,

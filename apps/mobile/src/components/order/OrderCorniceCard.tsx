@@ -1,13 +1,15 @@
 import { CORNICE_STATUS_LABELS, CorniceStatus, formatDateTime, Role } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
+import { useNeedsShift } from '../ShiftRequiredBanner';
 import { useAuth } from '../../hooks/useAuth';
 import { useLocale } from '../../hooks/useLocale';
 import { notifyError, notifySuccess } from '../../lib/haptics';
 import { trpc, type RouterOutputs } from '../../lib/trpc';
-import { colors, opacity, radius, spacing, typography } from '../../theme';
+import { colors, spacing, typography } from '../../theme';
 import { Card, CardTitle, Row } from '../Card';
+import { SubmitButton } from '../SubmitButton';
 
 type Order = RouterOutputs['orders']['byId'];
 
@@ -21,6 +23,7 @@ export function OrderCorniceCard({
   readonly order: Pick<Order, 'id' | 'corniceStatus' | 'corniceInstaller' | 'corniceDoneAt'>;
 }): ReactElement | null {
   const { t, m } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const { user } = useAuth();
   const orderId = order.id;
@@ -52,7 +55,8 @@ export function OrderCorniceCard({
 
   return (
     <Card>
-      <CardTitle title={m('order.corniceTitle')} icon="window" />
+      {/* Свой значок: сеткой окна рисуется «Позиции заказа» на этом же экране. */}
+      <CardTitle title={m('order.corniceTitle')} icon="cornice" />
 
       <Row label={m('order.corniceState')} value={t(CORNICE_STATUS_LABELS, order.corniceStatus)} />
       {order.corniceInstaller !== null && (
@@ -67,43 +71,34 @@ export function OrderCorniceCard({
             свободный карниз или закрыть уже взятый им. Остальным карточка
             остаётся справкой — кто ставит и когда сделал.
           */}
+      {/*
+        Общая кнопка действия: той же высоты и того же вида, что остальные
+        кнопки карточки заказа. Своя была в 52 точки, с подписью, которой
+        браузер дорисовывал ложный жирный поверх полужирного.
+      */}
       {isCorniceInstaller && order.corniceStatus === CorniceStatus.PENDING && (
-        <Pressable
-          disabled={takeCornice.isPending}
+        <SubmitButton
+          label={m('order.takeCornice')}
           onPress={() => {
             takeCornice.mutate({ id: orderId });
           }}
-          style={({ pressed }) => [
-            styles.primaryAction,
-            styles.corniceAction,
-            pressed ? styles.pressed : null,
-            takeCornice.isPending ? styles.disabled : null,
-          ]}
-          accessibilityRole="button"
-        >
-          <Text style={styles.primaryActionText}>{m('order.takeCornice')}</Text>
-        </Pressable>
+          disabled={needsShift}
+          pending={takeCornice.isPending}
+        />
       )}
 
       {isCorniceInstaller &&
         order.corniceStatus === CorniceStatus.IN_PROGRESS &&
         order.corniceInstaller?.id === user?.id && (
           <>
-            <Pressable
-              disabled={finishCornice.isPending}
+            <SubmitButton
+              label={m('order.finishCornice')}
               onPress={() => {
                 finishCornice.mutate({ id: orderId });
               }}
-              style={({ pressed }) => [
-                styles.primaryAction,
-                styles.corniceAction,
-                pressed ? styles.pressed : null,
-                finishCornice.isPending ? styles.disabled : null,
-              ]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.primaryActionText}>{m('order.finishCornice')}</Text>
-            </Pressable>
+              disabled={needsShift}
+              pending={finishCornice.isPending}
+            />
             <Text style={styles.corniceHint}>{m('order.corniceHint')}</Text>
           </>
         )}
@@ -112,31 +107,9 @@ export function OrderCorniceCard({
 }
 
 const styles = StyleSheet.create({
-  corniceAction: {
-    marginTop: spacing.md,
-  },
   corniceHint: {
     ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.sm,
-  },
-  disabled: {
-    opacity: opacity.disabled,
-  },
-  pressed: {
-    opacity: opacity.pressed,
-  },
-  primaryAction: {
-    minHeight: 52,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  primaryActionText: {
-    ...typography.headline,
-    color: colors.onAccent,
-    fontWeight: '700',
   },
 });

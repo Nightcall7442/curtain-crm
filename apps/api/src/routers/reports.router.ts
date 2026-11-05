@@ -262,9 +262,11 @@ export const reportsRouter = router({
 
         completedThisMonth: monthRow?.completed ?? 0,
         revenueThisMonthMinor: monthRevenue,
-        revenueThisMonthFormatted: formatMoney(monthRevenue),
+        // Валюта — на языке клиента: готовая строка уходит в приложение как
+        // есть, и узбекская главная показывала «0 сум» вместо «0 so'm».
+        revenueThisMonthFormatted: formatMoney(monthRevenue, { locale: ctx.locale }),
         revenuePrevMonthMinor: prevMonthRevenue,
-        revenuePrevMonthFormatted: formatMoney(prevMonthRevenue),
+        revenuePrevMonthFormatted: formatMoney(prevMonthRevenue, { locale: ctx.locale }),
         revenueMonthDelta: delta(monthRevenue, prevMonthRevenue),
 
         employeesOnShift: openShiftsRow?.value ?? 0,
@@ -452,7 +454,7 @@ export const reportsRouter = router({
         seller:
           result.seller === null
             ? null
-            : { ...result.seller, revenueFormatted: formatMoney(result.seller.revenueMinor) },
+            : { ...result.seller, revenueFormatted: formatMoney(result.seller.revenueMinor, { locale: ctx.locale }) },
       };
     }),
 
@@ -659,7 +661,7 @@ export const reportsRouter = router({
           fullName: row.fullName,
           ordersCount: Number.parseInt(row.ordersCount, 10),
           revenueMinor: revenue,
-          revenueFormatted: formatMoney(revenue),
+          revenueFormatted: formatMoney(revenue, { locale: ctx.locale }),
         };
       });
     }),
@@ -761,9 +763,9 @@ export const reportsRouter = router({
         costMinor: cost,
         marginMinor: margin,
         depositsMinor: parseMoney(revenueRow?.deposits ?? '0'),
-        revenueFormatted: formatMoney(revenue),
-        costFormatted: formatMoney(cost),
-        marginFormatted: formatMoney(margin),
+        revenueFormatted: formatMoney(revenue, { locale: ctx.locale }),
+        costFormatted: formatMoney(cost, { locale: ctx.locale }),
+        marginFormatted: formatMoney(margin, { locale: ctx.locale }),
         marginPercent: revenue === 0 ? null : Math.round((margin / revenue) * 10_000) / 100,
       };
     }),

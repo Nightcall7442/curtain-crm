@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
+import { Icon } from '../components/Icon';
 import { InstallationTripCard } from '../components/InstallationTripCard';
 import { ShiftControl } from '../components/ShiftControl';
 import { useIsCeo } from '../hooks/useAuth';
@@ -37,14 +38,16 @@ export function AttendanceScreen(): ReactElement {
     void queue.refetch();
   };
 
-  if (roster.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={roster.error.message} />
-      </View>
-    );
-  }
+  /*
+    Сбой загрузки — внутри своей карточки, а не вместо всего экрана.
 
+    Раньше при обрыве связи экран целиком заменялся надписью: пропадала и
+    своя смена админа, а выйти из ошибки можно было только уходом с
+    вкладки — обещанного «потяните вниз» у голой надписи не было. Теперь
+    прокрутка с обновлением остаётся, смена работает, а в карточке —
+    кнопка «Повторить». Текст сервера в карточку не идёт: служебный ответ
+    бывает по-английски («Internal server error») и ничего не объясняет.
+  */
   const rows = roster.data ?? [];
   const working = rows.filter((row) => row.endedAt === null);
   const finished = rows.filter((row) => row.endedAt !== null);
@@ -69,28 +72,35 @@ export function AttendanceScreen(): ReactElement {
       <Card>
         <CardTitle title={m('attendance.now')} icon="people" />
 
-        {roster.data === undefined ? (
+        {roster.isError ? (
+          <ErrorState />
+        ) : roster.data === undefined ? (
           <Skeleton />
         ) : working.length === 0 ? (
           <Empty message={m('attendance.nobodyOpened')} hint={m('attendance.nobodyOpenedHint')} />
         ) : (
-          working.map((row) => {
+          working.map((row, index) => {
             /*
               Дело важнее перерыва: «на установке DH-0013» отвечает, где
               человек, перерыв — только чем занят. Без заказа на руках —
               сколько уже в цеху.
+
+              Перерыв и выезд без заказа строкой не повторяются: их уже
+              называет плашка справа, и «с 06:52 · перерыв» рядом с
+              «Перерыв» говорило одно и то же дважды. Вместо повтора —
+              сколько человек в цеху.
             */
             const doing =
-              row.activity !== null
-                ? `${t(SHIFT_ACTIVITY_LABELS, row.activity)}${row.activityOrder === null ? '' : ` ${row.activityOrder}`}`
-                : row.onBreak
-                  ? m('attendance.break')
+              row.activity !== null && row.activityOrder !== null
+                ? `${t(SHIFT_ACTIVITY_LABELS, row.activity)} ${row.activityOrder}`
+                : row.activity !== null && !row.onTrip && !row.onBreak
+                  ? t(SHIFT_ACTIVITY_LABELS, row.activity)
                   : elapsed(row.startedAt, m);
 
             return (
               <View
                 key={`${row.userId.toString()}-${row.startedAt.toISOString()}`}
-                style={styles.row}
+                style={[styles.row, index === working.length - 1 ? styles.rowLast : null]}
               >
                 <View style={styles.text}>
                   <Text style={styles.name} numberOfLines={1}>
@@ -120,69 +130,89 @@ export function AttendanceScreen(): ReactElement {
       <Card>
         <CardTitle title={m('attendance.queue')} icon="orders" />
 
-        {queue.data === undefined ? (
+        {queue.isError ? (
+          <ErrorState />
+        ) : queue.data === undefined ? (
           <Skeleton rows={2} />
         ) : queue.data.length === 0 ? (
           <Empty message={m('attendance.queueEmpty')} />
         ) : (
-          queue.data.map((order) => (
-            <View key={order.id} style={styles.row}>
-              <View style={styles.text}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {order.orderNumber}
-                  <Text style={styles.metaInline}>
-                    {` · ${order.deadline === null ? m('attendance.noDeadline') : formatIsoDateShort(order.deadline)}`}
-                  </Text>
-                </Text>
-                <Text style={styles.meta} numberOfLines={2}>
-                  {order.installAddress ?? m('attendance.noAddress')}
-                </Text>
-              </View>
-              <Text
-                style={order.installerName === null ? styles.unassigned : styles.installer}
-                numberOfLines={2}
-              >
-                {order.installerName ?? m('attendance.noInstaller')}
-              </Text>
-            </View>
-          ))
-        )}
-      </Card>
-
-      <Card>
-        <CardTitle title={m('attendance.left')} icon="shift" />
-
-        {roster.data === undefined ? (
-          <Skeleton rows={2} />
-        ) : finished.length === 0 ? (
-          <Empty message={m('attendance.nobodyClosed')} />
-        ) : (
-          finished.map((row) => (
+          /*
+            Установщик — третьей строкой под адресом, а не колонкой справа.
+            Колонка забирала до 40% ширины, и адрес — то, ради чего очередь
+            смотрят, — обрезался многоточием на «ул. Буюк …» в половине
+            строк. Теперь адрес идёт во всю ширину и целиком.
+          */
+          queue.data.map((order, index, all) => (
             <View
-              key={`${row.userId.toString()}-${row.startedAt.toISOString()}`}
-              style={styles.row}
+              key={order.id}
+              style={[styles.row, styles.queueRow, index === all.length - 1 ? styles.rowLast : null]}
             >
-              <View style={styles.text}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {row.fullName}
+              <Text style={styles.name} numberOfLines={1}>
+                {order.orderNumber}
+                <Text style={styles.metaInline}>
+                  {` · ${order.deadline === null ? m('attendance.noDeadline') : formatIsoDateShort(order.deadline)}`}
                 </Text>
-                <Text style={styles.meta}>
-                  {`${clock(row.startedAt)} — ${
-                    row.endedAt === null ? '' : clock(row.endedAt)
-                  } · ${worked(row.startedAt, row.endedAt, m)}`}
-                  {/* Закрыл сервер, не человек: уход не отмечен, время условное. */}
-                  {row.autoClosed ? ` · ${m('home.autoClosed')}` : ''}
+              </Text>
+              <Text style={styles.meta}>{order.installAddress ?? m('attendance.noAddress')}</Text>
+              <View style={styles.installerRow}>
+                <Icon
+                  name="person"
+                  size={14}
+                  color={order.installerName === null ? colors.textMuted : colors.accent}
+                />
+                <Text
+                  style={order.installerName === null ? styles.unassigned : styles.installer}
+                  numberOfLines={1}
+                >
+                  {order.installerName ?? m('attendance.noInstaller')}
                 </Text>
               </View>
             </View>
           ))
         )}
       </Card>
+
+      {/* При сбое о нём уже сказала карточка «Сейчас в цеху» — вторая такая
+          же ошибка с кнопкой ниже была бы повтором. */}
+      {!roster.isError && (
+        <Card>
+          <CardTitle title={m('attendance.left')} icon="shift" />
+
+          {roster.data === undefined ? (
+            <Skeleton rows={2} />
+          ) : finished.length === 0 ? (
+            <Empty message={m('attendance.nobodyClosed')} />
+          ) : (
+            finished.map((row, index) => (
+              <View
+                key={`${row.userId.toString()}-${row.startedAt.toISOString()}`}
+                style={[styles.row, index === finished.length - 1 ? styles.rowLast : null]}
+              >
+                <View style={styles.text}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {row.fullName}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {`${clock(row.startedAt)} — ${
+                      row.endedAt === null ? '' : clock(row.endedAt)
+                    } · ${worked(row.startedAt, row.endedAt, m)}`}
+                    {/* Закрыл сервер, не человек: уход не отмечен, время условное. */}
+                    {row.autoClosed ? ` · ${m('home.autoClosed')}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </Card>
+      )}
 
       {/* Людей, не смен: кто отлучался и вернулся — открыл вторую, но он один. */}
-      <Text style={styles.note}>
-        {m('attendance.note', { n: new Set(rows.map((row) => row.userId)).size })}
-      </Text>
+      {roster.data !== undefined && (
+        <Text style={styles.note}>
+          {m('attendance.note', { n: new Set(rows.map((row) => row.userId)).size })}
+        </Text>
+      )}
     </ScrollView>
   );
 }
@@ -208,11 +238,6 @@ function humanize(ms: number, m: Translate): string {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
@@ -226,6 +251,23 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  // Разделитель — только между строками: под последней он висел линией в
+  // 16 точках над скруглённым низом карточки.
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  // Строка очереди — столбиком: номер, адрес, установщик.
+  queueRow: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 0,
+  },
+  installerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
   },
   text: {
     flex: 1,
@@ -247,14 +289,12 @@ const styles = StyleSheet.create({
   installer: {
     ...typography.caption,
     color: colors.textPrimary,
-    maxWidth: '40%',
-    textAlign: 'right',
+    flexShrink: 1,
   },
   unassigned: {
     ...typography.caption,
     color: colors.textMuted,
-    maxWidth: '40%',
-    textAlign: 'right',
+    flexShrink: 1,
   },
   note: {
     ...typography.caption,

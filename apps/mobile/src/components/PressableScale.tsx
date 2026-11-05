@@ -1,6 +1,7 @@
 import { useRef, type ReactElement, type ReactNode } from 'react';
 import { Animated, Pressable, type ViewStyle } from 'react-native';
 
+import { NATIVE_DRIVER } from '../lib/animation';
 import { opacity } from '../theme';
 
 /**
@@ -41,7 +42,7 @@ export function PressableScale({
   const animate = (toValue: number): void => {
     Animated.spring(scale, {
       toValue,
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
       // Без колебания: кнопка должна вернуться на место, а не покачаться.
       // Пружина здесь ради естественного замедления, а не ради «пружинистости».
       bounciness: 0,

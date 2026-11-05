@@ -1,16 +1,16 @@
 import { formatIsoDateShort, todayIso } from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { useIsManagement } from '../hooks/useAuth';
 import { useLocale, type Translate } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, opacity, radius, spacing, typography, fonts } from '../theme';
+import { cardShadow, colors, opacity, radius, sizes, spacing, typography, fonts } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
-import { Card, CardTitle, Skeleton } from './Card';
+import { Card, CardLink, CardTitle } from './Card';
 import { DateField } from './DateField';
 import { Field, Input } from './Field';
 import { Icon } from './Icon';
@@ -103,6 +103,27 @@ export function EventsBoard({
   const [date, setDate] = useState(() => todayIso());
   const [description, setDescription] = useState('');
   const [photo, setPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
+  /*
+    Ширина плитки — ровно треть ряда, посчитанная от его настоящей ширины.
+
+    Плитки росли от `minWidth: 96`, а три таких с промежутками (304) не
+    влезали во внутреннюю ширину карточки на 360 точках (296): ряд
+    ломался «две и одна», и третья плитка растягивалась на всю ширину.
+    Фиксированная треть держит три в ряд на любом телефоне, а четвёртое
+    событие переносится вниз той же ширины, не растягиваясь.
+
+    До первого замера — оценка в процентах (`personEstimate`), тоже по три
+    в ряд. Прежняя заглушка делила ширину поровну между ВСЕМИ плитками без
+    переноса: при четырёх событиях первый кадр показывал четыре сжатые
+    плитки в одну строку, и они перепрыгивали в ряды, как только приходил
+    замер, — при каждом появлении доски.
+  */
+  const [tileWidth, setTileWidth] = useState<number | null>(null);
+  const onRowLayout = (event: LayoutChangeEvent): void => {
+    const width = Math.floor((event.nativeEvent.layout.width - spacing.sm * (SLOTS - 1)) / SLOTS);
+    setTileWidth((current) => (current === width ? current : width));
+  };
+  const tileSize = tileWidth === null ? styles.personEstimate : { width: tileWidth };
 
   const create = trpc.events.create.useMutation({
     async onSuccess() {
@@ -159,30 +180,55 @@ export function EventsBoard({
       <CardTitle
         title={m('events.title')}
         icon="calendar"
+        /* Общая ссылка шапки: цель 44 точки и подпись одной строкой —
+           прежде «+» и «Мероприятие» расходились на две строки. */
         action={
           isManager ? (
-            <Pressable
+            <CardLink
+              label={m('events.add')}
               onPress={() => {
                 setOpen(true);
               }}
-              accessibilityRole="button"
-            >
-              <Text style={styles.addLink}>{m('events.add')}</Text>
-            </Pressable>
+            />
           ) : undefined
         }
       />
 
+      {/*
+        Заглушка — те же три плитки, что приедут: фото, две строки имени,
+        две строки должности, срок и дата. Общий `Skeleton` — полосы
+        «подпись — значение» высотой около 130 точек — сменялся плитками
+        выше двухсот, и всё, что ниже доски, прыгало вниз.
+      */}
       {isLoading ? (
-        <Skeleton />
+        <View style={styles.row} onLayout={onRowLayout}>
+          {Array.from({ length: SLOTS }, (_, index) => (
+            <View key={`ghost-${index.toString()}`} style={[styles.person, tileSize]}>
+              <View style={styles.photo} />
+              <View style={[styles.ghostSlot, styles.ghostName]}>
+                <View style={[styles.ghostBar, styles.ghostBarWide]} />
+              </View>
+              <View style={[styles.ghostSlot, styles.ghostJob]}>
+                <View style={styles.ghostBar} />
+              </View>
+              <View style={[styles.ghostSlot, styles.ghostWhen]}>
+                <View style={styles.ghostBar} />
+              </View>
+              <View style={[styles.ghostSlot, styles.ghostDate]} />
+            </View>
+          ))}
+        </View>
       ) : (
-        <View style={styles.row}>
+        <View style={styles.row} onLayout={onRowLayout}>
           {events.map((item) => {
             const isSoon = item.daysUntil === 0;
             const highlight = isSoon;
 
             return (
-              <View key={item.id} style={[styles.person, highlight ? styles.personToday : null]}>
+              <View
+                key={item.id}
+                style={[styles.person, tileSize, highlight ? styles.personToday : null]}
+              >
                 {item.photoUrl === null ? (
                   <View style={[styles.photo, styles.photoFallback]}>
                     <Text style={styles.initials}>{initials(item.title)}</Text>
@@ -195,11 +241,12 @@ export function EventsBoard({
                   {item.title}
                 </Text>
 
-                {item.subtitle !== null && (
-                  <Text style={styles.jobTitle} numberOfLines={1}>
-                    {item.subtitle}
-                  </Text>
-                )}
+                {/* Строка должности есть всегда, пустая — тоже: иначе у
+                    мероприятия без подписи дата вставала выше, чем у соседей.
+                    Две строки: «Продавец-консультант» в одну не входит. */}
+                <Text style={styles.jobTitle} numberOfLines={2}>
+                  {item.subtitle ?? ''}
+                </Text>
 
                 <Text style={[styles.when, highlight ? styles.whenToday : null]} numberOfLines={1}>
                   {isSoon ? m('birthday.todayMark') : whenLabel(item.daysUntil, m)}
@@ -226,9 +273,8 @@ export function EventsBoard({
                         },
                       ]);
                     }}
-                    hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={m('events.remove')}
+                    accessibilityLabel={`${m('events.remove')}: ${item.title}`}
                     style={styles.removeButton}
                   >
                     <Text style={styles.removeText}>{m('events.remove')}</Text>
@@ -246,13 +292,18 @@ export function EventsBoard({
                   setOpen(true);
                 }}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.person, styles.blank, pressed ? styles.pressed : null]}
+                style={({ pressed }) => [
+                  styles.person,
+                  tileSize,
+                  styles.blank,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <Icon name="calendar" size={22} color={colors.accent} />
                 <Text style={styles.blankText}>{m('events.add')}</Text>
               </Pressable>
             ) : (
-              <View key={`blank-${index.toString()}`} style={[styles.person, styles.blank]}>
+              <View key={`blank-${index.toString()}`} style={[styles.person, tileSize, styles.blank]}>
                 <Text style={styles.blankQuiet}>{m('events.empty')}</Text>
               </View>
             ),
@@ -274,7 +325,12 @@ export function EventsBoard({
         </Field>
 
         <Field label={m('events.date')} required>
-          <DateField value={date} onChange={setDate} placeholder={m('events.date')} />
+          <DateField
+            value={date}
+            onChange={setDate}
+            placeholder={m('events.date')}
+            emptyText={m('common.datePlaceholder')}
+          />
         </Field>
 
         <Field label={m('events.note')}>
@@ -316,13 +372,19 @@ export function EventsBoard({
   );
 }
 
+/** Имя и должность — по две строки сноски, всегда: даты встают на одну высоту. */
+const TWO_FOOTNOTE_LINES = typography.footnote.lineHeight * 2;
+/** Зазор между именем и должностью: должность — продолжение имени. */
+const JOB_GAP = 2;
+/** Высота строки «через сколько» — постоянная: дата под ней у всех плиток на одной высоте. */
+const WHEN_LINE = 17;
+
 const styles = StyleSheet.create({
   /*
-    Плитки делят ширину карточки поровну, а не стоят фиксированными 108
-    точками: на телефоне три таких с отступами в строку не влезали, и
-    третья — та, ради которой список и расширили, — обрезалась краем экрана.
-    Четвёртая и дальше (мероприятие рядом с именинниками) переносятся вниз:
-    `minWidth` не даёт ряду ужаться до нечитаемого.
+    Плитки делят ширину ряда на три равные доли (см. `onRowLayout`), а не
+    растут от минимальной ширины: та не помещалась втроём на узком экране.
+    Четвёртая и дальше (мероприятие рядом с именинниками) переносятся вниз
+    той же шириной.
   */
   row: {
     flexDirection: 'row',
@@ -331,13 +393,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   person: {
-    flexGrow: 1,
-    flexBasis: 0,
-    minWidth: 96,
     alignItems: 'center',
-    padding: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceMuted,
+  },
+  /*
+    До первого замера ряда — треть в процентах. 31% × 3 плюс два
+    промежутка по 8 меньше ширины ряда на любом телефоне от 320 точек, так
+    что ряд сразу ложится по три, а замер потом добавляет плитке точку-две.
+  */
+  personEstimate: {
+    width: '31%',
   },
   // Событие дня выделяем фоном, а не только подписью: карточка должна
   // цеплять взгляд с первого экрана, иначе поздравят те же, кто и так помнит.
@@ -367,12 +435,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: opacity.pressed,
   },
-  addLink: {
-    ...typography.caption,
-    color: colors.accent,
-  },
   photo: {
-    width: 64,
+    width: 56,
     // Формат корпоративной съёмки — тот же, что в профиле (309×433).
     aspectRatio: 309 / 433,
     borderRadius: radius.sm,
@@ -397,47 +461,52 @@ const styles = StyleSheet.create({
     длинной: шрифт подобран так, чтобы «Palvannazirova» помещалась целиком
     и не рвалась посередине слова.
   */
+  /*
+    Кегли — не меньше 12: имя, должность и дата — то, что читают, а 10 и
+    11,5 на телефоне в цеху уже щурятся. Высоты строк заданы под этот кегль.
+  */
   name: {
-    fontFamily: fonts.medium,
-    fontSize: 11.5,
-    lineHeight: 14,
-    height: 28,
+    ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    height: TWO_FOOTNOTE_LINES,
     color: colors.textPrimary,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
   jobTitle: {
-    fontFamily: fonts.medium,
-    fontSize: 10,
-    lineHeight: 13,
-    height: 13,
+    ...typography.footnote,
+    height: TWO_FOOTNOTE_LINES,
     color: colors.textMuted,
     textAlign: 'center',
-    marginTop: 1,
+    marginTop: JOB_GAP,
   },
   when: {
     ...typography.caption,
-    lineHeight: 17,
-    height: 17,
+    lineHeight: WHEN_LINE,
+    height: WHEN_LINE,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
   whenToday: {
+    fontFamily: fonts.bold,
     color: colors.accentStrong,
     fontWeight: '700',
   },
   date: {
-    fontFamily: fonts.medium,
-    fontSize: 10,
+    ...typography.footnote,
     color: colors.textMuted,
   },
   removeButton: {
-    marginTop: spacing.xs,
+    // Цель в палец ростом; подпись по центру. Без `hitSlop`: в браузере его
+    // нет, размер цели — только сама коробка.
+    minHeight: sizes.touchTarget,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   removeText: {
-    fontFamily: fonts.medium,
-    fontSize: 10,
+    ...typography.footnote,
     color: colors.danger,
   },
   photoPick: {
@@ -464,5 +533,38 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.sm,
+  },
+  /*
+    Заглушка плитки: каждая «строка» — той же высоты и с тем же отступом,
+    что строка настоящей плитки, поэтому заглушка ровно её роста.
+  */
+  ghostSlot: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostName: {
+    height: TWO_FOOTNOTE_LINES,
+    marginTop: spacing.sm,
+  },
+  ghostJob: {
+    height: TWO_FOOTNOTE_LINES,
+    marginTop: JOB_GAP,
+  },
+  ghostWhen: {
+    height: WHEN_LINE,
+    marginTop: spacing.xs,
+  },
+  ghostDate: {
+    height: typography.footnote.lineHeight,
+  },
+  ghostBar: {
+    width: '55%',
+    height: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+  },
+  ghostBarWide: {
+    width: '75%',
   },
 });

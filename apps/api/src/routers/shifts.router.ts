@@ -4,6 +4,7 @@ import {
   Role,
   ROLE_LABELS,
   SHIFT_FORGOTTEN_AFTER_HOURS,
+  workshopDayIso,
   type ShiftActivity,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
@@ -905,7 +906,9 @@ export const shiftsRouter = router({
         await notifyShiftAdjusted(tx, input.userId, {
           actorName: ctx.user.fullName,
           reason: input.reason,
-          shiftDate: input.startedAt.toISOString().slice(0, 10),
+          // День по Ташкенту: смена, начатая до 05:00, по UTC ещё вчерашняя,
+          // и заголовок «Смена 31.10» назвал бы не тот день.
+          shiftDate: workshopDayIso(input.startedAt),
         });
 
         return saved;

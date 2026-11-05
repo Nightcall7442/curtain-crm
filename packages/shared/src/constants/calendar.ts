@@ -146,21 +146,27 @@ export function formatMonthPeriod(year: number, month: number, locale: Locale = 
   return `${monthName(month, locale)} ${year.toString()}`;
 }
 
-/** Подпись диапазона дат: «24 — 30 августа». */
-export function formatDayRange(start: Date, end: Date): string {
+/**
+ * Подпись диапазона дат: «24 — 30 августа», «24 — 30 avgust».
+ *
+ * Язык — параметром: без него узбекский экран рейтинга показывал русский
+ * месяц, и приложению пришлось держать свою копию этой функции.
+ */
+export function formatDayRange(start: Date, end: Date, locale: Locale = 'ru'): string {
   // Конец периода — полуинтервал (первый день СЛЕДУЮЩЕЙ недели), поэтому
   // для подписи берём предыдущий день: иначе неделя выглядела бы восьмидневной.
   const last = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+  const months = MONTHS_GENITIVE_BY_LOCALE[locale];
 
   const startDay = start.getUTCDate().toString();
   const lastDay = last.getUTCDate().toString();
-  const lastMonth = MONTH_NAMES_GENITIVE_RU[last.getUTCMonth()] ?? '';
+  const lastMonth = months[last.getUTCMonth()] ?? '';
 
   if (start.getUTCMonth() === last.getUTCMonth()) {
     return `${startDay} — ${lastDay} ${lastMonth}`;
   }
 
-  const startMonth = MONTH_NAMES_GENITIVE_RU[start.getUTCMonth()] ?? '';
+  const startMonth = months[start.getUTCMonth()] ?? '';
 
   return `${startDay} ${startMonth} — ${lastDay} ${lastMonth}`;
 }

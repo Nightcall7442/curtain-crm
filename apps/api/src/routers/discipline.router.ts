@@ -9,6 +9,7 @@ import {
   MAX_DISCIPLINE_DESCRIPTION_LENGTH,
   type DisciplineKind,
   type DisciplineLevel,
+  type Locale,
 } from '@curtain-crm/shared';
 import { disciplineEvents, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
@@ -20,6 +21,7 @@ import { idSchema, optionalText, periodSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { localizeLatenessDescription } from '../services/lateness.service';
 import { notifyDisciplineRecorded } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -142,7 +144,20 @@ export interface DisciplineEventRow {
   readonly createdAt: Date;
 }
 
-async function listEvents(executor: DbExecutor, period: Period, userId?: number): Promise<DisciplineEventRow[]> {
+/**
+ * Записи дисциплины за месяц.
+ *
+ * `locale` — язык клиента: пояснение к опозданию система пишет по-русски
+ * («Смена с 09:00, отметка в 11:52 — опоздание 172 мин»), и в узбекском
+ * интерфейсе оно стояло русской строкой под узбекским заголовком. Текст,
+ * введённый руководителем руками, показывается как есть.
+ */
+async function listEvents(
+  executor: DbExecutor,
+  period: Period,
+  userId: number | undefined,
+  locale: Locale,
+): Promise<DisciplineEventRow[]> {
   const { from, to } = monthBounds(period);
   const rows = await executor
     .select({
@@ -171,7 +186,11 @@ async function listEvents(executor: DbExecutor, period: Period, userId?: number)
     )
     .orderBy(desc(disciplineEvents.occurredOn), desc(disciplineEvents.id));
 
-  return rows.map((row) => ({ ...row, points: Number.parseFloat(row.points) }));
+  return rows.map((row) => ({
+    ...row,
+    points: Number.parseFloat(row.points),
+    description: row.description === null ? null : localizeLatenessDescription(row.description, locale),
+  }));
 }
 
 export const disciplineRouter = router({
@@ -296,12 +315,12 @@ export const disciplineRouter = router({
   /** Записи за месяц — все или одного сотрудника. */
   list: managementProcedure
     .input(periodSchema.extend({ userId: idSchema.optional() }))
-    .query(({ ctx, input }) => listEvents(ctx.db, input, input.userId)),
+    .query(({ ctx, input }) => listEvents(ctx.db, input, input.userId, ctx.locale)),
 
   /** Мои баллы за месяц: сводка и записи. Руководству — пусто. */
   my: protectedProcedure.input(periodSchema).query(async ({ ctx, input }) => {
     if (isManagement(ctx.user.roles)) return { summary: null, events: [] as DisciplineEventRow[] };
     const [summary] = await monthSummary(ctx.db, input, ctx.user.id);
-    return { summary: summary ?? null, events: await listEvents(ctx.db, input, ctx.user.id) };
+    return { summary: summary ?? null, events: await listEvents(ctx.db, input, ctx.user.id, ctx.locale) };
   }),
 });

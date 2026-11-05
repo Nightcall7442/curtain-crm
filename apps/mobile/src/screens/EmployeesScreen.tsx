@@ -22,13 +22,16 @@ import {
   View,
 } from 'react-native';
 
-import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
-import { Field, Input } from '../components/Field';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Card, CardLink, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
+import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Сотрудники: список, правка и приём нового.
@@ -47,6 +50,7 @@ import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } f
 export function EmployeesScreen(): ReactElement {
   const { t, m, locale } = useLocale();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
 
   const [search, setSearch] = useState('');
   /** Раскрытая карточка сотрудника. `null` — все свёрнуты. */
@@ -250,15 +254,18 @@ export function EmployeesScreen(): ReactElement {
     if (next === null) return;
 
     setFullName(person.fullName);
-    setPhone(person.phone);
+    // В поле — так же, как в списке: «+998 93 100 00 07», а не слитно.
+    // Сервер номер нормализует сам, пробелы ему не мешают.
+    setPhone(formatPhone(person.phone));
     setJobTitle(person.jobTitle ?? '');
     setDepartment(person.department);
   };
 
+  /* Без текста сервера: служебный ответ бывает по-английски и ничего не объясняет. */
   if (employees.isError) {
     return (
       <View style={styles.center}>
-        <ErrorState message={employees.error.message} />
+        <ErrorState />
       </View>
     );
   }
@@ -280,32 +287,44 @@ export function EmployeesScreen(): ReactElement {
     newPhone.trim().length > 0 &&
     newPassword.length >= 8 &&
     newRoles.length > 0 &&
-    firstBranchId !== undefined &&
-    !create.isPending;
+    firstBranchId !== undefined;
 
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* Снизу — безопасная зона и обычный отступ: это экран стека, панели
+          вкладок под ним нет, и место под неё оставляло пустую полосу. */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* --- Приём нового ------------------------------------------------- */}
         <Card>
-          <CardTitle
-            title={m('emp.new')}
-            icon="person"
-            action={
-              <Pressable
-                onPress={() => {
-                  setCreating((current) => !current);
-                }}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.toggle, pressed ? styles.pressed : null]}
-              >
-                <Text style={styles.toggleText}>{isCreating ? m('emp.hide') : m('emp.hire')}</Text>
-              </Pressable>
-            }
-          />
+          {/*
+            Свёрнутая карточка — только заголовок, и его нижний отступ (12)
+            вставал под ним пустотой: снизу 28 точек против 16 сверху.
+          */}
+          <View style={isCreating ? null : styles.titleOnly}>
+            {/*
+              «Принять / Скрыть» — ссылкой шапки, как «Подробнее» на других
+              карточках. Была своя таблетка высотой 36 — ниже порога пальца и
+              единственная такая в приложении.
+            */}
+            <CardTitle
+              title={m('emp.new')}
+              icon="person"
+              action={
+                <CardLink
+                  label={isCreating ? m('emp.hide') : m('emp.hire')}
+                  onPress={() => {
+                    setCreating((current) => !current);
+                  }}
+                />
+              }
+            />
+          </View>
 
           {isCreating && (
             <>
@@ -351,7 +370,9 @@ export function EmployeesScreen(): ReactElement {
                 </View>
               </Field>
 
-              <Pressable
+              {/* Общая кнопка формы: высота, таблетка и оттенок «недоступно» — как везде. */}
+              <SubmitButton
+                label={m('emp.hireSubmit')}
                 onPress={() => {
                   if (firstBranchId === undefined) return;
                   create.mutate({
@@ -363,19 +384,8 @@ export function EmployeesScreen(): ReactElement {
                   });
                 }}
                 disabled={!canCreate}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.submit,
-                  canCreate ? null : styles.submitOff,
-                  pressed ? styles.pressed : null,
-                ]}
-              >
-                {create.isPending ? (
-                  <ActivityIndicator color={colors.onAccent} />
-                ) : (
-                  <Text style={styles.submitText}>{m('emp.hireSubmit')}</Text>
-                )}
-              </Pressable>
+                pending={create.isPending}
+              />
             </>
           )}
         </Card>
@@ -422,9 +432,16 @@ export function EmployeesScreen(): ReactElement {
                   </View>
 
                   {!person.isActive && <Pill text={m('emp.disabled')} tone="neutral" />}
-                  <Icon name="chevron" size={16} color={colors.textMuted} />
+                  {/* Раскрытая строка — шеврон вниз, как у любого раскрывающегося списка. */}
+                  <View style={openId === person.id ? styles.chevronOpen : null}>
+                    <Icon name="chevron" size={16} color={colors.textMuted} />
+                  </View>
                 </Pressable>
 
+                {/*
+                  Правка — на своей подложке: поля не сливаются со списком
+                  сотрудников, и видно, где кончается карточка этого человека.
+                */}
                 {openId === person.id && (
                   <View style={styles.editor}>
                     <Field label={m('emp.photo')} hint={m('emp.photoHint')}>
@@ -457,29 +474,16 @@ export function EmployeesScreen(): ReactElement {
                       <Input value={jobTitle} onChangeText={setJobTitle} />
                     </Field>
 
+                    {/* Один из нескольких — общим выбором, а не своей копией его чипов. */}
                     <Field label={m('emp.department')}>
-                      <View style={styles.roles}>
-                        {DEPARTMENTS.map((value) => (
-                          <Pressable
-                            key={value}
-                            onPress={() => {
-                              setDepartment(value);
-                            }}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: value === department }}
-                            style={[styles.chip, value === department ? styles.chipActive : null]}
-                          >
-                            <Text
-                              style={[
-                                styles.chipText,
-                                value === department ? styles.chipTextActive : null,
-                              ]}
-                            >
-                              {t(DEPARTMENT_LABELS, value)}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
+                      <ChipSelect
+                        value={department}
+                        options={DEPARTMENTS.map((value) => ({
+                          value,
+                          label: t(DEPARTMENT_LABELS, value),
+                        }))}
+                        onChange={setDepartment}
+                      />
                     </Field>
 
                     {/*
@@ -522,6 +526,7 @@ export function EmployeesScreen(): ReactElement {
                         accessibilityRole="button"
                         style={({ pressed }) => [
                           styles.action,
+                          styles.actionFlex,
                           person.isActive ? styles.actionDanger : null,
                           pressed ? styles.pressed : null,
                         ]}
@@ -545,8 +550,10 @@ export function EmployeesScreen(): ReactElement {
                         }}
                         disabled={update.isPending}
                         accessibilityRole="button"
+                        accessibilityState={{ busy: update.isPending }}
                         style={({ pressed }) => [
                           styles.action,
+                          styles.actionFlex,
                           styles.actionPrimary,
                           pressed ? styles.pressed : null,
                         ]}
@@ -583,20 +590,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
-  },
-  toggle: {
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-    justifyContent: 'center',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  toggleText: {
-    ...typography.caption,
-    color: colors.accentStrong,
-    fontWeight: '600',
   },
   row: {
     flexDirection: 'row',
@@ -625,19 +618,36 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   editor: {
-    paddingBottom: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  chevronOpen: {
+    transform: [{ rotate: '90deg' }],
+  },
+  /* Гасит нижний отступ заголовка, когда под ним ничего нет. */
+  titleOnly: {
+    marginBottom: -spacing.md,
   },
   roles: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  /*
+    Чип роли — как в общем выборе (`ChipSelect`, им выбирается
+    подразделение строкой выше): та же высота, волосяная рамка и подпись,
+    которая при выборе меняет только начертание. Ролей можно выбрать
+    несколько, поэтому чипы свои, но выглядеть по-другому им незачем.
+  */
   chip: {
-    minHeight: 38,
+    minHeight: sizes.controlHeight,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
@@ -650,33 +660,54 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   chipTextActive: {
-    color: colors.headerText,
+    // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.headerText,
   },
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  /*
+    Кнопки правки — общей системы (`SubmitButton`): высота кнопки действия,
+    таблетка, жирная подпись. Было 46 и скругление 14 — на высоту поля, и
+    «Сохранить» читалась ещё одним полем, а не итогом формы. «Фото» — та же
+    кнопка во всю ширину поля, пара внизу делит ряд поровну.
+
+    Белая, как поля ввода: на подложке правки прозрачная кнопка сливалась
+    с фоном, и от неё оставалась одна рамка.
+  */
   action: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: radius.md,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionFlex: {
+    flex: 1,
+  },
   actionText: {
     ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   actionDanger: {
     borderColor: colors.danger,
   },
   actionDangerText: {
     ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.danger,
+    textAlign: 'center',
   },
   actionPrimary: {
     backgroundColor: colors.accent,
@@ -684,24 +715,10 @@ const styles = StyleSheet.create({
   },
   actionPrimaryText: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
-  },
-  submit: {
-    minHeight: 50,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.md,
-  },
-  submitOff: {
-    opacity: 0.4,
-  },
-  submitText: {
-    ...typography.body,
+    fontFamily: fonts.bold,
     fontWeight: '700',
     color: colors.onAccent,
+    textAlign: 'center',
   },
   note: {
     ...typography.caption,

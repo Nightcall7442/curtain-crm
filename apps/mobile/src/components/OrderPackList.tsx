@@ -2,9 +2,11 @@ import type { ReactElement } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Skeleton } from './Card';
+import { Icon } from './Icon';
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -19,6 +21,7 @@ import { useLocale } from '../hooks/useLocale';
  */
 export function OrderPackList({ orderId }: { readonly orderId: number }): ReactElement | null {
   const { m } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const rows = trpc.orders.packList.useQuery({ id: orderId });
 
@@ -54,23 +57,44 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
         }
       />
 
-      {items.map((row) => (
+      {items.map((row, index) => (
         <Pressable
           key={row.key}
           onPress={() => {
             setPacked.mutate({ id: orderId, key: row.key, packed: !row.checked });
           }}
-          disabled={setPacked.isPending}
+          disabled={setPacked.isPending || needsShift}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: row.checked }}
+          accessibilityState={{ checked: row.checked, disabled: needsShift }}
+          // В браузере `accessibilityState` не доходит до DOM: состояние для чтеца — aria-атрибутами.
+          aria-checked={row.checked}
+          aria-disabled={needsShift}
           accessibilityLabel={row.label}
-          style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
+          /*
+            Черта — сверху каждой строки, кроме первой: под последней она
+            висела бы над подсказкой и низом карточки, ничего не разделяя.
+          */
+          style={({ pressed }) => [
+            styles.row,
+            index === 0 ? null : styles.rowDivided,
+            pressed ? styles.pressed : null,
+            // Без смены отметку не сохранят (412): строки гаснут, как погашенная кнопка.
+            needsShift ? styles.off : null,
+          ]}
         >
-          {/* Галочка нарисована рамкой и заливкой, без значка из набора:
-              квадрат с птичкой и так читается, а лишний глиф в списке из
-              пятнадцати строк — рябь. */}
-          <View style={[styles.box, row.checked ? styles.boxChecked : null]}>
-            {row.checked && <Text style={styles.tick}>✓</Text>}
+          {/*
+            Квадрат — по центру ПЕРВОЙ строки подписи: ячейка высотой в
+            строку (21), квадрат в ней посередине. С отступом сверху в 1
+            точку он стоял на полторы ниже середины строки.
+
+            Птичка — значок набора, а не символ «✓»: тот брался из
+            системного шрифта и на Android, в Chrome и в Safari был разной
+            толщины и сидел в квадрате по-разному.
+          */}
+          <View style={styles.boxSlot}>
+            <View style={[styles.box, row.checked ? styles.boxChecked : null]}>
+              {row.checked && <Icon name="check" size={TICK_SIZE} color={colors.onAccent} />}
+            </View>
           </View>
 
           <View style={styles.text}>
@@ -93,9 +117,28 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
   );
 }
 
+/**
+ * Квадрат отметки. Скругление — меньше токена `radius.sm` (10): на стороне
+ * 22 оно превращало квадрат в кружок, и список читался как выбор одного
+ * варианта из многих, а не как отметки.
+ */
+const CHECKBOX_SIZE = 22;
+const CHECKBOX_RADIUS = 6;
+/**
+ * Птичка в квадрате. У глифа набора свои поля внутри, поэтому 16 в
+ * квадрате 22 на глаз дают те же поля, что и рамка вокруг: при 14 птичка
+ * выходила тоньше, чем прежний символ «✓».
+ */
+const TICK_SIZE = 16;
+
 const styles = StyleSheet.create({
+  off: {
+    opacity: opacity.disabled,
+  },
   counter: {
     ...typography.footnote,
+    // Начертанием, а не `fontWeight` поверх Medium: браузер рисовал ложный полужирный.
+    fontFamily: fonts.semibold,
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -107,28 +150,28 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     paddingVertical: spacing.sm,
-    borderBottomWidth: hairline,
-    borderBottomColor: colors.border,
+  },
+  rowDivided: {
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
+  },
+  boxSlot: {
+    height: typography.body.lineHeight,
+    justifyContent: 'center',
   },
   box: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.sm,
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: CHECKBOX_RADIUS,
     borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
   },
   boxChecked: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
-  },
-  tick: {
-    ...typography.footnote,
-    color: colors.onAccent,
-    fontWeight: '700',
   },
   text: {
     flex: 1,

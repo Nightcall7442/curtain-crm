@@ -2,10 +2,10 @@ import {
   formatDayRange,
   formatDisciplinePoints,
   formatMonthPeriod,
+  formatQuantity,
+  type Locale,
   monthName,
   RATING_COMPONENT_LABELS,
-  RATING_SCOPE_LABELS,
-  RATING_SCOPES,
   RatingScope,
   ROLE_LABELS,
   SEWER_CATEGORY_FEE_PERCENT,
@@ -13,13 +13,14 @@ import {
   type RatingScope as RatingScopeName,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, Progress } from '../components/Card';
 import { DisciplineCard } from '../components/DisciplineCard';
+import { RatingScopeSwitch } from '../components/RatingScopeSwitch';
 import { useLocale } from '../hooks/useLocale';
 import { trpc, type RouterOutputs } from '../lib/trpc';
-import { colors, radius, spacing, typography, fonts } from '../theme';
+import { colors, hairline, radius, spacing, typography, fonts } from '../theme';
 
 /**
  * Рейтинг сотрудников — соревнование.
@@ -33,7 +34,7 @@ import { colors, radius, spacing, typography, fonts } from '../theme';
  * их невозможно достать, подобрав параметры запроса.
  */
 export function RatingScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { m, locale } = useLocale();
   const [scope, setScope] = useState<RatingScopeName>(RatingScope.MONTH);
 
   const rating = trpc.rating.me.useQuery({ scope });
@@ -56,33 +57,15 @@ export function RatingScreen(): ReactElement {
       }
     >
       {/* Период ------------------------------------------------------------ */}
-      <View style={styles.scopeRow}>
-        {RATING_SCOPES.map((value) => {
-          const active = scope === value;
-
-          return (
-            <Pressable
-              key={value}
-              onPress={() => {
-                setScope(value);
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[styles.scopeButton, active ? styles.scopeButtonActive : null]}
-            >
-              <Text style={[styles.scopeText, active ? styles.scopeTextActive : null]}>
-                {t(RATING_SCOPE_LABELS, value)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <RatingScopeSwitch value={scope} onChange={setScope} />
 
       {data !== undefined && (
         <Text style={styles.periodCaption}>
+          {/* Месяцы — на языке интерфейса: прежде узбекская подпись выходила
+              «Ноябрь 2026 · 20 ishtirokchi». */}
           {scope === RatingScope.WEEK
-            ? formatDayRange(new Date(data.period.start), new Date(data.period.end))
-            : `${monthName(new Date(data.period.start).getUTCMonth() + 1)} ${new Date(data.period.start).getUTCFullYear().toString()}`}
+            ? formatDayRange(new Date(data.period.start), new Date(data.period.end), locale)
+            : `${monthName(new Date(data.period.start).getUTCMonth() + 1, locale)} ${new Date(data.period.start).getUTCFullYear().toString()}`}
           {m('rating.participants', { n: data.participants })}
         </Text>
       )}
@@ -102,15 +85,23 @@ export function RatingScreen(): ReactElement {
 
         {data === undefined ? (
           <Empty message={m('rating.loading')} />
-        ) : data.podium.length === 0 ? (
+        ) : data.podium.every((entry) => entry.score === null || entry.score === 0) ? (
+          /* Пусто и «у всех ноль» — одно и то же: пятеро на первом месте с
+             нулём баллов читались как ничья, хотя соревнование не началось.
+             Именно ноль, а не «не больше нуля»: штрафы дисциплины делают балл
+             отрицательным, и такая таблица — настоящая, её не прячем. */
           <Empty
             message={m('rating.noOrders')}
             hint={m('rating.noOrdersHint')}
           />
         ) : (
           <View>
-            {data.podium.map((entry) => (
-              <PodiumRow key={entry.userId} entry={entry} />
+            {data.podium.map((entry, index) => (
+              <PodiumRow
+                key={entry.userId}
+                entry={entry}
+                isLast={index === data.podium.length - 1}
+              />
             ))}
           </View>
         )}
@@ -168,27 +159,51 @@ function MyPlaceCard({
     );
   }
 
+  /*
+    Место — только у того, кто набрал баллы. При нуле у всех сервер всё
+    равно раздаёт места по порядку, и продавец видел «1 из 20» и «↑ 17»,
+    а строкой выше — «соревнование ещё не началось». Табло руководителя
+    живёт по тому же правилу; отрицательный балл (штраф) виден, но места
+    за него нет.
+  */
+  const scored = (me.score ?? 0) > 0;
+
   return (
-    <Card style={styles.myCard}>
+    <Card>
       <View style={styles.myHeader}>
         <View>
           <Text style={styles.myLabel}>{m('rating.yourPlace')}</Text>
           <View style={styles.myPlaceRow}>
-            <Text style={styles.myPlace}>{me.place === null ? '—' : me.place.toString()}</Text>
+            <Text style={styles.myPlace}>{scored && me.place !== null ? me.place.toString() : '—'}</Text>
             <Text style={styles.myPlaceTotal}>{m('rating.of', { n: data.participants })}</Text>
           </View>
         </View>
 
         <View style={styles.myScoreBlock}>
           <Text style={styles.myLabel}>{m('rating.score')}</Text>
-          <Text style={styles.myScore}>{me.score === null ? '—' : me.score.toString()}</Text>
+          {/*
+            Цвет — по знаку, как у баллов дисциплины ниже: «−2» зелёным
+            читался успехом, а строкой ниже тот же «−2» стоял терракотой.
+          */}
+          <Text
+            style={[
+              styles.myScore,
+              me.score === null || me.score === 0
+                ? styles.myScoreZero
+                : me.score < 0
+                  ? styles.myScoreNegative
+                  : null,
+            ]}
+          >
+            {me.score === null ? '—' : formatQuantity(me.score)}
+          </Text>
         </View>
       </View>
 
       <Progress percent={me.score ?? 0} />
 
       <View style={styles.myFooter}>
-        <PlaceDelta value={me.placeDelta} />
+        <PlaceDelta value={scored ? me.placeDelta : null} />
         <Text style={styles.myOrders}>{m('rating.closedOrders', { n: me.ordersCount })}</Text>
       </View>
 
@@ -203,10 +218,17 @@ function MyPlaceCard({
           <Text style={styles.breakdownRole}>{m('profile.sewerCategory')}</Text>
           <Text style={styles.disciplinePoints}>{SEWER_CATEGORY_LABELS[locale][me.sewerCategory.category]}</Text>
           <Text style={styles.breakdownRole}>
-            {m('profile.sewerCategoryHint', {
-              period: formatMonthPeriod(me.sewerCategory.period.year, me.sewerCategory.period.month, locale),
-              pct: SEWER_CATEGORY_FEE_PERCENT[me.sewerCategory.category],
-            })}
+            {sentence(
+              m('profile.sewerCategoryHint', {
+                period: formatMonthPeriod(
+                  me.sewerCategory.period.year,
+                  me.sewerCategory.period.month,
+                  locale,
+                ).toLocaleLowerCase(locale),
+                pct: SEWER_CATEGORY_FEE_PERCENT[me.sewerCategory.category],
+              }),
+              locale,
+            )}
           </Text>
         </View>
       )}
@@ -238,13 +260,25 @@ function MyPlaceCard({
 /** Одна строка пьедестала. */
 function PodiumRow({
   entry,
+  isLast,
 }: {
   readonly entry: RatingData['podium'][number];
+  /** Последняя строка — без линии: её край и так задаёт карточка. */
+  readonly isLast: boolean;
 }): ReactElement {
   const { m } = useLocale();
   return (
-    <View style={[styles.podiumRow, entry.isMe ? styles.podiumRowMine : null]}>
-      <Text style={styles.podiumPlace}>{entry.place === null ? '—' : entry.place.toString()}</Text>
+    <View
+      style={[
+        styles.podiumRow,
+        isLast ? null : styles.podiumDivider,
+        entry.isMe ? styles.podiumRowMine : null,
+      ]}
+    >
+      {/* Место — только за баллы, как в карточке «Ваше место» и на табло. */}
+      <Text style={styles.podiumPlace}>
+        {(entry.score ?? 0) > 0 && entry.place !== null ? entry.place.toString() : '—'}
+      </Text>
 
       <Text style={styles.podiumName} numberOfLines={1}>
         {entry.fullName}
@@ -258,7 +292,7 @@ function PodiumRow({
       */}
       {entry.isMe && <Text style={styles.podiumMine}>{m('rating.you')}</Text>}
 
-      <Text style={styles.podiumScore}>{entry.score === null ? '—' : entry.score.toString()}</Text>
+      <Text style={styles.podiumScore}>{entry.score === null ? '—' : formatQuantity(entry.score)}</Text>
     </View>
   );
 }
@@ -307,6 +341,21 @@ function Component({
   );
 }
 
+
+/**
+ * Фраза с заглавной буквы.
+ *
+ * Месяц в подсказку подставляется строчным: в русском шаблоне он стоит
+ * посреди фразы («…за октябрь 2026: …»), а с заглавной («за Октябрь») это
+ * ошибка. В узбекском шаблоне месяц — первое слово, и заглавную ему
+ * возвращает уже готовая фраза. Так же устроен заголовок «Лучшие за …» на
+ * табло.
+ */
+function sentence(text: string, locale: Locale): string {
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}
+
+
 /* -------------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
@@ -322,39 +371,10 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     paddingBottom: spacing.xl * 2,
   },
-  scopeRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.pill,
-    padding: 3,
-  },
-  scopeButton: {
-    minHeight: 44,
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-  },
-  scopeButtonActive: {
-    backgroundColor: colors.surface,
-  },
-  scopeText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  scopeTextActive: {
-    color: colors.accent,
-    fontWeight: '600',
-  },
   periodCaption: {
     ...typography.caption,
     color: colors.textMuted,
     marginTop: -spacing.sm,
-  },
-  myCard: {
-    borderWidth: 1,
-    borderColor: colors.accentSoft,
   },
   myHeader: {
     flexDirection: 'row',
@@ -388,11 +408,23 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '700',
     color: colors.accent,
+    fontVariant: ['tabular-nums'],
+  },
+  myScoreZero: {
+    color: colors.textPrimary,
+  },
+  myScoreNegative: {
+    color: colors.danger,
   },
   myFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    // Не помещаются в строку (узбекские подписи длиннее) — вторая встаёт
+    // под первую целиком, а не рвётся посередине с одинокой цифрой.
+    flexWrap: 'wrap',
+    columnGap: spacing.md,
+    rowGap: spacing.xs,
     marginTop: spacing.md,
   },
   myOrders: {
@@ -401,16 +433,19 @@ const styles = StyleSheet.create({
   },
   delta: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
   deltaNeutral: {
     ...typography.caption,
     color: colors.textMuted,
   },
+  // Разделители волосяные, как в табло рейтинга на главной: черта в
+  // пиксель на плотном экране выглядит грубой.
   breakdown: {
     marginTop: spacing.lg,
     paddingTop: spacing.md,
-    borderTopWidth: 1,
+    borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
   breakdownRole: {
@@ -426,8 +461,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   componentLabel: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
+    ...typography.footnote,
     color: colors.textMuted,
   },
   componentValue: {
@@ -442,7 +476,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+  },
+  podiumDivider: {
+    borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
   podiumRowMine: {
@@ -458,6 +494,7 @@ const styles = StyleSheet.create({
   },
   podiumMine: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.accentStrong,
     fontWeight: '600',
     marginHorizontal: spacing.sm,
@@ -472,9 +509,7 @@ const styles = StyleSheet.create({
     color: colors.accentStrong,
   },
   footnote: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    lineHeight: 16,
+    ...typography.footnote,
     color: colors.textMuted,
   },
 });

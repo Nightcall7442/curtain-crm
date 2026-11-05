@@ -1,0 +1,54 @@
+# Сборка APK для Android — по кнопке (Actions → «APK для Android» → Run).
+#
+# Собирает EAS на серверах Expo: там же лежит ключ подписи проекта
+# (владелец muzaffar_595), поэтому новый APK ставится поверх старого как
+# обновление, без удаления приложения и повторного входа. Нужен один
+# секрет репозитория — EXPO_TOKEN (expo.dev → Account settings → Access
+# tokens). Ссылка на готовый APK — в конце лога шага «Сборка» и на
+# странице проекта в expo.dev.
+name: APK для Android
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.4'
+
+jobs:
+  apk:
+    name: EAS build (preview, APK)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Проверка секрета
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Нет секрета EXPO_TOKEN: Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # --wait: работа ждёт конца сборки и печатает ссылку на APK.
+      - name: Сборка
+        working-directory: apps/mobile
+        run: eas build --platform android --profile preview --non-interactive --wait

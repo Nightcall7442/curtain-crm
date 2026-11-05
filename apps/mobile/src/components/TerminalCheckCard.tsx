@@ -15,10 +15,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { ShiftRequiredBanner, useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
-import { Card, CardTitle } from './Card';
+import { Card, CardTitle, ErrorState } from './Card';
 import { Field, Input, MoneyInput } from './Field';
 import { Icon } from './Icon';
 import { PayTypeBadge } from './PayTypeBadge';
@@ -36,6 +37,7 @@ import { TerminalDaySummary } from './TerminalDaySummary';
  */
 export function TerminalCheckCard(): ReactElement {
   const { m, money, locale } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const today = trpc.terminalChecks.today.useQuery();
   const { user } = useAuth();
@@ -64,7 +66,8 @@ export function TerminalCheckCard(): ReactElement {
       return;
     }
     const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // Массив типов, а не `MediaTypeOptions`: тот объявлен устаревшим и на каждый выбор пишет предупреждение.
+      mediaTypes: ['images'],
       quality: 0.7,
       base64: true,
       exif: false,
@@ -102,8 +105,17 @@ export function TerminalCheckCard(): ReactElement {
   return (
     <Card>
       <CardTitle title={m('terminal.title')} icon="paid" />
+      {/*
+        Ошибка — отдельно от загрузки. Раньше `data === undefined` означало
+        только «грузится», и при сбое карточка крутила индикатор вечно, хотя
+        список заказов под ней уже честно писал «Не удалось загрузить».
+      */}
       {data === undefined ? (
-        <ActivityIndicator color={colors.accent} style={styles.loader} />
+        today.isError ? (
+          <ErrorState />
+        ) : (
+          <ActivityIndicator color={colors.accent} style={styles.loader} />
+        )
       ) : (
         <>
           <View style={styles.progressRow}>
@@ -128,15 +140,25 @@ export function TerminalCheckCard(): ReactElement {
             здесь больше нет: чек и касса — разные вещи, и прикреплять фото
             к оплате незачем.
           */}
+          {/*
+            Две строки на чек, как в карточке «Терминал» на главной: сверху
+            кто и когда, снизу чем и сколько. В одну строку имя ужималось до
+            «Фар…», а значки и суммы вставали каждый на своём месте — колонок
+            не получалось.
+          */}
           {data.rows.map((row) => (
             <View key={row.id} style={styles.row}>
-              <Text style={styles.rowName} numberOfLines={1}>
-                {row.fullName}
-              </Text>
-              <PayTypeBadge type={row.payType} />
-              <Text style={styles.rowAmount}>{money(parseMoney(row.amount))}</Text>
-              <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
-              <Icon name="completed" size={16} color={colors.textMuted} />
+              <View style={styles.rowLine}>
+                <Text style={styles.rowName}>{row.fullName}</Text>
+                <View style={styles.rowWhen}>
+                  <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
+                  <Icon name="completed" size={16} color={colors.textMuted} />
+                </View>
+              </View>
+              <View style={styles.rowLine}>
+                <PayTypeBadge type={row.payType} />
+                <Text style={styles.rowAmount}>{money(parseMoney(row.amount))}</Text>
+              </View>
             </View>
           ))}
 
@@ -232,6 +254,13 @@ export function TerminalCheckCard(): ReactElement {
             placeholder={m('terminal.commentPlaceholder')}
           />
         </Field>
+        {/* Без смены чек не примут (412): баннер объясняет погашенную кнопку. */}
+        <ShiftRequiredBanner
+          style={styles.shiftBanner}
+          onNavigate={() => {
+            setOpen(false);
+          }}
+        />
         <SubmitButton
           label={m('terminal.submit')}
           onPress={() => {
@@ -243,7 +272,7 @@ export function TerminalCheckCard(): ReactElement {
               comment: comment.trim() === '' ? null : comment.trim(),
             });
           }}
-          disabled={photo === null || payType === null || inputToMajor(amount) <= 0}
+          disabled={photo === null || payType === null || inputToMajor(amount) <= 0 || needsShift}
           pending={create.isPending}
         />
       </BottomSheet>
@@ -252,15 +281,29 @@ export function TerminalCheckCard(): ReactElement {
 }
 
 const styles = StyleSheet.create({
+  // В шторке у полей свой нижний отступ, у баннера — этот: до кнопки тот же шаг.
+  shiftBanner: {
+    marginBottom: spacing.md,
+  },
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  /*
+    Две плитки в ряд, а не три.
+
+    В трети ряда (104 px на экране 360) значок «Наличные» — купюра и слово
+    — не помещался: он шире плитки на 11 px и вылезал на её рамку с обеих
+    сторон. Ширина значка задана его словом, и ужимать слово нельзя.
+    Базовая ширина меньше половины, добор до края делает `flexGrow`, —
+    так же собраны плитки на главной.
+  */
   typeTile: {
-    width: '31%',
+    flexBasis: '40%',
     flexGrow: 1,
     minHeight: 52,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
@@ -307,39 +350,56 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
     borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
+  rowLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   rowName: {
     ...typography.body,
-    color: colors.textSecondary,
-    flex: 1,
+    color: colors.textPrimary,
+    // Имя переносится, а не обрезается: кто пробил чек — главное в строке.
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  rowWhen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   rowAmount: {
     ...typography.value,
     color: colors.textPrimary,
-    marginHorizontal: spacing.sm,
+    // Значка у старого чека может не быть — сумма всё равно у правого края.
+    marginLeft: 'auto',
+    fontVariant: ['tabular-nums'],
   },
   rowTime: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.textMuted,
+    fontVariant: ['tabular-nums'],
   },
+  /* Та же высота и скругление, что у кнопок «Новый заказ», «Касса» на этом экране. */
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
+    gap: spacing.sm,
+    minHeight: 48,
     marginTop: spacing.sm,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     backgroundColor: colors.accentSoft,
   },
   buttonText: {
     ...typography.body,
-    fontWeight: '600',
+    // Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным.
+    fontFamily: fonts.semibold,
     color: colors.accent,
   },
   pressed: {

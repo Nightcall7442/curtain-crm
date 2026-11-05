@@ -7,9 +7,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useLocation } from '../hooks/useLocation';
 import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, fonts } from '../theme';
+import { colors, radius, spacing, typography } from '../theme';
 
-import { Card, CardTitle, Pill, Row } from './Card';
+import { Card, CardTitle, ErrorState, Pill, Row } from './Card';
 import { ShiftRing } from './ShiftRing';
 import { SlideToConfirm } from './SlideToConfirm';
 import { useLocale } from '../hooks/useLocale';
@@ -95,14 +95,30 @@ export function ShiftControl({
 
   const isBusy = isRequesting || checkIn.isPending || checkOut.isPending;
   const shift = current.data ?? null;
+  /*
+    Состояние смены ИЗВЕСТНО только по ответу сервера.
 
-  const handleCheckIn = (): void => {
+    Пока запрос летит или упал, `current.data` равен `undefined`, и прежнее
+    `?? null` превращало «не знаю» в «смены нет»: швея с открытой с 06:52
+    сменой видела «Не открыта», кольцо «Смена не открыта 00:00:00» и
+    приглашение «Проведите, чтобы начать смену» — а при обрыве связи
+    видела это как факт и шла отмечаться второй раз. Пока состояние
+    неизвестно, ничего про смену не утверждаем и жест не предлагаем.
+  */
+  const isKnown = current.data !== undefined;
+
+  /*
+    Обработчики жеста отвечают, состоялось ли действие: `false` — нет, и
+    бегунок сразу возвращается к началу. Без ответа он ждал страховочные
+    400 мс в конце дорожки, будто смена уже отмечена, — хотя геолокацию
+    не дали или швея отменила снимок стола.
+  */
+  const handleCheckIn = async (): Promise<boolean> => {
     setServerError(null);
-    void (async () => {
-      const position = await requestPosition();
-      if (position === null) return;
-      checkIn.mutate(position);
-    })();
+    const position = await requestPosition();
+    if (position === null) return false;
+    checkIn.mutate(position);
+    return true;
   };
 
   /**
@@ -116,7 +132,8 @@ export function ShiftControl({
       return null;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // Массив типов, а не `MediaTypeOptions`: тот объявлен устаревшим и пишет предупреждение.
+      mediaTypes: ['images'],
       quality: 0.6,
       base64: true,
       exif: false,
@@ -139,26 +156,39 @@ export function ShiftControl({
     })();
   };
 
-  const handleCheckOut = (): void => {
+  const handleCheckOut = (): boolean | Promise<boolean> => {
     setServerError(null);
     if (!needsDeskPhoto) {
       finishShift(null);
-      return;
+      return true;
     }
     // Швее — сначала просьба и снимок: «убедитесь, что всё убрано и чисто».
     // Отмена в любой точке оставляет смену открытой.
-    Alert.alert(m('shift.deskTitle'), m('shift.deskText'), [
-      { text: m('common.cancel'), style: 'cancel' },
-      {
-        text: m('shift.deskTake'),
-        onPress: () => {
-          void (async () => {
-            const photo = await captureDeskPhoto();
-            if (photo !== null) finishShift(photo);
-          })();
-        },
-      },
-    ]);
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(
+        m('shift.deskTitle'),
+        m('shift.deskText'),
+        [
+          {
+            text: m('common.cancel'),
+            style: 'cancel',
+            onPress: () => {
+              resolve(false);
+            },
+          },
+          {
+            text: m('shift.deskTake'),
+            onPress: () => {
+              void (async () => {
+                const photo = await captureDeskPhoto();
+                if (photo !== null) finishShift(photo);
+                resolve(photo !== null);
+              })();
+            },
+          },
+        ],
+      );
+    });
   };
 
   const startedAt = shift === null ? null : new Date(shift.startedAt);
@@ -166,19 +196,30 @@ export function ShiftControl({
   return (
     <>
       <Card>
+        {/*
+          «Текущая смена», а не «Смена»: на экране «Смена» заголовок карточки
+          повторял шапку экрана слово в слово. Так же карточка называется на
+          главной и в профиле.
+        */}
         <CardTitle
-          title={m('shift.title')}
+          title={m('shift.current')}
           icon="shift"
           action={
-            <Pill
-              text={shift === null ? m('shift.notOpen') : m('shift.open')}
-              tone={shift === null ? 'neutral' : 'positive'}
-            />
+            isKnown ? (
+              <Pill
+                text={shift === null ? m('shift.notOpen') : m('shift.open')}
+                tone={shift === null ? 'neutral' : 'positive'}
+              />
+            ) : undefined
           }
         />
 
-        {current.isLoading ? (
-          <ActivityIndicator color={colors.accent} style={styles.loader} />
+        {!isKnown ? (
+          current.isError ? (
+            <ErrorState />
+          ) : (
+            <ActivityIndicator color={colors.accent} style={styles.loader} />
+          )
         ) : shift === null ? (
           <Text style={styles.description}>{m('shift.closedHint')}</Text>
         ) : (
@@ -198,7 +239,7 @@ export function ShiftControl({
         )}
       </Card>
 
-      {showTimer && (
+      {showTimer && isKnown && (
         <Card>
           <ShiftRing
             startedAt={startedAt}
@@ -209,7 +250,8 @@ export function ShiftControl({
         </Card>
       )}
 
-      {children}
+      {/* Выезд и отлучка зависят от того же ответа: до него они тоже показали бы «смены нет». */}
+      {isKnown && children}
 
       {(locationError !== null || serverError !== null) && (
         <View style={styles.error} accessibilityRole="alert">
@@ -223,14 +265,19 @@ export function ShiftControl({
         естественный момент запросить геолокацию. Для экранного диктора
         компонент остаётся обычной кнопкой.
       */}
-      <SlideToConfirm
-        label={shift === null ? m('shift.slideStart') : m('shift.slideEnd')}
-        onConfirm={shift === null ? handleCheckIn : handleCheckOut}
-        disabled={current.isLoading}
-        busy={isBusy}
-      />
+      {isKnown && (
+        <>
+          <SlideToConfirm
+            label={shift === null ? m('shift.slideStart') : m('shift.slideEnd')}
+            onConfirm={shift === null ? handleCheckIn : handleCheckOut}
+            busy={isBusy}
+          />
 
-      <Text style={styles.footnote}>{isRequesting ? m('shift.locating') : m('shift.geoNote')}</Text>
+          <Text style={styles.footnote}>
+            {isRequesting ? m('shift.locating') : m('shift.geoNote')}
+          </Text>
+        </>
+      )}
     </>
   );
 }
@@ -239,10 +286,11 @@ const styles = StyleSheet.create({
   loader: {
     marginVertical: spacing.lg,
   },
+  // Кегль и строка — ступенями шкалы, а не своими числами (20, 19, 17):
+  // текст карточки смены должен стоять на той же сетке, что и соседние.
   description: {
     ...typography.body,
     color: colors.textSecondary,
-    lineHeight: 20,
   },
   error: {
     backgroundColor: colors.dangerSoft,
@@ -250,15 +298,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   errorText: {
-    fontFamily: fonts.medium,
+    ...typography.caption,
     color: colors.danger,
-    fontSize: 13,
-    lineHeight: 19,
   },
   footnote: {
     ...typography.caption,
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 17,
   },
 });

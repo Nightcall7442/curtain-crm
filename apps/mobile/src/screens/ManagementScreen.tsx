@@ -1,12 +1,13 @@
 import { useNavigation } from '@react-navigation/native';
 import type { ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, SectionHeader } from '../components/Card';
 import { MonitorTiles } from '../components/monitor/MonitorTiles';
 import { Icon, type IconName } from '../components/Icon';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 /**
  * Куда ведут пункты раздела.
@@ -50,6 +51,7 @@ interface Entry {
 export function ManagementScreen(): ReactElement {
   const { m } = useLocale();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const now = new Date();
 
   const pendingDayOff = trpc.dayOff.list.useQuery({ status: 'pending' });
@@ -72,6 +74,12 @@ export function ManagementScreen(): ReactElement {
       ? null
       : payroll.data.items.filter((row) => row.status !== 'paid').length;
 
+  /*
+    Значки — по смыслу пункта, и у каждого свой. Прежде зарплата шла
+    пачкой купюр, закупочные материалы — кошельком зарплаты, а поручения —
+    «плюсом» назначения: соседние строки обменялись значками, и список
+    читался по подписям, а не с одного взгляда.
+  */
   const entries: readonly Entry[] = [
     {
       route: 'DayOffApprovals',
@@ -82,14 +90,14 @@ export function ManagementScreen(): ReactElement {
     },
     {
       route: 'PayrollApprovals',
-      icon: 'paid',
+      icon: 'payroll',
       title: m('mgmt.payroll'),
       hint: m('mgmt.payrollHint'),
       badge: payrollWaiting,
     },
     {
       route: 'TaskAssign',
-      icon: 'assigned',
+      icon: 'task',
       title: m('mgmt.tasks'),
       hint: m('mgmt.tasksHint'),
       badge: tasks.data?.total ?? null,
@@ -101,7 +109,7 @@ export function ManagementScreen(): ReactElement {
         привезённый в цех товар, и правят их за один заход.
       */
       route: 'PurchasePrices',
-      icon: 'payroll',
+      icon: 'materials',
       title: m('mgmt.prices'),
       hint: m('mgmt.pricesHint'),
       /*
@@ -113,7 +121,9 @@ export function ManagementScreen(): ReactElement {
   ];
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    /* Снизу — безопасная зона и обычный отступ, а не место под панель
+       вкладок: это экран стека, панели под ним нет. */
+    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}>
       {/* Табло — кто чем занят сейчас: с этого руководитель начинает обход цеха. */}
       <SectionHeader title={m('monitor.title')} />
       <MonitorTiles />
@@ -168,7 +178,6 @@ export function ManagementScreen(): ReactElement {
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   gap: {
     height: spacing.lg,
@@ -203,6 +212,10 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.body,
+    // Насыщенность — семейством: каждое начертание — свой файл, и вес на
+    // семействе Medium браузер рисовал поддельным жирным, жирнее и мутнее
+    // настоящего и не так, как в APK.
+    fontFamily: fonts.semibold,
     color: colors.textPrimary,
     fontWeight: '600',
   },
@@ -222,6 +235,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     ...typography.caption,
+    fontFamily: fonts.bold,
     color: colors.onAccent,
     fontWeight: '700',
   },

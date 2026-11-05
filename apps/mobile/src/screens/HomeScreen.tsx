@@ -5,6 +5,8 @@ import {
   isOverdueDate,
   ORDER_STATUS_LABELS,
   parseMoney,
+  plural,
+  PLURAL_EMPLOYEES_GENITIVE,
   RatingScope,
   yesterdayIso,
 } from '@curtain-crm/shared';
@@ -15,11 +17,11 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 
 import { Avatar } from '../components/Avatar';
 import { EventsBoard } from '../components/EventsBoard';
-import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
+import { Card, CardLink, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { PayTypeBadge } from '../components/PayTypeBadge';
 import { TerminalDaySummary } from '../components/TerminalDaySummary';
-import { OrderCard } from '../components/OrderCard';
+import { ORDER_CARD_GAP, OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { MonitorTiles } from '../components/monitor/MonitorTiles';
 import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
@@ -31,6 +33,7 @@ import {
   colors,
   hairline,
   radius,
+  sizes,
   spacing,
   tabBarSpace,
   typography,
@@ -128,6 +131,7 @@ export function HomeScreen(): ReactElement {
     ]);
   };
 
+  // Считается только по полученному ответу: пока его нет, плашка не рисуется вовсе (см. карточку смены ниже).
   const isOnShift = shift.data !== null && shift.data !== undefined;
 
   return (
@@ -179,7 +183,7 @@ export function HomeScreen(): ReactElement {
           >
             <Avatar
               uri={avatarUrl}
-              size={44}
+              size={sizes.touchTarget}
               style={styles.avatar}
               fallback={<Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>}
             />
@@ -239,22 +243,51 @@ export function HomeScreen(): ReactElement {
       {!isManager && (
         <View style={styles.overlap}>
           <Card>
-            <CardTitle title={m('home.currentShift')} />
-
             {/*
-            Общая плашка, а не своя.
-            Здесь стояла самодельная: прямоугольная вместо таблетки и с другим
-            весом шрифта. Состояние смены то же самое, что на экране отметки и
-            в карточке профиля, где оно показано через `Pill`, — и выглядеть
-            оно обязано одинаково во всех трёх местах.
-          */}
-            <Pill
-              text={isOnShift ? m('home.shiftOpen') : m('home.shiftClosed')}
-              tone={isOnShift ? 'positive' : 'warning'}
+              Та же иконка смены, что на вкладке «Смена» и в профиле: без неё
+              заголовок стоял левее всех остальных.
+
+              Плашка состояния — в строке заголовка и та же, что у карточек
+              «Текущая смена» на вкладке «Смена» и в профиле: «Открыта» /
+              «Не открыта», зелёная / серая. Здесь стояла своя — «Смена не
+              открыта» янтарём под заголовком, — и одно состояние в трёх
+              местах называлось по-разному и разным цветом. Янтарь к тому же
+              читался предупреждением, хотя смена до прихода на место и не
+              должна быть открыта. Короткая подпись дополняет заголовок, а не
+              повторяет слово «смена».
+
+              Плашка — только когда ответ получен. «Нет данных» и «смены нет» —
+              разные вещи: пока запрос летит или упал, `shift.data` равен
+              `undefined`, и утверждать что-либо о смене нельзя (`null` —
+              смены действительно нет).
+            */}
+            <CardTitle
+              title={m('home.currentShift')}
+              icon="shift"
+              action={
+                shift.data === undefined ? undefined : (
+                  <Pill
+                    text={isOnShift ? m('shift.open') : m('shift.notOpen')}
+                    tone={isOnShift ? 'positive' : 'neutral'}
+                  />
+                )
+              }
             />
 
-            {shift.data !== null && shift.data !== undefined ? (
-              <View style={styles.shiftDetails}>
+            {/*
+              Подробности — тоже только по ответу сервера. Прежняя проверка
+              читала «ответа нет» как «смена не открыта»: сотрудник с открытой
+              сменой при каждом холодном запуске видел «Отметьтесь на
+              вкладке…», а при обрыве связи — навсегда.
+            */}
+            {shift.data === undefined ? (
+              shift.isError ? (
+                <ErrorState />
+              ) : (
+                <Skeleton rows={2} />
+              )
+            ) : shift.data !== null ? (
+              <View>
                 <Row label={m('home.branch')} value={shift.data.branchName} />
                 <Row label={m('home.shiftStart')} value={timeOf(shift.data.startedAt)} />
               </View>
@@ -333,36 +366,65 @@ export function HomeScreen(): ReactElement {
               // Единственный вход на экран «Мои задачи»: он показывает заказы,
               // по которым сотрудник МОЖЕТ что-то сделать прямо сейчас, — это
               // другой вопрос, чем «что горит по срокам» ниже.
-              <Pressable
+              <CardLink
+                label={m('home.myTasks')}
                 onPress={() => {
                   navigation.navigate('TaskList');
                 }}
-                accessibilityRole="button"
-                hitSlop={8}
-              >
-                {({ pressed }) => (
-                  <Text style={[styles.taskLink, pressed ? styles.pressed : null]}>
-                    {m('home.myTasks')}
-                  </Text>
-                )}
-              </Pressable>
+              />
             }
           />
-          {upcoming.length === 0 ? (
+          {/*
+            «Заказов нет» — только по полученному списку.
+
+            Пока список грузится или не загрузился, пустое состояние было бы
+            ложью того же рода, что ноль в плитке: плитки выше честно пишут
+            прочерк, а карточка под ними утверждала «Активных заказов нет».
+          */}
+          {orders.data === undefined ? (
+            orders.isError ? (
+              <ErrorState />
+            ) : (
+              <Skeleton rows={3} />
+            )
+          ) : upcoming.length === 0 ? (
             <Empty message={m('home.noActiveOrders')} hint={m('home.noActiveOrdersHint')} />
           ) : (
             <View>
-              {upcoming.map((order) => (
-                <View key={order.id} style={styles.upcomingRow}>
-                  <Text style={styles.upcomingNumber}>
-                    {order.orderNumber ?? `#${order.id.toString()}`}
-                  </Text>
-                  <Text style={styles.upcomingStatus} numberOfLines={1}>
-                    {t(ORDER_STATUS_LABELS, order.status)}
-                  </Text>
-                  <Text style={styles.upcomingDeadline}>{formatIsoDateShort(order.deadline)}</Text>
-                </View>
-              ))}
+              {upcoming.map((order, index) => {
+                const late = isOverdueDate(order.deadline);
+                return (
+                  /*
+                    Строка — вход в заказ, как карточки «Просроченных» ниже.
+                    Номер набран зелёным, как ссылка, и читался ссылкой, а
+                    нажатие ничего не делало.
+                  */
+                  <Pressable
+                    key={order.id}
+                    onPress={() => {
+                      navigation.navigate('OrderDetail', { orderId: order.id });
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.upcomingRow,
+                      index < upcoming.length - 1 ? styles.upcomingDivider : null,
+                      pressed ? styles.pressed : null,
+                    ]}
+                  >
+                    <Text style={styles.upcomingNumber}>
+                      {order.orderNumber ?? `#${order.id.toString()}`}
+                    </Text>
+                    {/* Две строки, а не многоточие: статус и есть ответ на вопрос «что с заказом». */}
+                    <Text style={styles.upcomingStatus} numberOfLines={2}>
+                      {t(ORDER_STATUS_LABELS, order.status)}
+                    </Text>
+                    {/* Прошедший срок — терракотой, как «просрочен» в карточках ниже: чёрным он читался будущим. */}
+                    <Text style={[styles.upcomingDeadline, late ? styles.upcomingLate : null]}>
+                      {formatIsoDateShort(order.deadline)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           )}
         </Card>
@@ -371,6 +433,12 @@ export function HomeScreen(): ReactElement {
       {overdue.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionHeading}>{m('home.overdueOrders')}</Text>
+          {/*
+            Промежуток между карточками задаёт стопка, а не карточка: свой
+            нижний отступ последней карточки прибавлялся к шагу экрана, и до
+            «Ближайших событий» выходило 28 точек вместо общих 16.
+          */}
+          <View style={styles.overdueList}>
           {overdue.slice(0, 5).map((order) => (
             <OrderCard
               key={order.id}
@@ -388,6 +456,7 @@ export function HomeScreen(): ReactElement {
               }}
             />
           ))}
+          </View>
         </View>
       )}
 
@@ -400,7 +469,19 @@ export function HomeScreen(): ReactElement {
         читается как передышка.
       */}
       <View style={styles.section}>
-        <EventsBoard events={events.data ?? []} isLoading={events.isLoading} />
+        {/*
+          Не загрузилось — так и пишем. Пустой массив вместо ошибки рисовал
+          три пустых места «+ Мероприятие», то есть «событий нет», а это
+          неправда: их просто не удалось получить.
+        */}
+        {events.data === undefined && events.isError ? (
+          <Card>
+            <CardTitle title={m('events.title')} icon="calendar" />
+            <ErrorState />
+          </Card>
+        ) : (
+          <EventsBoard events={events.data ?? []} isLoading={events.isLoading} />
+        )}
       </View>
     </ScrollView>
   );
@@ -470,7 +551,7 @@ function timeOf(value: string | Date): string {
 }
 
 /**
- * Инициалы для аватара в шапке: «Малика Юсупова» → «МЮ».
+ * Инициалы для аватара в шапке: «Юсупова Малика» → «ЮМ».
  *
  * Фотографии может не быть вовсе, а пустой круг в шапке читается как
  * сломавшаяся картинка. Инициалы — честная замена.
@@ -543,9 +624,12 @@ function WorkshopSummary(): ReactElement {
 
   if (dashboard.data === undefined) {
     return (
-      <Card>
-        <Skeleton rows={2} />
-      </Card>
+      <CardPlaceholder
+        title={m('home.workshopToday')}
+        icon="branch"
+        isError={dashboard.isError}
+        rows={3}
+      />
     );
   }
 
@@ -577,15 +661,18 @@ function WorkshopSummary(): ReactElement {
         );
       })}
       {(hidden > 0 || allShown) && (
+        /*
+          Настоящая цель в 44 точки, а не строка в 20 с `hitSlop`: в браузере
+          `hitSlop` не работает, и «Ещё 11» ловилась пальцем через раз.
+        */
         <Pressable
           onPress={() => {
             setAllShown((value) => !value);
           }}
           accessibilityRole="button"
-          hitSlop={8}
-          style={styles.onShiftRow}
+          style={({ pressed }) => [styles.onShiftMore, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.onShiftMore}>
+          <Text style={styles.onShiftMoreText}>
             {hidden > 0 ? m('manage.more', { n: hidden }) : m('stock.collapse')}
           </Text>
         </Pressable>
@@ -604,19 +691,21 @@ function WorkshopSummary(): ReactElement {
  * заказов: без готовых штор, витрины и предоплат, и с кассой она не
  * сходилась. С какого дня считается неделя и месяц — написано в строке.
  */
-function RevenueCard(): ReactElement | null {
+function RevenueCard(): ReactElement {
   const { m, money } = useLocale();
   const revenue = trpc.reports.revenue.useQuery({});
 
+  /*
+    Текст ошибки — свой, а не из ответа. При обрыве связи пакетный запрос
+    получает одну ошибку на всех, и остальным процедурам пакета достаётся
+    служебное английское «Missing result» — его и показывала карточка.
+  */
   if (revenue.isError) {
-    return (
-      <Card>
-        <CardTitle title={m('home.revenue')} icon="paid" />
-        <ErrorState message={revenue.error.message} />
-      </Card>
-    );
+    return <CardPlaceholder title={m('home.revenue')} icon="paid" isError rows={3} />;
   }
-  if (revenue.data === undefined) return null;
+  if (revenue.data === undefined) {
+    return <CardPlaceholder title={m('home.revenue')} icon="paid" isError={false} rows={3} />;
+  }
   const { today, week, month } = revenue.data;
 
   return (
@@ -647,7 +736,7 @@ function RevenueCard(): ReactElement | null {
  * на руках. Полный разбор по источникам и сдачам — за «Подробнее», в кассе
  * дня.
  */
-function CashTodayCard(): ReactElement | null {
+function CashTodayCard(): ReactElement {
   const { m, money } = useLocale();
   const navigation = useNavigation();
   const day = useToday();
@@ -656,14 +745,11 @@ function CashTodayCard(): ReactElement | null {
 
   // Не загрузилась — так и говорим: пропавшая карточка читалась как «денег нет».
   if (today.isError) {
-    return (
-      <Card>
-        <CardTitle title={m('home.cashToday')} icon="paid" />
-        <ErrorState message={today.error.message} />
-      </Card>
-    );
+    return <CardPlaceholder title={m('home.cashToday')} icon="paid" isError rows={3} />;
   }
-  if (today.data === undefined) return null;
+  if (today.data === undefined) {
+    return <CardPlaceholder title={m('home.cashToday')} icon="paid" isError={false} rows={3} />;
+  }
   const byUser = onHands.data?.byUser ?? [];
   const onHandsTotal = byUser.reduce((sum, row) => sum + parseMoney(row.onHands), 0);
 
@@ -673,19 +759,19 @@ function CashTodayCard(): ReactElement | null {
         title={m('home.cashToday')}
         icon="paid"
         action={
-          <Pressable
+          /*
+            Общая ссылка шапки, как «Подробнее» у рейтинга ниже: цель 44
+            точки. Своя подпись с `hitSlop` была целью 72×18 — в браузере
+            `hitSlop` не работает вовсе, — и на одном экране одна и та же
+            ссылка выходила двух размеров.
+          */
+          <CardLink
+            label={m('rating.more')}
+            accessibilityLabel={`${m('home.cashToday')}: ${m('rating.more')}`}
             onPress={() => {
               navigation.navigate('CashDesk');
             }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>
-                {m('rating.more')}
-              </Text>
-            )}
-          </Pressable>
+          />
         }
       />
       <Row label={m('cashDay.inKassa')} value={money(today.data.balance.cash.total)} />
@@ -694,7 +780,10 @@ function CashTodayCard(): ReactElement | null {
         label={
           byUser.length === 0
             ? m('cashDay.onHands')
-            : `${m('cashDay.onHands')} · ${m('cashDay.onHandsWho', { n: byUser.length })}`
+            : `${m('cashDay.onHands')} · ${m('cashDay.onHandsWho', {
+                n: byUser.length,
+                who: plural(byUser.length, PLURAL_EMPLOYEES_GENITIVE),
+              })}`
         }
         value={money(onHandsTotal)}
         valueColor={onHandsTotal > 0 ? colors.warning : undefined}
@@ -710,12 +799,16 @@ function CashTodayCard(): ReactElement | null {
  * продавцов на день, и вечером вопрос «пробили ли три» — такой же, как
  * «сколько в кассе». За «Подробнее» — те же чеки с фото.
  */
-function TerminalTodayCard(): ReactElement | null {
+function TerminalTodayCard(): ReactElement {
   const { m, money } = useLocale();
   const navigation = useNavigation();
   const today = trpc.terminalChecks.today.useQuery();
 
-  if (today.data === undefined) return null;
+  if (today.data === undefined) {
+    return (
+      <CardPlaceholder title={m('terminal.home')} icon="paid" isError={today.isError} rows={3} />
+    );
+  }
   const { count, target, rows, summary } = today.data;
 
   return (
@@ -724,19 +817,13 @@ function TerminalTodayCard(): ReactElement | null {
         title={m('terminal.home')}
         icon="paid"
         action={
-          <Pressable
+          <CardLink
+            label={m('rating.more')}
+            accessibilityLabel={`${m('terminal.home')}: ${m('rating.more')}`}
             onPress={() => {
               navigation.navigate('TerminalChecks');
             }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>
-                {m('rating.more')}
-              </Text>
-            )}
-          </Pressable>
+          />
         }
       />
       <Row
@@ -749,14 +836,25 @@ function TerminalTodayCard(): ReactElement | null {
       {rows.length === 0 ? (
         <Empty message={m('terminal.homeEmpty')} />
       ) : (
+        /*
+          Чек — две строки: «кто и когда», под ней «чем и сколько».
+
+          В одну строку имя, значок, сумма и время не помещались: имя
+          ужималось до «Фару…», а значки вставали каждый на своём месте —
+          ширина имени зависела от суммы справа. Во второй строке значок
+          всегда стоит у левого края, а сумма у правого, и обе колонки
+          читаются сверху вниз.
+        */
         rows.map((row) => (
           <View key={row.id} style={styles.terminalRow}>
-            <Text style={styles.terminalName} numberOfLines={1}>
-              {row.fullName}
-            </Text>
-            <PayTypeBadge type={row.payType} />
-            <Text style={styles.terminalAmount}>{money(parseMoney(row.amount))}</Text>
-            <Text style={styles.terminalTime}>{formatTime(row.createdAt)}</Text>
+            <View style={styles.terminalLine}>
+              <Text style={styles.terminalName}>{row.fullName}</Text>
+              <Text style={styles.terminalTime}>{formatTime(row.createdAt)}</Text>
+            </View>
+            <View style={styles.terminalLine}>
+              <PayTypeBadge type={row.payType} />
+              <Text style={styles.terminalAmount}>{money(parseMoney(row.amount))}</Text>
+            </View>
           </View>
         ))
       )}
@@ -774,7 +872,7 @@ function TerminalTodayCard(): ReactElement | null {
  * строку и читались как одно число дважды; владелец попросил развести.
  * Здесь месяц — то, что копится: выручка и маржа.
  */
-function MonthCard(): ReactElement | null {
+function MonthCard(): ReactElement {
   const { m } = useLocale();
   const dashboard = trpc.reports.dashboard.useQuery({});
   /*
@@ -789,7 +887,11 @@ function MonthCard(): ReactElement | null {
     month: now.getMonth() + 1,
   });
 
-  if (dashboard.data === undefined) return null;
+  if (dashboard.data === undefined) {
+    return (
+      <CardPlaceholder title={m('home.month')} icon="calendar" isError={dashboard.isError} rows={2} />
+    );
+  }
   const { data } = dashboard;
 
   return (
@@ -824,6 +926,37 @@ function MonthCard(): ReactElement | null {
   );
 }
 
+/**
+ * Карточка руководителя, пока данных нет: заголовок и заглушка или ошибка.
+ *
+ * Раньше такие карточки на время загрузки возвращали `null`. Обёртка с
+ * отступом оставалась, и пустые обёртки складывались в дыру в 48–80 px
+ * между «Табло» и «Рейтингом», а потом карточки появлялись разом и
+ * сдвигали экран. При ошибке «Терминал» и «За месяц» исчезали молча — и
+ * пропажа читалась как «чеков нет».
+ *
+ * Заголовок рисуется сразу: место карточки и её смысл видны до ответа
+ * сервера, приезжают только цифры.
+ */
+function CardPlaceholder({
+  title,
+  icon,
+  isError,
+  rows,
+}: {
+  readonly title: string;
+  readonly icon: IconName;
+  readonly isError: boolean;
+  readonly rows: number;
+}): ReactElement {
+  return (
+    <Card>
+      <CardTitle title={title} icon={icon} />
+      {isError ? <ErrorState /> : <Skeleton rows={rows} />}
+    </Card>
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO = require('../../assets/logo.png') as number;
 
@@ -854,44 +987,51 @@ const styles = StyleSheet.create({
     opacity: opacity.disabled,
   },
   onShiftMore: {
+    alignSelf: 'flex-start',
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  onShiftMoreText: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     color: colors.accent,
   },
   terminalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
     borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
+  terminalLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   terminalName: {
     ...typography.body,
-    color: colors.textSecondary,
-    flex: 1,
+    color: colors.textPrimary,
+    // Имя переносится, а не обрезается: кто пробил чек — главное в строке.
+    flexShrink: 1,
+    minWidth: 0,
   },
   terminalAmount: {
     ...typography.value,
     color: colors.textPrimary,
+    // Значок может отсутствовать (старый чек) — сумма всё равно у правого края.
+    marginLeft: 'auto',
+    fontVariant: ['tabular-nums'],
   },
   terminalTime: {
-    ...typography.footnote,
-    color: colors.textMuted,
-    minWidth: 40,
-    textAlign: 'right',
-  },
-  link: {
     ...typography.caption,
-    color: colors.accent,
-    fontWeight: '600',
+    color: colors.textMuted,
+    fontVariant: ['tabular-nums'],
   },
   revenueNote: {
     ...typography.footnote,
     color: colors.textMuted,
     marginTop: spacing.sm,
-  },
-  linkPressed: {
-    opacity: opacity.pressed,
   },
   content: {
     paddingBottom: tabBarSpace,
@@ -903,8 +1043,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     // Нижний отступ большой намеренно: на подложку заезжает карточка смены.
     paddingBottom: spacing.xl + spacing.lg,
-    borderBottomLeftRadius: radius.lg + spacing.sm,
-    borderBottomRightRadius: radius.lg + spacing.sm,
+    // Тот же радиус, что у карточек, — без собственного «почти такого же» числа.
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
   },
   heroRow: {
     flexDirection: 'row',
@@ -921,16 +1062,15 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   heroName: {
-    fontFamily: fonts.extrabold,
-    fontSize: 27,
-    fontWeight: '800',
-    letterSpacing: -0.4,
+    // Ступень шкалы, а не 27 «между» ступенями: приветствие и есть `largeTitle`.
+    ...typography.largeTitle,
     color: colors.headerText,
     marginTop: 2,
   },
   avatar: {
-    width: 44,
-    height: 44,
+    // Фото — и кнопка профиля: размер цели нажатия, не меньше.
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.pill,
     backgroundColor: colors.headerRaised,
     /*
@@ -957,23 +1097,23 @@ const styles = StyleSheet.create({
   },
   overlap: {
     paddingHorizontal: spacing.lg,
-    // Ровно столько, чтобы карточка легла на хвойную подложку.
+    // Ровно столько, чтобы карточка легла на хвойную подложку. Снизу —
+    // общий шаг экрана: отрицательный нижний отступ оставлял под первой
+    // карточкой 8 px вместо 16, и заголовок «Табло» прилипал к ней.
     marginTop: -(spacing.xl + spacing.sm),
-    marginBottom: -spacing.sm,
-  },
-  shiftDetails: {
-    marginTop: spacing.sm,
   },
   shiftHint: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: spacing.md,
   },
   pressed: {
     opacity: opacity.pressed,
   },
   section: {
     paddingHorizontal: spacing.lg,
+  },
+  overdueList: {
+    gap: ORDER_CARD_GAP,
   },
   tiles: {
     flexDirection: 'row',
@@ -1022,32 +1162,43 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
-  taskLink: {
-    ...typography.caption,
-    color: colors.accent,
-    fontWeight: '600',
-  },
   upcomingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Промежуток между всеми тремя колонками: обрезанный статус упирался в дату вплотную.
+    gap: spacing.md,
+    minHeight: sizes.touchTarget,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+  },
+  /* Волосяная линия и без черты под последней строкой — как в «Рейтинге»: там её дублирует край карточки. */
+  upcomingDivider: {
+    borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
   upcomingNumber: {
     ...typography.value,
     color: colors.accent,
-    marginRight: spacing.md,
+    /*
+      Табличные цифры: номера одного формата («DH-000499») получают
+      одинаковую ширину, и колонка статусов начинается на одной вертикали.
+      В пропорциональном начертании она гуляла на 3–5 px от строки к строке.
+    */
+    fontVariant: ['tabular-nums'],
   },
   upcomingStatus: {
     ...typography.caption,
     color: colors.textSecondary,
     flex: 1,
+    minWidth: 0,
   },
   upcomingDeadline: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.textPrimary,
-    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  upcomingLate: {
+    color: colors.danger,
   },
   sectionHeading: {
     ...typography.sectionTitle,

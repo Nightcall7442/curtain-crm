@@ -10,7 +10,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useLocale, type Translate } from '../../hooks/useLocale';
 import { trpc, type RouterOutputs } from '../../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../../theme';
 import { Icon } from '../Icon';
 import {
   emptyItem,
@@ -82,6 +82,12 @@ export function useOrderCatalog(): ItemCatalog {
     mountOf: (model) => curtainMountKindOf(mountByModel.get(model)),
     knownMountOf: (model) => (mountByModel.has(model) ? curtainMountKindOf(mountByModel.get(model)) : null),
     describeCode: (kind, code) => codeDescriptions.get(`${kind}:${code.trim().toLowerCase()}`) ?? null,
+    /*
+      Пока справочник грузится, шторка выбора модели показывает загрузку.
+      Без этого поля она в первые секунды писала «Справочник пуст», и
+      продавец решал, что моделей в системе нет.
+    */
+    loading: catalog.isLoading,
   };
 }
 
@@ -286,7 +292,7 @@ export function OrderItemsEditor({
         accessibilityRole="button"
         style={({ pressed }) => [styles.addItem, pressed ? styles.pressed : null]}
       >
-        <Icon name="assigned" size={18} color={colors.accent} />
+        <Icon name="assigned" size={18} color={colors.accentStrong} />
         <Text style={styles.addItemText}>{m('create.addItem')}</Text>
       </Pressable>
     </>
@@ -335,21 +341,31 @@ export function validateOrderForm(
 }
 
 const styles = StyleSheet.create({
+  /*
+    Второе действие формы — таблетка той же высоты, что «Создать заказ» под
+    ней (`SubmitButton`), а не карточка со своим скруглением. Рамка
+    остаётся: кнопка лежит на льняном фоне экрана, а не на белой карточке,
+    и светло-зелёная заливка без рамки с ним почти сливается.
+  */
   addItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     borderWidth: hairline,
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
   },
   addItemText: {
     ...typography.body,
+    // Начертанием, а не `fontWeight` поверх Medium: браузер рисовал ложный полужирный.
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.accentStrong,
-    fontWeight: '600',
+    flexShrink: 1,
   },
   pressed: {
     opacity: opacity.pressed,

@@ -1,6 +1,7 @@
-import { branches, events, users } from '@curtain-crm/db';
+import { branches, events, userRoles, users } from '@curtain-crm/db';
+import { ROLE_LABELS, ROLES, type Locale, type Role } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq, gte, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { ALLOWED_IMAGE_MIME_TYPES, getEnv } from '../lib/constants';
@@ -43,6 +44,33 @@ const today = (): string => new Date(Date.now() + TASHKENT_OFFSET_MS).toISOStrin
 
 const dayAfter = (days: number): string =>
   new Date(Date.now() + TASHKENT_OFFSET_MS + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+/**
+ * Подписи из ролей: «Sotuvchi, O'rnatuvchi» — по сотруднику.
+ *
+ * Роли идут в порядке `ROLES`, а не в порядке выдачи: у двух продавцов-
+ * установщиков подпись должна быть одной и той же.
+ */
+function rolesSubtitles(
+  rows: readonly { readonly userId: number; readonly role: Role }[],
+  locale: Locale,
+): Map<number, string> {
+  const byUser = new Map<number, Set<Role>>();
+  for (const row of rows) {
+    const set = byUser.get(row.userId) ?? new Set<Role>();
+    set.add(row.role);
+    byUser.set(row.userId, set);
+  }
+
+  return new Map(
+    [...byUser].map(([userId, roles]) => [
+      userId,
+      ROLES.filter((role) => roles.has(role))
+        .map((role) => ROLE_LABELS[locale][role])
+        .join(', '),
+    ]),
+  );
+}
 
 /** Сколько дней от сегодня до даты; прошедшее — ноль («идёт сейчас»). */
 const daysFromToday = (date: string): number =>
@@ -97,6 +125,27 @@ export const eventsRouter = router({
         (row, index) => index < ALWAYS_BIRTHDAYS || row.daysUntil <= input.withinDays,
       );
 
+      /*
+        Подпись под именинником — на языке экрана.
+
+        Должность (`jobTitle`) — свободный текст, и директор пишет его
+        по-русски: в узбекском интерфейсе под именем стояло «Продавец-
+        консультант» и «Швея». Второго, узбекского поля у должности нет,
+        поэтому на остальных языках подпись собирается из ролей
+        сотрудника — их названия переведены. По-русски остаётся должность:
+        она точнее роли («Продавец-консультант», а не «Продавец»).
+      */
+      const roleTitles =
+        ctx.locale === 'ru' || birthdays.length === 0
+          ? new Map<number, string>()
+          : rolesSubtitles(
+              await ctx.db
+                .select({ userId: userRoles.userId, role: userRoles.role })
+                .from(userRoles)
+                .where(inArray(userRoles.userId, birthdays.map((row) => row.userId))),
+              ctx.locale,
+            );
+
       const storage = getStorage();
       const withUrl = async (key: string | null): Promise<string | null> =>
         key === null ? null : storage.getUrl(key);
@@ -118,7 +167,7 @@ export const eventsRouter = router({
           id: `birthday-${row.userId.toString()}`,
           eventId: null as number | null,
           title: row.fullName,
-          subtitle: row.jobTitle,
+          subtitle: roleTitles.get(row.userId) ?? row.jobTitle,
           photoKey: row.avatarStorageKey,
           date: row.birthDate,
           endDate: null as string | null,

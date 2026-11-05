@@ -16,7 +16,7 @@ import { STATUS_COLOR } from '../components/monitor/monitorStyle';
 import { PersonRow } from '../components/monitor/PersonRow';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, radius, sizes, spacing, tabBarSpace, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /** Статусы, которые бывают у группы: на выезд ездят только выездные. */
@@ -91,7 +91,11 @@ export function MonitorBoardScreen({ route, navigation }: RootStackScreenProps<'
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={styles.summary}>
-            {m('monitor.onShift', { n: data.summary.onShift, total: data.summary.headcount })}
+            {/*
+              Ключ живёт и посреди фразы («Цех, на смене …» в плитке), поэтому
+              в словаре со строчной; здесь он — начало строки.
+            */}
+            {capitalize(m('monitor.onShift', { n: data.summary.onShift, total: data.summary.headcount }), locale)}
           </Text>
           <ScrollView
             horizontal
@@ -111,8 +115,15 @@ export function MonitorBoardScreen({ route, navigation }: RootStackScreenProps<'
                   accessibilityState={{ selected: active }}
                   style={[styles.chip, active ? styles.chipActive : null]}
                 >
+                  {/* На тёмном выбранном чипе точка — светлая: серая «Смена закрыта»
+                      давала там 2,3:1 и пропадала. Статус и так назван подписью. */}
                   {chip.key !== 'all' && (
-                    <View style={[styles.chipDot, { backgroundColor: STATUS_COLOR[chip.key] }]} />
+                    <View
+                      style={[
+                        styles.chipDot,
+                        { backgroundColor: active ? colors.headerText : STATUS_COLOR[chip.key] },
+                      ]}
+                    />
                   )}
                   <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
                     {`${chip.label} ${chip.count.toString()}`}
@@ -153,23 +164,35 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
-  // Ряд — по содержимому: иначе горизонтальный ScrollView растягивается и забирает прокрутку списка.
+  /*
+    Ряд — по содержимому: иначе горизонтальный ScrollView растягивается и
+    забирает прокрутку списка.
+
+    И во всю ширину экрана, а поля — внутри прокрутки: ряд, обрезанный по
+    полю страницы, резал чипы на полуслове («ерерыве 0») ровно по линии
+    отступа, а за ней оставалась пустая полоса в 16 точек — читалось как
+    ошибка вёрстки, а не как лента, которую можно листать.
+  */
   chipsScroll: {
     flexGrow: 0,
     flexShrink: 0,
+    marginHorizontal: -spacing.lg,
   },
   chips: {
     gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
+  /* Чип-фильтр — как фильтры «Ленты» и «Работы»: высотой в цель нажатия,
+     поля 16, волосяная рамка. Было 38 и рамка в пиксель. */
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 38,
-    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+    minHeight: sizes.touchTarget,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
   },
   chipActive: {
@@ -181,16 +204,21 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 4,
   },
+  /* Насыщенность одна в обоих состояниях: при выборе меняется только цвет,
+     и чип не прыгает в ширину, сдвигая соседей. */
   chipText: {
     ...typography.caption,
     color: colors.textSecondary,
-    fontWeight: '500',
   },
   chipTextActive: {
     color: colors.headerText,
-    fontWeight: '600',
   },
   separator: {
     height: spacing.md,
   },
 });
+
+/** Первая буква — заглавная, по правилам языка экрана. */
+function capitalize(text: string, locale: string): string {
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}

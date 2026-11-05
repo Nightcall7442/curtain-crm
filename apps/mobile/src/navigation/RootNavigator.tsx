@@ -1,6 +1,7 @@
 import { MONITOR_GROUP_LABELS } from '@curtain-crm/shared';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { createNativeStackNavigator, type NativeStackHeaderLeftProps } from '@react-navigation/native-stack';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
@@ -16,6 +17,7 @@ import { MonitorBoardScreen } from '../screens/MonitorBoardScreen';
 import { MonitorPersonScreen } from '../screens/MonitorPersonScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
 import { ReadyMadeStockScreen } from '../screens/ReadyMadeStockScreen';
+import { HeaderIconButton } from '../components/HeaderIconButton';
 import { Icon } from '../components/Icon';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
@@ -28,7 +30,7 @@ import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { TerminalChecksScreen } from '../screens/TerminalChecksScreen';
-import { colors, fonts, opacity } from '../theme';
+import { colors, typography } from '../theme';
 import type { RootStackParamList } from '../types';
 
 import { TabNavigator } from './TabNavigator';
@@ -61,12 +63,36 @@ export function RootNavigator(): ReactElement {
 
   return (
     <Stack.Navigator
-      screenOptions={{
+      screenOptions={({ navigation }) => ({
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
-        headerTitleStyle: { fontFamily: fonts.bold, fontSize: 17, fontWeight: '700' },
+        // Заголовок шапки — ступень заголовка карточки (`sectionTitle`), а не своё число.
+        headerTitleStyle: {
+          fontFamily: typography.sectionTitle.fontFamily,
+          fontSize: typography.sectionTitle.fontSize,
+          fontWeight: typography.sectionTitle.fontWeight,
+        },
         contentStyle: { backgroundColor: colors.background },
-      }}
+        /*
+          Кнопка «назад» в браузере — своя.
+
+          Шапку на вебе рисует не система, а react-navigation, и его кнопка
+          была ссылкой 30×30 (меньше пальца) с подписью для программы
+          чтения с экрана «Tabs, back» — по-английски и именем маршрута.
+          Здесь — цель 48×48 и стрелка там же, где у шапки Android (16 от
+          края). На телефоне остаётся системная кнопка — она и так такая.
+        */
+        ...(Platform.OS === 'web'
+          ? {
+              headerLeft: ({ canGoBack }: NativeStackHeaderLeftProps) =>
+                canGoBack === true ? (
+                  <HeaderIconButton label={m('common.back')} edge="left" onPress={navigation.goBack}>
+                    <Ionicons name="arrow-back" size={24} color={colors.headerText} />
+                  </HeaderIconButton>
+                ) : null,
+            }
+          : null),
+      })}
     >
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
       <Stack.Screen
@@ -108,19 +134,15 @@ export function RootNavigator(): ReactElement {
         options={({ navigation }) => ({
           title: m('nav.readyMade'),
           headerRight: () => (
-            <Pressable
+            <HeaderIconButton
+              label={m('nav.readyMadeStock')}
+              edge="right"
               onPress={() => {
                 navigation.navigate('ReadyMadeStock');
               }}
-              accessibilityRole="button"
-              accessibilityLabel={m('nav.readyMadeStock')}
-              hitSlop={10}
-              /* Нажатие показывается прозрачностью, а не цветом: на тёмной
-                 шапке любой акцентный зелёный темнее её же текста. */
-              style={({ pressed }) => (pressed ? { opacity: opacity.pressed } : null)}
             >
               <Icon name="orders" size={22} color={colors.headerText} />
-            </Pressable>
+            </HeaderIconButton>
           ),
         })}
       />

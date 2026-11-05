@@ -19,17 +19,18 @@ import {
   View,
 } from 'react-native';
 
-import { Card, CardTitle, Empty, ListCard, ListRow, SectionHeader } from '../components/Card';
+import { Card, CardTitle, Empty, ErrorState, ListCard, ListRow, SectionHeader } from '../components/Card';
 import { CashCollectionCard } from '../components/CashCollectionCard';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
 import { ShiftInfoCard } from '../components/ShiftInfoCard';
+import { SubmitButton } from '../components/SubmitButton';
 import { WeekAttendance, type WeekDay } from '../components/WeekAttendance';
 import { useAuth, useIsCeo, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Мой профиль.
@@ -129,10 +130,20 @@ export function ProfileScreen(): ReactElement {
     );
   }
 
+  /*
+    Не загрузилось — экран ошибки с кнопкой повтора, а не пустое состояние.
+    Подсказка «попробуйте ещё раз» стояла без кнопки, а жеста «потянуть,
+    чтобы обновить» в браузере нет: в PWA профиль был тупиком, из которого
+    выводила только перезагрузка страницы.
+  */
   if (profile.data === undefined) {
     return (
       <View style={styles.loading}>
-        <Empty message={m('profile.loadError')} hint={m('common.retryHint')} />
+        <ErrorState
+          message={m('profile.loadError')}
+          hint={m('common.retryHint')}
+          onRetry={() => profile.refetch()}
+        />
       </View>
     );
   }
@@ -144,13 +155,19 @@ export function ProfileScreen(): ReactElement {
    * премия. Для схем без оклада (процент, почасовая) цели нет.
    */
   const targetAmount = ((): string | null => {
+    /*
+      `== null`, а не `=== null`: у расчёта текущего месяца снимок схемы
+      бывает пустым объектом (`{}`), и оклад в нём не `null`, а `undefined`.
+      Строгая проверка такой снимок пропускала, и в карточку уходило «NaN» —
+      разбор суммы падал, и вместе с ним весь экран профиля.
+    */
     const snapshot = currentPayroll?.schemeSnapshot;
-    if (snapshot === undefined) return null;
-    if (snapshot.baseAmount === null) return null;
+    if (snapshot?.baseAmount == null) return null;
 
     const base = Number.parseFloat(snapshot.baseAmount);
-    const bonus = snapshot.rate === null ? 0 : Number.parseFloat(snapshot.rate);
-    return (base + bonus).toFixed(2);
+    const bonus = snapshot.rate == null ? 0 : Number.parseFloat(snapshot.rate);
+    const total = base + bonus;
+    return Number.isFinite(total) ? total.toFixed(2) : null;
   })();
 
   return (
@@ -158,7 +175,8 @@ export function ProfileScreen(): ReactElement {
       <ProfileCard
         fullName={data.fullName}
         jobTitle={data.jobTitle}
-        ratingPlace={myRating.data?.me?.place ?? null}
+        // Место без баллов — не место: при нуле у всех это просто порядок списка.
+        ratingPlace={(myRating.data?.me?.score ?? 0) > 0 ? (myRating.data?.me?.place ?? null) : null}
         department={data.department}
         hiredAt={data.hiredAt}
         avatarUrl={data.avatarUrl}
@@ -192,7 +210,7 @@ export function ProfileScreen(): ReactElement {
 
       <View style={styles.pair}>
         <KpiCard
-          periodLabel={formatMonthPeriod(period.year, period.month)}
+          periodLabel={formatMonthPeriod(period.year, period.month, locale)}
           targetAmount={targetAmount}
           calculatedAmount={currentPayroll?.calculatedAmount ?? null}
           kpiPercent={currentPayroll?.kpiPercent ?? null}
@@ -215,18 +233,27 @@ export function ProfileScreen(): ReactElement {
           <Empty message={m('profile.noActiveOrders')} />
         ) : (
           <View>
-            {activeOrders.slice(0, 3).map((order) => (
+            {activeOrders.slice(0, 3).map((order, index, shown) => (
               <Pressable
                 key={order.id}
                 onPress={() => {
                   navigation.navigate('OrderDetail', { orderId: order.id });
                 }}
-                style={({ pressed }) => [styles.orderRow, pressed ? styles.pressed : null]}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.orderRow,
+                  // Линия — только между заказами: под последним она
+                  // повторяла край карточки.
+                  index === shown.length - 1 ? styles.orderRowLast : null,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <Text style={styles.orderNumber}>
                   {order.orderNumber ?? `#${order.id.toString()}`}
                 </Text>
-                <Text style={styles.orderStatus} numberOfLines={1}>
+                {/* Статус целиком, в две строки: «Отклонён, решение за
+                    директором» многоточием съедался ровно на главном. */}
+                <Text style={styles.orderStatus} numberOfLines={2}>
                   {t(ORDER_STATUS_LABELS, order.status)}
                 </Text>
                 <Icon name="chevron" size={18} color={colors.textMuted} />
@@ -279,50 +306,46 @@ export function ProfileScreen(): ReactElement {
         предлагать подключение, которое ничем не кончится, незачем.
       */}
       {telegram.data?.enabled === true && (
-        <>
+        <View style={styles.section}>
           <SectionHeader title={m('profile.notifications')} />
           <Card>
             <CardTitle title="Telegram" icon="notifications" />
 
+            {/*
+              Кнопки — общие `SubmitButton`: та же высота 48, таблетка и
+              жирная подпись, что у остальных действий приложения, и одно
+              «недоступно» на всех. Своя кнопка была 46 со скруглением
+              карточки, подпись — ложным жирным поверх SemiBold, а
+              «Подключить» без ссылки выглядела нажимаемой и не нажималась.
+              Отключение — второстепенное действие, светлая таблетка.
+            */}
             {telegram.data.linked ? (
               <>
                 <Text style={styles.telegramHint}>{m('profile.telegramLinked')}</Text>
-                <Pressable
-                  disabled={unlinkTelegram.isPending}
+                <SubmitButton
+                  variant="secondary"
+                  label={m('profile.telegramUnlink')}
+                  pending={unlinkTelegram.isPending}
                   onPress={() => {
                     unlinkTelegram.mutate();
                   }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.telegramAction,
-                    styles.telegramActionOff,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <Text style={styles.telegramActionOffText}>{m('profile.telegramUnlink')}</Text>
-                </Pressable>
+                />
               </>
             ) : (
               <>
                 <Text style={styles.telegramHint}>{m('profile.telegramHint')}</Text>
-                <Pressable
+                <SubmitButton
+                  label={m('profile.telegramLink')}
                   disabled={telegram.data.linkUrl === null}
                   onPress={() => {
                     const url = telegram.data?.linkUrl;
                     if (url != null) void Linking.openURL(url);
                   }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.telegramAction,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <Text style={styles.telegramActionText}>{m('profile.telegramLink')}</Text>
-                </Pressable>
+                />
               </>
             )}
           </Card>
-        </>
+        </View>
       )}
 
       {/*
@@ -333,99 +356,109 @@ export function ProfileScreen(): ReactElement {
 
         Названия языков написаны на самих языках по той же причине.
       */}
-      <SectionHeader title={m('profile.language')} />
-      <Card>
-        <View style={styles.localeRow}>
-          {LOCALES.map((value) => {
-            const active = value === locale;
+      {/*
+        Заголовок секции и её карточка — одним блоком: так подпись стоит в 8
+        точках от своей карточки и в 24 от предыдущей. Отдельными детьми
+        списка они получали общий зазор 16, и подпись прилипала к карточке
+        выше, а не к той, которую называет.
+      */}
+      <View style={styles.section}>
+        <SectionHeader title={m('profile.language')} />
+        <Card>
+          <View style={styles.localeRow}>
+            {LOCALES.map((value) => {
+              const active = value === locale;
 
-            return (
-              <Pressable
-                key={value}
-                onPress={() => {
-                  setLocale(value);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={({ pressed }) => [
-                  styles.localeOption,
-                  active ? styles.localeOptionActive : null,
-                  pressed ? { opacity: opacity.pressed } : null,
-                ]}
-              >
-                <Text style={[styles.localeText, active ? styles.localeTextActive : null]}>
-                  {LOCALE_INFO[value].label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Card>
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => {
+                    setLocale(value);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.localeOption,
+                    active ? styles.localeOptionActive : null,
+                    pressed ? { opacity: opacity.pressed } : null,
+                  ]}
+                >
+                  <Text style={[styles.localeText, active ? styles.localeTextActive : null]}>
+                    {LOCALE_INFO[value].label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+      </View>
 
-      <SectionHeader title={m('profile.more')} />
-      <ListCard>
-        <ListRow
-          icon="rating"
-          label={m('profile.ratingKpi')}
-          onPress={() => {
-            navigation.navigate('Rating');
-          }}
-        />
-        {/* Директору — сводный рейтинг всех и очередь запросов на выходные с графиком отдыхающих. */}
-        {isCeo && (
+      <View style={styles.section}>
+        <SectionHeader title={m('profile.more')} />
+        <ListCard>
           <ListRow
-            icon="people"
-            label={m('profile.ratingBoard')}
+            icon="rating"
+            label={m('profile.ratingKpi')}
             onPress={() => {
-              navigation.navigate('RatingBoard');
+              navigation.navigate('Rating');
             }}
           />
-        )}
-        <ListRow
-          icon="orders"
-          label={m('profile.myTasks')}
-          onPress={() => {
-            navigation.navigate('TaskList');
-          }}
-        />
-        <ListRow
-          icon="calendar"
-          label={isCeo ? m('profile.dayOffQueue') : m('profile.dayOff')}
-          onPress={() => {
-            navigation.navigate(isCeo ? 'DayOffApprovals' : 'DayOff');
-          }}
-        />
-        {/*
-          Кадры — последним пунктом перед выходом и только директору.
-
-          Не «Руководство»: там сменные дела — отгулы, зарплата, поручения,
-          — а приём и увольнение человек делает редко и обдуманно. Место
-          перед выходом и подходит редкому действию: до него надо долистать.
-
-          Именно директору, а не всему руководству: `users.create`,
-          `setActive` и выдача ролей закрыты `ceoProcedure`, и админу этот
-          пункт обещал бы право, которого у него нет.
-        */}
-        {isCeo && (
+          {/* Директору — сводный рейтинг всех и очередь запросов на выходные с графиком отдыхающих. */}
+          {isCeo && (
+            <ListRow
+              icon="people"
+              label={m('profile.ratingBoard')}
+              onPress={() => {
+                navigation.navigate('RatingBoard');
+              }}
+            />
+          )}
           <ListRow
-            icon="people"
-            label={m('profile.employees')}
+            icon="orders"
+            label={m('profile.myTasks')}
             onPress={() => {
-              navigation.navigate('Employees');
+              navigation.navigate('TaskList');
             }}
           />
-        )}
+          <ListRow
+            icon="calendar"
+            label={isCeo ? m('profile.dayOffQueue') : m('profile.dayOff')}
+            onPress={() => {
+              navigation.navigate(isCeo ? 'DayOffApprovals' : 'DayOff');
+            }}
+          />
+          {/*
+            Кадры — последним пунктом перед выходом и только директору.
 
-        <ListRow
-          icon="logout"
-          label={m('profile.signOut')}
-          tone="danger"
-          isLast
-          onPress={() => {
-            void signOut();
-          }}
-        />
-      </ListCard>
+            Не «Руководство»: там сменные дела — отгулы, зарплата, поручения,
+            — а приём и увольнение человек делает редко и обдуманно. Место
+            перед выходом и подходит редкому действию: до него надо долистать.
+
+            Именно директору, а не всему руководству: `users.create`,
+            `setActive` и выдача ролей закрыты `ceoProcedure`, и админу этот
+            пункт обещал бы право, которого у него нет.
+          */}
+          {isCeo && (
+            <ListRow
+              icon="people"
+              label={m('profile.employees')}
+              onPress={() => {
+                navigation.navigate('Employees');
+              }}
+            />
+          )}
+
+          <ListRow
+            icon="logout"
+            label={m('profile.signOut')}
+            tone="danger"
+            isLast
+            onPress={() => {
+              void signOut();
+            }}
+          />
+        </ListCard>
+      </View>
 
       <Text style={styles.version}>{m('profile.version', { v: appVersion() })}</Text>
     </ScrollView>
@@ -462,28 +495,9 @@ const styles = StyleSheet.create({
   telegramHint: {
     ...typography.caption,
     color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  telegramAction: {
-    minHeight: 46,
-    marginTop: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  telegramActionText: {
-    ...typography.headline,
-    color: colors.onAccent,
-    fontWeight: '700',
-  },
-  telegramActionOff: {
-    backgroundColor: colors.surfaceMuted,
-  },
-  telegramActionOffText: {
-    ...typography.headline,
-    color: colors.textSecondary,
-    fontWeight: '600',
+    // До кнопки — 12, как от подписи до поля: встроенные 8 у `SubmitButton`
+    // плюс 4 здесь.
+    marginBottom: spacing.xs,
   },
   content: {
     padding: spacing.lg,
@@ -501,15 +515,6 @@ const styles = StyleSheet.create({
    *
    * В ряду каждой карточке доставалось около 133 px под содержимое, а туда
    * кладут заголовок с плашкой состояния и сумму вида «2 790 000 сум».
-   * Заголовок разваливался по словам, плашка вылезала за край, а сумма
-   * переносилась посередине числа — в  все пробелы
-   * неразрывные, поэтому строка рвалась по произвольному знаку.
-   */
-  /**
-   * Зарплата и смена — В СТОЛБИК, а не в ряд.
-   *
-   * В ряду каждой карточке доставалось около 133 px под содержимое, а туда
-   * кладут заголовок с плашкой состояния и сумму вида «2 790 000 сум».
    * Заголовок разваливался по словам, плашка вылезала за белый край, а сумма
    * переносилась посередине числа: в денежном формате все пробелы
    * неразрывные, поэтому строка рвалась по произвольному знаку.
@@ -518,39 +523,51 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   orderRow: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: hairline,
     borderBottomColor: colors.border,
+  },
+  orderRowLast: {
+    borderBottomWidth: 0,
+  },
+  /* Секция «подпись + карточка»: сверху добавка к общему зазору 16 — до 24. */
+  section: {
+    marginTop: spacing.sm,
   },
   pressed: {
     opacity: opacity.pressed,
   },
+  // Цифры одной ширины: у «DH-000486» и «DH-000471» колонка статуса
+  // начиналась с разницей в 4 точки и шла по строкам лесенкой.
   orderNumber: {
     ...typography.value,
     color: colors.header,
     marginRight: spacing.md,
+    fontVariant: ['tabular-nums'],
   },
   orderStatus: {
     ...typography.caption,
     color: colors.textSecondary,
     flex: 1,
+    minWidth: 0,
   },
   more: {
     ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.md,
   },
+  // Без своего отступа: карточка уже даёт 16, а с добавкой кнопки стояли
+  // в 28 от краёв — не так, как всё остальное на экране.
   localeRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    padding: spacing.md,
   },
   localeOption: {
     flex: 1,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
@@ -568,7 +585,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
+  /*
+    Вес — семейством: `fontWeight: 600` поверх Medium из `body` браузер
+    дорисовывал ложным жирным, и «Русский» в PWA выходил толще и шире, чем в
+    приложении. Ширина кнопки от веса не зависит (`flex: 1`), сдвига нет.
+  */
   localeTextActive: {
+    fontFamily: fonts.semibold,
     color: colors.headerText,
     fontWeight: '600',
   },

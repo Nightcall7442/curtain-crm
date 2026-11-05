@@ -135,37 +135,44 @@ interface StaffSpec {
   readonly age: number;
 }
 
+/*
+  ФИО — «Фамилия Имя», как в настоящей базе: штат переносится из кадрового
+  файла мастерской, где столбцы так и идут — `Familya`, затем `Ism`. Демо
+  было записано наоборот («Дилшод Мирзаев»), и приложение, которое берёт имя
+  вторым словом, здоровалось с каждым демо-сотрудником по фамилии:
+  «Доброй ночи, Мирзаев!».
+*/
 const STAFF: readonly StaffSpec[] = [
-  { name: 'Малика Юсупова', role: Role.SELLER, jobTitle: 'Продавец-консультант', department: 'sales', employment: 'permanent', tenureMonths: 41, age: 29 },
-  { name: 'Дилноза Турсунова', role: Role.SELLER, jobTitle: 'Продавец-консультант', department: 'sales', employment: 'probation', tenureMonths: 2, age: 24 },
-  { name: 'Фарух Расулов', role: Role.SELLER, jobTitle: 'Продавец-консультант', department: 'sales', employment: 'permanent', tenureMonths: 18, age: 33 },
-  { name: 'Севара Ким', role: Role.SELLER, jobTitle: 'Старший продавец', department: 'sales', employment: 'permanent', tenureMonths: 64, age: 38 },
+  { name: 'Юсупова Малика', role: Role.SELLER, jobTitle: 'Продавец-консультант', department: 'sales', employment: 'permanent', tenureMonths: 41, age: 29 },
+  { name: 'Турсунова Дилноза', role: Role.SELLER, jobTitle: 'Продавец-консультант', department: 'sales', employment: 'probation', tenureMonths: 2, age: 24 },
+  { name: 'Расулов Фарух', role: Role.SELLER, jobTitle: 'Продавец-консультант', department: 'sales', employment: 'permanent', tenureMonths: 18, age: 33 },
+  { name: 'Ким Севара', role: Role.SELLER, jobTitle: 'Старший продавец', department: 'sales', employment: 'permanent', tenureMonths: 64, age: 38 },
 
-  { name: 'Азиз Абдуллаев', role: Role.MASTER, jobTitle: 'Мастер-замерщик', department: 'sewing', employment: 'permanent', tenureMonths: 66, age: 35 },
-  { name: 'Бобур Каримов', role: Role.MASTER, jobTitle: 'Мастер-замерщик', department: 'sewing', employment: 'permanent', tenureMonths: 27, age: 31 },
-  { name: 'Шухрат Ибрагимов', role: Role.MASTER, jobTitle: 'Раскройщик', department: 'cutting', employment: 'permanent', tenureMonths: 47, age: 42 },
+  { name: 'Абдуллаев Азиз', role: Role.MASTER, jobTitle: 'Мастер-замерщик', department: 'sewing', employment: 'permanent', tenureMonths: 66, age: 35 },
+  { name: 'Каримов Бобур', role: Role.MASTER, jobTitle: 'Мастер-замерщик', department: 'sewing', employment: 'permanent', tenureMonths: 27, age: 31 },
+  { name: 'Ибрагимов Шухрат', role: Role.MASTER, jobTitle: 'Раскройщик', department: 'cutting', employment: 'permanent', tenureMonths: 47, age: 42 },
 
-  { name: 'Зухра Нормуродова', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'permanent', tenureMonths: 49, age: 27 },
-  { name: 'Гулнора Сайфиева', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'permanent', tenureMonths: 33, age: 30 },
-  { name: 'Нигора Азизова', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'temporary', tenureMonths: 8, age: 22 },
-  { name: 'Феруза Хакимова', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'permanent', tenureMonths: 72, age: 45 },
-  { name: 'Мадина Юлдашева', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'intern', tenureMonths: 3, age: 19 },
-  { name: 'Ойша Рахимова', role: Role.SEWER, jobTitle: 'Швея-закройщица', department: 'cutting', employment: 'permanent', tenureMonths: 21, age: 34 },
+  { name: 'Нормуродова Зухра', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'permanent', tenureMonths: 49, age: 27 },
+  { name: 'Сайфиева Гулнора', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'permanent', tenureMonths: 33, age: 30 },
+  { name: 'Азизова Нигора', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'temporary', tenureMonths: 8, age: 22 },
+  { name: 'Хакимова Феруза', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'permanent', tenureMonths: 72, age: 45 },
+  { name: 'Юлдашева Мадина', role: Role.SEWER, jobTitle: 'Швея', department: 'sewing', employment: 'intern', tenureMonths: 3, age: 19 },
+  { name: 'Рахимова Ойша', role: Role.SEWER, jobTitle: 'Швея-закройщица', department: 'cutting', employment: 'permanent', tenureMonths: 21, age: 34 },
 
-  { name: 'Нилуфар Ахмедова', role: Role.QC, jobTitle: 'Контролёр ОТК', department: 'quality', employment: 'permanent', tenureMonths: 43, age: 37 },
-  { name: 'Камола Рустамова', role: Role.QC, jobTitle: 'Контролёр ОТК', department: 'quality', employment: 'permanent', tenureMonths: 14, age: 28 },
+  { name: 'Ахмедова Нилуфар', role: Role.QC, jobTitle: 'Контролёр ОТК', department: 'quality', employment: 'permanent', tenureMonths: 43, age: 37 },
+  { name: 'Рустамова Камола', role: Role.QC, jobTitle: 'Контролёр ОТК', department: 'quality', employment: 'permanent', tenureMonths: 14, age: 28 },
 
-  { name: 'Рустам Каримов', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'permanent', tenureMonths: 52, age: 32 },
-  { name: 'Жасур Тошматов', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'permanent', tenureMonths: 29, age: 26 },
-  { name: 'Отабек Нурматов', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'temporary', tenureMonths: 5, age: 23 },
+  { name: 'Каримов Рустам', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'permanent', tenureMonths: 52, age: 32 },
+  { name: 'Тошматов Жасур', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'permanent', tenureMonths: 29, age: 26 },
+  { name: 'Нурматов Отабек', role: Role.INSTALLER, jobTitle: 'Установщик', department: 'installation', employment: 'temporary', tenureMonths: 5, age: 23 },
 
-  { name: 'Шухрат Абдуллаев', role: Role.CORNICE_INSTALLER, jobTitle: 'Карнизчик', department: 'installation', employment: 'permanent', tenureMonths: 34, age: 30 },
-  { name: 'Бекзод Эргашев', role: Role.CORNICE_INSTALLER, jobTitle: 'Карнизчик', department: 'installation', employment: 'permanent', tenureMonths: 8, age: 24 },
+  { name: 'Абдуллаев Шухрат', role: Role.CORNICE_INSTALLER, jobTitle: 'Карнизчик', department: 'installation', employment: 'permanent', tenureMonths: 34, age: 30 },
+  { name: 'Эргашев Бекзод', role: Role.CORNICE_INSTALLER, jobTitle: 'Карнизчик', department: 'installation', employment: 'permanent', tenureMonths: 8, age: 24 },
 
-  { name: 'Дилшод Мирзаев', role: Role.ADMIN, jobTitle: 'Администратор производства', department: 'administration', employment: 'permanent', tenureMonths: 55, age: 40 },
-  { name: 'Зарина Юсупова', role: Role.ADMIN, jobTitle: 'Администратор', department: 'administration', employment: 'permanent', tenureMonths: 19, age: 31 },
+  { name: 'Мирзаев Дилшод', role: Role.ADMIN, jobTitle: 'Администратор производства', department: 'administration', employment: 'permanent', tenureMonths: 55, age: 40 },
+  { name: 'Юсупова Зарина', role: Role.ADMIN, jobTitle: 'Администратор', department: 'administration', employment: 'permanent', tenureMonths: 19, age: 31 },
 
-  { name: 'Санжар Холматов', role: Role.SMM, jobTitle: 'SMM-менеджер', department: 'other', employment: 'permanent', tenureMonths: 11, age: 25 },
+  { name: 'Холматов Санжар', role: Role.SMM, jobTitle: 'SMM-менеджер', department: 'other', employment: 'permanent', tenureMonths: 11, age: 25 },
 ];
 
 const CLIENT_NAMES = [
@@ -617,7 +624,7 @@ async function build(db: Database): Promise<void> {
 
   log('');
   log('Готово. Демо-сотрудники входят по паролю Demo2026!');
-  log('Например: Малика Юсупова — +998931000000, Дилшод Мирзаев — +998931000018');
+  log('Например: Юсупова Малика — +998931000000, Мирзаев Дилшод — +998931000020');
 }
 
 /* -------------------------------------------------------------------------- */

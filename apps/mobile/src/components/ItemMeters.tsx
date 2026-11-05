@@ -5,13 +5,15 @@ import {
   type OrderItemMaterial,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, spacing, typography } from '../theme';
 
 import { Input } from './Field';
+import { useNeedsShift } from './ShiftRequiredBanner';
+import { SubmitButton } from './SubmitButton';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
@@ -88,6 +90,8 @@ export function ItemMeters({
   readonly item: MeterableItem;
 }): ReactElement | null {
   const { m, locale } = useLocale();
+  // Метраж без смены не сохранится (412).
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const lines = linesOf(item, m, locale);
 
@@ -161,36 +165,37 @@ export function ItemMeters({
         </View>
       ))}
 
-      <Pressable
+      <SubmitButton
+        label={m('meters.save')}
         onPress={submit}
-        disabled={save.isPending || !changed}
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.submit,
-          changed ? null : styles.submitOff,
-          pressed ? styles.pressed : null,
-        ]}
-      >
-        {save.isPending ? (
-          <ActivityIndicator color={colors.onAccent} size="small" />
-        ) : (
-          <Text style={styles.submitText}>{m('meters.save')}</Text>
-        )}
-      </Pressable>
+        disabled={!changed || needsShift}
+        pending={save.isPending}
+      />
     </View>
   );
 }
 
+/*
+  Размеры — как у остальных форм на карточке заказа.
+
+  Кнопка была 40 точек с подписью мелкой сноской, а «Сохранить цену» и
+  «Сохранить расценки» в той же карточке — 48 с подписью основного кегля:
+  три кнопки одного смысла выглядели тремя разными. Теперь все три —
+  общая `SubmitButton`, с одним и тем же видом «недоступна». Поля стояли
+  через 4 точки и сливались в столбик рамок.
+*/
 const styles = StyleSheet.create({
   block: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: hairline,
     borderTopColor: colors.border,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   title: {
-    ...typography.footnote,
+    ...typography.caption,
+    // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -200,30 +205,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   label: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textSecondary,
     flex: 1,
   },
   input: {
     width: 104,
-  },
-  submit: {
-    marginTop: spacing.xs,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitOff: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.footnote,
-    color: colors.onAccent,
-    fontWeight: '600',
-  },
-  pressed: {
-    opacity: opacity.pressed,
   },
 });

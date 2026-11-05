@@ -1,24 +1,26 @@
 import { STOCK_KIND_LABELS, STOCK_KINDS, type StockKind } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
+import { Card, CardLink, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -43,6 +45,7 @@ export function FabricStockScreen({
 } = {}): ReactElement {
   const { m, t } = useLocale();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
 
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
@@ -87,16 +90,9 @@ export function FabricStockScreen({
     },
   });
 
-  if (rows.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={rows.error.message} />
-      </View>
-    );
-  }
-
   const all = (rows.data ?? []).filter((row) => (STOCK_KINDS as readonly string[]).includes(row.kind));
   const needle = search.trim().toLowerCase();
+  const canSave = code.trim() !== '' && !create.isPending && !update.isPending;
 
   const items = all.filter((row) => {
     const byKind = filter === 'all' || row.kind === filter;
@@ -111,33 +107,53 @@ export function FabricStockScreen({
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/*
+        Снизу — обычный отступ и безопасная зона, а не место под панель
+        вкладок: экран открыт поверх вкладок, и `tabBarSpace` оставлял
+        под списком пустую полосу в 114 точек.
+      */}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={rows.isRefetching}
+            onRefresh={() => {
+              void rows.refetch();
+            }}
+            tintColor={colors.accent}
+          />
+        }
+      >
         {header}
 
         <Card>
+          {/*
+            «+ Позиция» — ссылкой в шапке, как «+ Мероприятие» на главной.
+            Была пилюля 74×32 с подписью 12 точек без плюса: ниже порога
+            нажатия, ниже чипов 44 под ней и читалась как метка, а не
+            действие.
+          */}
           <CardTitle
             title={m('fabric.title')}
             icon="window"
             action={
               formOpen ? undefined : (
-                <Pressable
+                <CardLink
+                  label={`+ ${m('fabric.item')}`}
                   onPress={() => {
                     create.reset();
                     update.reset();
                     closeForm();
                     setFormOpen(true);
                   }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [styles.addButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.addButtonText}>{m('fabric.item')}</Text>
-                </Pressable>
+                />
               )
             }
           />
 
           {formOpen && (
-            <>
+            <View style={styles.form}>
               {/* Вид у заведённого кода не меняется: это другой справочник. */}
               {editingId === null && (
                 <Field label={m('fabric.what')}>
@@ -184,6 +200,12 @@ export function FabricStockScreen({
                 />
               </Field>
 
+              {/*
+                Кнопки — общей системы: 48 и таблеткой, как «Отмена /
+                Выплачено» в зарплате. Были 44 со скруглением 14 — ниже и
+                квадратнее остальных кнопок приложения. Ряд выровнен по низу:
+                у общей кнопки свой отступ сверху.
+              */}
               <View style={styles.formRow}>
                 <Pressable
                   onPress={closeForm}
@@ -193,39 +215,35 @@ export function FabricStockScreen({
                   <Text style={styles.cancelText}>{m('common.cancel')}</Text>
                 </Pressable>
 
-                <Pressable
-                  onPress={() => {
-                    const name = code.trim();
-                    if (name === '') return;
-                    const card = {
-                      name,
-                      description: description.trim() === '' ? null : description.trim(),
-                    };
+                {/*
+                  Без кода кнопка неактивна и выглядит неактивной. Раньше она
+                  была обычной зелёной и при пустом поле молча ничего не
+                  делала — ни ошибки, ни отклика: казалось, что приложение
+                  зависло.
+                */}
+                <View style={styles.submitFlex}>
+                  <SubmitButton
+                    label={editingId === null ? m('fabric.create') : m('emp.save')}
+                    onPress={() => {
+                      const name = code.trim();
+                      if (name === '') return;
+                      const card = {
+                        name,
+                        description: description.trim() === '' ? null : description.trim(),
+                      };
 
-                    if (editingId === null) {
-                      create.mutate({ ...card, kind });
-                    } else {
-                      update.mutate({ id: editingId, ...card });
-                    }
-                  }}
-                  disabled={create.isPending || update.isPending}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.submit,
-                    styles.submitFlex,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  {create.isPending || update.isPending ? (
-                    <ActivityIndicator color={colors.onAccent} size="small" />
-                  ) : (
-                    <Text style={styles.submitText}>
-                      {editingId === null ? m('fabric.create') : m('emp.save')}
-                    </Text>
-                  )}
-                </Pressable>
+                      if (editingId === null) {
+                        create.mutate({ ...card, kind });
+                      } else {
+                        update.mutate({ id: editingId, ...card });
+                      }
+                    }}
+                    disabled={!canSave}
+                    pending={create.isPending || update.isPending}
+                  />
+                </View>
               </View>
-            </>
+            </View>
           )}
 
           <Field label={m('fabric.filter')}>
@@ -256,15 +274,31 @@ export function FabricStockScreen({
             </View>
           )}
 
-          {rows.data === undefined ? (
+          {/*
+            Ошибка — внутри карточки списка, а не вместо всего экрана:
+            переключатель разделов сверху и «+ Позиция» от списка не зависят,
+            и при сбое до «Закупки» и «Витрины» было не добраться. Текст —
+            свой, локализованный: ответ сервера при сбое бывает английским.
+          */}
+          {rows.isError ? (
+            <ErrorState />
+          ) : rows.data === undefined ? (
             <Skeleton />
           ) : items.length === 0 ? (
-            <Empty
-              message={all.length === 0 ? m('fabric.noCodes') : m('fabric.notFound')}
-              hint={all.length === 0 ? m('fabric.noCodesHint') : m('fabric.checkCode')}
-            />
+            /*
+              Три разных «пусто»: кодов нет вовсе; есть, но не этого вида
+              (выбран только фильтр — «проверьте код» тут ни при чём, код
+              никто не вводил); и не нашлось по набранному в поиске.
+            */
+            all.length === 0 ? (
+              <Empty message={m('fabric.noCodes')} hint={m('fabric.noCodesHint')} />
+            ) : needle === '' ? (
+              <Empty message={m('fabric.noKindCodes')} />
+            ) : (
+              <Empty message={m('fabric.notFound')} hint={m('fabric.checkCode')} />
+            )
           ) : (
-            items.map((row) => (
+            items.map((row, index) => (
               <Pressable
                 key={row.id}
                 onLongPress={() => {
@@ -278,7 +312,13 @@ export function FabricStockScreen({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('fabric.rowA11y', { name: row.name })}
-                style={({ pressed }) => [styles.itemRow, pressed ? styles.pressed : null]}
+                style={({ pressed }) => [
+                  styles.itemRow,
+                  // Под последним кодом линии нет: её роль — делить коды, а
+                  // не отчёркивать список от сноски.
+                  index === items.length - 1 ? styles.itemRowLast : null,
+                  pressed ? styles.pressed : null,
+                ]}
               >
                 <View style={styles.itemText}>
                   <Text style={styles.itemName}>{row.name}</Text>
@@ -312,14 +352,8 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
   content: {
     padding: spacing.lg,
-    paddingBottom: tabBarSpace,
     gap: spacing.lg,
   },
   codeRow: {
@@ -330,9 +364,11 @@ const styles = StyleSheet.create({
   codeInput: {
     flex: 1,
   },
+  /* Высота поля рядом, а не 44: кнопка стоит с полем в одном ряду, и
+     разница в два пикселя была видна ступенькой по верху и низу. */
   scanButton: {
-    width: 44,
-    height: 44,
+    width: sizes.controlHeight,
+    height: sizes.controlHeight,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
@@ -340,10 +376,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /*
+    Форма отчёркнута от фильтра и списка: кнопки «Отмена / Завести» стояли
+    вплотную к подписи «Что смотрим» — ноль точек между ними, и форма
+    сливалась со списком под ней.
+  */
+  form: {
+    paddingBottom: spacing.lg,
+    marginBottom: spacing.lg,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
+  },
   formRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   search: {
     marginTop: spacing.sm,
@@ -356,51 +403,32 @@ const styles = StyleSheet.create({
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
+  itemRowLast: {
+    borderBottomWidth: 0,
+  },
   itemText: {
     flex: 1,
   },
+  // Вес — семейством: `fontWeight` поверх Medium браузер дорисовывает ложным жирным.
   itemName: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     color: colors.textPrimary,
     fontWeight: '600',
   },
+  /* 13, а не сноска: описание кода — то, ради чего экран открывают у
+     стеллажа, а не служебная пометка. */
   itemMeta: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textMuted,
-  },
-  addButton: {
-    height: 32,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: hairline,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonText: {
-    ...typography.footnote,
-    color: colors.accentStrong,
-    fontWeight: '600',
-  },
-  submit: {
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   submitFlex: {
     flex: 1,
   },
-  submitText: {
-    ...typography.body,
-    color: colors.onAccent,
-    fontWeight: '600',
-  },
   cancel: {
-    height: 44,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: hairline,
     borderColor: colors.border,
     alignItems: 'center',
@@ -411,7 +439,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   note: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.sm,
   },

@@ -4,6 +4,7 @@ import {
   SHIFT_AUTO_CLOSE_REASON,
   SHIFT_FORGOTTEN_AFTER_HOURS,
   TERMINAL_CHECKS_DAILY_TARGET,
+  workshopDayIso,
 } from '@curtain-crm/shared';
 import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 
@@ -109,9 +110,12 @@ async function closeForgottenShifts(executor: DbExecutor): Promise<void> {
       details: { auto: true, reason: SHIFT_AUTO_CLOSE_REASON, endedAt: endedAt.toISOString() },
     });
     await notifyShiftAdjusted(executor, shift.userId, {
-      actorName: 'Система',
+      // Не «Система»: безличное «закрыта автоматически» не требует автора.
+      actorName: null,
       reason: SHIFT_AUTO_CLOSE_REASON,
-      shiftDate: shift.startedAt.toISOString().slice(0, 10),
+      // День по Ташкенту, а не по UTC: смена, начатая до 05:00 по Ташкенту,
+      // по UTC ещё вчерашняя, и заголовок назвал бы не тот день.
+      shiftDate: workshopDayIso(shift.startedAt),
     });
   }
 }

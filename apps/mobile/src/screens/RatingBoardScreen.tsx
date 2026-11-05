@@ -1,6 +1,5 @@
 import {
-  RATING_SCOPE_LABELS,
-  RATING_SCOPES,
+  formatQuantity,
   RatingScope,
   type RatingScope as RatingScopeName,
 } from '@curtain-crm/shared';
@@ -8,10 +7,10 @@ import { useState, type ReactElement } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
-import { ChipSelect } from '../components/Field';
+import { RatingScopeSwitch } from '../components/RatingScopeSwitch';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Рейтинг всех сотрудников — директору.
@@ -21,7 +20,7 @@ import { colors, hairline, spacing, tabBarSpace, typography } from '../theme';
  * причиной, чтобы не гадать, почему человека нет в списке.
  */
 export function RatingBoardScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { m } = useLocale();
   const [scope, setScope] = useState<RatingScopeName>(RatingScope.MONTH);
   const now = new Date();
   const board = trpc.rating.board.useQuery({
@@ -33,6 +32,21 @@ export function RatingBoardScreen(): ReactElement {
   const rows = board.data?.rows ?? [];
   const ranked = rows.filter((row) => row.place !== null);
   const unranked = rows.filter((row) => row.place === null);
+  /*
+    Место — только за набранные баллы.
+
+    В начале периода у всех ноль, сервер ставит всех на общее первое место,
+    и экран показывал двадцать «первых» с зелёными стрелками «↑18», «↑17» —
+    будто все победили. Пока у всех ровно ноль, соревнования ещё нет:
+    показываем готовое «За период никто не набрал баллов». А когда баллы
+    есть, место и стрелку получают только набравшие больше нуля — ноль и
+    штраф местом не награждаются.
+
+    «Не началось» — именно ноль у всех, а не «ни у кого нет плюса»: в балл
+    входят штрафы дисциплины, и месяц, где пока есть только опоздания, —
+    уже таблица. Строки с «−2» директору нужно видеть, а не прятать.
+  */
+  const notStarted = ranked.every((row) => row.score === null || row.score === 0);
 
   return (
     <ScrollView
@@ -46,44 +60,70 @@ export function RatingBoardScreen(): ReactElement {
         />
       }
     >
-      <ChipSelect
-        value={scope}
-        onChange={setScope}
-        options={RATING_SCOPES.map((value) => ({ value, label: t(RATING_SCOPE_LABELS, value) }))}
-      />
+      <RatingScopeSwitch value={scope} onChange={setScope} />
 
       <Card>
         <CardTitle title={m('ratingBoard.title')} icon="rating" />
+        {/*
+          Без текста из ответа: при обрыве связи пакетный запрос отдаёт
+          служебное английское «Missing result», а в узбекском интерфейсе —
+          русский текст сервера. Своё «Не удалось загрузить» и повтор.
+        */}
         {board.isError ? (
-          <ErrorState message={board.error.message} />
+          <ErrorState />
         ) : board.isLoading ? (
           <Skeleton rows={5} />
-        ) : ranked.length === 0 ? (
+        ) : notStarted ? (
           <Empty message={m('ratingBoard.empty')} />
         ) : (
-          ranked.map((row) => (
-            <View key={row.userId} style={styles.row}>
-              <Text style={styles.place}>{row.place}</Text>
-              <View style={styles.text}>
-                <Text style={styles.name}>{row.fullName}</Text>
-                <Text style={styles.meta}>{m('ratingBoard.stages', { n: row.ordersCount })}</Text>
-              </View>
-              <Text style={styles.score}>{row.score ?? 0}</Text>
-              {row.placeDelta !== null && row.placeDelta !== 0 && (
-                <Text style={[styles.delta, row.placeDelta > 0 ? styles.up : styles.down]}>
-                  {row.placeDelta > 0 ? `↑${String(row.placeDelta)}` : `↓${String(-row.placeDelta)}`}
+          ranked.map((row, index) => {
+            const scored = (row.score ?? 0) > 0;
+            const delta = scored ? row.placeDelta : null;
+            return (
+              <View
+                key={row.userId}
+                style={[styles.row, index < ranked.length - 1 ? styles.divider : null]}
+              >
+                <Text style={styles.place}>{scored ? row.place : '—'}</Text>
+                <View style={styles.text}>
+                  <Text style={styles.name}>{row.fullName}</Text>
+                  <Text style={styles.meta}>{m('ratingBoard.stages', { n: row.ordersCount })}</Text>
+                </View>
+                {/* Штраф — с типографским минусом, как баллы дисциплины в приложении. */}
+                <Text style={[styles.score, (row.score ?? 0) < 0 ? styles.down : null]}>
+                  {formatQuantity(row.score ?? 0)}
                 </Text>
-              )}
-            </View>
-          ))
+                {/*
+                  Колонка стрелки есть в каждой строке, даже пустая: иначе в
+                  строках без стрелки балл уезжал к правому краю на 36 px, и
+                  колонка баллов шла зигзагом.
+                */}
+                <Text
+                  style={[
+                    styles.delta,
+                    delta !== null && delta > 0 ? styles.up : styles.down,
+                  ]}
+                >
+                  {delta === null || delta === 0
+                    ? ''
+                    : delta > 0
+                      ? `↑${String(delta)}`
+                      : `↓${String(-delta)}`}
+                </Text>
+              </View>
+            );
+          })
         )}
       </Card>
 
       {unranked.length > 0 && (
         <Card>
           <CardTitle title={m('ratingBoard.unranked')} icon="people" />
-          {unranked.map((row) => (
-            <View key={row.userId} style={styles.row}>
+          {unranked.map((row, index) => (
+            <View
+              key={row.userId}
+              style={[styles.row, index < unranked.length - 1 ? styles.divider : null]}
+            >
               <View style={styles.text}>
                 <Text style={styles.nameMuted}>{row.fullName}</Text>
                 {row.unratedReason !== null && <Text style={styles.meta}>{row.unratedReason}</Text>}
@@ -95,6 +135,11 @@ export function RatingBoardScreen(): ReactElement {
     </ScrollView>
   );
 }
+
+/** Ширина колонки балла: четыре табличные цифры полужирным 15. */
+const SCORE_WIDTH = 40;
+/** Ширина колонки стрелки: «↑18» — стрелка и две цифры. */
+const DELTA_WIDTH = 36;
 
 const styles = StyleSheet.create({
   content: {
@@ -108,6 +153,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minHeight: 48,
     paddingVertical: spacing.xs,
+  },
+  /* Под последней строкой черты нет: её дублирует край карточки. */
+  divider: {
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
   },
@@ -133,15 +181,24 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
+  /*
+    Балл и стрелка — колонки постоянной ширины, по правому краю и с
+    табличными цифрами: «0», «12» и «128» встают под одну вертикаль.
+  */
   score: {
     ...typography.value,
     color: colors.textPrimary,
+    minWidth: SCORE_WIDTH,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
   delta: {
     ...typography.caption,
-    fontWeight: '700',
-    minWidth: 28,
+    // Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным.
+    fontFamily: fonts.bold,
+    width: DELTA_WIDTH,
     textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
   up: {
     color: colors.positive,

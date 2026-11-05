@@ -1,6 +1,6 @@
 import { DEPARTMENT_LABELS, formatTenure, type Department } from '@curtain-crm/shared';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { ReactElement } from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useState, type ReactElement } from 'react';
 import { useLocale } from '../hooks/useLocale';
 
 import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
@@ -41,6 +41,22 @@ export function ProfileCard({
   readonly isPhotoBusy?: boolean;
 }): ReactElement {
   const { t, m, locale } = useLocale();
+  /*
+    Фото рядом с полями — только когда полям остаётся место. На 360 точках
+    колонка портрета в 152 оставляла тексту 94: «Подразделение» ломалось
+    посреди слова, а своё имя и должность человек видел с многоточием.
+    Ширину портрета задал владелец, и уменьшать её нельзя (см. `photo`),
+    поэтому на узком экране портрет встаёт строкой над полями.
+
+    Ширина берётся из раскладки самой карточки: в браузере окно бывает
+    шире колонки приложения. До первого замера — оценка по окну, чтобы
+    карточка не перестраивалась на глазах.
+  */
+  const screen = useWindowDimensions();
+  const [measured, setMeasured] = useState<number | null>(null);
+  const width = measured ?? screen.width - SCREEN_AND_CARD_PADDING;
+  const stacked = width - PHOTO_WIDTH - spacing.md - FIELD_ICON_SPACE < MIN_FIELD_TEXT_WIDTH;
+
   const initials = fullName
     .trim()
     .split(/\s+/)
@@ -50,7 +66,12 @@ export function ProfileCard({
 
   return (
     <Card>
-      <View style={styles.container}>
+      <View
+        style={[styles.container, stacked ? styles.containerStacked : null]}
+        onLayout={(event) => {
+          setMeasured(event.nativeEvent.layout.width);
+        }}
+      >
         <View style={styles.details}>
           {/*
             Порядок полей задал владелец: имя, подразделение, должность,
@@ -70,7 +91,7 @@ export function ProfileCard({
           />
         </View>
 
-        <View style={styles.photoColumn}>
+        <View style={[styles.photoColumn, stacked ? styles.photoColumnStacked : null]}>
           <Pressable
             onPress={onPressPhoto}
             disabled={onPressPhoto === undefined || isPhotoBusy}
@@ -150,13 +171,27 @@ function Field({
       </View>
       <View style={styles.fieldText}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value} numberOfLines={2}>
-          {value}
-        </Text>
+        {/* Без ограничения строк: своё имя и должность человек должен видеть целиком. */}
+        <Text style={styles.value}>{value}</Text>
       </View>
     </View>
   );
 }
+
+/**
+ * Ширина портрета — решение владельца (104 → 136 → 152), см. `photo`.
+ */
+const PHOTO_WIDTH = 152;
+/** Кружок значка поля (30) и отступ до текста (8). */
+const FIELD_ICON_SPACE = 30 + spacing.sm;
+/**
+ * Меньше этого тексту поля нельзя: в столько помещаются самые длинные
+ * подписи — «Место в рейтинге», «Reytingdagi o'rin» — без переноса посреди
+ * слова.
+ */
+const MIN_FIELD_TEXT_WIDTH = 120;
+/** Поля экрана и карточки по обе стороны — для оценки до первого замера. */
+const SCREEN_AND_CARD_PADDING = 4 * spacing.lg;
 
 const styles = StyleSheet.create({
   photoPressed: {
@@ -170,6 +205,11 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  /* Узкий экран: портрет сверху, поля под ним во всю ширину. */
+  containerStacked: {
+    flexDirection: 'column-reverse',
+    gap: spacing.lg,
   },
   details: {
     flex: 1,
@@ -207,6 +247,9 @@ const styles = StyleSheet.create({
   photoColumn: {
     justifyContent: 'center',
   },
+  photoColumnStacked: {
+    alignItems: 'center',
+  },
   photo: {
     /*
       Ширину задал владелец, и не с первого раза: 104 → 136 → 152.
@@ -216,11 +259,11 @@ const styles = StyleSheet.create({
       Колонка полей рядом ужимается сама (`flex: 1`), длинные значения
       переносятся на вторую строку, так что рамка ничего не обрезает.
 
-      152 — предел для узкого экрана: на 360 точках полям остаётся 130,
-      и «EMP-2026-0010» ещё помещается в две строки. Дальше расширять
-      нельзя, не отдав фото отдельную строку над полями.
+      Рядом с полями 152 помещается от 390 точек. На 360 полям оставалось
+      94 точки, и подписи ломались посреди слова, — там портрет стоит
+      отдельной строкой над полями (см. `stacked`).
     */
-    width: 152,
+    width: PHOTO_WIDTH,
     /*
       Высота задаётся соотношением, а не числом.
 
