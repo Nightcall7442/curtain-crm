@@ -45,6 +45,51 @@ export const PAYMENT_METHOD_LABELS: Translated<PaymentMethod> = {
 export const PAYMENT_METHOD_LABELS_RU = PAYMENT_METHOD_LABELS.ru;
 
 /**
+ * Чем клиент заплатил по терминальному чеку — Click, Payme, Uzum, Humo,
+ * Uzcard или наличными. Спрашивается, когда чек пробивают (просьба
+ * заказчика 05.11), и показывается значком у чека.
+ *
+ * Это не `PaymentMethod`: чек — запись о пробитом фискальном чеке, а не
+ * деньги кассы (владелец развёл кассу и терминал), и способ проводки у него
+ * всегда `card`. Тип — отдельная колонка `payments.terminal_pay_type`.
+ */
+export const TERMINAL_PAY_TYPES = ['click', 'payme', 'uzum', 'humo', 'uzcard', 'cash'] as const;
+
+export type TerminalPayType = (typeof TERMINAL_PAY_TYPES)[number];
+
+export const TerminalPayType = {
+  CLICK: 'click',
+  PAYME: 'payme',
+  UZUM: 'uzum',
+  HUMO: 'humo',
+  UZCARD: 'uzcard',
+  CASH: 'cash',
+} as const satisfies Record<string, TerminalPayType>;
+
+export const terminalPayTypeSchema = z.enum(TERMINAL_PAY_TYPES);
+
+export const TERMINAL_PAY_TYPE_LABELS: Translated<TerminalPayType> = {
+  ru: { click: 'Click', payme: 'Payme', uzum: 'Uzum', humo: 'Humo', uzcard: 'Uzcard', cash: 'Наличные' },
+  uz: { click: 'Click', payme: 'Payme', uzum: 'Uzum', humo: 'Humo', uzcard: 'Uzcard', cash: 'Naqd' },
+};
+
+/**
+ * Значок типа: надпись и цвета, общие для сайта и приложения. Фирменные
+ * цвета и название — не логотипы: их рисовать не берёмся, а надпись
+ * читается с первого взгляда. У наличных вместо надписи — купюра.
+ */
+export const TERMINAL_PAY_TYPE_STYLE: Readonly<
+  Record<TerminalPayType, { readonly mark: string; readonly background: string; readonly color: string }>
+> = {
+  click: { mark: 'click', background: '#0A9FE8', color: '#FFFFFF' },
+  payme: { mark: 'payme', background: '#2EC4C4', color: '#FFFFFF' },
+  uzum: { mark: 'uzum', background: '#7000FF', color: '#FFFFFF' },
+  humo: { mark: 'HUMO', background: '#0B2A4A', color: '#F5B323' },
+  uzcard: { mark: 'UZCARD', background: '#1458B4', color: '#FFFFFF' },
+  cash: { mark: '', background: '#1E9E5A', color: '#FFFFFF' },
+};
+
+/**
  * Источник денег — строки дневного отчёта кассы.
  *
  * `order_deposit` — предоплата при приёме нового заказа, `order_balance` —

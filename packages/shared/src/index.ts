@@ -59,6 +59,9 @@ export * from './orders/rules';
 /* Зарплата */
 export * from './payroll/shiftPay';
 
+/* Терминальные чеки */
+export * from './payments/terminalChecks';
+
 /* Типы */
 export * from './types/orderItemAccessory';
 export * from './types/orderItemMaterial';
