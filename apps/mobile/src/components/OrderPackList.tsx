@@ -66,6 +66,9 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
           disabled={setPacked.isPending || needsShift}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: row.checked, disabled: needsShift }}
+          // В браузере `accessibilityState` не доходит до DOM: состояние для чтеца — aria-атрибутами.
+          aria-checked={row.checked}
+          aria-disabled={needsShift}
           accessibilityLabel={row.label}
           /*
             Черта — сверху каждой строки, кроме первой: под последней она

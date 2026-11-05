@@ -12,6 +12,7 @@ import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, spacing, typography } from '../theme';
 
 import { Input } from './Field';
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
@@ -89,6 +90,8 @@ export function ItemMeters({
   readonly item: MeterableItem;
 }): ReactElement | null {
   const { m, locale } = useLocale();
+  // Метраж без смены не сохранится (412).
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const lines = linesOf(item, m, locale);
 
@@ -165,7 +168,7 @@ export function ItemMeters({
       <SubmitButton
         label={m('meters.save')}
         onPress={submit}
-        disabled={!changed}
+        disabled={!changed || needsShift}
         pending={save.isPending}
       />
     </View>

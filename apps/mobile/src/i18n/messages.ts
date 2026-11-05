@@ -1578,7 +1578,7 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'pw.hint': 'Ish joyi uskunasida o\'zingiz uchun nima qilayotganingizni yozing. Rahbariyat bandlikni ko\'radi — bu taqiq emas, hisob: band mashina buzilgandek, sarflangan mato kamomaddek ko\'rinmaydi.',
   'pw.what': 'Nima tikyapsiz',
   // Короче русского: длинный пример обрезался в поле на 360 точках.
-  'pw.whatPlaceholder': 'Masalan, «Yotoqxonaga parda»',
+  'pw.whatPlaceholder': 'Masalan, «Parda, o\'zimga»',
   'pw.details': 'Tafsilotlar',
   'pw.detailsHint': 'Ixtiyoriy: mato, o\'lchamlar, kim uchun',
   'pw.detailsPlaceholder': 'Bu ish haqida nimani eslab qolish kerak',

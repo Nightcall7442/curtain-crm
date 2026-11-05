@@ -26,6 +26,7 @@ import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } 
 
 import { Card, CardTitle, Row, Skeleton } from './Card';
 import { Field, MoneyInput } from './Field';
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { InstallationTimeRow } from './order/InstallationTimeRow';
 import { SubmitButton } from './SubmitButton';
 
@@ -87,6 +88,11 @@ export function OrderManagement({
   readonly installationAt: Date | null;
 }): ReactElement {
   const { t, m, locale, money } = useLocale();
+  /*
+    Менеджер — не руководство: без смены сервер отклонит и назначение, и
+    цену, и расценки (412). Гаснет вся карточка разом, а не одна кнопка.
+  */
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
 
   const [price, setPrice] = useState('');
@@ -228,12 +234,19 @@ export function OrderManagement({
             */
             <View key={role} style={index === 0 ? null : styles.assignDivided}>
               <Pressable
+                disabled={needsShift}
                 onPress={() => {
                   setAssigning(assigning === role ? null : role);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={m('manage.assignRole', { role: t(ROLE_LABELS, role) })}
-                style={({ pressed }) => [styles.assignRow, pressed ? styles.pressed : null]}
+                accessibilityState={{ disabled: needsShift }}
+                aria-disabled={needsShift}
+                style={({ pressed }) => [
+                  styles.assignRow,
+                  pressed ? styles.pressed : null,
+                  needsShift ? styles.off : null,
+                ]}
               >
                 <Text style={styles.assignRole}>{t(ROLE_LABELS, role)}</Text>
                 {/* «не назначена» у швеи — как в «Исполнителях» выше: одна роль не
@@ -371,7 +384,7 @@ export function OrderManagement({
               ...(Number.isFinite(parsedPrice) ? { workPrice: parsedPrice } : {}),
             });
           }}
-          disabled={price.trim() === ''}
+          disabled={price.trim() === '' || needsShift}
           pending={setPriceMutation.isPending}
         />
       </Card>
@@ -445,7 +458,7 @@ export function OrderManagement({
             }
             setFees.mutate({ id: orderId, ...payload });
           }}
-          disabled={Object.keys(feeDrafts).length === 0}
+          disabled={Object.keys(feeDrafts).length === 0 || needsShift}
           pending={setFees.isPending}
         />
       </Card>
@@ -481,6 +494,9 @@ function trimAmount(value: string): string {
 }
 
 const styles = StyleSheet.create({
+  off: {
+    opacity: opacity.disabled,
+  },
   assignRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -501,8 +517,9 @@ const styles = StyleSheet.create({
     ...typography.value,
     color: colors.textPrimary,
   },
+  // Пустое — обычным приглушённым, как «Время не назначено» и пустые строки `Row`.
   assignEmpty: {
-    ...typography.value,
+    ...typography.body,
     color: colors.textMuted,
   },
   pickerBox: {

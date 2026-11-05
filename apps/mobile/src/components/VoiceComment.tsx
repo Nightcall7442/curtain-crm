@@ -16,6 +16,7 @@ import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 import { Icon } from './Icon';
+import { useNeedsShift } from './ShiftRequiredBanner';
 
 /**
  * Голосовые комментарии к заказу: запись и воспроизведение.
@@ -112,6 +113,8 @@ function removeRecording(uri: string): void {
 
 export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): ReactElement {
   const { m } = useLocale();
+  // Голосовой комментарий без смены сервер не примет (412) — не даём записать впустую.
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
 
   const [isRecording, setIsRecording] = useState(false);
@@ -285,11 +288,12 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
   return (
     <Pressable
       onPress={() => void start()}
-      disabled={addVoice.isPending}
-      style={({ pressed }) => [styles.recordButton, pressed ? styles.pressed : null]}
+      disabled={addVoice.isPending || needsShift}
+      style={({ pressed }) => [styles.recordButton, pressed ? styles.pressed : null, needsShift ? styles.off : null]}
       accessibilityRole="button"
       accessibilityLabel={m('voice.record')}
-      accessibilityState={{ busy: addVoice.isPending }}
+      accessibilityState={{ busy: addVoice.isPending, disabled: needsShift }}
+      aria-disabled={needsShift}
     >
       {addVoice.isPending ? (
         <ActivityIndicator color={colors.accentStrong} size="small" />
@@ -403,6 +407,9 @@ const PLAYER_ICON = 16;
   экране; прежде это была серая рамка высотой 44 со своим скруглением.
 */
 const styles = StyleSheet.create({
+  off: {
+    opacity: opacity.disabled,
+  },
   recordButton: {
     minHeight: sizes.buttonHeight,
     flexDirection: 'row',

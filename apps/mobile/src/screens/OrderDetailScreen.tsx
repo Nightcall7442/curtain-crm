@@ -664,7 +664,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             key={role}
             label={t(ROLE_LABELS, role)}
             value={person?.fullName ?? placeholder}
-            {...(person === null ? { valueColor: colors.textMuted } : {})}
+            empty={person === null}
           />
         ))}
       </Card>
