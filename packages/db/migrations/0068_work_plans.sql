@@ -7,7 +7,7 @@ CREATE TABLE "work_plans" (
 	"created_by" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "work_plans_role_user_month_unique" UNIQUE NULLS NOT DISTINCT("role","user_id","effective_from"),
-	CONSTRAINT "work_plans_role_planned" CHECK ("work_plans"."role" in ('sewer', 'installer', 'cornice_installer')),
+	CONSTRAINT "work_plans_role_planned" CHECK ("work_plans"."role"::text in ('sewer', 'installer', 'cornice_installer')),
 	CONSTRAINT "work_plans_effective_from_first_day" CHECK (extract(day from "work_plans"."effective_from") = 1),
 	CONSTRAINT "work_plans_target_positive" CHECK ("work_plans"."target" > 0),
 	CONSTRAINT "work_plans_norm_has_target" CHECK ("work_plans"."user_id" is not null or "work_plans"."target" is not null)

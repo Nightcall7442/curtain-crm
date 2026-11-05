@@ -6052,7 +6052,7 @@
       "checkConstraints": {
         "work_plans_role_planned": {
           "name": "work_plans_role_planned",
-          "value": "\"work_plans\".\"role\" in ('sewer', 'installer', 'cornice_installer')"
+          "value": "\"work_plans\".\"role\"::text in ('sewer', 'installer', 'cornice_installer')"
         },
         "work_plans_effective_from_first_day": {
           "name": "work_plans_effective_from_first_day",
