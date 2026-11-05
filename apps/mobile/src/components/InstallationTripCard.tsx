@@ -5,7 +5,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocation } from '../hooks/useLocation';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, spacing, typography } from '../theme';
+import { colors, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
 import { SubmitButton } from './SubmitButton';
@@ -103,7 +103,11 @@ export function InstallationTripCard({
   if (active === null) {
     return (
       <Card>
-        <CardTitle title={m('trip.title')} icon="deadline" />
+        {/*
+          Значок — машина, а не будильник: у личной отлучки ниже свой, и две
+          карточки паузы с одним значком на одном экране читались одной.
+        */}
+        <CardTitle title={m('trip.title')} icon="trip" />
         <Text style={styles.hint}>{m('trip.hint')}</Text>
 
         {locationError !== null && <Text style={styles.error}>{locationError}</Text>}
@@ -136,7 +140,7 @@ export function InstallationTripCard({
     <Card>
       <CardTitle
         title={m('trip.title')}
-        icon="deadline"
+        icon="trip"
         /*
           Янтарный, как кольцо таймера на этом же экране: и выезд, и
           отлучка ставят рабочее время на паузу. Синяя плашка под янтарным
@@ -174,15 +178,12 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
-  /* Тот же таймер, что у `PersonalBreakCard`. */
+  /* Тот же таймер, что у `PersonalBreakCard`: одна ступень шкалы на обе карточки. */
   away: {
-    fontFamily: fonts.bold,
-    fontSize: 34,
-    fontWeight: '700',
+    ...typography.timer,
     color: colors.textPrimary,
     textAlign: 'center',
     marginVertical: spacing.sm,
-    fontVariant: ['tabular-nums'],
   },
   awayHint: {
     textAlign: 'center',

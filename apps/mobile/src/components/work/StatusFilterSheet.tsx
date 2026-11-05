@@ -8,7 +8,7 @@ import type { ReactElement } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
-import { colors, radius, spacing, typography } from '../../theme';
+import { colors, fonts, radius, sizes, spacing, typography } from '../../theme';
 import { BottomSheet } from '../BottomSheet';
 import type { StatusFilter } from './orderFilter';
 
@@ -94,12 +94,12 @@ const styles = StyleSheet.create({
     marginHorizontal: -ROW_BLEED,
   },
   row: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     justifyContent: 'center',
     paddingHorizontal: ROW_BLEED,
     borderRadius: radius.md,
   },
-  /* Статус внутри этапа — на ступень правее этапа и той же высоты: 44. */
+  /* Статус внутри этапа — на ступень правее этапа и той же высоты. */
   nested: {
     paddingLeft: ROW_BLEED + spacing.md,
   },
@@ -109,8 +109,11 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: colors.surfaceMuted,
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным
+  // жирным, и этапы в PWA были мутнее, чем в APK.
   stage: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
   },

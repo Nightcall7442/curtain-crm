@@ -7,10 +7,10 @@ import { useIsManagement } from '../hooks/useAuth';
 import { useLocale, type Translate } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, opacity, radius, spacing, typography, fonts } from '../theme';
+import { cardShadow, colors, opacity, radius, sizes, spacing, typography, fonts } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
-import { Card, CardLink, CardTitle, Skeleton } from './Card';
+import { Card, CardLink, CardTitle } from './Card';
 import { DateField } from './DateField';
 import { Field, Input } from './Field';
 import { Icon } from './Icon';
@@ -111,13 +111,19 @@ export function EventsBoard({
     ломался «две и одна», и третья плитка растягивалась на всю ширину.
     Фиксированная треть держит три в ряд на любом телефоне, а четвёртое
     событие переносится вниз той же ширины, не растягиваясь.
+
+    До первого замера — оценка в процентах (`personEstimate`), тоже по три
+    в ряд. Прежняя заглушка делила ширину поровну между ВСЕМИ плитками без
+    переноса: при четырёх событиях первый кадр показывал четыре сжатые
+    плитки в одну строку, и они перепрыгивали в ряды, как только приходил
+    замер, — при каждом появлении доски.
   */
   const [tileWidth, setTileWidth] = useState<number | null>(null);
   const onRowLayout = (event: LayoutChangeEvent): void => {
     const width = Math.floor((event.nativeEvent.layout.width - spacing.sm * (SLOTS - 1)) / SLOTS);
     setTileWidth((current) => (current === width ? current : width));
   };
-  const tileSize = tileWidth === null ? styles.personFlexible : { width: tileWidth };
+  const tileSize = tileWidth === null ? styles.personEstimate : { width: tileWidth };
 
   const create = trpc.events.create.useMutation({
     async onSuccess() {
@@ -188,8 +194,30 @@ export function EventsBoard({
         }
       />
 
+      {/*
+        Заглушка — те же три плитки, что приедут: фото, две строки имени,
+        две строки должности, срок и дата. Общий `Skeleton` — полосы
+        «подпись — значение» высотой около 130 точек — сменялся плитками
+        выше двухсот, и всё, что ниже доски, прыгало вниз.
+      */}
       {isLoading ? (
-        <Skeleton />
+        <View style={styles.row} onLayout={onRowLayout}>
+          {Array.from({ length: SLOTS }, (_, index) => (
+            <View key={`ghost-${index.toString()}`} style={[styles.person, tileSize]}>
+              <View style={styles.photo} />
+              <View style={[styles.ghostSlot, styles.ghostName]}>
+                <View style={[styles.ghostBar, styles.ghostBarWide]} />
+              </View>
+              <View style={[styles.ghostSlot, styles.ghostJob]}>
+                <View style={styles.ghostBar} />
+              </View>
+              <View style={[styles.ghostSlot, styles.ghostWhen]}>
+                <View style={styles.ghostBar} />
+              </View>
+              <View style={[styles.ghostSlot, styles.ghostDate]} />
+            </View>
+          ))}
+        </View>
       ) : (
         <View style={styles.row} onLayout={onRowLayout}>
           {events.map((item) => {
@@ -245,9 +273,8 @@ export function EventsBoard({
                         },
                       ]);
                     }}
-                    hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={m('events.remove')}
+                    accessibilityLabel={`${m('events.remove')}: ${item.title}`}
                     style={styles.removeButton}
                   >
                     <Text style={styles.removeText}>{m('events.remove')}</Text>
@@ -298,7 +325,12 @@ export function EventsBoard({
         </Field>
 
         <Field label={m('events.date')} required>
-          <DateField value={date} onChange={setDate} placeholder={m('events.date')} />
+          <DateField
+            value={date}
+            onChange={setDate}
+            placeholder={m('events.date')}
+            emptyText={m('common.datePlaceholder')}
+          />
         </Field>
 
         <Field label={m('events.note')}>
@@ -340,6 +372,13 @@ export function EventsBoard({
   );
 }
 
+/** Имя и должность — по две строки сноски, всегда: даты встают на одну высоту. */
+const TWO_FOOTNOTE_LINES = typography.footnote.lineHeight * 2;
+/** Зазор между именем и должностью: должность — продолжение имени. */
+const JOB_GAP = 2;
+/** Высота строки «через сколько» — постоянная: дата под ней у всех плиток на одной высоте. */
+const WHEN_LINE = 17;
+
 const styles = StyleSheet.create({
   /*
     Плитки делят ширину ряда на три равные доли (см. `onRowLayout`), а не
@@ -360,11 +399,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.surfaceMuted,
   },
-  /** До первой раскладки ряда — поровну по ширине, без переноса. */
-  personFlexible: {
-    flexGrow: 1,
-    flexBasis: 0,
-    minWidth: 0,
+  /*
+    До первого замера ряда — треть в процентах. 31% × 3 плюс два
+    промежутка по 8 меньше ширины ряда на любом телефоне от 320 точек, так
+    что ряд сразу ложится по три, а замер потом добавляет плитке точку-две.
+  */
+  personEstimate: {
+    width: '31%',
   },
   // Событие дня выделяем фоном, а не только подписью: карточка должна
   // цеплять взгляд с первого экрана, иначе поздравят те же, кто и так помнит.
@@ -428,22 +469,22 @@ const styles = StyleSheet.create({
     ...typography.footnote,
     fontFamily: fonts.semibold,
     fontWeight: '600',
-    height: typography.footnote.lineHeight * 2,
+    height: TWO_FOOTNOTE_LINES,
     color: colors.textPrimary,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
   jobTitle: {
     ...typography.footnote,
-    height: typography.footnote.lineHeight * 2,
+    height: TWO_FOOTNOTE_LINES,
     color: colors.textMuted,
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: JOB_GAP,
   },
   when: {
     ...typography.caption,
-    lineHeight: 17,
-    height: 17,
+    lineHeight: WHEN_LINE,
+    height: WHEN_LINE,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
@@ -457,8 +498,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   removeButton: {
-    // Цель в палец ростом; подпись по центру.
-    minHeight: 44,
+    // Цель в палец ростом; подпись по центру. Без `hitSlop`: в браузере его
+    // нет, размер цели — только сама коробка.
+    minHeight: sizes.touchTarget,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
@@ -491,5 +533,38 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.sm,
+  },
+  /*
+    Заглушка плитки: каждая «строка» — той же высоты и с тем же отступом,
+    что строка настоящей плитки, поэтому заглушка ровно её роста.
+  */
+  ghostSlot: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostName: {
+    height: TWO_FOOTNOTE_LINES,
+    marginTop: spacing.sm,
+  },
+  ghostJob: {
+    height: TWO_FOOTNOTE_LINES,
+    marginTop: JOB_GAP,
+  },
+  ghostWhen: {
+    height: WHEN_LINE,
+    marginTop: spacing.xs,
+  },
+  ghostDate: {
+    height: typography.footnote.lineHeight,
+  },
+  ghostBar: {
+    width: '55%',
+    height: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+  },
+  ghostBarWide: {
+    width: '75%',
   },
 });

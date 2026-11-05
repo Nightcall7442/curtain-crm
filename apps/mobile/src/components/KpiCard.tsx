@@ -1,8 +1,8 @@
-import { parseMoney } from '@curtain-crm/shared';
+import { tryParseMoney } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography, fonts } from '../theme';
+import { colors, fonts, opacity, sizes, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Empty, Progress } from './Card';
 import { Icon } from './Icon';
@@ -41,7 +41,20 @@ export function KpiCard({
   readonly isLoading: boolean;
 }): ReactElement {
   const { m, money: formatMoney } = useLocale();
-  const percent = kpiPercent === null ? null : Number.parseFloat(kpiPercent);
+  /*
+    Суммы и процент разбираются один раз и мягко.
+
+    Строка, которая не разбирается, — не повод ронять экран. Так и было:
+    у расчёта текущего месяца снимок схемы пришёл пустым (`{}`), «целевая»
+    собралась в строку `"NaN"`, и нажатие на глаз бросало исключение из
+    `parseMoney` — профиль целиком сменялся пустым экраном. Неразобранная
+    цель просто не показывается, как у схем без цели; неразобранный процент
+    — тоже, вместо «NaN%».
+  */
+  const target = tryParseMoney(targetAmount);
+  const calculated = tryParseMoney(calculatedAmount);
+  const parsedPercent = kpiPercent === null ? Number.NaN : Number.parseFloat(kpiPercent);
+  const percent = Number.isFinite(parsedPercent) ? parsedPercent : null;
 
   /*
     Суммы закрыты, пока сотрудник сам их не откроет.
@@ -57,28 +70,31 @@ export function KpiCard({
   */
   const [revealed, setRevealed] = useState(false);
 
-  const money = (value: string): string =>
-    revealed ? formatMoney(parseMoney(value)) : m('kpi.masked');
+  const money = (minor: number): string => (revealed ? formatMoney(minor) : m('kpi.masked'));
 
+  /*
+    Высота — по содержимому, без `flex: 1`, как у «Текущей смены» рядом.
+    Растяжение осталось с тех пор, как две карточки стояли в ряд и
+    выравнивались по высоте; в профиле они давно стоят колонкой.
+  */
   return (
-    <Card style={styles.card}>
+    <Card>
       <CardTitle
         title={m('kpi.title')}
         icon="payroll"
         action={
           <View style={styles.titleAction}>
             <Text style={styles.period}>{periodLabel}</Text>
-            {calculatedAmount !== null && (
+            {calculated !== null && (
               <Pressable
                 onPress={() => {
                   setRevealed((current) => !current);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={revealed ? m('kpi.hide') : m('kpi.show')}
-                hitSlop={12}
-                style={({ pressed }) => (pressed ? styles.eyePressed : null)}
+                style={({ pressed }) => [styles.eye, pressed ? styles.eyePressed : null]}
               >
-                <Icon name={revealed ? 'eyeOff' : 'eye'} size={18} color={colors.textSecondary} />
+                <Icon name={revealed ? 'eyeOff' : 'eye'} size={EYE_ICON} color={colors.textSecondary} />
               </Pressable>
             )}
           </View>
@@ -87,14 +103,14 @@ export function KpiCard({
 
       {isLoading ? (
         <Empty message={m('kpi.loading')} />
-      ) : calculatedAmount === null ? (
+      ) : calculated === null ? (
         <Empty message={m('kpi.none')} hint={m('kpi.noneHint')} />
       ) : (
         <>
-          {targetAmount !== null && (
+          {target !== null && (
             <>
               <Text style={styles.label}>{m('kpi.target')}</Text>
-              <Text style={styles.amountMuted}>{money(targetAmount)}</Text>
+              <Text style={styles.amountMuted}>{money(target)}</Text>
             </>
           )}
 
@@ -116,9 +132,13 @@ export function KpiCard({
             </View>
           )}
 
-          <View style={styles.totalBlock}>
+          {/*
+            Черта отделяет итог от цели и выполнения. Когда их нет (оклад,
+            почасовая, процент), черта под заголовком отделяла бы пустоту.
+          */}
+          <View style={target === null && percent === null ? null : styles.totalBlock}>
             <Text style={styles.label}>{m('kpi.accrued')}</Text>
-            <Text style={styles.amount}>{money(calculatedAmount)}</Text>
+            <Text style={styles.amount}>{money(calculated)}</Text>
           </View>
         </>
       )}
@@ -126,10 +146,12 @@ export function KpiCard({
   );
 }
 
+/** Размер значка «глаз». */
+const EYE_ICON = 18;
+/** Насколько зона нажатия выходит за значок с каждой стороны. */
+const EYE_OUTSET = (sizes.touchTarget - EYE_ICON) / 2;
+
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-  },
   period: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -139,8 +161,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
+  /*
+    Зона нажатия — настоящие 44 точки, а не `hitSlop`.
+
+    В браузере `hitSlop` не работает вовсе: в PWA глаз ловил касание только
+    на самом значке 18×20. Отрицательные отступы возвращают значок на прежнее
+    место и не дают коробке раздуть строку заголовка: карточка не становится
+    выше от того, что в глаз легче попасть.
+  */
+  eye: {
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
+    margin: -EYE_OUTSET,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   eyePressed: {
-    opacity: 0.6,
+    opacity: opacity.pressed,
   },
   label: {
     ...typography.caption,

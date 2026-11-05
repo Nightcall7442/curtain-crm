@@ -66,5 +66,5 @@ export type MonitorSort = (typeof MONITOR_SORTS)[number];
 
 export const MONITOR_SORT_LABELS: Translated<MonitorSort> = {
   ru: { place: 'По месту', plan: 'По плану', name: 'По имени', workstation: 'По машинке' },
-  uz: { place: 'O‘rin bo‘yicha', plan: 'Reja bo‘yicha', name: 'Ism bo‘yicha', workstation: 'Mashina bo‘yicha' },
+  uz: { place: "O'rin bo'yicha", plan: "Reja bo'yicha", name: "Ism bo'yicha", workstation: "Mashina bo'yicha" },
 };

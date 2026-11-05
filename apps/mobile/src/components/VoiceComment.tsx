@@ -13,8 +13,9 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
+import { Icon } from './Icon';
 
 /**
  * Голосовые комментарии к заказу: запись и воспроизведение.
@@ -276,17 +277,27 @@ export function VoiceRecorderButton({ orderId }: { readonly orderId: number }): 
     );
   }
 
+  /*
+    Микрофон — значок общего набора, а не эмодзи 🎤 в тексте подписи: тот
+    рисовался системным цветным шрифтом, на Android и в браузере по-разному,
+    и выбивался из зелёных линейных значков приложения.
+  */
   return (
     <Pressable
       onPress={() => void start()}
       disabled={addVoice.isPending}
       style={({ pressed }) => [styles.recordButton, pressed ? styles.pressed : null]}
       accessibilityRole="button"
+      accessibilityLabel={m('voice.record')}
+      accessibilityState={{ busy: addVoice.isPending }}
     >
       {addVoice.isPending ? (
-        <ActivityIndicator color={colors.accent} size="small" />
+        <ActivityIndicator color={colors.accentStrong} size="small" />
       ) : (
-        <Text style={styles.recordText}>{m('voice.record')}</Text>
+        <>
+          <Icon name="voice" size={BUTTON_ICON} color={colors.accentStrong} />
+          <Text style={styles.recordText}>{m('voice.record')}</Text>
+        </>
       )}
     </Pressable>
   );
@@ -345,8 +356,14 @@ export function VoiceCommentPlayer({
       });
   };
 
+  // Тот же микрофон, что на кнопке записи: подпись без эмодзи, значок — набором.
   if (url === null) {
-    return <Text style={styles.unavailable}>{m('voice.unavailable')}</Text>;
+    return (
+      <View style={styles.unavailable}>
+        <Icon name="voice" size={PLAYER_ICON} color={colors.textMuted} />
+        <Text style={styles.unavailableText}>{m('voice.unavailable')}</Text>
+      </View>
+    );
   }
 
   return (
@@ -356,10 +373,16 @@ export function VoiceCommentPlayer({
       accessibilityRole="button"
       accessibilityLabel={status.playing ? m('voice.pause') : m('voice.play')}
     >
+      {/*
+        Значки набора вместо символов ▶ и ⏸: те брались из системного
+        шрифта — в Chrome ▶ рисовался цветной эмодзи-кнопкой, на Android
+        тонким контуром, — и «пауза» была шире «пуска», так что время рядом
+        прыгало при каждом нажатии.
+      */}
       {status.isBuffering ? (
         <ActivityIndicator color={colors.accent} size="small" />
       ) : (
-        <Text style={styles.playerGlyph}>{status.playing ? '⏸' : '▶'}</Text>
+        <Icon name={status.playing ? 'pause' : 'play'} size={PLAYER_ICON} color={colors.accent} />
       )}
       <Text style={styles.playerText}>
         {durationSeconds === null ? m('voice.message') : formatSeconds(durationSeconds)}
@@ -368,23 +391,38 @@ export function VoiceCommentPlayer({
   );
 }
 
+/** Значок в кнопке — как у «Принять оплату» и «Добавить позицию». */
+const BUTTON_ICON = 18;
+/** Значок плеера — под строку подписи рядом. */
+const PLAYER_ICON = 16;
+
+/*
+  Кнопки — та же система, что у `SubmitButton`: высота `buttonHeight`,
+  таблетка, подпись основным кеглем жирным начертанием. «Записать голосом»
+  — второе действие, светло-зелёное, как «Принять оплату» на этом же
+  экране; прежде это была серая рамка высотой 44 со своим скруглением.
+*/
 const styles = StyleSheet.create({
   recordButton: {
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
     marginTop: spacing.sm,
     // Тот же зазор до ленты комментариев, что и у панели записи: кнопка лежала прямо на черте.
     marginBottom: spacing.md,
   },
   recordText: {
     ...typography.body,
-    color: colors.textSecondary,
+    // Начертанием, а не `fontWeight` поверх Medium: браузер рисовал ложный полужирный.
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.accentStrong,
+    flexShrink: 1,
   },
   pressed: {
     opacity: opacity.pressed,
@@ -419,20 +457,24 @@ const styles = StyleSheet.create({
   /* Подпись по центру кнопки: без `justifyContent` она садилась к верху на 9 px. */
   actionButton: {
     flex: 1,
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
   },
+  /* «Отмена» — нейтральная рамка, как «Отмена» у причины перехода выше. */
   secondaryButton: {
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   secondaryText: {
     ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   primaryButton: {
     backgroundColor: colors.accent,
@@ -440,11 +482,13 @@ const styles = StyleSheet.create({
   primaryText: {
     ...typography.body,
     // Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным.
-    fontFamily: fonts.semibold,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.onAccent,
+    textAlign: 'center',
   },
   player: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -456,18 +500,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     marginTop: spacing.xs,
   },
-  playerGlyph: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.accent,
-  },
   playerText: {
     ...typography.caption,
     color: colors.textSecondary,
   },
   unavailable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  unavailableText: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: spacing.xs,
+    flexShrink: 1,
   },
 });

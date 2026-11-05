@@ -38,10 +38,13 @@ import {
 } from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
+import { SubmitButton } from '../components/SubmitButton';
+import { useIsManagement } from '../hooks/useAuth';
 import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import type { RootStackParamList } from '../types';
-import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale, type Translate } from '../hooks/useLocale';
 
 /**
@@ -84,6 +87,16 @@ export function SellReadyMadeScreen(): ReactElement {
   const [installAddress, setInstallAddress] = useState('');
   const [showErrors, setShowErrors] = useState(false);
   const insets = useSafeAreaInsets();
+
+  /*
+    Без открытой смены сервер продажу не примет (412 «Сначала начните
+    смену»), а продавец узнавал об этом на «Продать» — заполнив всю форму.
+    Баннер — тот же, что в новом заказе и на «Работе», и ведёт туда, где
+    смену начинают; кнопка до тех пор выключена. Руководству смена не нужна.
+  */
+  const isManager = useIsManagement();
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
+  const needsShift = !isManager && shift.data === null;
 
   /*
     Куда прокрутить при ошибке: «Продать» стоит в самом низу формы, а
@@ -287,6 +300,8 @@ export function SellReadyMadeScreen(): ReactElement {
         contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
       >
+        <ShiftRequiredBanner />
+
         <View onLayout={rememberY('client')}>
           <Card>
             <CardTitle title={m('create.client')} icon="person" />
@@ -305,11 +320,13 @@ export function SellReadyMadeScreen(): ReactElement {
               />
             </Field>
 
+            {/* Последнее поле карточки — снизу 16, как сверху, а не 32. */}
             <Field
               label={m('create.phone')}
               required
               hint={m('create.phoneHint')}
               error={showErrors ? errors.clientPhone : undefined}
+              last
             >
               <Input
                 value={clientPhone}
@@ -334,7 +351,16 @@ export function SellReadyMadeScreen(): ReactElement {
 
             <View style={styles.money}>
               <View style={styles.moneyItem}>
-                <Field label={m('sell.price')} required={items.some((item) => item.readyMadeItemId !== null)}>
+                {/*
+                  Ошибка — словами под полем, а не одной красной рамкой:
+                  продавца прокручивало сюда, и без текста было непонятно,
+                  чем плоха пустая цена.
+                */}
+                <Field
+                  label={m('sell.price')}
+                  required={items.some((item) => item.readyMadeItemId !== null)}
+                  error={showErrors && priceMissing ? m('sell.priceRequired') : undefined}
+                >
                   <MoneyInput
                     value={workPrice}
                     onChangeText={setWorkPrice}
@@ -349,13 +375,13 @@ export function SellReadyMadeScreen(): ReactElement {
                   {...(paidInFull ? { hint: m('sell.fullPaymentOnly') } : {})}
                 >
                   {/* Подставленная сумма не правится — и выглядит не полем
-                      ввода, а справкой: приглушённая подложка и текст. */}
+                      ввода, а справкой: приглушённый вид `Input` даёт сам,
+                      по `editable`. */}
                   <MoneyInput
                     value={paidInFull ? (priceDue > 0 ? priceDue.toString() : '') : deposit}
                     onChangeText={setDeposit}
                     editable={!paidInFull}
                     placeholder="0"
-                    style={paidInFull ? styles.inputReadOnly : undefined}
                   />
                 </Field>
               </View>
@@ -366,8 +392,9 @@ export function SellReadyMadeScreen(): ReactElement {
               onChange={setDiscount}
               showError={showErrors}
             />
-            {/* Способ оплаты предоплаты — из него складывается касса дня. */}
-            <Field label={m('cash.method')}>
+            {/* Способ оплаты предоплаты — из него складывается касса дня.
+                Последнее поле карточки — без своего нижнего отступа. */}
+            <Field label={m('cash.method')} last>
               <ChipSelect
                 value={depositMethod}
                 onChange={setDepositMethod}
@@ -407,10 +434,12 @@ export function SellReadyMadeScreen(): ReactElement {
             <View style={styles.row}>
               <View style={styles.modelItem}>
                 <Field label={m('create.model')}>
+                  {/* Пока справочник грузится, шторка крутит загрузку, а не пишет «пуст». */}
                   <CatalogPicker
                     value={item.model}
                     placeholder={m('create.notChosen')}
                     options={modelOptions}
+                    loading={catalog.isLoading}
                     sheetTitle={m('sell.modelRange')}
                     onChange={(model) => {
                       /* Модель есть на полке ровно в одном варианте — берём его
@@ -631,7 +660,7 @@ export function SellReadyMadeScreen(): ReactElement {
               </View>
             )}
 
-            <Field label={m('create.comment')}>
+            <Field label={m('create.comment')} last>
               <Input
                 value={item.comment}
                 onChangeText={(comment) => {
@@ -693,6 +722,7 @@ export function SellReadyMadeScreen(): ReactElement {
                   label={m('create.address')}
                   required
                   error={showErrors ? errors.installAddress : undefined}
+                  last
                 >
                   <Input
                     value={installAddress}
@@ -709,28 +739,23 @@ export function SellReadyMadeScreen(): ReactElement {
           </Card>
         </View>
 
-        <Pressable
+        {/*
+          Общая кнопка формы — 48 и таблеткой, как «Создать заказ», откуда
+          сюда приходят. Своя была в 52 со скруглением карточки — выше и
+          квадратнее всех остальных кнопок приложения.
+        */}
+        <SubmitButton
+          label={
+            needsRework === 'yes'
+              ? m('sell.submitRework')
+              : needsInstallation === 'yes'
+                ? m('sell.submitInstall')
+                : m('sell.submitClose')
+          }
           onPress={submit}
-          disabled={sell.isPending}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            sell.isPending ? styles.submitBusy : null,
-            pressed ? styles.pressed : null,
-          ]}
-        >
-          {sell.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>
-              {needsRework === 'yes'
-                ? m('sell.submitRework')
-                : needsInstallation === 'yes'
-                  ? m('sell.submitInstall')
-                  : m('sell.submitClose')}
-            </Text>
-          )}
-        </Pressable>
+          disabled={needsShift}
+          pending={sell.isPending}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -830,13 +855,16 @@ const styles = StyleSheet.create({
   quantityItem: {
     width: 80,
   },
+  /* Таблеткой и в 48, как «Добавить в комплект» на складе и кнопка формы
+     ниже: скругление карточки на кнопке давало вторую форму кнопок. */
   addItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     borderWidth: hairline,
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
@@ -930,31 +958,13 @@ const styles = StyleSheet.create({
     color: colors.accentStrong,
     fontWeight: '600',
   },
-  inputReadOnly: {
-    backgroundColor: colors.surfaceMuted,
-    color: colors.textSecondary,
-  },
+  /* 13, а не сноска: «заказ закроется сразу» — то, что продавец обязан
+     прочитать до нажатия, а не служебная пометка. */
   hint: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textMuted,
   },
   pressed: {
     opacity: opacity.pressed,
-  },
-  submit: {
-    minHeight: 52,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitBusy: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    fontFamily: fonts.semibold,
-    color: colors.onAccent,
-    fontWeight: '600',
   },
 });

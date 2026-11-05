@@ -4,7 +4,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography, fonts } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Pill } from './Card';
 import { SubmitButton } from './SubmitButton';
@@ -80,14 +80,26 @@ export function PersonalBreakCard({
   if (!shiftOpen || current.isLoading) return null;
 
   if (active === null) {
+    /*
+      Единица измерения — из той же строки словаря, что и «20 мин»: шаблон
+      с пустым числом даёт «мин» и «daq» без отдельного ключа, и подпись
+      под числом не разойдётся с остальным приложением.
+    */
+    const unit = m('shift.minutes', { n: '' }).trim();
+
     return (
       <Card>
-        <CardTitle title={m('break.title')} icon="deadline" />
+        <CardTitle title={m('break.title')} icon="break" />
         <Text style={styles.hint}>{m('break.hint')}</Text>
         {/*
           Все сроки — одним рядом равных кнопок. В перенос по ширине подписи
           они ложились 4 + 1: «30 мин» оставалась одна на второй строке, а
           кнопки первой были разной ширины и не доходили до края карточки.
+
+          Число крупно, единица — мелко под ним. В строку «20 мин» на 360
+          точках занимала почти всю кнопку: от подписи до рамки оставалось по
+          3 точки, и пять кнопок читались одной слипшейся полосой. Число —
+          то, что выбирают, — держит кнопку, а единица его только поясняет.
         */}
         <View style={styles.chips}>
           {PERSONAL_BREAK_DURATION_OPTIONS.map((minutes) => (
@@ -98,11 +110,11 @@ export function PersonalBreakCard({
               }}
               disabled={startBreak.isPending}
               accessibilityRole="button"
+              accessibilityLabel={m('shift.minutes', { n: minutes })}
               style={({ pressed }) => [styles.chip, pressed ? styles.pressed : null]}
             >
-              <Text style={styles.chipText} numberOfLines={2}>
-                {m('shift.minutes', { n: minutes })}
-              </Text>
+              <Text style={styles.chipNumber}>{minutes.toString()}</Text>
+              <Text style={styles.chipUnit}>{unit}</Text>
             </Pressable>
           ))}
         </View>
@@ -120,7 +132,7 @@ export function PersonalBreakCard({
     <Card>
       <CardTitle
         title={m('break.title')}
-        icon="deadline"
+        icon="break"
         action={
           <Pill
             text={overdue ? m('break.overdue') : m('break.active')}
@@ -169,43 +181,50 @@ const styles = StyleSheet.create({
   },
   chips: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
+  /*
+    Высота — кнопки действия: касание сразу начинает отлучку. Скругление —
+    `md`, а не таблетка: в двухстрочной кнопке шириной 53 точки таблетка
+    превращалась в овал и съедала углы подписи.
+  */
   chip: {
     flex: 1,
     minWidth: 0,
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-    borderRadius: radius.pill,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  chipText: {
-    ...typography.caption,
-    fontFamily: fonts.semibold,
-    fontWeight: '600',
+  chipNumber: {
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textPrimary,
-    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  chipUnit: {
+    ...typography.footnote,
+    color: colors.textMuted,
   },
   pressed: {
     opacity: opacity.pressed,
   },
   /*
-    Таймер — общий с выездом (`InstallationTripCard`): тот же кегль, по
-    центру, подсказка под ним тоже по центру. Два «я не на месте» на одном
-    экране были набраны по-разному: здесь 34 по центру, там 22 слева.
+    Таймер — общий с выездом (`InstallationTripCard`): одна ступень шкалы
+    (`typography.timer`), по центру, подсказка под ним тоже по центру. Два
+    «я не на месте» на одном экране были набраны по-разному: здесь 34 по
+    центру, там 22 слева.
   */
   timer: {
-    fontFamily: fonts.bold,
-    fontSize: 34,
-    fontWeight: '700',
+    ...typography.timer,
     color: colors.textPrimary,
     textAlign: 'center',
     marginVertical: spacing.sm,
-    fontVariant: ['tabular-nums'],
   },
   timerOverdue: {
     color: colors.danger,

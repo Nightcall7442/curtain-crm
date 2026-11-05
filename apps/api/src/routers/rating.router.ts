@@ -128,9 +128,11 @@ export const ratingRouter = router({
     const categories = await sewerCategories(ctx.db, employees);
     const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
 
+    // Язык клиента — ради пояснения «почему вне конкурса» (`unratedReason`):
+    // без него узбекский экран показывал русскую фразу.
     const [current, previous] = await Promise.all([
-      employeeRating(ctx.db, employees, bounds.current, input.branchId, categoryOf),
-      employeeRating(ctx.db, employees, bounds.previous, input.branchId, categoryOf),
+      employeeRating(ctx.db, employees, bounds.current, input.branchId, categoryOf, ctx.locale),
+      employeeRating(ctx.db, employees, bounds.previous, input.branchId, categoryOf, ctx.locale),
     ]);
 
     const previousPlaces = new Map(previous.map((entry) => [entry.userId, entry.place]));
@@ -147,7 +149,7 @@ export const ratingRouter = router({
         // Выручка приходит в минорных единицах — формат собираем на сервере,
         // чтобы веб и мобилка не разошлись в разделителях.
         volumeFormatted:
-          role.role === Role.SELLER ? formatMoney(role.volumeValue) : null,
+          role.role === Role.SELLER ? formatMoney(role.volumeValue, { locale: ctx.locale }) : null,
       })),
     }));
 
@@ -231,9 +233,10 @@ export const ratingRouter = router({
       const categories = await sewerCategories(ctx.db, employees);
       const categoryOf = new Map(categories.map((row) => [row.userId, row.category]));
 
+      // Язык клиента — ради пояснения «почему вне конкурса» (`unratedReason`).
       const [current, previous] = await Promise.all([
-        employeeRating(ctx.db, employees, bounds.current, undefined, categoryOf),
-        employeeRating(ctx.db, employees, bounds.previous, undefined, categoryOf),
+        employeeRating(ctx.db, employees, bounds.current, undefined, categoryOf, ctx.locale),
+        employeeRating(ctx.db, employees, bounds.previous, undefined, categoryOf, ctx.locale),
       ]);
 
       const previousPlaces = new Map(previous.map((entry) => [entry.userId, entry.place]));
@@ -288,7 +291,7 @@ export const ratingRouter = router({
                 byRole: mine.byRole.map((role) => ({
                   ...role,
                   volumeFormatted:
-                    role.role === Role.SELLER ? formatMoney(role.volumeValue) : null,
+                    role.role === Role.SELLER ? formatMoney(role.volumeValue, { locale: ctx.locale }) : null,
                 })),
               },
       };

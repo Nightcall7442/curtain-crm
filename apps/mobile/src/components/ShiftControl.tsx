@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLocation } from '../hooks/useLocation';
 import { notifyError } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, fonts } from '../theme';
+import { colors, radius, spacing, typography } from '../theme';
 
 import { Card, CardTitle, ErrorState, Pill, Row } from './Card';
 import { ShiftRing } from './ShiftRing';
@@ -107,13 +107,18 @@ export function ShiftControl({
   */
   const isKnown = current.data !== undefined;
 
-  const handleCheckIn = (): void => {
+  /*
+    Обработчики жеста отвечают, состоялось ли действие: `false` — нет, и
+    бегунок сразу возвращается к началу. Без ответа он ждал страховочные
+    400 мс в конце дорожки, будто смена уже отмечена, — хотя геолокацию
+    не дали или швея отменила снимок стола.
+  */
+  const handleCheckIn = async (): Promise<boolean> => {
     setServerError(null);
-    void (async () => {
-      const position = await requestPosition();
-      if (position === null) return;
-      checkIn.mutate(position);
-    })();
+    const position = await requestPosition();
+    if (position === null) return false;
+    checkIn.mutate(position);
+    return true;
   };
 
   /**
@@ -151,26 +156,39 @@ export function ShiftControl({
     })();
   };
 
-  const handleCheckOut = (): void => {
+  const handleCheckOut = (): boolean | Promise<boolean> => {
     setServerError(null);
     if (!needsDeskPhoto) {
       finishShift(null);
-      return;
+      return true;
     }
     // Швее — сначала просьба и снимок: «убедитесь, что всё убрано и чисто».
     // Отмена в любой точке оставляет смену открытой.
-    Alert.alert(m('shift.deskTitle'), m('shift.deskText'), [
-      { text: m('common.cancel'), style: 'cancel' },
-      {
-        text: m('shift.deskTake'),
-        onPress: () => {
-          void (async () => {
-            const photo = await captureDeskPhoto();
-            if (photo !== null) finishShift(photo);
-          })();
-        },
-      },
-    ]);
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(
+        m('shift.deskTitle'),
+        m('shift.deskText'),
+        [
+          {
+            text: m('common.cancel'),
+            style: 'cancel',
+            onPress: () => {
+              resolve(false);
+            },
+          },
+          {
+            text: m('shift.deskTake'),
+            onPress: () => {
+              void (async () => {
+                const photo = await captureDeskPhoto();
+                if (photo !== null) finishShift(photo);
+                resolve(photo !== null);
+              })();
+            },
+          },
+        ],
+      );
+    });
   };
 
   const startedAt = shift === null ? null : new Date(shift.startedAt);
@@ -268,10 +286,11 @@ const styles = StyleSheet.create({
   loader: {
     marginVertical: spacing.lg,
   },
+  // Кегль и строка — ступенями шкалы, а не своими числами (20, 19, 17):
+  // текст карточки смены должен стоять на той же сетке, что и соседние.
   description: {
     ...typography.body,
     color: colors.textSecondary,
-    lineHeight: 20,
   },
   error: {
     backgroundColor: colors.dangerSoft,
@@ -279,15 +298,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   errorText: {
-    fontFamily: fonts.medium,
+    ...typography.caption,
     color: colors.danger,
-    fontSize: 13,
-    lineHeight: 19,
   },
   footnote: {
     ...typography.caption,
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 17,
   },
 });

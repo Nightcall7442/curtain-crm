@@ -14,7 +14,7 @@ import { useLocale } from '../../hooks/useLocale';
 import { trpc } from '../../lib/trpc';
 import { colors, radius, spacing, typography } from '../../theme';
 
-import { Card } from '../Card';
+import { Card, ErrorState } from '../Card';
 import { Icon, type IconName } from '../Icon';
 import { PressableScale } from '../PressableScale';
 
@@ -85,6 +85,24 @@ function Tile({
 
 /** Две плитки «Табло» — швеи и выездные: кто на смене и вход в табло группы. */
 export function MonitorTiles(): ReactElement {
+  /*
+    Не загрузилось — так и пишем, одной карточкой с повтором.
+
+    Плитки без ответа показывали «—» без единого слова, и руководитель
+    читал это как «никого нет», а не как «нет связи». Запросы — те же, что
+    у плиток (тот же ключ кеша), поэтому лишнего обращения к серверу нет.
+  */
+  const boards = trpc.useQueries((query) =>
+    TILES.map((tile) => query.monitor.board({ group: tile.group })),
+  );
+  if (boards.some((board) => board.isError && board.data === undefined)) {
+    return (
+      <Card>
+        <ErrorState />
+      </Card>
+    );
+  }
+
   return (
     <View style={styles.row}>
       {TILES.map((tile) => (

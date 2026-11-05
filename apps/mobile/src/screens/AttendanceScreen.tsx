@@ -45,7 +45,8 @@ export function AttendanceScreen(): ReactElement {
     своя смена админа, а выйти из ошибки можно было только уходом с
     вкладки — обещанного «потяните вниз» у голой надписи не было. Теперь
     прокрутка с обновлением остаётся, смена работает, а в карточке —
-    кнопка «Повторить».
+    кнопка «Повторить». Текст сервера в карточку не идёт: служебный ответ
+    бывает по-английски («Internal server error») и ничего не объясняет.
   */
   const rows = roster.data ?? [];
   const working = rows.filter((row) => row.endedAt === null);
@@ -72,7 +73,7 @@ export function AttendanceScreen(): ReactElement {
         <CardTitle title={m('attendance.now')} icon="people" />
 
         {roster.isError ? (
-          <ErrorState message={roster.error.message} />
+          <ErrorState />
         ) : roster.data === undefined ? (
           <Skeleton />
         ) : working.length === 0 ? (
@@ -130,7 +131,7 @@ export function AttendanceScreen(): ReactElement {
         <CardTitle title={m('attendance.queue')} icon="orders" />
 
         {queue.isError ? (
-          <ErrorState message={queue.error.message} />
+          <ErrorState />
         ) : queue.data === undefined ? (
           <Skeleton rows={2} />
         ) : queue.data.length === 0 ? (

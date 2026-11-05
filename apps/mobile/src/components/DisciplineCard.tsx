@@ -11,10 +11,10 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
 import { SubmitButton } from './SubmitButton';
-import { Card, CardTitle, Empty, Skeleton } from './Card';
+import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { Field, Input } from './Field';
 
 /**
@@ -55,9 +55,16 @@ export function DisciplineCard({
 
   return (
     <Card>
-      <CardTitle title={m('discipline.title')} icon="badge" />
+      {/*
+        Свой значок — щит с галочкой. Был `badge`: в наборе это банковская
+        карта, и над баллами дисциплины она читалась как «оплата».
+      */}
+      <CardTitle title={m('discipline.title')} icon="discipline" />
       {query.isLoading ? (
         <Skeleton rows={2} />
+      ) : query.isError ? (
+        /* Не загрузилось — не «баллов нет»: пустое состояние при обрыве связи читалось как чистый месяц. */
+        <ErrorState />
       ) : summary === null ? (
         <Empty message={m('discipline.empty')} />
       ) : (
@@ -202,9 +209,8 @@ function Stat({
   );
 }
 
-/** Цель нажатия ссылки и запас по вертикали вокруг строки подписи (16). */
-const LINK_TARGET = 44;
-const LINK_SLACK = (LINK_TARGET - typography.footnote.lineHeight) / 2;
+/** Запас по вертикали вокруг строки подписи (16) до цели нажатия. */
+const LINK_SLACK = (sizes.touchTarget - typography.footnote.lineHeight) / 2;
 
 const styles = StyleSheet.create({
   stats: {
@@ -240,8 +246,10 @@ const styles = StyleSheet.create({
   levelDanger: {
     backgroundColor: colors.dangerSoft,
   },
+  // Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным.
   levelText: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
   },
@@ -279,7 +287,7 @@ const styles = StyleSheet.create({
   */
   linkTarget: {
     alignSelf: 'flex-start',
-    minHeight: LINK_TARGET,
+    minHeight: sizes.touchTarget,
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
     marginHorizontal: -spacing.sm,

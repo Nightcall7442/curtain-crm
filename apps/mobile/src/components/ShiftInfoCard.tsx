@@ -61,12 +61,18 @@ export function ShiftInfoCard({
   */
   return (
     <Card>
+      {/*
+        Плашка — та же пара подписей и тонов, что на вкладке «Смена» и на
+        главной: «Открыта» / «Не открыта», зелёная / серая. Здесь стояло
+        своё «Смена закрыта», и одно и то же состояние в трёх местах
+        называлось тремя словами.
+      */}
       <CardTitle
         title={m('shift.current')}
         icon="shift"
         action={
           <Pill
-            text={isOpen ? m('shift.isOpen') : m('shift.isClosed')}
+            text={isOpen ? m('shift.open') : m('shift.notOpen')}
             tone={isOpen ? 'positive' : 'neutral'}
           />
         }
@@ -98,7 +104,6 @@ const styles = StyleSheet.create({
   closed: {
     ...typography.body,
     color: colors.textSecondary,
-    lineHeight: 20,
   },
   footer: {
     marginTop: spacing.md,

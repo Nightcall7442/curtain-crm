@@ -17,6 +17,7 @@ import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { ShiftRequiredBanner, useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle, ErrorState } from './Card';
 import { Field, Input, MoneyInput } from './Field';
@@ -36,6 +37,7 @@ import { TerminalDaySummary } from './TerminalDaySummary';
  */
 export function TerminalCheckCard(): ReactElement {
   const { m, money, locale } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const today = trpc.terminalChecks.today.useQuery();
   const { user } = useAuth();
@@ -252,6 +254,8 @@ export function TerminalCheckCard(): ReactElement {
             placeholder={m('terminal.commentPlaceholder')}
           />
         </Field>
+        {/* Без смены чек не примут (412): баннер объясняет погашенную кнопку. */}
+        <ShiftRequiredBanner style={styles.shiftBanner} />
         <SubmitButton
           label={m('terminal.submit')}
           onPress={() => {
@@ -263,7 +267,7 @@ export function TerminalCheckCard(): ReactElement {
               comment: comment.trim() === '' ? null : comment.trim(),
             });
           }}
-          disabled={photo === null || payType === null || inputToMajor(amount) <= 0}
+          disabled={photo === null || payType === null || inputToMajor(amount) <= 0 || needsShift}
           pending={create.isPending}
         />
       </BottomSheet>
@@ -272,6 +276,10 @@ export function TerminalCheckCard(): ReactElement {
 }
 
 const styles = StyleSheet.create({
+  // В шторке у полей свой нижний отступ, у баннера — этот: до кнопки тот же шаг.
+  shiftBanner: {
+    marginBottom: spacing.md,
+  },
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

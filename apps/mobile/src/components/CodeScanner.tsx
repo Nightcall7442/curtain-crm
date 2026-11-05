@@ -1,9 +1,9 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notifySuccess } from '../lib/haptics';
-import { colors, fonts, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -49,10 +49,14 @@ export function CodeScanner({
   */
   const [cameraFailed, setCameraFailed] = useState(false);
   /*
-    Просили разрешение — и получили отказ. Браузер на повторный запрос не
-    отвечает (а `canAskAgain` в веб-версии всегда `true`), поэтому кнопка
-    «Разрешить камеру» после отказа ничего не делала. Дальше — только
+    Просили разрешение в браузере — и получили отказ. Браузер на повторный
+    запрос не отвечает (а `canAskAgain` в веб-версии всегда `true`), поэтому
+    кнопка «Разрешить камеру» после отказа ничего не делала. Дальше — только
     настройки, о чём экран и говорит.
+
+    Только в браузере. Android после одного «Запретить» спросит ещё раз, и
+    кнопка там рабочая; когда система спрашивать перестанет, это скажет
+    сам `canAskAgain === false`.
   */
   const [refused, setRefused] = useState(false);
 
@@ -78,7 +82,7 @@ export function CodeScanner({
   const granted = permission?.granted === true;
   /** Кадр будет: разрешение есть, и камера запустилась. */
   const live = granted && !cameraFailed;
-  const blocked = cameraFailed || refused || permission?.canAskAgain === false;
+  const blocked = refused || permission?.canAskAgain === false;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -106,6 +110,16 @@ export function CodeScanner({
               onClose();
             }}
           />
+        ) : cameraFailed ? (
+          /*
+            Разрешение есть, а кадра нет: камеры нет вовсе или её держит
+            другое приложение. «Нет доступа, разрешите в настройках» здесь
+            было неправдой — человек шёл в настройки и находил там уже
+            выданное разрешение. Выход один — набрать код руками.
+          */
+          <View style={styles.permission}>
+            <Text style={styles.permissionText}>{m('scanner.unavailable')}</Text>
+          </View>
         ) : blocked ? (
           <View style={styles.permission}>
             <Text style={styles.permissionTitle}>{m('photo.noAccess')}</Text>
@@ -120,7 +134,7 @@ export function CodeScanner({
               <Pressable
                 onPress={() => {
                   void requestPermission().then((answer) => {
-                    if (!answer.granted) setRefused(true);
+                    if (Platform.OS === 'web' && !answer.granted) setRefused(true);
                   });
                 }}
                 accessibilityRole="button"
@@ -214,7 +228,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   close: {
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     alignSelf: 'stretch',
     borderRadius: radius.pill,
     backgroundColor: '#fff',
@@ -249,7 +263,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   allow: {
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,

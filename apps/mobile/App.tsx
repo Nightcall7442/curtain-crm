@@ -95,6 +95,105 @@ const webLinking: LinkingOptions<ReactNavigation.RootParamList> = {
 };
 
 /**
+ * Записи истории, оставшиеся от прошлой загрузки страницы.
+ *
+ * Навигация помнит, какой экран лежит под какой записью, только в памяти —
+ * после обновления страницы этот список пуст. А браузер записи хранит: адрес
+ * у всех один, и «назад» попадал на запись, для которой у навигации нет
+ * экрана. Ничего не происходило — системная кнопка «назад» на Android
+ * казалась мёртвой, пока старые записи не кончались, и только потом PWA
+ * закрывалась. В APK после перезапуска стек свежий, и «назад» с главной
+ * сразу закрывает приложение.
+ *
+ * Поэтому каждая запись помечается: какой загрузкой страницы она сделана и
+ * на какой глубине от первой записи приложения лежит. При загрузке страница
+ * сразу отматывает историю к первой записи приложения — стек снова свежий,
+ * как у APK, а «вперёд» от неё вычищается первым же переходом. Если «назад»
+ * или «вперёд» всё же привели на чужую запись (их оставила версия без
+ * пометок), она пропускается, а не молча съедает нажатие.
+ */
+const HISTORY_LOAD_KEY = 'dhLoad';
+const HISTORY_DEPTH_KEY = 'dhDepth';
+const HISTORY_GUARD_INSTALLED = Symbol.for('designhouse.webHistoryGuard');
+
+function installWebHistoryGuard(): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+  /*
+    Один раз на страницу. Горячая перезагрузка модуля при разработке
+    выполняет этот файл заново: второй вызов обернул бы `pushState` ещё раз
+    и сменил бы метку загрузки — собственные записи стали бы чужими.
+  */
+  const marks = window as unknown as Record<symbol, boolean | undefined>;
+  if (marks[HISTORY_GUARD_INSTALLED] === true) return;
+  marks[HISTORY_GUARD_INSTALLED] = true;
+
+  const { history } = window;
+  // Метка этой загрузки страницы. Уникальность — между перезагрузками одной
+  // вкладки, криптостойкость не нужна.
+  const loadId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+  type Entry = Readonly<Record<string, unknown>>;
+  const asEntry = (data: unknown): Entry | null =>
+    data !== null && typeof data === 'object' ? (data as Entry) : null;
+  const depthOf = (data: unknown): number | null => {
+    const depth = asEntry(data)?.[HISTORY_DEPTH_KEY];
+    return typeof depth === 'number' && Number.isInteger(depth) && depth >= 0 ? depth : null;
+  };
+  // Метки дописываются к состоянию навигации, а не заменяют его: она читает
+  // из записи только свой `id`, остальные поля ей не мешают.
+  const tag = (data: unknown, depth: number): unknown => {
+    const entry = asEntry(data);
+    return entry === null ? data : { ...entry, [HISTORY_LOAD_KEY]: loadId, [HISTORY_DEPTH_KEY]: depth };
+  };
+
+  const pushState = history.pushState.bind(history);
+  const replaceState = history.replaceState.bind(history);
+  // `history.state` в момент вызова — ещё запись, с которой уходят.
+  history.pushState = (data: unknown, unused: string, url?: string | URL | null) => {
+    pushState(tag(data, (depthOf(history.state) ?? 0) + 1), unused, url);
+  };
+  history.replaceState = (data: unknown, unused: string, url?: string | URL | null) => {
+    replaceState(tag(data, depthOf(history.state) ?? 0), unused, url);
+  };
+
+  /*
+    Слушатель на фазе перехвата и поставлен раньше навигации: чужую запись
+    он забирает себе целиком, и навигация не сбрасывает экран на главную,
+    пока история ещё отматывается.
+  */
+  window.addEventListener(
+    'popstate',
+    (event) => {
+      const entry = asEntry(history.state);
+      // Своя запись — дело навигации. Запись без состояния — не приложения.
+      if (entry === null || entry[HISTORY_LOAD_KEY] === loadId) return;
+
+      event.stopImmediatePropagation();
+      const depth = depthOf(entry);
+      if (depth === 0) {
+        // Первая запись приложения: дальше назад — уже выход. Она становится
+        // своей, и следующее «назад» закроет PWA, как в APK.
+        replaceState(tag(entry, 0), '');
+      } else if (depth !== null) {
+        history.go(-depth);
+      } else {
+        history.back();
+      }
+    },
+    true,
+  );
+
+  // Перезагрузка посреди стека: сразу к первой записи приложения. Глубина
+  // больше самой истории значит, что браузер старые записи уже выбросил, —
+  // тогда отматывать некуда.
+  const depth = depthOf(history.state);
+  if (depth !== null && depth > 0 && depth < history.length) history.go(-depth);
+}
+
+installWebHistoryGuard();
+
+/**
  * Корень приложения: провайдеры, клиент tRPC и состояние аутентификации.
  *
  * Восстановление сессии выполняется до первого рендера навигатора, иначе

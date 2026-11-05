@@ -1854,7 +1854,7 @@ export const ordersRouter = router({
       }
       assertCanAccessOrder(order, ctx.user);
 
-      return loadPackList(ctx.db, input.id);
+      return loadPackList(ctx.db, input.id, ctx.locale);
     }),
 
   /**
@@ -1891,7 +1891,7 @@ export const ordersRouter = router({
           .where(and(eq(orderPackChecks.orderId, input.id), eq(orderPackChecks.key, input.key)));
       }
 
-      return loadPackList(ctx.db, input.id);
+      return loadPackList(ctx.db, input.id, ctx.locale);
     }),
 
   addTeamMember: orderDispatchProcedure

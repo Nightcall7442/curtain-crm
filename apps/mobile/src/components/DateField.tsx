@@ -4,10 +4,11 @@ import { useRef, useState, type ReactElement } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
+import { SubmitButton } from './SubmitButton';
 
 /**
  * Дата — системным календарём, а не строкой «2026-09-15» с клавиатуры.
@@ -24,15 +25,33 @@ export function DateField({
   value,
   onChange,
   placeholder,
+  emptyText,
   invalid = false,
   minimumDate,
+  clearable = true,
 }: {
   /** `YYYY-MM-DD` или пустая строка. */
   readonly value: string;
   readonly onChange: (value: string) => void;
+  /** Имя поля: подпись пустого поля, заголовок шторки и подпись для чтеца. */
   readonly placeholder: string;
+  /**
+   * Текст пустого поля, если имя уже стоит подписью над ним. Иначе под
+   * «Срок» в пустом поле стояло снова «Срок», под «С» — «С», и форма
+   * выглядела недоделанной.
+   */
+  readonly emptyText?: string;
   readonly invalid?: boolean;
   readonly minimumDate?: Date;
+  /**
+   * Показывать ли «очистить» у выбранной даты.
+   *
+   * `false` — у обязательного фильтра («День» в кассе и терминальных
+   * чеках): пустой день там подменяется сегодняшним, и крестик, который
+   * ничего не стирает, выглядел сломанным. Вместо него остаётся значок
+   * календаря — поле по-прежнему видно как выбор даты.
+   */
+  readonly clearable?: boolean;
 }): ReactElement {
   const { m, locale } = useLocale();
   const [open, setOpen] = useState(false);
@@ -65,24 +84,14 @@ export function DateField({
       setOpen(true);
       return;
     }
-    const input = webInput.current;
-    if (input === null) return;
-    // `showPicker` есть во всех живых браузерах; старым хватает фокуса и клика.
-    if (typeof input.showPicker === 'function') {
-      try {
-        input.showPicker();
-        return;
-      } catch {
-        // Браузер не признал нажатие жестом пользователя — пробуем по-старому.
-      }
-    }
-    input.focus();
-    input.click();
+    openWebPicker(webInput.current);
   };
+
+  const showClear = clearable && value !== '';
 
   return (
     <>
-      <View style={[styles.control, invalid ? styles.invalid : null]}>
+      <View style={styles.control}>
         <Pressable
           onPress={openPicker}
           accessibilityRole="button"
@@ -90,17 +99,17 @@ export function DateField({
           style={({ pressed }) => [styles.field, pressed ? styles.pressed : null]}
         >
           <Text style={[styles.value, value === '' ? styles.placeholder : null]} numberOfLines={1}>
-            {value === '' ? placeholder : formatIsoDate(value)}
+            {value === '' ? (emptyText ?? placeholder) : formatIsoDate(value)}
           </Text>
           {/*
             Значок календаря — пока даты нет; с датой на его месте «очистить».
             Оба сразу не помещались в половинное поле («С» / «По»): дата
             обрезалась до «20.11.202».
           */}
-          {value === '' && <Icon name="calendar" size={18} color={colors.textMuted} />}
+          {!showClear && <Icon name="calendar" size={18} color={colors.textMuted} />}
         </Pressable>
 
-        {value !== '' && (
+        {showClear && (
           <Pressable
             onPress={() => {
               onChange('');
@@ -127,6 +136,14 @@ export function DateField({
             style={webPickerAnchor}
           />
         )}
+
+        {/*
+          Рамка — отдельным слоем поверх, а не `borderWidth` самого поля.
+          Рамка съедала по точке сверху и снизу, и кнопка внутри выходила 44
+          при поле ввода в 46: зона нажатия и замер расходились с видимой
+          высотой. Слой нажатий не перехватывает.
+        */}
+        <View style={[styles.frame, invalid ? styles.invalid : null]} />
       </View>
 
       {open && Platform.OS === 'android' && (
@@ -159,16 +176,14 @@ export function DateField({
             onChange={apply}
             {...(minimumDate === undefined ? {} : { minimumDate })}
           />
-          <Pressable
+          {/* Общая кнопка приложения — той же высоты и веса, что в других шторках. */}
+          <SubmitButton
+            label={m('common.confirm')}
             onPress={() => {
               if (value === '') onChange(toIso(selected));
               setOpen(false);
             }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.done, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.doneText}>{m('common.confirm')}</Text>
-          </Pressable>
+          />
         </BottomSheet>
       )}
     </>
@@ -176,12 +191,34 @@ export function DateField({
 }
 
 /**
+ * Открыть календарь (или часы) браузера у невидимого `<input>`.
+ *
+ * Общая для всех полей с выбором даты и времени в PWA: `DateField` и время
+ * установки. `showPicker` есть во всех живых браузерах; старым хватает
+ * фокуса и клика.
+ */
+export function openWebPicker(input: HTMLInputElement | null): void {
+  if (input === null) return;
+  if (typeof input.showPicker === 'function') {
+    try {
+      input.showPicker();
+      return;
+    } catch {
+      // Браузер не признал нажатие жестом пользователя — пробуем по-старому.
+    }
+  }
+  input.focus();
+  input.click();
+}
+
+/**
  * Невидимое поле браузера под нашим — только якорь для его календаря.
  *
  * Во всю ширину поля, чтобы всплывающий календарь на компьютере вставал
  * под ним, а не в углу; нажатия до него не доходят — их ловит `Pressable`.
+ * Экспортируется для полей времени: якорь должен быть один и тот же.
  */
-const webPickerAnchor = {
+export const webPickerAnchor = {
   position: 'absolute',
   left: 0,
   top: 0,
@@ -205,11 +242,17 @@ const styles = StyleSheet.create({
   control: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    minHeight: 46,
+    // Та же высота, что у `Input`: поле даты в форме не ниже соседних полей.
+    minHeight: sizes.controlHeight,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  frame: {
+    ...StyleSheet.absoluteFill,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    pointerEvents: 'none',
   },
   invalid: {
     borderColor: colors.danger,
@@ -223,7 +266,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    // Рамка теперь лежит поверх, а не сдвигает содержимое: толщина рамки
+    // прибавлена к отступу, чтобы дата стояла по одной вертикали с текстом
+    // в соседних полях ввода.
+    paddingHorizontal: spacing.md + hairline,
   },
   value: {
     ...typography.body,
@@ -236,22 +282,9 @@ const styles = StyleSheet.create({
   clear: {
     // Полная цель для пальца; влево заходит на отступ поля, чтобы крестик
     // стоял от рамки там же, где стоял значок календаря.
-    width: 44,
+    width: sizes.touchTarget,
     marginLeft: -spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  done: {
-    marginTop: spacing.sm,
-    minHeight: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-  },
-  doneText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
   },
 });

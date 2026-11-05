@@ -10,11 +10,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -39,12 +37,20 @@ import {
   validateOrderForm,
 } from '../components/order/OrderForm';
 import type { DraftItem } from '../components/order/OrderItemCard';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { trpc, type RouterOutputs } from '../lib/trpc';
-import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, spacing, tabBarSpace, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 type OrderDetails = RouterOutputs['orders']['byId'];
+
+/**
+ * Тот же ли это номер: оба приводятся к `+998XXXXXXXXX`. Нераспознанный —
+ * сравнивается как записан, без пробелов по краям.
+ */
+const samePhone = (typed: string, stored: string): boolean =>
+  (normalizePhone(typed) ?? typed.trim()) === (normalizePhone(stored) ?? stored.trim());
 
 /** Сумма в тийинах → строка для поля денег: `500000000` → `'5000000'`. */
 const moneyField = (minor: number): string => (minor / 100).toString();
@@ -150,7 +156,10 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
       ...(!forStock && clientName.trim() !== order.clientName ? { clientName: clientName.trim() } : {}),
       // Сравнение — по номеру, а не по записи: отформатированный «+998 90 …»
       // тот же номер, что «+998905774527» в базе, и правкой он не считается.
-      ...(!forStock && (normalizePhone(clientPhone) ?? clientPhone.trim()) !== order.clientPhone
+      // Хранимый номер приводится тем же способом: у старых заказов он
+      // записан как попало («905774527»), и без этого любое сохранение —
+      // хоть одного срока — молча переписывало телефон клиента.
+      ...(!forStock && !samePhone(clientPhone, order.clientPhone)
         ? { clientPhone: clientPhone.trim() }
         : {}),
       ...(!forStock && installAddress.trim() !== (order.installAddress ?? '')
@@ -196,7 +205,8 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
                 invalid={showErrors && errors.clientPhone !== undefined}
               />
             </Field>
-            <Field label={m('create.address')}>
+            {/* Последнее поле карточки — без нижнего отступа, иначе снизу 32 при 16 сверху. */}
+            <Field label={m('create.address')} last>
               <Input value={installAddress} onChangeText={setInstallAddress} multiline />
             </Field>
           </Card>
@@ -211,11 +221,17 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
               options={PRIORITIES.map((value) => ({ value, label: t(PRIORITY_LABELS, value) }))}
             />
           </Field>
-          <Field label={m('create.deadline')} error={showErrors ? errors.deadline : undefined}>
+          {/* Без цены срок — последнее поле карточки. */}
+          <Field
+            label={m('create.deadline')}
+            error={showErrors ? errors.deadline : undefined}
+            last={!priceEditable}
+          >
             <DateField
               value={deadline}
               onChange={setDeadline}
               placeholder={m('create.deadline')}
+              emptyText={m('common.datePlaceholder')}
               invalid={showErrors && errors.deadline !== undefined}
             />
           </Field>
@@ -243,22 +259,8 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
           <Text style={styles.note}>{m('edit.readyMadeItems')}</Text>
         )}
 
-        <Pressable
-          onPress={submit}
-          disabled={update.isPending}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            update.isPending ? styles.submitBusy : null,
-            pressed ? styles.pressed : null,
-          ]}
-        >
-          {update.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>{m('edit.save')}</Text>
-          )}
-        </Pressable>
+        {/* Общая кнопка формы — как «Создать заказ» и кнопки карточки заказа. */}
+        <SubmitButton label={m('edit.save')} onPress={submit} pending={update.isPending} />
       </ScrollView>
       <CodeScanner
         visible={scanning !== null}
@@ -287,23 +289,5 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     textAlign: 'center',
-  },
-  submit: {
-    minHeight: 52,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitBusy: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    color: colors.onAccent,
-    fontWeight: '600',
-  },
-  pressed: {
-    opacity: opacity.pressed,
   },
 });

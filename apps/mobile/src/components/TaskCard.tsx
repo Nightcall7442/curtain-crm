@@ -10,10 +10,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { ReactElement } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, opacity, radius, spacing, typography } from '../theme';
+import { cardShadow, colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Pill } from './Card';
 import { Icon } from './Icon';
@@ -60,6 +61,18 @@ export function TaskCard({
     },
   });
 
+  /*
+    Без открытой смены сервер не примет от сотрудника отметку «выполнено»
+    (`requiresOpenShift`) — и отвечал отказом уже после нажатия. Галочка
+    гаснет заранее, как кнопка «Выполнено» в самом поручении; о причине
+    говорит баннер «Смена не начата» над списком. Руководству смена для
+    поручений не нужна. Запрос тот же, что у экрана, — React Query отдаёт
+    всем карточкам один ответ.
+  */
+  const isBoss = useIsManagement();
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isBoss });
+  const needsShift = !isBoss && shift.data === null;
+
   const isOpen = task.status === TaskStatus.OPEN;
   /** Закрыто руководством — приглушаем; сданное на проверку ещё живое. */
   const isClosed = !isTaskActive(task.status);
@@ -95,10 +108,15 @@ export function TaskCard({
             onPress={() => {
               complete.mutate({ id: task.id });
             }}
-            disabled={complete.isPending}
+            disabled={complete.isPending || needsShift}
             accessibilityRole="button"
             accessibilityLabel={m('taskCard.complete', { title: task.title })}
-            style={({ pressed }) => [styles.doneButton, pressed ? styles.doneButtonPressed : null]}
+            accessibilityState={{ disabled: complete.isPending || needsShift, busy: complete.isPending }}
+            style={({ pressed }) => [
+              styles.doneButton,
+              needsShift ? styles.off : null,
+              pressed ? styles.doneButtonPressed : null,
+            ]}
           >
             {complete.isPending ? (
               <ActivityIndicator color={colors.onAccent} size="small" />
@@ -174,9 +192,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  /*
+    Заголовок — кнопка «открыть поручение», и зона нажатия у неё полная:
+    однострочное «Замерить окно» было целью в 21 точку высотой. Рядом с
+    галочкой строка и так 44, а у закрытых поручений шапка теперь той же
+    высоты — карточки в списке идут одним ритмом.
+  */
   titleWrap: {
     flex: 1,
     minWidth: 0,
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
   },
   title: {
     ...typography.headline,
@@ -192,10 +218,10 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: colors.textSecondary,
   },
-  // 44 — порог пальца, как у «Отменить»/«Готово» в личных работах.
+  // Порог пальца, как у «Отменить»/«Готово» в личных работах.
   doneButton: {
-    width: 44,
-    height: 44,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.pill,
     backgroundColor: colors.accentBright,
     alignItems: 'center',
@@ -203,6 +229,10 @@ const styles = StyleSheet.create({
   },
   doneButtonPressed: {
     backgroundColor: colors.accent,
+  },
+  // Одна прозрачность «недоступно» на всё приложение — как у `SubmitButton`.
+  off: {
+    opacity: opacity.disabled,
   },
   details: {
     ...typography.caption,
@@ -221,13 +251,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     flexShrink: 1,
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным жирным.
   due: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textMuted,
   },
   dueOverdue: {
-    color: colors.danger,
+    fontFamily: fonts.bold,
     fontWeight: '700',
+    color: colors.danger,
   },
 });

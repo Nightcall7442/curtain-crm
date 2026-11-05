@@ -9,11 +9,11 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,6 +33,8 @@ import {
 } from '../components/DiscountFields';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
+import { SubmitButton } from '../components/SubmitButton';
 import { useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
@@ -41,7 +43,7 @@ import {
   colors,
   hairline,
   opacity,
-  radius,
+  sizes,
   spacing,
   typography,
   fonts,
@@ -80,6 +82,20 @@ export function CashDeskScreen(): ReactElement {
   const utils = trpc.useUtils();
   const isManager = useIsManagement();
   const insets = useSafeAreaInsets();
+  /*
+    Без открытой смены сервер чек не пробьёт (412 «Сначала начните смену»),
+    а продавец узнавал об этом только на «Пробить чек» — набрав все коды.
+    Баннер — тот же, что в новом заказе и на «Работе», и ведёт туда, где
+    смену начинают; кнопка до тех пор выключена. Руководству смена не нужна.
+  */
+  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
+  const needsShift = !isManager && shift.data === null;
+  /*
+    Свой флаг, а не `isRefetching` одного запроса: экран собран из
+    нескольких карточек (касса дня, свои чеки, инкассация), и жест обновляет
+    их все разом.
+  */
+  const [refreshing, setRefreshing] = useState(false);
 
   const [lines, setLines] = useState<readonly CartLine[]>([emptyLine()]);
   const [method, setMethod] = useState<PaymentMethodName>(PaymentMethod.CASH);
@@ -117,12 +133,39 @@ export function CashDeskScreen(): ReactElement {
   const subtotalInput = (subtotal / 100).toString();
   const discountSum = discountPayload(subtotalInput, discount).discountAmount;
 
+  const refresh = async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        utils.payments.invalidate(),
+        utils.retail.sales.mine.invalidate(),
+        utils.shifts.current.invalidate(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void refresh();
+            }}
+            tintColor={colors.accent}
+          />
+        }
+      >
+        <ShiftRequiredBanner />
+
         {/*
           Руководству — сначала касса дня, как в панели: директор открывает
           «Кассу» посчитать вечер, а не пробить чек. Продавцу отчёт по всем
@@ -152,15 +195,19 @@ export function CashDeskScreen(): ReactElement {
             />
           ))}
 
-          <Pressable
+          {/*
+            Второстепенная кнопка — та же таблетка в 48, что «Создать
+            инкассацию» ниже и «Пробить чек» в подвале, только на светлой
+            подложке. Пунктирная рамка в 44 была третьей системой кнопок на
+            одном экране.
+          */}
+          <SubmitButton
+            variant="secondary"
+            label={`+ ${m('cash.addLine')}`}
             onPress={() => {
               setLines((current) => [...current, emptyLine()]);
             }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.addLine, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.addLineText}>+ {m('cash.addLine')}</Text>
-          </Pressable>
+          />
         </Card>
 
         <Card>
@@ -196,11 +243,13 @@ export function CashDeskScreen(): ReactElement {
         */}
         <Card>
           <CardTitle title={m('discount.title')} icon="paid" />
+          {/* Причина — последнее поле карточки: снизу 16, как сверху, а не 32. */}
           <DiscountFields
             price={subtotalInput}
             value={discount}
             onChange={setDiscount}
             showError={showErrors}
+            last
           />
         </Card>
 
@@ -235,7 +284,15 @@ export function CashDeskScreen(): ReactElement {
           />
         </Field>
 
-        <Pressable
+        {/*
+          Общая кнопка формы — 48 и таблеткой, как «Создать заказ» и
+          «Продать и закрыть». Своя была в 52: выше всех остальных кнопок
+          приложения. Отступ сверху у неё свой, поэтому от чипов она
+          отстоит чуть дальше, чем чипы от итога, — кнопка читается
+          действием, а не ещё одной строкой подвала.
+        */}
+        <SubmitButton
+          label={m('cash.submit')}
           onPress={() => {
             setShowErrors(true);
             if (discountMissingReason(subtotalInput, discount)) return;
@@ -249,27 +306,15 @@ export function CashDeskScreen(): ReactElement {
               ...(discountAmount > 0 ? { discountAmount, discountReason } : {}),
             });
           }}
-          disabled={filled.length === 0 || sell.isPending}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            filled.length === 0 ? styles.submitOff : null,
-            pressed ? styles.submitPressed : null,
-          ]}
-        >
-          {sell.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <>
-              <Icon name="paid" size={18} color={colors.onAccent} />
-              <Text style={styles.submitText}>{m('cash.submit')}</Text>
-            </>
-          )}
-        </Pressable>
+          disabled={filled.length === 0 || needsShift}
+          pending={sell.isPending}
+        />
       </View>
+      {/* Касса сканирует бирку товара, а не этикетку рулона — своя подсказка. */}
       <CodeScanner
         visible={scanningKey !== null}
         label={m('cash.codePlaceholder')}
+        hint={m('scanner.aimTag')}
         onScan={(code) => {
           if (scanningKey !== null) updateLine(scanningKey, { code });
           setScanningKey(null);
@@ -579,8 +624,8 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   lineIcon: {
-    width: 44,
-    height: 44,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -600,23 +645,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flexShrink: 0,
     fontVariant: ['tabular-nums'],
-  },
-  addLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    marginTop: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: hairline,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-  },
-  addLineText: {
-    ...typography.body,
-    color: colors.accent,
-    fontWeight: '600',
   },
   pressed: {
     opacity: opacity.pressed,
@@ -686,25 +714,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
     flexShrink: 0,
-  },
-  submit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    minHeight: 52,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  submitOff: {
-    opacity: 0.5,
-  },
-  submitPressed: {
-    opacity: opacity.pressed,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
   },
 });

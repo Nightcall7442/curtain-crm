@@ -1,8 +1,8 @@
 import { MONITOR_GROUP_LABELS } from '@curtain-crm/shared';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createNativeStackNavigator, type NativeStackHeaderLeftProps } from '@react-navigation/native-stack';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
-import type { ReactElement, ReactNode } from 'react';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import type { ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
 import { PersonalWorkCreateScreen } from '../screens/PersonalWorkCreateScreen';
@@ -17,6 +17,7 @@ import { MonitorBoardScreen } from '../screens/MonitorBoardScreen';
 import { MonitorPersonScreen } from '../screens/MonitorPersonScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
 import { ReadyMadeStockScreen } from '../screens/ReadyMadeStockScreen';
+import { HeaderIconButton } from '../components/HeaderIconButton';
 import { Icon } from '../components/Icon';
 import { TaskAssignScreen } from '../screens/TaskAssignScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
@@ -29,7 +30,7 @@ import { SellReadyMadeScreen } from '../screens/SellReadyMadeScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { TaskListScreen } from '../screens/TaskListScreen';
 import { TerminalChecksScreen } from '../screens/TerminalChecksScreen';
-import { colors, fonts, opacity, spacing } from '../theme';
+import { colors, typography } from '../theme';
 import type { RootStackParamList } from '../types';
 
 import { TabNavigator } from './TabNavigator';
@@ -65,7 +66,12 @@ export function RootNavigator(): ReactElement {
       screenOptions={({ navigation }) => ({
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
-        headerTitleStyle: { fontFamily: fonts.bold, fontSize: 17, fontWeight: '700' },
+        // Заголовок шапки — ступень заголовка карточки (`sectionTitle`), а не своё число.
+        headerTitleStyle: {
+          fontFamily: typography.sectionTitle.fontFamily,
+          fontSize: typography.sectionTitle.fontSize,
+          fontWeight: typography.sectionTitle.fontWeight,
+        },
         contentStyle: { backgroundColor: colors.background },
         /*
           Кнопка «назад» в браузере — своя.
@@ -217,57 +223,7 @@ export function RootNavigator(): ReactElement {
   );
 }
 
-/**
- * Значок-кнопка в шапке.
- *
- * В браузере у неё своя рамка 48×48 с отступом от края: `hitSlop` веб не
- * поддерживает, и значок «склада» в шапке продажи был целью 22×24,
- * прижатой вплотную к правому краю экрана. На телефоне шапку раскладывает
- * система — с её отступами, а `hitSlop` добирает цель до пальца.
- */
-function HeaderIconButton({
-  label,
-  edge,
-  onPress,
-  children,
-}: {
-  readonly label: string;
-  readonly edge: 'left' | 'right';
-  readonly onPress: () => void;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={10}
-      /* Нажатие показывается прозрачностью, а не цветом: на тёмной
-         шапке любой акцентный зелёный темнее её же текста. */
-      style={({ pressed }) => [
-        Platform.OS === 'web' ? styles.webHeaderButton : null,
-        Platform.OS === 'web' ? (edge === 'left' ? styles.webHeaderLeft : styles.webHeaderRight) : null,
-        pressed ? { opacity: opacity.pressed } : null,
-      ]}
-    >
-      {children}
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  webHeaderButton: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  webHeaderLeft: {
-    marginLeft: spacing.xs,
-  },
-  webHeaderRight: {
-    marginRight: spacing.xs,
-  },
   splash: {
     flex: 1,
     alignItems: 'center',

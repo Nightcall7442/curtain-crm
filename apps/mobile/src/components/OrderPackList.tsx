@@ -2,9 +2,10 @@ import type { ReactElement } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Skeleton } from './Card';
+import { Icon } from './Icon';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -54,7 +55,7 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
         }
       />
 
-      {items.map((row) => (
+      {items.map((row, index) => (
         <Pressable
           key={row.key}
           onPress={() => {
@@ -64,19 +65,28 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
           accessibilityRole="checkbox"
           accessibilityState={{ checked: row.checked }}
           accessibilityLabel={row.label}
-          style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
+          /*
+            Черта — сверху каждой строки, кроме первой: под последней она
+            висела бы над подсказкой и низом карточки, ничего не разделяя.
+          */
+          style={({ pressed }) => [
+            styles.row,
+            index === 0 ? null : styles.rowDivided,
+            pressed ? styles.pressed : null,
+          ]}
         >
-          {/* Галочка нарисована рамкой и заливкой, без значка из набора:
-              квадрат с птичкой и так читается, а лишний глиф в списке из
-              пятнадцати строк — рябь. */}
           {/*
             Квадрат — по центру ПЕРВОЙ строки подписи: ячейка высотой в
             строку (21), квадрат в ней посередине. С отступом сверху в 1
             точку он стоял на полторы ниже середины строки.
+
+            Птичка — значок набора, а не символ «✓»: тот брался из
+            системного шрифта и на Android, в Chrome и в Safari был разной
+            толщины и сидел в квадрате по-разному.
           */}
           <View style={styles.boxSlot}>
             <View style={[styles.box, row.checked ? styles.boxChecked : null]}>
-              {row.checked && <Text style={styles.tick}>✓</Text>}
+              {row.checked && <Icon name="check" size={TICK_SIZE} color={colors.onAccent} />}
             </View>
           </View>
 
@@ -107,10 +117,18 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
  */
 const CHECKBOX_SIZE = 22;
 const CHECKBOX_RADIUS = 6;
+/**
+ * Птичка в квадрате. У глифа набора свои поля внутри, поэтому 16 в
+ * квадрате 22 на глаз дают те же поля, что и рамка вокруг: при 14 птичка
+ * выходила тоньше, чем прежний символ «✓».
+ */
+const TICK_SIZE = 16;
 
 const styles = StyleSheet.create({
   counter: {
     ...typography.footnote,
+    // Начертанием, а не `fontWeight` поверх Medium: браузер рисовал ложный полужирный.
+    fontFamily: fonts.semibold,
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -122,8 +140,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     paddingVertical: spacing.sm,
-    borderBottomWidth: hairline,
-    borderBottomColor: colors.border,
+  },
+  rowDivided: {
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
   },
   boxSlot: {
     height: typography.body.lineHeight,
@@ -142,11 +162,6 @@ const styles = StyleSheet.create({
   boxChecked: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
-  },
-  tick: {
-    ...typography.footnote,
-    color: colors.onAccent,
-    fontWeight: '700',
   },
   text: {
     flex: 1,

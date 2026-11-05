@@ -57,12 +57,25 @@ export type IconName =
   | 'jobTitle'
   | 'calendar'
   | 'badge'
+  | 'discipline'
   | 'window'
+  | 'cornice'
+  | 'economics'
+  | 'trip'
+  | 'break'
+  | 'materials'
+  | 'task'
   | 'priority'
   | 'logout'
   | 'remove'
   | 'eye'
   | 'eyeOff'
+  /* Действия и метки внутри строк */
+  | 'send'
+  | 'location'
+  | 'play'
+  | 'pause'
+  | 'check'
   /* Состояния и события уведомлений */
   | 'assigned'
   | 'statusChanged'
@@ -110,13 +123,39 @@ const GLYPHS: Readonly<Record<IconName, IoniconName>> = {
   person: 'person-circle',
   jobTitle: 'briefcase',
   calendar: 'calendar',
-  badge: 'card',
+  /*
+    Место в рейтинге — медаль. Было `card`, то есть банковская карта:
+    строка «Место в рейтинге» в профиле читалась как платёжные данные.
+  */
+  badge: 'medal',
+  /* Дисциплина — щит с галочкой: правило, а не награда и не деньги. */
+  discipline: 'shield-checkmark',
   window: 'grid',
+  /*
+    Свой значок у каждой карточки одного экрана. Карниз рисовался той же
+    сеткой, что «Позиции заказа», выезд и перерыв — одним будильником, а
+    закупочные материалы — кошельком зарплаты: две соседние карточки с
+    одним значком читаются как одна и та же вещь.
+  */
+  cornice: 'construct',
+  economics: 'calculator',
+  trip: 'car',
+  break: 'cafe',
+  materials: 'cube',
+  task: 'checkbox',
   priority: 'flash',
   logout: 'log-out',
   remove: 'trash-outline',
   eye: 'eye-outline',
   eyeOff: 'eye-off-outline',
+
+  send: 'send',
+  // Контурная, как и была у адреса установки: метка в строке текста, а не
+  // заголовок карточки, и залитая перетягивала бы взгляд с самого адреса.
+  location: 'location-outline',
+  play: 'play',
+  pause: 'pause',
+  check: 'checkmark',
 
   assigned: 'add-circle',
   statusChanged: 'swap-horizontal',
@@ -184,7 +223,7 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   day_off_approved: 'dayOffApproved',
   day_off_rejected: 'dayOffRejected',
   cash_collection_due: 'collection',
-  discipline_recorded: 'badge',
+  discipline_recorded: 'discipline',
   terminal_check_created: 'paid',
   terminal_check_due: 'camera',
   installation_scheduled: 'calendar',

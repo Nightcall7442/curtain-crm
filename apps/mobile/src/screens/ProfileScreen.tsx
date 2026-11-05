@@ -19,17 +19,18 @@ import {
   View,
 } from 'react-native';
 
-import { Card, CardTitle, Empty, ListCard, ListRow, SectionHeader } from '../components/Card';
+import { Card, CardTitle, Empty, ErrorState, ListCard, ListRow, SectionHeader } from '../components/Card';
 import { CashCollectionCard } from '../components/CashCollectionCard';
 import { Icon } from '../components/Icon';
 import { KpiCard } from '../components/KpiCard';
 import { ProfileCard } from '../components/ProfileCard';
 import { ShiftInfoCard } from '../components/ShiftInfoCard';
+import { SubmitButton } from '../components/SubmitButton';
 import { WeekAttendance, type WeekDay } from '../components/WeekAttendance';
 import { useAuth, useIsCeo, useIsManagement } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, tabBarSpace, typography } from '../theme';
 
 /**
  * Мой профиль.
@@ -129,10 +130,20 @@ export function ProfileScreen(): ReactElement {
     );
   }
 
+  /*
+    Не загрузилось — экран ошибки с кнопкой повтора, а не пустое состояние.
+    Подсказка «попробуйте ещё раз» стояла без кнопки, а жеста «потянуть,
+    чтобы обновить» в браузере нет: в PWA профиль был тупиком, из которого
+    выводила только перезагрузка страницы.
+  */
   if (profile.data === undefined) {
     return (
       <View style={styles.loading}>
-        <Empty message={m('profile.loadError')} hint={m('common.retryHint')} />
+        <ErrorState
+          message={m('profile.loadError')}
+          hint={m('common.retryHint')}
+          onRetry={() => profile.refetch()}
+        />
       </View>
     );
   }
@@ -144,13 +155,19 @@ export function ProfileScreen(): ReactElement {
    * премия. Для схем без оклада (процент, почасовая) цели нет.
    */
   const targetAmount = ((): string | null => {
+    /*
+      `== null`, а не `=== null`: у расчёта текущего месяца снимок схемы
+      бывает пустым объектом (`{}`), и оклад в нём не `null`, а `undefined`.
+      Строгая проверка такой снимок пропускала, и в карточку уходило «NaN» —
+      разбор суммы падал, и вместе с ним весь экран профиля.
+    */
     const snapshot = currentPayroll?.schemeSnapshot;
-    if (snapshot === undefined) return null;
-    if (snapshot.baseAmount === null) return null;
+    if (snapshot?.baseAmount == null) return null;
 
     const base = Number.parseFloat(snapshot.baseAmount);
-    const bonus = snapshot.rate === null ? 0 : Number.parseFloat(snapshot.rate);
-    return (base + bonus).toFixed(2);
+    const bonus = snapshot.rate == null ? 0 : Number.parseFloat(snapshot.rate);
+    const total = base + bonus;
+    return Number.isFinite(total) ? total.toFixed(2) : null;
   })();
 
   return (
@@ -158,7 +175,8 @@ export function ProfileScreen(): ReactElement {
       <ProfileCard
         fullName={data.fullName}
         jobTitle={data.jobTitle}
-        ratingPlace={myRating.data?.me?.place ?? null}
+        // Место без баллов — не место: при нуле у всех это просто порядок списка.
+        ratingPlace={(myRating.data?.me?.score ?? 0) > 0 ? (myRating.data?.me?.place ?? null) : null}
         department={data.department}
         hiredAt={data.hiredAt}
         avatarUrl={data.avatarUrl}
@@ -293,41 +311,37 @@ export function ProfileScreen(): ReactElement {
           <Card>
             <CardTitle title="Telegram" icon="notifications" />
 
+            {/*
+              Кнопки — общие `SubmitButton`: та же высота 48, таблетка и
+              жирная подпись, что у остальных действий приложения, и одно
+              «недоступно» на всех. Своя кнопка была 46 со скруглением
+              карточки, подпись — ложным жирным поверх SemiBold, а
+              «Подключить» без ссылки выглядела нажимаемой и не нажималась.
+              Отключение — второстепенное действие, светлая таблетка.
+            */}
             {telegram.data.linked ? (
               <>
                 <Text style={styles.telegramHint}>{m('profile.telegramLinked')}</Text>
-                <Pressable
-                  disabled={unlinkTelegram.isPending}
+                <SubmitButton
+                  variant="secondary"
+                  label={m('profile.telegramUnlink')}
+                  pending={unlinkTelegram.isPending}
                   onPress={() => {
                     unlinkTelegram.mutate();
                   }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.telegramAction,
-                    styles.telegramActionOff,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <Text style={styles.telegramActionOffText}>{m('profile.telegramUnlink')}</Text>
-                </Pressable>
+                />
               </>
             ) : (
               <>
                 <Text style={styles.telegramHint}>{m('profile.telegramHint')}</Text>
-                <Pressable
+                <SubmitButton
+                  label={m('profile.telegramLink')}
                   disabled={telegram.data.linkUrl === null}
                   onPress={() => {
                     const url = telegram.data?.linkUrl;
                     if (url != null) void Linking.openURL(url);
                   }}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.telegramAction,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <Text style={styles.telegramActionText}>{m('profile.telegramLink')}</Text>
-                </Pressable>
+                />
               </>
             )}
           </Card>
@@ -481,28 +495,9 @@ const styles = StyleSheet.create({
   telegramHint: {
     ...typography.caption,
     color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  telegramAction: {
-    minHeight: 46,
-    marginTop: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  telegramActionText: {
-    ...typography.headline,
-    color: colors.onAccent,
-    fontWeight: '700',
-  },
-  telegramActionOff: {
-    backgroundColor: colors.surfaceMuted,
-  },
-  telegramActionOffText: {
-    ...typography.headline,
-    color: colors.textSecondary,
-    fontWeight: '600',
+    // До кнопки — 12, как от подписи до поля: встроенные 8 у `SubmitButton`
+    // плюс 4 здесь.
+    marginBottom: spacing.xs,
   },
   content: {
     padding: spacing.lg,
@@ -528,7 +523,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   orderRow: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.md,
@@ -572,7 +567,7 @@ const styles = StyleSheet.create({
   },
   localeOption: {
     flex: 1,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
@@ -590,7 +585,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
+  /*
+    Вес — семейством: `fontWeight: 600` поверх Medium из `body` браузер
+    дорисовывал ложным жирным, и «Русский» в PWA выходил толще и шире, чем в
+    приложении. Ширина кнопки от веса не зависит (`flex: 1`), сдвига нет.
+  */
   localeTextActive: {
+    fontFamily: fonts.semibold,
     color: colors.headerText,
     fontWeight: '600',
   },

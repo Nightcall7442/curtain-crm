@@ -11,9 +11,10 @@ import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View }
 import { useLocale } from '../../hooks/useLocale';
 import { notifyError, notifySuccess } from '../../lib/haptics';
 import { trpc } from '../../lib/trpc';
-import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../../theme';
 
 import { BottomSheet } from '../BottomSheet';
+import { openWebPicker, webPickerAnchor } from '../DateField';
 import { Icon, type IconName } from '../Icon';
 import { SubmitButton } from '../SubmitButton';
 
@@ -145,7 +146,6 @@ export function InstallationTimeRow({
             onPress={open}
             accessibilityRole="button"
             accessibilityLabel={m('install.pick')}
-            hitSlop={8}
             style={({ pressed }) => [styles.change, pressed ? styles.pressed : null]}
           >
             <Icon name="calendar" size={16} color={colors.accentStrong} />
@@ -263,6 +263,9 @@ export function InstallationTimeRow({
  * Поле браузера под ним невидимо и служит только якорем: `showPicker()`
  * открывает его календарь или часы, а показывает значение наш текст —
  * «26.10.2026» и «05:14», в 24 часа, как в строке над шторкой.
+ *
+ * Открытие и якорь — общие с `DateField`: своя копия того же кода уже
+ * однажды разошлась с ним.
  */
 function WebPickerField({
   type,
@@ -281,26 +284,12 @@ function WebPickerField({
 }): ReactElement {
   const input = useRef<HTMLInputElement | null>(null);
 
-  const openPicker = (): void => {
-    const element = input.current;
-    if (element === null) return;
-    // `showPicker` есть во всех живых браузерах; старым хватает фокуса и клика.
-    if (typeof element.showPicker === 'function') {
-      try {
-        element.showPicker();
-        return;
-      } catch {
-        // Браузер не признал нажатие жестом пользователя — пробуем по-старому.
-      }
-    }
-    element.focus();
-    element.click();
-  };
-
   return (
     <View style={styles.webField}>
       <Pressable
-        onPress={openPicker}
+        onPress={() => {
+          openWebPicker(input.current);
+        }}
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${shown}`}
         style={({ pressed }) => [styles.webFieldPress, pressed ? styles.pressed : null]}
@@ -327,20 +316,6 @@ function WebPickerField({
   );
 }
 
-/** Невидимое поле браузера под нашим — только якорь для его календаря и часов. */
-const webPickerAnchor = {
-  position: 'absolute',
-  left: 0,
-  top: 0,
-  width: '100%',
-  height: '100%',
-  margin: 0,
-  padding: 0,
-  border: 'none',
-  opacity: 0,
-  pointerEvents: 'none',
-} as const;
-
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
@@ -366,12 +341,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textMuted,
   },
-  // 44 — полная цель для пальца: `hitSlop` браузер не знает.
+  // Полная цель для пальца: `hitSlop` браузер не знает.
   change: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
@@ -389,11 +364,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  /* Мерка `DateField`: 46 в высоту, волосяная рамка, скругление `md`. */
+  /* Мерка `DateField`: высота поля, волосяная рамка, скругление `md`. */
   webField: {
     flex: 1,
     minWidth: 0,
-    minHeight: 46,
+    minHeight: sizes.controlHeight,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
@@ -415,7 +390,7 @@ const styles = StyleSheet.create({
   },
   clear: {
     marginTop: spacing.sm,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },

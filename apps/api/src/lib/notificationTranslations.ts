@@ -1,4 +1,10 @@
-import { CURRENCY_SYMBOL, type Locale } from '@curtain-crm/shared';
+import {
+  CURRENCY_SYMBOL,
+  formatIsoDateShort,
+  NotificationType,
+  type Locale,
+  type NotificationType as NotificationTypeName,
+} from '@curtain-crm/shared';
 
 import { compileTranslator, type TranslationTable } from './sourceTranslation';
 
@@ -39,6 +45,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Изменены данные заказа': "Buyurtma ma'lumotlari o'zgardi",
   'Зафиксировано нарушение': 'Qoidabuzarlik qayd etildi',
   'Зафиксировано поощрение': "Rag'batlantirish qayd etildi",
+  'Смена закрыта автоматически — вы не отметили уход': "Smena avtomatik yopildi — siz ketishni belgilamadingiz",
 };
 
 const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
@@ -51,22 +58,32 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Заказ {n} ждёт исполнителя', '{n} buyurtmasi ijrochini kutmoqda'],
   ['Клиент «{client}», этап «{stage}». Исполнитель ещё не назначен.', "Mijoz «{client}», bosqich «{stage}». Ijrochi hali tayinlanmagan."],
   ['Заказ {n}: {status}', 'Buyurtma {n}: {status}'],
-  ['{actor} перевёл заказ в статус «{status}». Причина: {reason}', "{actor} buyurtmani «{status}» holatiga o'tkazdi. Sabab: {reason}"],
-  ['{actor} перевёл заказ в статус «{status}».', "{actor} buyurtmani «{status}» holatiga o'tkazdi."],
+  // Причины, которые пишет сама система, — раньше общего шаблона: иначе
+  // узбекский текст кончался бы русской фразой.
+  [
+    'Статус заказа изменён на «{status}» ({actor}). Причина: Оплата получена полностью — заказ закрыт автоматически',
+    "Buyurtma «{status}» holatiga o'tkazildi ({actor}). Sabab: to'lov to'liq olindi — buyurtma avtomatik yopildi",
+  ],
+  [
+    'Статус заказа изменён на «{status}» ({actor}). Причина: Загружено фото после установки — заказ закрыт автоматически',
+    "Buyurtma «{status}» holatiga o'tkazildi ({actor}). Sabab: o'rnatishdan keyingi surat yuklandi — buyurtma avtomatik yopildi",
+  ],
+  ['Статус заказа изменён на «{status}» ({actor}). Причина: {reason}', "Buyurtma «{status}» holatiga o'tkazildi ({actor}). Sabab: {reason}"],
+  ['Статус заказа изменён на «{status}» ({actor}).', "Buyurtma «{status}» holatiga o'tkazildi ({actor})."],
   ['Комментарий к заказу {n}', '{n} buyurtmasiga izoh'],
   ['Смена {date} скорректирована', '{date} smenasi tuzatildi'],
-  ['На руках {sum} — сдайте в кассу', 'Qo‘lda {sum} — kassaga topshiring'],
-  ['{actor} изменил время смены. Причина: {reason}', "{actor} smena vaqtini o'zgartirdi. Sabab: {reason}"],
+  ['На руках {sum} — сдайте в кассу', "Qo'lda {sum} — kassaga topshiring"],
+  ['Время смены изменено ({actor}). Причина: {reason}', "Smena vaqti o'zgartirildi ({actor}). Sabab: {reason}"],
   ['Зарплата за {period} выплачена', "{period} uchun ish haqi to'landi"],
   ['Расчёт за {period} утверждён', '{period} uchun hisob tasdiqlandi'],
   ['Сумма: {amount}. Подтвердите, что деньги получили.', 'Summa: {amount}. Pulni olganingizni tasdiqlang.'],
   ['Сумма: {amount}', 'Summa: {amount}'],
-  ['{actor} назначил вам роль «{role}»', '{actor} sizga «{role}» rolini tayinladi'],
-  ['{actor} отозвал роль «{role}»', '{actor} «{role}» rolini olib tashladi'],
+  ['Вам назначена роль «{role}» ({actor})', 'Sizga «{role}» roli tayinlandi ({actor})'],
+  ['Роль «{role}» отозвана ({actor})', '«{role}» roli olib tashlandi ({actor})'],
   ['{creator}: «{title}» — срок до {date}', '{creator}: «{title}» — muddat {date} gacha'],
   ['Ответ по поручению «{title}»', "«{title}» topshirig'i bo'yicha javob"],
   ['{requester} просит выходные: {period}', "{requester} dam olish so'ramoqda: {period}"],
-  ['{reviewer} одобрил ваш запрос на {period}', "{reviewer} {period} uchun so'rovingizni tasdiqladi"],
+  ['Запрос на {period} одобрен ({reviewer})', "{period} uchun so'rovingiz tasdiqlandi ({reviewer})"],
   ['{by}: выходные теперь только по запросу', "{by}: dam olish kunlari endi faqat so'rov bo'yicha"],
   ['{by}: каждую неделю — {weekday}', '{by}: har hafta — {weekday}'],
   ['{kind} ({points}) за {date} — {by}', '{kind} ({points}) {date} uchun — {by}'],
@@ -87,8 +104,132 @@ const translate = compileTranslator({ exact: EXACT, patterns: PATTERNS } satisfi
  */
 export function translateNotificationText(text: string, locale: Locale): string {
   const translated = translate(text, locale);
-  // `` после кириллицы не работает — границу слова проверяем сами.
+  // `\b` после кириллицы не работает — границу слова проверяем сами.
   return locale === 'uz' ? translated.replace(/сум(?!\p{L})/gu, CURRENCY_SYMBOL.uz) : translated;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Записи, сохранённые в старой формулировке                                 */
+/* -------------------------------------------------------------------------- */
+
+const ISO_DAY = String.raw`\d{4}-\d{2}-\d{2}`;
+/** «2026-11-18» или «2026-11-18 — 2026-11-19» — период выходных в старом виде. */
+const ISO_PERIOD = `(${ISO_DAY}(?: — ${ISO_DAY})?)`;
+
+const shortDates = (text: string): string =>
+  text.replace(new RegExp(ISO_DAY, 'g'), (day) => formatIsoDateShort(day));
+
+/** Автоматическое закрытие смены — как его записывал `reminders.service` раньше. */
+const LEGACY_AUTO_CLOSED =
+  'Система изменил время смены. Причина: Закрыта автоматически: сотрудник не отметил уход';
+const AUTO_CLOSED = 'Смена закрыта автоматически — вы не отметили уход';
+
+/** Уведомления о смене статуса заказа — в старом виде «{актор} перевёл заказ…». */
+const ORDER_STATUS_TYPES: readonly NotificationTypeName[] = [
+  NotificationType.ORDER_STATUS_CHANGED,
+  NotificationType.ORDER_ROLLED_BACK,
+  NotificationType.ORDER_REJECTED_TO_CEO,
+  NotificationType.ORDER_QC_FAILED,
+  NotificationType.ORDER_CANCELLED,
+  NotificationType.ORDER_COMPLETED,
+];
+
+/**
+ * Старая формулировка → нынешняя, по типу уведомления.
+ *
+ * Шаблоны повторяют прежние тексты `notifications.service.ts` дословно, но
+ * первая группа в них — «что угодно»: под «… перевёл заказ в статус «…».»
+ * подошёл бы и комментарий, написанный человеком. Поэтому каждый шаблон
+ * привязан к типам, которые этот текст и писали: комментарий, ответ по
+ * поручению или чужое поручение под старый шаблон не попадут.
+ */
+const LEGACY_BODIES: readonly (readonly [
+  readonly NotificationTypeName[],
+  RegExp,
+  (...parts: string[]) => string,
+])[] = [
+  [
+    [NotificationType.SHIFT_ADJUSTED],
+    /^([\s\S]+?) изменил время смены\. Причина: ([\s\S]+)$/,
+    (actor, reason) => `Время смены изменено (${actor}). Причина: ${reason}`,
+  ],
+  [
+    ORDER_STATUS_TYPES,
+    /^([\s\S]+?) перевёл заказ в статус «([\s\S]+?)»\.([\s\S]*)$/,
+    (actor, status, tail) => `Статус заказа изменён на «${status}» (${actor}).${tail}`,
+  ],
+  [
+    [NotificationType.ROLE_CHANGED],
+    /^([\s\S]+?) назначил вам роль «([\s\S]+)»$/,
+    (actor, role) => `Вам назначена роль «${role}» (${actor})`,
+  ],
+  [
+    [NotificationType.ROLE_CHANGED],
+    /^([\s\S]+?) отозвал роль «([\s\S]+)»$/,
+    (actor, role) => `Роль «${role}» отозвана (${actor})`,
+  ],
+  [
+    [NotificationType.DAY_OFF_REQUESTED],
+    new RegExp(`^([\\s\\S]+?) просит выходные: ${ISO_PERIOD}$`),
+    (requester, period) => `${requester} просит выходные: ${shortDates(period)}`,
+  ],
+  [
+    [NotificationType.DAY_OFF_APPROVED],
+    new RegExp(`^([\\s\\S]+?) одобрил ваш запрос на ${ISO_PERIOD}$`),
+    (reviewer, period) => `Запрос на ${shortDates(period)} одобрен (${reviewer})`,
+  ],
+  [
+    [NotificationType.TASK_ASSIGNED],
+    new RegExp(`^([\\s\\S]+?: «[\\s\\S]+» — срок до )(${ISO_DAY})$`),
+    (head, day) => `${head}${formatIsoDateShort(day)}`,
+  ],
+];
+
+/**
+ * Тела, где старая запись отличается только датами, — по типу уведомления.
+ *
+ * «Назначен выходной» (`{автор}: {период}`) и «отклонены» (`{период} —
+ * {причина}`) без типа не отличить от комментария, который начинается с
+ * даты. Тип отсекает чужое: у этих уведомлений дата — всегда период.
+ */
+const LEGACY_PERIOD_BODIES: Partial<Record<NotificationTypeName, RegExp>> = {
+  [NotificationType.DAY_OFF_APPROVED]: new RegExp(`^([\\s\\S]+?: )${ISO_PERIOD}$`),
+  [NotificationType.DAY_OFF_REJECTED]: new RegExp(`^()${ISO_PERIOD}(?= — )`),
+};
+
+/**
+ * Сохранённое уведомление — в нынешней формулировке.
+ *
+ * Текст пишется в базу в момент события, и правка формулировки в
+ * `notifications.service.ts` не меняет уже лежащие строки: в ленте
+ * оставались «Система изменил время смены», «Нигора Азизова перевёл заказ»
+ * и «Смена 2026-10-25 скорректирована». Миграция данных ради текста —
+ * лишняя операция на проде; переписать при показе дешевле, и переводу на
+ * узбекский достаётся уже нынешний текст — старые шаблоны таблице не нужны.
+ */
+export function modernizeStoredNotification(
+  type: NotificationTypeName,
+  title: string,
+  body: string,
+): { readonly title: string; readonly body: string } {
+  // Заголовок и автозакрытие писались только уведомлением о смене.
+  const isShift = type === NotificationType.SHIFT_ADJUSTED;
+  const titleMatch = isShift ? new RegExp(`^Смена (${ISO_DAY}) скорректирована$`).exec(title) : null;
+  const modernTitle =
+    titleMatch?.[1] === undefined ? title : `Смена ${formatIsoDateShort(titleMatch[1])} скорректирована`;
+
+  if (isShift && body === LEGACY_AUTO_CLOSED) return { title: modernTitle, body: AUTO_CLOSED };
+
+  for (const [types, rx, rewrite] of LEGACY_BODIES) {
+    if (!types.includes(type)) continue;
+    const match = rx.exec(body);
+    if (match !== null) return { title: modernTitle, body: rewrite(...match.slice(1).map((part) => part ?? '')) };
+  }
+
+  const periodRx = LEGACY_PERIOD_BODIES[type];
+  const periodBody = periodRx === undefined ? body : body.replace(periodRx, (_, head: string, period: string) => `${head}${shortDates(period)}`);
+
+  return { title: modernTitle, body: periodBody };
 }
 
 /** Для теста покрытия: все известные русские тексты. */

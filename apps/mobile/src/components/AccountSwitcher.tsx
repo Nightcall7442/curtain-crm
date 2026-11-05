@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth, useIsCeo } from '../hooks/useAuth';
+import { NATIVE_DRIVER } from '../lib/animation';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { accountStorage, tokenStorage, type SavedAccount } from '../lib/storage';
 import { trpc } from '../lib/trpc';
@@ -81,7 +82,7 @@ export function AccountSwitcher({
     void reload();
     Animated.spring(appear, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver: NATIVE_DRIVER,
       bounciness: 6,
       speed: 18,
     }).start();

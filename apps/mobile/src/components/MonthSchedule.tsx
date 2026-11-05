@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardTitle, ErrorState } from './Card';
 import { Icon } from './Icon';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -45,27 +45,12 @@ const cellHours = (hours: number): string =>
   Math.max(0, hours).toLocaleString('ru-RU', { maximumFractionDigits: 1 }).replace(/^-/, '');
 
 export function MonthSchedule(): ReactElement {
-  const { m, locale } = useLocale();
+  const { m } = useLocale();
   const today = workshopToday();
   const [year, setYear] = useState(today.year);
   const [month, setMonth] = useState(today.month);
 
   const schedule = trpc.shifts.myMonth.useQuery({ year, month });
-
-  const step = (delta: number): void => {
-    const next = month + delta;
-    if (next < 1) {
-      setMonth(12);
-      setYear(year - 1);
-      return;
-    }
-    if (next > 12) {
-      setMonth(1);
-      setYear(year + 1);
-      return;
-    }
-    setMonth(next);
-  };
 
   const row = schedule.data?.rows[0];
   // Число дней известно и без сервера: сетка месяца рисуется сразу, пока
@@ -91,34 +76,26 @@ export function MonthSchedule(): ReactElement {
         title={m('schedule.title')}
         icon="calendar"
         action={
-          <View style={styles.nav}>
-            <NavButton
-              icon="back"
-              label={m('schedule.prevMonth')}
-              onPress={() => {
-                step(-1);
-              }}
-            />
-
-            <Text style={styles.period}>{formatMonthPeriod(year, month, locale)}</Text>
-
-            <NavButton
-              icon="chevron"
-              label={m('schedule.nextMonth')}
-              onPress={() => {
-                step(1);
-              }}
-            />
-          </View>
+          <MonthNav
+            year={year}
+            month={month}
+            onChange={(nextYear, nextMonth) => {
+              setYear(nextYear);
+              setMonth(nextMonth);
+            }}
+          />
         }
       />
 
       {/*
         Сбой — ошибкой, а не пустым месяцем: «смен: 0, часов: 0» на пустой
         сетке читалось как факт, хотя смена 1-го и выходной 12-го были.
+        Без текста сервера: служебное «Internal server error» по-английски
+        в узбекском интерфейсе ничего не объясняло, а общее «Не удалось
+        загрузить» с кнопкой повтора — объясняет.
       */}
       {schedule.isError ? (
-        <ErrorState message={schedule.error.message} />
+        <ErrorState />
       ) : (
         <>
           <View style={styles.week}>
@@ -188,6 +165,56 @@ export function MonthSchedule(): ReactElement {
 }
 
 /**
+ * Переключатель месяца «‹ Ноябрь 2026 ›» в шапке карточки.
+ *
+ * Общий для графика сотрудника и «Кто отдыхает» у руководителя: прежде у
+ * второго были свои кнопки 28 × 28 со знаками «‹ ›» из шрифта — мимо них
+ * промахивались пальцем, и на одном и том же месте два экрана выглядели
+ * по-разному.
+ */
+export function MonthNav({
+  year,
+  month,
+  onChange,
+}: {
+  readonly year: number;
+  /** 1–12. */
+  readonly month: number;
+  readonly onChange: (year: number, month: number) => void;
+}): ReactElement {
+  const { m, locale } = useLocale();
+
+  const step = (delta: -1 | 1): void => {
+    const next = month + delta;
+    if (next < 1) onChange(year - 1, 12);
+    else if (next > 12) onChange(year + 1, 1);
+    else onChange(year, next);
+  };
+
+  return (
+    <View style={styles.nav}>
+      <NavButton
+        icon="back"
+        label={m('schedule.prevMonth')}
+        onPress={() => {
+          step(-1);
+        }}
+      />
+
+      <Text style={styles.period}>{formatMonthPeriod(year, month, locale)}</Text>
+
+      <NavButton
+        icon="chevron"
+        label={m('schedule.nextMonth')}
+        onPress={() => {
+          step(1);
+        }}
+      />
+    </View>
+  );
+}
+
+/**
  * Кнопка «‹ ›» месяца.
  *
  * Зона нажатия — полные 44 точки, рамка внутри — 32. Было 28 на 28 без
@@ -219,9 +246,9 @@ function NavButton({
   );
 }
 
-/** Видимая рамка кнопки месяца; зона нажатия вокруг неё — до 44. */
+/** Видимая рамка кнопки месяца; зона нажатия вокруг неё — до `touchTarget`. */
 const NAV_FRAME = 32;
-const NAV_TARGET = 44;
+const NAV_TARGET = sizes.touchTarget;
 
 const styles = StyleSheet.create({
   // Без зазора: воздух между рамками и месяцем даёт `minWidth` подписи, и
@@ -314,9 +341,12 @@ const styles = StyleSheet.create({
   },
   total: {
     ...typography.body,
+    // Насыщенность — семейством: вес поверх Medium браузер дорисовывал
+    // поддельным жирным, и итог в PWA был мутнее и шире, чем в APK.
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
     color: colors.textPrimary,
     marginTop: spacing.sm,
-    fontWeight: '600',
   },
   /* Строка итога, пока он не пришёл: та же высота, что у текста. */
   totalPlaceholder: {

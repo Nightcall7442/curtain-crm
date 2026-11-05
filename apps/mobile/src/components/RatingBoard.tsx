@@ -2,7 +2,7 @@ import { PLURAL_POINTS, pluralize } from '@curtain-crm/shared';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
-import { colors, fonts, hairline, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, radius, sizes, spacing, typography } from '../theme';
 
 import { Card, CardLink, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { Icon } from './Icon';
@@ -53,8 +53,22 @@ export function RatingBoard({
 
     Иначе табло показывало пятерых на первом месте с «0 баллов» и кубком у
     каждого, а ниже — «⋯» и «Вы», тоже первым: разрыв, которого нет.
+
+    «Ни балла» — это ровно ноль или пусто, а не «не больше нуля». В балл
+    входят и штрафы дисциплины, и он бывает отрицательным: второго числа у
+    лидеров ещё ноль, а у опоздавшего уже «−2».
   */
-  const nobodyScored = (data?.podium ?? []).every((entry) => (entry.score ?? 0) <= 0);
+  const nobodyScored = (data?.podium ?? []).every(
+    (entry) => entry.score === null || entry.score === 0,
+  );
+  /*
+    Свой штраф виден и до начала соревнования. Раньше «не началось»
+    прятало и свою строку: опоздавший видел на главной «соревнования нет»,
+    а в рейтинге — «−2» и последнее место. Пятёрка с нулями по-прежнему не
+    рисуется, а своя строка со штрафом стоит под пояснением.
+  */
+  const ownPenalty =
+    showOwnRow && nobodyScored && me.score !== null && me.score !== 0 ? me : null;
   /* Кубок — только единоличному лидеру: у ничьей за первое место его нет. */
   const leaders = (data?.podium ?? []).filter((entry) => entry.place === 1).length;
   const lastPodiumPlace = data?.podium.at(-1)?.place ?? null;
@@ -74,16 +88,30 @@ export function RatingBoard({
       ) : isLoading || data === undefined ? (
         <Skeleton rows={4} />
       ) : data.podium.length === 0 || nobodyScored ? (
-        <Empty
-          message={m('rating.notStarted')}
-          hint={m('rating.notStartedHint')}
-        />
+        <>
+          <Empty
+            message={m('rating.notStarted')}
+            hint={m('rating.notStartedHint')}
+          />
+          {ownPenalty !== null && (
+            <BoardRow
+              // Штраф виден, а места за него нет — как на табло руководителя.
+              place={null}
+              name={m('rating.You')}
+              score={ownPenalty.score}
+              isMe
+              isLast
+              medal={false}
+            />
+          )}
+        </>
       ) : (
         <View>
           {data.podium.map((entry, index) => (
             <BoardRow
               key={entry.userId}
-              place={entry.place}
+              // Без баллов места нет: при нуле это лишь порядок списка.
+              place={(entry.score ?? 0) > 0 ? entry.place : null}
               name={entry.fullName}
               score={entry.score}
               isMe={entry.isMe}
@@ -102,7 +130,7 @@ export function RatingBoard({
               {showGap && <Text style={styles.gap}>⋯</Text>}
 
               <BoardRow
-                place={me.place}
+                place={(me.score ?? 0) > 0 ? me.place : null}
                 name={m('rating.You')}
                 score={me.score}
                 isMe
@@ -146,7 +174,13 @@ function BoardRow({
   const { locale } = useLocale();
   return (
     <View style={[styles.row, isMe ? styles.rowMine : null]}>
-      <Text style={[styles.place, place !== null && place <= 3 ? styles.placeTop : null]}>
+      {/* Тройка выделяется только за набранные баллы: ноль и штраф местом не награждаются. */}
+      <Text
+        style={[
+          styles.place,
+          place !== null && place <= 3 && (score ?? 0) > 0 ? styles.placeTop : null,
+        ]}
+      >
         {place === null ? '—' : place.toString()}
       </Text>
 
@@ -158,19 +192,28 @@ function BoardRow({
         {/* Медаль только у первого: три подряд превращают список в ёлку. */}
         {medal && <Icon name="rating" size={15} color={colors.accentStrong} />}
 
-        <Text style={styles.score}>
-          {score === null ? '—' : locale === 'uz' ? `${score.toString()} ball` : pluralize(score, PLURAL_POINTS)}
+        {/*
+          Штраф — терракотой и с типографским минусом, как баллы дисциплины в
+          рейтинге: дефис «-2» рядом с «−2» там читался другим знаком.
+        */}
+        <Text style={[styles.score, score !== null && score < 0 ? styles.scoreNegative : null]}>
+          {score === null ? '—' : `${score < 0 ? '\u2212' : ''}${scoreLabel(Math.abs(score), locale)}`}
         </Text>
       </View>
     </View>
   );
 }
 
+/** «2 балла», «2 ball» — без знака: знак ставит строка. */
+function scoreLabel(points: number, locale: string): string {
+  return locale === 'uz' ? `${points.toString()} ball` : pluralize(points, PLURAL_POINTS);
+}
+
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
   },
   rowMine: {
     backgroundColor: colors.accentSoft,
@@ -215,6 +258,9 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     fontVariant: ['tabular-nums'],
+  },
+  scoreNegative: {
+    color: colors.danger,
   },
   gap: {
     ...typography.caption,

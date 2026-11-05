@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   discountFromInput,
   formatMoneyShort,
+  formatQuantity,
   groupDigits,
   inputToMajor,
   parseMoney,
@@ -109,5 +110,15 @@ describe('roundMoneyToWhole', () => {
     expect(roundMoneyToWhole(150)).toBe(200);
     expect(roundMoneyToWhole(-150)).toBe(-200);
     expect(roundMoneyToWhole(0)).toBe(0);
+  });
+});
+
+describe('formatQuantity', () => {
+  it('пишет количество как сумму: разряды, запятая, типографский минус', () => {
+    expect(formatQuantity(12.75)).toBe('12,75');
+    expect(formatQuantity(1250)).toBe('1\u00A0250');
+    expect(formatQuantity(-3.5)).toBe('\u22123,5');
+    expect(formatQuantity(0)).toBe('0');
+    expect(formatQuantity(Number.NaN)).toBe('—');
   });
 });

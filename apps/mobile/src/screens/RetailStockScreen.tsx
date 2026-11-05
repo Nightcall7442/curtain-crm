@@ -1,12 +1,12 @@
-import { groupDigits, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
+import { formatQuantity, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,10 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Витрина глазами руководителя: остатки, цена и чужие чеки.
@@ -72,14 +73,6 @@ export function RetailStockScreen({
   const parsedDelta = Number.parseFloat(delta.replace(',', '.'));
   const deltaValue = Number.isFinite(parsedDelta) && parsedDelta !== 0 ? parsedDelta : null;
 
-  if (items.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={items.error.message} />
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -90,13 +83,30 @@ export function RetailStockScreen({
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={items.isRefetching || sales.isRefetching}
+            onRefresh={() => {
+              void Promise.all([items.refetch(), sales.refetch()]);
+            }}
+            tintColor={colors.accent}
+          />
+        }
       >
         {header}
 
         <Card>
           <CardTitle title={m('retail.title')} icon="orders" />
 
-          {items.data === undefined ? (
+          {/*
+            Ошибка — внутри карточки, а не вместо всего экрана: переключатель
+            разделов сверху от списка не зависит, и при сбое до «Закупки» и
+            «Склада» было не добраться. Текст — свой, локализованный: ответ
+            сервера при сбое бывает английским.
+          */}
+          {items.isError ? (
+            <ErrorState />
+          ) : items.data === undefined ? (
             <Skeleton />
           ) : items.data.length === 0 ? (
             <Empty message={m('cash.priceEmpty')} hint={m('retail.emptyHint')} />
@@ -156,28 +166,19 @@ export function RetailStockScreen({
                       {/*
                         Пока количество не набрано (или ноль), кнопка
                         неактивна и выглядит так. Раньше она молча ничего не
-                        делала — без ошибки и без отклика.
+                        делала — без ошибки и без отклика. Кнопка — общая, 48
+                        и таблеткой: своя была в 46 со скруглением поля и
+                        читалась ещё одним полем ввода.
                       */}
-                      <Pressable
+                      <SubmitButton
+                        label={m('retail.submit')}
                         onPress={() => {
                           if (deltaValue === null) return;
                           addStock.mutate({ id: item.id, quantity: deltaValue });
                         }}
-                        disabled={deltaValue === null || addStock.isPending}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: deltaValue === null }}
-                        style={({ pressed }) => [
-                          styles.submit,
-                          deltaValue === null ? styles.submitOff : null,
-                          pressed ? styles.pressed : null,
-                        ]}
-                      >
-                        {addStock.isPending ? (
-                          <ActivityIndicator color={colors.onAccent} size="small" />
-                        ) : (
-                          <Text style={styles.submitText}>{m('retail.submit')}</Text>
-                        )}
-                      </Pressable>
+                        disabled={deltaValue === null}
+                        pending={addStock.isPending}
+                      />
                     </View>
                   )}
                 </View>
@@ -189,7 +190,9 @@ export function RetailStockScreen({
         <Card>
           <CardTitle title={m('retail.lastReceipts')} icon="paid" />
 
-          {sales.data === undefined ? (
+          {sales.isError ? (
+            <ErrorState />
+          ) : sales.data === undefined ? (
             <Skeleton />
           ) : sales.data.items.length === 0 ? (
             <Empty message={m('retail.noReceipts')} />
@@ -225,27 +228,9 @@ export function RetailStockScreen({
   );
 }
 
-/**
- * Количество — так же, как суммы: разряды и десятичная запятая.
- *
- * Остаток приходил строкой из базы и печатался как есть — «остаток 232.75»
- * с точкой рядом с «12 500 сум», где разряды и запятая уже по-русски.
- * И в русском, и в узбекском дробная часть отделяется запятой.
- */
-function formatQuantity(value: number): string {
-  if (!Number.isFinite(value)) return '—';
-  const sign = value < 0 ? '−' : '';
-  return `${sign}${groupDigits(Math.abs(value).toString()).replace('.', ',')}`;
-}
-
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
   },
   content: {
     padding: spacing.lg,
@@ -289,34 +274,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  // Вес — семейством: `fontWeight` поверх Medium браузер дорисовывает ложным жирным.
   stockButtonText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     color: colors.accentStrong,
     fontWeight: '600',
   },
   stockBox: {
     paddingBottom: spacing.md,
-  },
-  submit: {
-    minHeight: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitOff: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
   },
   pressed: {
     opacity: opacity.pressed,

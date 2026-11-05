@@ -11,34 +11,32 @@ import {
 import { StackActions, useNavigation } from '@react-navigation/native';
 import { useRef, useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
-import { Card, CardTitle } from '../components/Card';
+import { Card, CardLink, CardTitle } from '../components/Card';
 import {
   draftItemToInput,
   OrderItemsEditor,
   useOrderCatalog,
   validateOrderForm,
 } from '../components/order/OrderForm';
+import { ShiftRequiredBanner, useNeedsShift } from '../components/ShiftRequiredBanner';
 import { emptyItem, type DraftItem } from '../components/order/OrderItemCard';
 import { CodeScanner } from '../components/CodeScanner';
 import { DateField } from '../components/DateField';
 import { DiscountFields, discountMissingReason, discountPayload, emptyDiscount } from '../components/DiscountFields';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
-import { Icon } from '../components/Icon';
-import { useIsManagement } from '../hooks/useAuth';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, spacing, tabBarSpace, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -91,16 +89,8 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
     setScanning(label);
   };
 
+  const needsShift = useNeedsShift();
   const catalog = useOrderCatalog();
-
-  /*
-    Без открытой смены сервер заказ не примет (412 «Сначала начните смену»),
-    а узнавал об этом продавец только на «Создать заказ» — заполнив всю
-    длинную форму. Баннер говорит об этом сразу, как на «Работе», и ведёт
-    туда, где смену начинают. Руководству смена не нужна.
-  */
-  const isManager = useIsManagement();
-  const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
 
   /*
     Карточка заказа встаёт НА МЕСТО формы, а не поверх неё. При обычном
@@ -174,36 +164,32 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {!isManager && shift.data === null && (
-          <Pressable
-            onPress={() => {
-              navigation.navigate('CheckInOut');
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.shiftBanner, pressed ? styles.pressed : null]}
-          >
-            <Icon name="checkin" size={18} color={colors.warning} />
-            <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
-          </Pressable>
-        )}
+        {/*
+          Без открытой смены сервер заказ не примет (412 «Сначала начните
+          смену»), а узнавал об этом продавец только на «Создать заказ» —
+          заполнив всю длинную форму. Баннер говорит об этом сразу.
+        */}
+        <ShiftRequiredBanner />
 
         {/* У пошива для склада клиента нет: заказ существует не для него. */}
         {!forStock && (
           <Card>
-            {/* Клиент пришёл за готовой шторой — сразу на продажу с полки, не через пошив. */}
+            {/*
+              Клиент пришёл за готовой шторой — сразу на продажу с полки, не
+              через пошив. Общая ссылка шапки карточки: цель 44 точки без
+              `hitSlop` и тот же кегль, что у «Подробнее» на других экранах,
+              а не основной текст полужирным поверх Medium.
+            */}
             <CardTitle
               title={m('create.client')}
               icon="person"
               action={
-                <Pressable
+                <CardLink
+                  label={`${m('work.readyMade')} →`}
                   onPress={() => {
                     navigation.navigate('SellReadyMade');
                   }}
-                  accessibilityRole="link"
-                  style={({ pressed }) => [styles.readyMadeLink, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.addItemText}>{m('work.readyMade')} →</Text>
-                </Pressable>
+                />
               }
             />
 
@@ -237,7 +223,8 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
               />
             </Field>
 
-            <Field label={m('create.address')}>
+            {/* Последнее поле карточки — без нижнего отступа, иначе снизу 32 при 16 сверху. */}
+            <Field label={m('create.address')} last>
               <Input
                 value={installAddress}
                 onChangeText={setInstallAddress}
@@ -259,11 +246,17 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
             />
           </Field>
 
-          <Field label={m('create.deadline')} error={showErrors ? errors.deadline : undefined}>
+          {/* У пошива на склад срок — последнее поле карточки. */}
+          <Field
+            label={m('create.deadline')}
+            error={showErrors ? errors.deadline : undefined}
+            last={forStock}
+          >
             <DateField
               value={deadline}
               onChange={setDeadline}
               placeholder={m('create.deadline')}
+              emptyText={m('common.datePlaceholder')}
               invalid={showErrors && errors.deadline !== undefined}
               minimumDate={new Date()}
             />
@@ -286,7 +279,7 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
               </View>
               <DiscountFields price={workPrice} value={discount} onChange={setDiscount} showError={showErrors} />
               {/* Способ оплаты предоплаты — из него складывается касса дня. */}
-              <Field label={m('cash.method')}>
+              <Field label={m('cash.method')} last>
                 <ChipSelect
                   value={depositMethod}
                   onChange={setDepositMethod}
@@ -302,24 +295,18 @@ export function OrderCreateScreen({ route }: RootStackScreenProps<'OrderCreate'>
 
         <OrderItemsEditor items={items} onChange={setItems} catalog={catalog} askScan={askScan} />
 
-        <Pressable
+        {/*
+          Общая кнопка формы: та же высота, скругление и вид «занято», что у
+          «Добавить позицию» над ней и у кнопок карточки заказа, куда форма
+          ведёт дальше. Своя кнопка в 52 точки была выше всех остальных.
+        */}
+        <SubmitButton
+          label={forStock ? m('create.submitStock') : m('create.submit')}
           onPress={submit}
-          disabled={submitting.isPending}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            submitting.isPending ? styles.submitBusy : null,
-            pressed ? styles.pressed : null,
-          ]}
-        >
-          {submitting.isPending ? (
-            <ActivityIndicator color={colors.onAccent} />
-          ) : (
-            <Text style={styles.submitText}>
-              {forStock ? m('create.submitStock') : m('create.submit')}
-            </Text>
-          )}
-        </Pressable>
+          // Без смены сервер заказ не примет — кнопка гаснет, баннер сверху говорит почему.
+          disabled={needsShift}
+          pending={submitting.isPending}
+        />
 
         <Text style={styles.footnote}>
           {forStock ? m('create.footnoteStock') : m('create.footnote')}
@@ -354,50 +341,6 @@ const styles = StyleSheet.create({
   },
   moneyItem: {
     flex: 1,
-  },
-  pressed: {
-    opacity: opacity.pressed,
-  },
-  /* Тот же баннер, что на «Работе»: одно предупреждение — один вид. */
-  shiftBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.warningSoft,
-  },
-  shiftBannerText: {
-    ...typography.caption,
-    color: colors.warning,
-    flex: 1,
-  },
-  /* Цель для пальца — 44, без `hitSlop` (в браузере его нет); лишняя высота
-     уходит в отрицательные поля и шапку карточки не раздувает. */
-  readyMadeLink: {
-    minHeight: 44,
-    justifyContent: 'center',
-    marginVertical: -spacing.md,
-  },
-  addItemText: {
-    ...typography.body,
-    color: colors.accentStrong,
-    fontWeight: '600',
-  },
-  submit: {
-    minHeight: 52,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitBusy: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    color: colors.onAccent,
-    fontWeight: '600',
   },
   footnote: {
     ...typography.footnote,

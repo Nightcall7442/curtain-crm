@@ -29,6 +29,7 @@ import {
   cardShadow,
   colors,
   radius,
+  sizes,
   spacing,
   tabBarSpace,
   typography,
@@ -232,7 +233,7 @@ export function NotificationsScreen(): ReactElement {
                 */}
                 <View style={styles.titleRow}>
                   <Text style={styles.title}>
-                    {item.title}
+                    {keepOrderNumbers(item.title)}
                   </Text>
                   <Text style={styles.time}>
                     {shortTime(item.createdAt, m('common.yesterday'))}
@@ -241,7 +242,7 @@ export function NotificationsScreen(): ReactElement {
 
                 {/* Четыре строки вмещают причину целиком; длиннее бывает только комментарий — его читают в заказе. */}
                 <Text style={styles.text} numberOfLines={4}>
-                  {item.body}
+                  {keepOrderNumbers(item.body)}
                 </Text>
 
                 {/*
@@ -363,6 +364,22 @@ function shortTime(value: string | Date, yesterdayLabel: string): string {
   return formatIsoDateShort(todayIso(date));
 }
 
+/**
+ * Номер заказа — одним куском: «DH-000491», «TDH-000012».
+ *
+ * Обычный дефис — законное место переноса, и узкая лента рвала номер
+ * посередине: «…шторы для DH-» в конце строки и «000491 и сдать…» в начале
+ * следующей. Номер по частям не читается и не ищется глазами. Дефис после
+ * префикса меняется на неразрывный (U+2011): выглядит так же, но строку на
+ * нём не переносят ни браузер, ни Android. Глиф есть в Manrope, подмены
+ * шрифта не будет.
+ */
+const ORDER_NUMBER_HYPHEN = /\b(T?DH)-(?=\d)/g;
+
+function keepOrderNumbers(text: string): string {
+  return text.replace(ORDER_NUMBER_HYPHEN, '$1\u2011');
+}
+
 function emptyMessage(filter: FilterKey): MessageKey {
   if (filter === 'unread') return 'notif.noUnread';
   if (filter === 'important') return 'notif.noImportant';
@@ -384,7 +401,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   chip: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     // Подпись по центру высоты: при `minHeight` без центрирования строка
     // в 18 px садилась к верху — 9 px сверху, 17 снизу.
@@ -411,7 +428,7 @@ const styles = StyleSheet.create({
   /* Текстовая ссылка, а не ещё одна карточка: белая плашка с зелёной
      подписью читалась третьей кнопкой над списком. */
   markAll: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     marginHorizontal: spacing.lg,
     alignItems: 'flex-end',
     justifyContent: 'center',
@@ -471,7 +488,7 @@ const styles = StyleSheet.create({
   confirm: {
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: colors.accent,

@@ -8,7 +8,7 @@ import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
-import { fonts, radius, spacing } from '../theme';
+import { fonts, radius, spacing, typography } from '../theme';
 import { Icon } from './Icon';
 
 /**
@@ -64,7 +64,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    height: 20,
+    // Строка сноски и по 2 сверху и снизу: высота от шкалы, а не на глаз.
+    height: typography.footnote.lineHeight + spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.sm,
   },
@@ -80,12 +81,13 @@ const styles = StyleSheet.create({
     читаемого текста в приложении (см. `typography.footnote`).
   */
   mark: {
+    ...typography.footnote,
     fontFamily: fonts.extrabold,
-    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
   markLarge: {
     fontSize: 14,
+    lineHeight: typography.caption.lineHeight,
   },
 });

@@ -104,7 +104,7 @@ export function buildPackList(
         label: `${title} — ${words.goods}${item.model === null ? '' : `, ${item.model}`}`,
         detail: detailOf([
           item.quantity > 1 ? `${item.quantity.toString()} ${words.pieces}` : null,
-          ...fabrics.map((material) => formatMaterial(material)),
+          ...fabrics.map((material) => formatMaterial(material, locale)),
         ]),
       });
     }
@@ -120,7 +120,7 @@ export function buildPackList(
       rows.push({
         key: `item:${item.id.toString()}:${part.slot}`,
         label: `${title} — ${part.label}`,
-        detail: detailOf([formatMaterial(part.material)]),
+        detail: detailOf([formatMaterial(part.material, locale)]),
       });
     }
 

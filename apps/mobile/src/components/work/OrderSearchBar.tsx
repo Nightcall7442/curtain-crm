@@ -1,8 +1,8 @@
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
-import { colors, fonts, opacity, radius, spacing, typography } from '../../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../../theme';
 import { Icon } from '../Icon';
 
 /**
@@ -12,8 +12,9 @@ import { Icon } from '../Icon';
  * не по загруженной странице. Чипы открывают шторки выбора; выбранное
  * показывается на самом чипе и снимается крестиком.
  *
- * Цели здесь — полные 44 точки, без `hitSlop`: в браузере его нет вовсе,
- * и в PWA крестик был мишенью 14×15, а «Сбросить» — строкой высотой 18.
+ * Цели здесь — полные `sizes.touchTarget`, без `hitSlop`: в браузере его
+ * нет вовсе, и в PWA крестик был мишенью 14×15, а «Сбросить» — строкой
+ * высотой 18.
  */
 export function OrderSearchBar({
   search,
@@ -41,6 +42,12 @@ export function OrderSearchBar({
 }): ReactElement {
   const { m } = useLocale();
   const anyActive = search.length > 0 || statusLabel !== null || executorLabel !== null;
+  /*
+    Фокус — рамкой цвета акцента, как у общего поля (`Input`). Кольцо
+    браузера снято для всех полей в `public/index.html`, и без своей рамки
+    в PWA было не видно, что поиск ждёт ввода: с клавиатуры — вовсе никак.
+  */
+  const [focused, setFocused] = useState(false);
 
   /*
     Чип — не кнопка целиком, а пара кнопок рядом: подпись открывает шторку,
@@ -84,11 +91,17 @@ export function OrderSearchBar({
 
   return (
     <View style={styles.host}>
-      <View style={styles.field}>
-        <Icon name="search" size={17} color={colors.textMuted} />
+      <View style={[styles.field, focused ? styles.fieldFocused : null]}>
+        <Icon name="search" size={17} color={focused ? colors.accent : colors.textMuted} />
         <TextInput
           value={search}
           onChangeText={onSearch}
+          onFocus={() => {
+            setFocused(true);
+          }}
+          onBlur={() => {
+            setFocused(false);
+          }}
           placeholder={m('work.search')}
           placeholderTextColor={colors.textMuted}
           style={styles.input}
@@ -133,16 +146,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
+  // Высота поля ввода — та же, что у всех полей приложения.
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 44,
+    minHeight: sizes.controlHeight,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  fieldFocused: {
+    borderColor: colors.accent,
   },
   input: {
     flex: 1,
@@ -151,10 +168,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   /* Крестик — во всю высоту поля и вплотную к его правому краю: значок
-     стоит там же, где стоял, а цель для пальца — 44 × 44. */
+     стоит там же, где стоял, а цель для пальца — полная. */
   searchClear: {
-    width: 44,
-    height: 44,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     marginRight: -spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -166,8 +183,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   /*
-    44, как чипы фильтров строкой выше: прежние 36 рядом с ними давали на
-    одном экране две высоты одной и той же таблетки.
+    Высота — как у чипов фильтров строкой выше: прежние 36 рядом с ними
+    давали на одном экране две высоты одной и той же таблетки.
 
     Ширина — до края строки, а не до 220: длинный статус по-узбекски
     («Admin tekshiruvini kutmoqda») обрезался при свободной половине строки.
@@ -175,7 +192,7 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     maxWidth: '100%',
     flexShrink: 1,
     borderRadius: radius.pill,
@@ -190,7 +207,7 @@ const styles = StyleSheet.create({
   chipMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
     flexShrink: 1,
     minWidth: 0,
     paddingHorizontal: spacing.md,
@@ -200,7 +217,7 @@ const styles = StyleSheet.create({
     paddingRight: 0,
   },
   chipClear: {
-    width: 44,
+    width: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -218,7 +235,7 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   reset: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
   },

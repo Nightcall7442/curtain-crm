@@ -5,6 +5,8 @@ import {
   isOverdueDate,
   ORDER_STATUS_LABELS,
   parseMoney,
+  plural,
+  PLURAL_EMPLOYEES_GENITIVE,
   RatingScope,
   yesterdayIso,
 } from '@curtain-crm/shared';
@@ -15,11 +17,11 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 
 import { Avatar } from '../components/Avatar';
 import { EventsBoard } from '../components/EventsBoard';
-import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
+import { Card, CardLink, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
 import { PayTypeBadge } from '../components/PayTypeBadge';
 import { TerminalDaySummary } from '../components/TerminalDaySummary';
-import { OrderCard } from '../components/OrderCard';
+import { ORDER_CARD_GAP, OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { MonitorTiles } from '../components/monitor/MonitorTiles';
 import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
@@ -31,6 +33,7 @@ import {
   colors,
   hairline,
   radius,
+  sizes,
   spacing,
   tabBarSpace,
   typography,
@@ -180,7 +183,7 @@ export function HomeScreen(): ReactElement {
           >
             <Avatar
               uri={avatarUrl}
-              size={44}
+              size={sizes.touchTarget}
               style={styles.avatar}
               fallback={<Text style={styles.avatarText}>{initials(user?.fullName ?? '')}</Text>}
             />
@@ -240,18 +243,42 @@ export function HomeScreen(): ReactElement {
       {!isManager && (
         <View style={styles.overlap}>
           <Card>
-            {/* Та же иконка смены, что на вкладке «Смена» и в профиле: без неё заголовок стоял левее всех остальных. */}
-            <CardTitle title={m('home.currentShift')} icon="shift" />
+            {/*
+              Та же иконка смены, что на вкладке «Смена» и в профиле: без неё
+              заголовок стоял левее всех остальных.
+
+              Плашка состояния — в строке заголовка и та же, что у карточек
+              «Текущая смена» на вкладке «Смена» и в профиле: «Открыта» /
+              «Не открыта», зелёная / серая. Здесь стояла своя — «Смена не
+              открыта» янтарём под заголовком, — и одно состояние в трёх
+              местах называлось по-разному и разным цветом. Янтарь к тому же
+              читался предупреждением, хотя смена до прихода на место и не
+              должна быть открыта. Короткая подпись дополняет заголовок, а не
+              повторяет слово «смена».
+
+              Плашка — только когда ответ получен. «Нет данных» и «смены нет» —
+              разные вещи: пока запрос летит или упал, `shift.data` равен
+              `undefined`, и утверждать что-либо о смене нельзя (`null` —
+              смены действительно нет).
+            */}
+            <CardTitle
+              title={m('home.currentShift')}
+              icon="shift"
+              action={
+                shift.data === undefined ? undefined : (
+                  <Pill
+                    text={isOnShift ? m('shift.open') : m('shift.notOpen')}
+                    tone={isOnShift ? 'positive' : 'neutral'}
+                  />
+                )
+              }
+            />
 
             {/*
-              Состояние смены — только когда ответ получен.
-
-              «Нет данных» и «смены нет» — разные вещи. Пока запрос летит или
-              упал, `shift.data` равен `undefined`, и прежняя проверка читала
-              это как «смена не открыта»: сотрудник с открытой сменой при
-              каждом холодном запуске видел «Отметьтесь на вкладке…», а при
-              обрыве связи — навсегда. Утверждение о смене делаем только по
-              ответу сервера (`null` — смены действительно нет).
+              Подробности — тоже только по ответу сервера. Прежняя проверка
+              читала «ответа нет» как «смена не открыта»: сотрудник с открытой
+              сменой при каждом холодном запуске видел «Отметьтесь на
+              вкладке…», а при обрыве связи — навсегда.
             */}
             {shift.data === undefined ? (
               shift.isError ? (
@@ -259,29 +286,13 @@ export function HomeScreen(): ReactElement {
               ) : (
                 <Skeleton rows={2} />
               )
+            ) : shift.data !== null ? (
+              <View>
+                <Row label={m('home.branch')} value={shift.data.branchName} />
+                <Row label={m('home.shiftStart')} value={timeOf(shift.data.startedAt)} />
+              </View>
             ) : (
-              <>
-                {/*
-                  Общая плашка, а не своя.
-                  Здесь стояла самодельная: прямоугольная вместо таблетки и с другим
-                  весом шрифта. Состояние смены то же самое, что на экране отметки и
-                  в карточке профиля, где оно показано через `Pill`, — и выглядеть
-                  оно обязано одинаково во всех трёх местах.
-                */}
-                <Pill
-                  text={isOnShift ? m('home.shiftOpen') : m('home.shiftClosed')}
-                  tone={isOnShift ? 'positive' : 'warning'}
-                />
-
-                {shift.data !== null ? (
-                  <View style={styles.shiftDetails}>
-                    <Row label={m('home.branch')} value={shift.data.branchName} />
-                    <Row label={m('home.shiftStart')} value={timeOf(shift.data.startedAt)} />
-                  </View>
-                ) : (
-                  <Text style={styles.shiftHint}>{m('home.shiftHint')}</Text>
-                )}
-              </>
+              <Text style={styles.shiftHint}>{m('home.shiftHint')}</Text>
             )}
           </Card>
         </View>
@@ -355,19 +366,12 @@ export function HomeScreen(): ReactElement {
               // Единственный вход на экран «Мои задачи»: он показывает заказы,
               // по которым сотрудник МОЖЕТ что-то сделать прямо сейчас, — это
               // другой вопрос, чем «что горит по срокам» ниже.
-              <Pressable
+              <CardLink
+                label={m('home.myTasks')}
                 onPress={() => {
                   navigation.navigate('TaskList');
                 }}
-                accessibilityRole="button"
-                hitSlop={8}
-              >
-                {({ pressed }) => (
-                  <Text style={[styles.taskLink, pressed ? styles.pressed : null]}>
-                    {m('home.myTasks')}
-                  </Text>
-                )}
-              </Pressable>
+              />
             }
           />
           {/*
@@ -429,6 +433,12 @@ export function HomeScreen(): ReactElement {
       {overdue.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionHeading}>{m('home.overdueOrders')}</Text>
+          {/*
+            Промежуток между карточками задаёт стопка, а не карточка: свой
+            нижний отступ последней карточки прибавлялся к шагу экрана, и до
+            «Ближайших событий» выходило 28 точек вместо общих 16.
+          */}
+          <View style={styles.overdueList}>
           {overdue.slice(0, 5).map((order) => (
             <OrderCard
               key={order.id}
@@ -446,6 +456,7 @@ export function HomeScreen(): ReactElement {
               }}
             />
           ))}
+          </View>
         </View>
       )}
 
@@ -650,15 +661,18 @@ function WorkshopSummary(): ReactElement {
         );
       })}
       {(hidden > 0 || allShown) && (
+        /*
+          Настоящая цель в 44 точки, а не строка в 20 с `hitSlop`: в браузере
+          `hitSlop` не работает, и «Ещё 11» ловилась пальцем через раз.
+        */
         <Pressable
           onPress={() => {
             setAllShown((value) => !value);
           }}
           accessibilityRole="button"
-          hitSlop={8}
-          style={styles.onShiftRow}
+          style={({ pressed }) => [styles.onShiftMore, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.onShiftMore}>
+          <Text style={styles.onShiftMoreText}>
             {hidden > 0 ? m('manage.more', { n: hidden }) : m('stock.collapse')}
           </Text>
         </Pressable>
@@ -745,19 +759,19 @@ function CashTodayCard(): ReactElement {
         title={m('home.cashToday')}
         icon="paid"
         action={
-          <Pressable
+          /*
+            Общая ссылка шапки, как «Подробнее» у рейтинга ниже: цель 44
+            точки. Своя подпись с `hitSlop` была целью 72×18 — в браузере
+            `hitSlop` не работает вовсе, — и на одном экране одна и та же
+            ссылка выходила двух размеров.
+          */
+          <CardLink
+            label={m('rating.more')}
+            accessibilityLabel={`${m('home.cashToday')}: ${m('rating.more')}`}
             onPress={() => {
               navigation.navigate('CashDesk');
             }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>
-                {m('rating.more')}
-              </Text>
-            )}
-          </Pressable>
+          />
         }
       />
       <Row label={m('cashDay.inKassa')} value={money(today.data.balance.cash.total)} />
@@ -766,7 +780,10 @@ function CashTodayCard(): ReactElement {
         label={
           byUser.length === 0
             ? m('cashDay.onHands')
-            : `${m('cashDay.onHands')} · ${m('cashDay.onHandsWho', { n: byUser.length })}`
+            : `${m('cashDay.onHands')} · ${m('cashDay.onHandsWho', {
+                n: byUser.length,
+                who: plural(byUser.length, PLURAL_EMPLOYEES_GENITIVE),
+              })}`
         }
         value={money(onHandsTotal)}
         valueColor={onHandsTotal > 0 ? colors.warning : undefined}
@@ -800,19 +817,13 @@ function TerminalTodayCard(): ReactElement {
         title={m('terminal.home')}
         icon="paid"
         action={
-          <Pressable
+          <CardLink
+            label={m('rating.more')}
+            accessibilityLabel={`${m('terminal.home')}: ${m('rating.more')}`}
             onPress={() => {
               navigation.navigate('TerminalChecks');
             }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            {({ pressed }) => (
-              <Text style={[styles.link, pressed ? styles.linkPressed : null]}>
-                {m('rating.more')}
-              </Text>
-            )}
-          </Pressable>
+          />
         }
       />
       <Row
@@ -976,7 +987,14 @@ const styles = StyleSheet.create({
     opacity: opacity.disabled,
   },
   onShiftMore: {
+    alignSelf: 'flex-start',
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  onShiftMoreText: {
     ...typography.footnote,
+    fontFamily: fonts.semibold,
     color: colors.accent,
   },
   terminalRow: {
@@ -1010,28 +1028,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontVariant: ['tabular-nums'],
   },
-  /*
-    Вес — семейством, а не `fontWeight`.
-
-    У подписи `caption` семейство Medium, и `fontWeight: '600'` поверх него
-    в браузере даёт ДОРИСОВАННЫЙ жирный: все начертания Manrope объявлены
-    с весом normal, и Chrome утолщает Medium сам — грубее, чем настоящий
-    Bold. На Android `fontWeight` у своего семейства не работает вовсе, и
-    там те же слова были Medium. Одно семейство SemiBold даёт одинаковую
-    насыщенность в PWA и в APK.
-  */
-  link: {
-    ...typography.caption,
-    fontFamily: fonts.semibold,
-    color: colors.accent,
-  },
   revenueNote: {
     ...typography.footnote,
     color: colors.textMuted,
     marginTop: spacing.sm,
-  },
-  linkPressed: {
-    opacity: opacity.pressed,
   },
   content: {
     paddingBottom: tabBarSpace,
@@ -1068,8 +1068,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   avatar: {
-    width: 44,
-    height: 44,
+    // Фото — и кнопка профиля: размер цели нажатия, не меньше.
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.pill,
     backgroundColor: colors.headerRaised,
     /*
@@ -1101,19 +1102,18 @@ const styles = StyleSheet.create({
     // карточкой 8 px вместо 16, и заголовок «Табло» прилипал к ней.
     marginTop: -(spacing.xl + spacing.sm),
   },
-  shiftDetails: {
-    marginTop: spacing.sm,
-  },
   shiftHint: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: spacing.md,
   },
   pressed: {
     opacity: opacity.pressed,
   },
   section: {
     paddingHorizontal: spacing.lg,
+  },
+  overdueList: {
+    gap: ORDER_CARD_GAP,
   },
   tiles: {
     flexDirection: 'row',
@@ -1162,17 +1162,12 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
-  taskLink: {
-    ...typography.caption,
-    fontFamily: fonts.semibold,
-    color: colors.accent,
-  },
   upcomingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     // Промежуток между всеми тремя колонками: обрезанный статус упирался в дату вплотную.
     gap: spacing.md,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingVertical: spacing.md,
   },
   /* Волосяная линия и без черты под последней строкой — как в «Рейтинге»: там её дублирует край карточки. */

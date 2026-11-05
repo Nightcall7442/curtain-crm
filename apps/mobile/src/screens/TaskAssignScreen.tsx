@@ -22,10 +22,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Поручения: выдать задачу и посмотреть, что уже выдано.
@@ -81,7 +82,7 @@ export function TaskAssignScreen(): ReactElement {
     },
   });
 
-  const canSubmit = assigneeId !== null && title.trim().length > 0 && !create.isPending;
+  const canSubmit = assigneeId !== null && title.trim().length > 0;
 
   return (
     <KeyboardAvoidingView
@@ -101,9 +102,16 @@ export function TaskAssignScreen(): ReactElement {
             {people.isLoading ? (
               <Skeleton rows={1} />
             ) : (
+              /*
+                Лента сотрудников доходит до краёв карточки, а не обрывается
+                на её внутреннем отступе: имя, срезанное посреди белого поля,
+                выглядело ошибкой вёрстки, а не приглашением листать. Первый
+                чип при этом стоит на одной линии с подписью «Кому».
+              */
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                style={styles.peopleRail}
                 contentContainerStyle={styles.people}
               >
                 {(people.data?.items ?? []).map((person) => (
@@ -113,7 +121,12 @@ export function TaskAssignScreen(): ReactElement {
                       setAssigneeId(person.id === assigneeId ? null : person.id);
                     }}
                     accessibilityRole="button"
-                    style={[styles.chip, person.id === assigneeId ? styles.chipActive : null]}
+                    accessibilityState={{ selected: person.id === assigneeId }}
+                    style={({ pressed }) => [
+                      styles.chip,
+                      person.id === assigneeId ? styles.chipActive : null,
+                      pressed ? styles.pressed : null,
+                    ]}
                   >
                     <Text
                       style={[
@@ -146,7 +159,13 @@ export function TaskAssignScreen(): ReactElement {
             />
           </Field>
 
-          <Pressable
+          {/*
+            Общая кнопка формы: высота 48, таблетка, тот же оттенок
+            «недоступно». Была своя — 50, скругление 14, бледнее на 10 %, и
+            со значком «+», который повторял значок заголовка карточки.
+          */}
+          <SubmitButton
+            label={m('assign.submit')}
             onPress={() => {
               if (assigneeId === null) return;
               create.mutate({
@@ -156,29 +175,16 @@ export function TaskAssignScreen(): ReactElement {
               });
             }}
             disabled={!canSubmit}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.submit,
-              canSubmit ? null : styles.submitOff,
-              pressed ? styles.pressed : null,
-            ]}
-          >
-            {create.isPending ? (
-              <ActivityIndicator color={colors.onAccent} />
-            ) : (
-              <>
-                <Icon name="assigned" size={18} color={colors.onAccent} />
-                <Text style={styles.submitText}>{m('assign.submit')}</Text>
-              </>
-            )}
-          </Pressable>
+            pending={create.isPending}
+          />
         </Card>
 
         <Card>
           <CardTitle title={m('assign.issued')} icon="orders" />
 
+          {/* Без текста сервера: служебный ответ бывает по-английски. */}
           {tasks.isError ? (
-            <ErrorState message={tasks.error.message} />
+            <ErrorState />
           ) : tasks.data === undefined ? (
             <Skeleton />
           ) : tasks.data.items.length === 0 ? (
@@ -294,14 +300,22 @@ export function TaskAssignScreen(): ReactElement {
                           }}
                           disabled={cancelReason.trim().length === 0 || cancel.isPending}
                           accessibilityRole="button"
+                          accessibilityState={{
+                            disabled: cancelReason.trim().length === 0 || cancel.isPending,
+                            busy: cancel.isPending,
+                          }}
                           style={({ pressed }) => [
                             styles.cancelButton,
                             styles.cancelDanger,
-                            cancelReason.trim().length === 0 ? styles.submitOff : null,
+                            cancelReason.trim().length === 0 ? styles.off : null,
                             pressed ? styles.pressed : null,
                           ]}
                         >
-                          <Text style={styles.submitText}>{m('assign.cancel')}</Text>
+                          {cancel.isPending ? (
+                            <ActivityIndicator color={colors.onAccent} />
+                          ) : (
+                            <Text style={styles.cancelDangerText}>{m('assign.cancel')}</Text>
+                          )}
                         </Pressable>
                       </View>
                     </View>
@@ -332,17 +346,26 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.lg,
   },
+  /* Лента выходит за внутренний отступ карточки до её краёв (`Card` — 16). */
+  peopleRail: {
+    marginHorizontal: -spacing.lg,
+  },
   people: {
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
   },
+  /*
+    Чип — как в общем выборе (`ChipSelect`): высота поля под ним, волосяная
+    рамка, вес подписи меняет только начертание. Было 40 — ниже и поля, и
+    порога пальца, — и рамка в целую точку, грубее соседних полей.
+  */
   chip: {
-    minHeight: 40,
+    minHeight: sizes.controlHeight,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
@@ -355,26 +378,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   chipTextActive: {
-    color: colors.headerText,
+    // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным жирным.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.headerText,
   },
-  submit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    minHeight: 50,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    marginTop: spacing.sm,
-  },
-  submitOff: {
-    opacity: 0.4,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '700',
-    color: colors.onAccent,
+  // Одна прозрачность «недоступно» на всё приложение — как у `SubmitButton`.
+  off: {
+    opacity: opacity.disabled,
   },
   pressed: {
     opacity: opacity.pressed,
@@ -423,10 +434,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
+  /*
+    Пара «Оставить / Отменить поручение» — той же системы, что кнопка
+    формы выше: высота кнопки действия, таблетка, жирная подпись. Было 44 и
+    скругление 14 — на одном экране с кнопкой «Выдать» две разные кнопки.
+  */
   cancelButton: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: radius.md,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -439,11 +456,21 @@ const styles = StyleSheet.create({
   },
   cancelGhostText: {
     ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  cancelDangerText: {
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
+    color: colors.onAccent,
+    textAlign: 'center',
   },
   cancel: {
-    width: 44,
-    height: 44,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
-import { colors, radius, typography } from '../../theme';
+import { colors, fonts, radius, spacing, typography } from '../../theme';
 
 import { PACE_COLOR, type MonitorPersonData } from './monitorStyle';
 
@@ -62,19 +62,21 @@ export function PlanLine({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: 5,
+    gap: spacing.xs,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: spacing.sm,
   },
   label: {
-    ...typography.caption,
-    fontSize: 12,
+    ...typography.footnote,
     color: colors.textMuted,
   },
   strong: {
+    // Жирный — своим начертанием: `fontWeight` поверх Medium браузер
+    // дорисовывает поддельным жирным.
+    fontFamily: fonts.bold,
     fontWeight: '700',
     color: colors.textPrimary,
   },

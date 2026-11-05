@@ -1,8 +1,9 @@
 import { useRef, type ReactElement, type ReactNode } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 
+import { NATIVE_DRIVER } from '../lib/animation';
 import { tapMedium } from '../lib/haptics';
-import { radius, typography } from '../theme';
+import { colors, fonts, radius, typography } from '../theme';
 
 import { Icon, type IconName } from './Icon';
 
@@ -70,14 +71,14 @@ export function SwipeableRow({
 
         Animated.spring(shift, {
           toValue: 0,
-          useNativeDriver: true,
+          useNativeDriver: NATIVE_DRIVER,
           bounciness: 4,
           speed: 16,
         }).start();
         current.current = 0;
       },
       onPanResponderTerminate: () => {
-        Animated.spring(shift, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 20 }).start();
+        Animated.spring(shift, { toValue: 0, useNativeDriver: NATIVE_DRIVER, bounciness: 0, speed: 20 }).start();
         current.current = 0;
       },
     }),
@@ -88,7 +89,7 @@ export function SwipeableRow({
       <View style={styles.under} importantForAccessibility="no-hide-descendants" aria-hidden>
         {left !== undefined ? (
           <View style={[styles.pad, styles.padLeft, { backgroundColor: left.color }]}>
-            <Icon name={left.icon} size={20} color="#FFFFFF" />
+            <Icon name={left.icon} size={20} color={colors.onAccent} />
             <Text style={styles.padText}>{left.label}</Text>
           </View>
         ) : (
@@ -96,7 +97,7 @@ export function SwipeableRow({
         )}
         {right !== undefined && (
           <View style={[styles.pad, styles.padRight, { backgroundColor: right.color }]}>
-            <Icon name={right.icon} size={20} color="#FFFFFF" />
+            <Icon name={right.icon} size={20} color={colors.onAccent} />
             <Text style={styles.padText}>{right.label}</Text>
           </View>
         )}
@@ -148,7 +149,10 @@ const styles = StyleSheet.create({
   },
   padText: {
     ...typography.footnote,
-    color: '#FFFFFF',
+    color: colors.onAccent,
+    // Своё жирное начертание, а не `fontWeight` поверх Medium: иначе в
+    // браузере жирный поддельный.
+    fontFamily: fonts.bold,
     fontWeight: '700',
   },
 });

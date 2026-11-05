@@ -9,6 +9,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { NATIVE_DRIVER } from '../lib/animation';
 import { notifySuccess } from '../lib/haptics';
 import { colors, opacity, radius, spacing, typography } from '../theme';
 
@@ -46,13 +47,12 @@ export function SlideToConfirm({
   const current = useRef(0);
   const trackWidth = useRef(0);
   const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const text = label.replace(TRAILING_ARROW, '');
 
   const state = useRef({ disabled, busy, onConfirm });
   state.current = { disabled, busy, onConfirm };
 
   const returnThumb = (): void => {
-    Animated.spring(pos, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 14 }).start();
+    Animated.spring(pos, { toValue: 0, useNativeDriver: NATIVE_DRIVER, bounciness: 0, speed: 14 }).start();
     current.current = 0;
   };
 
@@ -117,7 +117,7 @@ export function SlideToConfirm({
         if (max > 0 && current.current > max * 0.82) {
           // Бегунок дотянут: фиксируем в конце и запускаем действие.
           // Возврат случится, когда `busy` снова станет false.
-          Animated.spring(pos, { toValue: max, useNativeDriver: true, bounciness: 0, speed: 20 }).start();
+          Animated.spring(pos, { toValue: max, useNativeDriver: NATIVE_DRIVER, bounciness: 0, speed: 20 }).start();
           current.current = max;
           notifySuccess();
           const result = state.current.onConfirm();
@@ -147,11 +147,11 @@ export function SlideToConfirm({
           }, CONFIRM_GRACE_MS);
           return;
         }
-        Animated.spring(pos, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start();
+        Animated.spring(pos, { toValue: 0, useNativeDriver: NATIVE_DRIVER, bounciness: 4, speed: 14 }).start();
         current.current = 0;
       },
       onPanResponderTerminate: () => {
-        Animated.spring(pos, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 20 }).start();
+        Animated.spring(pos, { toValue: 0, useNativeDriver: NATIVE_DRIVER, bounciness: 0, speed: 20 }).start();
         current.current = 0;
       },
     }),
@@ -164,9 +164,9 @@ export function SlideToConfirm({
         trackWidth.current = event.nativeEvent.layout.width;
       }}
       accessibilityRole="button"
-      accessibilityLabel={text}
+      accessibilityLabel={label}
       accessibilityState={{ disabled: disabled || busy }}
-      accessibilityActions={[{ name: 'activate', label: text }]}
+      accessibilityActions={[{ name: 'activate', label }]}
       onAccessibilityAction={(event) => {
         if (event.nativeEvent.actionName === 'activate' && !disabled && !busy) {
           void onConfirm();
@@ -177,11 +177,11 @@ export function SlideToConfirm({
         Подпись — в свободной части дорожки, справа от бегунка, а не по
         центру всей дорожки: на 360 точках она переносилась, и на второй
         строке оставалась одна стрелка, а первая буква узбекской подписи
-        заходила под бегунок. Стрелка в конце подписи срезается: её и так
-        рисует бегунок, второй раз она лишь удлиняла строку.
+        заходила под бегунок. Стрелки в подписи больше нет вовсе — её
+        рисует бегунок, и словарь её не повторяет.
       */}
       <Text style={styles.label} numberOfLines={2}>
-        {text}
+        {label}
       </Text>
       <Animated.View
         style={[styles.thumb, { transform: [{ translateX: pos }] }]}
@@ -205,7 +205,6 @@ const THUMB = 48;
 const PAD = 5;
 /** Сколько ждать, что дотянутый жест запустил действие (`busy`). */
 const CONFIRM_GRACE_MS = 400;
-const TRAILING_ARROW = /\s*→\s*$/;
 
 const styles = StyleSheet.create({
   track: {
@@ -220,12 +219,16 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.headline,
-    lineHeight: 19,
+    // Строка — из шкалы, как у основного текста того же кегля: две строки
+    // подписи (42) с запасом входят в дорожку (58).
+    lineHeight: typography.body.lineHeight,
     color: colors.headerText,
     textAlign: 'center',
     // Свободная часть дорожки: от правого края бегунка (с зазором) до конца.
-    paddingLeft: PAD + THUMB + PAD + spacing.sm,
-    paddingRight: spacing.lg,
+    // Отступ — снаружи текста, а не внутри: иначе рамка подписи лежала
+    // под бегунком, и проверка раскладки видела в ней наложение на значок.
+    marginLeft: PAD + THUMB + PAD + spacing.sm,
+    marginRight: spacing.lg,
   },
   thumb: {
     position: 'absolute',

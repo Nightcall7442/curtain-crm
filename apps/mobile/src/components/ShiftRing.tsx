@@ -90,11 +90,15 @@ export function ShiftRing({
             isPaused ? styles.timePaused : null,
           ]}
         >
-          {elapsed}
+          {/*
+            Без смены — прочерк, а не «00:00:00 с начала смены»: нулевой
+            таймер под подписью «с начала смены» обещал смену, которой нет.
+          */}
+          {isOpen ? elapsed : '—'}
         </Text>
-        <Text style={styles.caption}>
-          {!isOpen ? m('ring.sinceStart') : isPaused ? m('ring.paused') : m('ring.workTime')}
-        </Text>
+        {isOpen && (
+          <Text style={styles.caption}>{isPaused ? m('ring.paused') : m('ring.workTime')}</Text>
+        )}
       </View>
     </View>
   );

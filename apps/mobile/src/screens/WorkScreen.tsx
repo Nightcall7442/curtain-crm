@@ -15,8 +15,9 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, V
 import { Empty, ErrorState } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
 import { TerminalCheckCard } from '../components/TerminalCheckCard';
-import { OrderCard } from '../components/OrderCard';
+import { OrderCard, OrderCardSeparator } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
 import { ExecutorFilterSheet } from '../components/work/ExecutorFilterSheet';
 import { OrderSearchBar } from '../components/work/OrderSearchBar';
@@ -24,7 +25,7 @@ import { statusFilterInput, statusFilterLabel, type StatusFilter } from '../comp
 import { StatusFilterSheet } from '../components/work/StatusFilterSheet';
 import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth';
 import { trpc } from '../lib/trpc';
-import { cardShadow, colors, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { cardShadow, colors, fonts, opacity, radius, sizes, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 
@@ -175,19 +176,7 @@ export function WorkScreen(): ReactElement {
     В списке он виден при входе на вкладку и уезжает, когда сотрудник
     листает заказы. Неподвижным остаётся только ряд фильтров.
   */
-  const shiftBanner =
-    !isManager && shift.data === null ? (
-      <Pressable
-        onPress={() => {
-          navigation.navigate('CheckInOut');
-        }}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.shiftBanner, pressed ? styles.createPressed : null]}
-      >
-        <Icon name="checkin" size={18} color={colors.warning} />
-        <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
-      </Pressable>
-    ) : null;
+  const shiftBanner = !isManager && shift.data === null ? <ShiftRequiredBanner /> : null;
   /* Шапка списков, где кроме баннера ничего нет: карнизы и доп. работы. */
   const bannerHeader =
     shiftBanner === null ? null : <View style={styles.listHeader}>{shiftBanner}</View>;
@@ -259,28 +248,27 @@ export function WorkScreen(): ReactElement {
               />
             )
           }
+          ItemSeparatorComponent={OrderCardSeparator}
           renderItem={({ item }) => (
-            <View>
-              <OrderCard
-                orderNumber={item.orderNumber ?? `#${item.id.toString()}`}
-                clientName={item.clientName}
-                clientPhone={item.clientPhone}
-                status={item.status}
-                priority={item.priority}
-                deadline={item.deadline}
-                workPrice={item.workPrice}
-                onPress={() => {
-                  navigation.navigate('OrderDetail', { orderId: item.id });
-                }}
-              />
-              <Text style={styles.corniceNote}>
-                {item.corniceStatus === CorniceStatus.PENDING
+            <OrderCard
+              orderNumber={item.orderNumber ?? `#${item.id.toString()}`}
+              clientName={item.clientName}
+              clientPhone={item.clientPhone}
+              status={item.status}
+              priority={item.priority}
+              deadline={item.deadline}
+              workPrice={item.workPrice}
+              note={
+                item.corniceStatus === CorniceStatus.PENDING
                   ? t(CORNICE_STATUS_LABELS, CorniceStatus.PENDING)
                   : `${t(CORNICE_STATUS_LABELS, item.corniceStatus)} · ${
                       item.corniceInstallerName ?? m('work.corniceNoWorker')
-                    }`}
-              </Text>
-            </View>
+                    }`
+              }
+              onPress={() => {
+                navigation.navigate('OrderDetail', { orderId: item.id });
+              }}
+            />
           )}
         />
       ) : filter === 'tasks' ? (
@@ -382,6 +370,9 @@ export function WorkScreen(): ReactElement {
         data={items}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.list}
+        // Шаг между заказами задаёт список, а не карточка: у неё своего
+        // нижнего отступа больше нет, и без разделителя заказы слипались.
+        ItemSeparatorComponent={OrderCardSeparator}
         refreshing={query.isRefetching && !query.isFetchingNextPage}
         onRefresh={() => {
           void query.refetch();
@@ -622,13 +613,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   // Подпись — по центру чипа. Без `justifyContent` лишняя до 44 высота
-  // уходила вниз: текст стоял в 9 точках от верха и в 17 от низа.
+  // уходила вниз: текст стоял в 9 точках от верха и в 17 от низа. Своих
+  // вертикальных полей у чипа нет — высоту держит `minHeight`, и подпись
+  // не может сместиться от того, что поля и высота разошлись.
   filter: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -648,24 +640,13 @@ const styles = StyleSheet.create({
   filterText: {
     ...typography.caption,
     color: colors.textSecondary,
-    fontWeight: '500',
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным
+  // жирным, и выбранный чип в PWA был шире и мутнее, чем в APK.
   filterTextActive: {
-    color: colors.headerText,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
-  },
-  shiftBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.warningSoft,
-  },
-  shiftBannerText: {
-    ...typography.caption,
-    color: colors.warning,
-    flex: 1,
+    color: colors.headerText,
   },
   /* Шапка списка: баннер, кнопки, поиск, чеки — через равный зазор, и
      от первой карточки — тот же шаг, что между карточками. */
@@ -686,13 +667,20 @@ const styles = StyleSheet.create({
   createFlex: {
     flex: 1,
   },
+  /*
+    Кнопки раздела — высоты кнопки действия и таблеткой, как общая
+    `SubmitButton`. Подпись полужирная, а не жирная: в половине ширины 360
+    со значком «Tayyor pardalar» и «Yangi buyurtma» жирным уже не
+    помещались в строку. Поля по краям — узкие по той же причине.
+  */
   create: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
     backgroundColor: colors.accent,
   },
   createSecondary: {
@@ -700,8 +688,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
+    minHeight: sizes.buttonHeight,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.accentSoft,
     backgroundColor: colors.surface,
@@ -709,30 +698,29 @@ const styles = StyleSheet.create({
   createPressed: {
     opacity: opacity.pressed,
   },
+  // Насыщенность — семейством: `fontWeight` поверх Medium из `body` браузер
+  // дорисовывал поддельным жирным, и подписи в PWA расплывались.
   createText: {
     ...typography.body,
-    color: colors.onAccent,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.onAccent,
+    flexShrink: 1,
   },
   createSecondaryText: {
     ...typography.body,
-    color: colors.accentStrong,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.accentStrong,
+    flexShrink: 1,
   },
   /*
     Состояние карниза — подписью ПОД своей карточкой: 4 точки от неё и 16
     до следующей. Было ровно посередине между двумя (8 и 8), и подпись
     читалась как относящаяся к любой из них. Отступ слева — как у текста
-    в карточке. `marginTop` гасит нижний отступ обёртки `OrderCard`
-    (`spacing.md`) до `spacing.xs`.
+    в карточке. Своего нижнего отступа у `OrderCard` больше нет, поэтому
+    сверху — просто `spacing.xs`, без вычитания.
   */
-  corniceNote: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs - spacing.md,
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-  },
   more: {
     paddingVertical: spacing.lg,
   },

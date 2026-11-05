@@ -5,6 +5,8 @@ import {
   PAYMENT_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
+  plural,
+  PLURAL_EMPLOYEES_GENITIVE,
 } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -56,9 +58,11 @@ export function CashDayReport(): ReactElement {
 
         <Field label={m('cashDay.day')}>
           {/*
-            «Очистить» возвращает к сегодняшнему дню: касса без даты не
-            бывает. Пустая дата уходила на сервер, тот отвечал 400, и в трёх
-            карточках вставало «Некорректная дата».
+            Касса без даты не бывает, поэтому и «очистить» у поля нет: прежний
+            крестик ничего не стирал — пустую дату тут же подменял сегодняшний
+            день, и кнопка выглядела сломанной. Пустая дата вовсе уходила на
+            сервер, тот отвечал 400, и в трёх карточках вставало
+            «Некорректная дата» — подмена на сегодня осталась на всякий случай.
           */}
           <DateField
             value={day}
@@ -66,15 +70,19 @@ export function CashDayReport(): ReactElement {
               setPicked(value === '' || value === today ? null : value);
             }}
             placeholder={m('cashDay.day')}
+            clearable={false}
           />
         </Field>
 
         {/*
           Ошибка — ошибкой, а не нулями: пустая касса и касса, которая не
           загрузилась, выглядели одинаково, и сбой читался как «денег нет».
+          Текст — свой, локализованный, а не ответ сервера: при сбое пакета
+          запросов он приходит служебным английским «Missing result» — и в
+          узбекском интерфейсе тоже.
         */}
         {summary.isError ? (
-          <ErrorState message={summary.error.message} />
+          <ErrorState />
         ) : summary.isLoading ? (
           <Skeleton />
         ) : (
@@ -89,7 +97,10 @@ export function CashDayReport(): ReactElement {
             <Stat
               label={m('cashDay.onHands')}
               value={money(onHandsTotal)}
-              hint={m('cashDay.onHandsWho', { n: byUser.length })}
+              hint={m('cashDay.onHandsWho', {
+                n: byUser.length,
+                who: plural(byUser.length, PLURAL_EMPLOYEES_GENITIVE),
+              })}
               tone={onHandsTotal > 0 ? 'warning' : 'plain'}
             />
             {data !== undefined && data.discounts.count > 0 && (
@@ -110,7 +121,7 @@ export function CashDayReport(): ReactElement {
       <Card>
         <CardTitle title={m('cashDay.totals')} icon="paid" />
         {summary.isError ? (
-          <ErrorState message={summary.error.message} />
+          <ErrorState />
         ) : summary.isLoading ? (
           <Skeleton />
         ) : (
@@ -147,7 +158,7 @@ export function CashDayReport(): ReactElement {
       <Card>
         <CardTitle title={m('cashDay.bySource')} icon="orders" />
         {summary.isError ? (
-          <ErrorState message={summary.error.message} />
+          <ErrorState />
         ) : summary.isLoading ? (
           <Skeleton />
         ) : data === undefined || data.rows.length === 0 ? (
@@ -182,7 +193,7 @@ export function CashDayReport(): ReactElement {
           строка «Сдано» пропадала, будто день пустой.
         */}
         {collections.isError ? (
-          <ErrorState message={collections.error.message} />
+          <ErrorState />
         ) : collections.isLoading ? (
           <Skeleton />
         ) : (collections.data?.rows.length ?? 0) === 0 ? (
@@ -209,7 +220,7 @@ export function CashDayReport(): ReactElement {
       <Card>
         <CardTitle title={m('cashDay.onHands')} icon="people" />
         {onHands.isError ? (
-          <ErrorState message={onHands.error.message} />
+          <ErrorState />
         ) : onHands.isLoading ? (
           <Skeleton />
         ) : byUser.length === 0 ? (

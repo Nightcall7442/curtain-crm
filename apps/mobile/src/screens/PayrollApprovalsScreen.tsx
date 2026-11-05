@@ -17,6 +17,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Pill, SectionHeader, Skeleton } from '../components/Card';
 import { MoneyInput } from '../components/Field';
@@ -24,7 +25,7 @@ import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Ведомость за месяц: утвердить расчёт и отметить выплату.
@@ -45,6 +46,7 @@ import { colors, fonts, hairline, opacity, radius, spacing, tabBarSpace, typogra
 export function PayrollApprovalsScreen(): ReactElement {
   const { t, m, money, locale } = useLocale();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
   const now = new Date();
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
 
@@ -103,7 +105,12 @@ export function PayrollApprovalsScreen(): ReactElement {
   */
   return (
     <ScrollView
-      contentContainerStyle={styles.content}
+      /*
+        Снизу — обычный отступ и безопасная зона, а не место под панель
+        вкладок: ведомость открыта поверх вкладок, панели под ней нет, и
+        прежний отступ оставлял под последней карточкой 114 точек пустоты.
+      */
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
       refreshControl={
         <RefreshControl
           refreshing={query.isRefetching}
@@ -299,7 +306,6 @@ function toneOf(status: PayrollRecordStatus): 'positive' | 'info' | 'neutral' {
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
   list: {
     gap: spacing.lg,
@@ -338,7 +344,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   button: {
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     alignItems: 'center',

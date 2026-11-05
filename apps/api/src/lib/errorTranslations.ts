@@ -107,12 +107,12 @@ const EXACT: Readonly<Record<string, string>> = {
   'Не удалось сохранить запись': "Yozuvni saqlab bo'lmadi",
 
   // orders: пошив на склад
-  'Укажите цену каждой шторы — с ней она ляжет на склад': 'Har bir pardaga narx qo‘ying — u bilan omborga tushadi',
-  'Укажите цену': 'Narxni ko‘rsating',
+  'Укажите цену каждой шторы — с ней она ляжет на склад': "Har bir pardaga narx qo'ying — u bilan omborga tushadi",
+  'Укажите цену': "Narxni ko'rsating",
 
   // payroll: смена по графику
   'Время в формате ЧЧ:ММ': 'Vaqt SS:DD formatida',
-  'Укажите и начало, и конец смены': 'Smenaning boshi va oxirini ko‘rsating',
+  'Укажите и начало, и конец смены': "Smenaning boshi va oxirini ko'rsating",
 
   // terminalChecks
   'Конец периода раньше начала': 'Davr oxiri boshidan oldin',
@@ -331,7 +331,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Радиус не может быть больше {n} м', "Radius {n} m dan katta bo'lishi mumkin emas"],
   ['Филиал с названием «{name}» уже существует', '«{name}» nomli filial allaqachon mavjud'],
   ['Код «{code}» на складе не найден', '«{code}» kodi omborda topilmadi'],
-  ['День {day} уже выплачен', '{day} kuni allaqachon to‘langan'],
+  ['День {day} уже выплачен', "{day} kuni allaqachon to'langan"],
   [
     'У кода «{name}» нет цены — её ставит руководство на складе',
     "«{name}» kodining narxi yo'q — uni rahbariyat omborda belgilaydi",
@@ -380,9 +380,27 @@ const TABLE: TranslationTable = { exact: EXACT, patterns: PATTERNS };
 
 const translate = compileTranslator(TABLE);
 
-/** Сообщение об ошибке на языке клиента; русский возвращается как есть. */
+/**
+ * Единицы расстояния после числа: «1,2 км», «85 м» (пробел обычный или
+ * неразрывный, как у `formatDistance`). Просмотр вперёд не даёт задеть
+ * «мин» и любое другое слово на «м».
+ */
+const DISTANCE_UNIT_RX = /(\d[\s\u00A0])(км|м)(?!\p{L})/gu;
+
+/**
+ * Сообщение об ошибке на языке клиента; русский возвращается как есть.
+ *
+ * Расстояние в отказе отметиться («Вы находитесь в 1,2 км от филиала…»)
+ * сервис собирает по-русски, и подстановка переносит его в узбекский
+ * шаблон как есть — с кириллическим «км» посреди латиницы. Единицу меняем
+ * здесь, на выходе, как валюту в уведомлениях: шаблон перевода от этого
+ * не зависит, а сервису не нужно знать язык клиента.
+ */
 export function translateErrorMessage(message: string, locale: Locale): string {
-  return translate(message, locale);
+  const translated = translate(message, locale);
+  return locale === 'uz'
+    ? translated.replace(DISTANCE_UNIT_RX, (_, number: string, unit: string) => `${number}${unit === 'км' ? 'km' : 'm'}`)
+    : translated;
 }
 
 /** Для теста покрытия: все известные русские тексты. */

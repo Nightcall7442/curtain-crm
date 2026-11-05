@@ -6,7 +6,6 @@ import {
   TaskStatus,
   type TaskStatus as TaskStatusName,
 } from '@curtain-crm/shared';
-import { CommonActions, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import {
@@ -26,13 +25,14 @@ import {
 import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fonts, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -52,7 +52,6 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const { taskId } = route.params;
-  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
   const [body, setBody] = useState('');
@@ -148,10 +147,11 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
 
   const contentStyle = [styles.content, { paddingBottom: spacing.xl + insets.bottom }];
 
+  /* Без текста сервера: служебный ответ бывает по-английски и ничего не объясняет. */
   if (task.isError) {
     return (
       <View style={styles.center}>
-        <ErrorState message={task.error.message} />
+        <ErrorState />
       </View>
     );
   }
@@ -187,23 +187,17 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
         вкладок под ним нет, и место под неё оставляло пустую полосу.
       */}
       <ScrollView contentContainerStyle={contentStyle} keyboardShouldPersistTaps="handled">
-        {needsShift && (
-          <Pressable
-            onPress={() => {
-              navigation.dispatch(CommonActions.navigate('Tabs', { screen: 'CheckInOut' }));
-            }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.shiftBanner, pressed ? styles.pressed : null]}
-          >
-            <Icon name="checkin" size={18} color={colors.warning} />
-            <Text style={styles.shiftBannerText}>{m('work.noShift')}</Text>
-          </Pressable>
-        )}
+        <ShiftRequiredBanner />
 
         <Card>
+          {/*
+            Значок поручения — тот же, что у пункта «Поручения» в разделе
+            руководителя. Был «+» назначения: заголовок самого поручения
+            читался как кнопка «добавить».
+          */}
           <CardTitle
             title={data.title}
-            icon="assigned"
+            icon="task"
             action={<Pill text={t(TASK_STATUS_LABELS, data.status)} tone={toneOf(data.status)} />}
           />
 
@@ -393,7 +387,9 @@ export function TaskDetailScreen({ route }: RootStackScreenProps<'TaskDetail'>):
         </Card>
 
         <Card>
-          <CardTitle title={m('task.reply')} icon="voice" />
+          {/* «Отправить», а не микрофон: голосового ответа здесь нет, а
+              пузырь «Переписки» уже занят карточкой выше. */}
+          <CardTitle title={m('task.reply')} icon="send" />
 
           <Input
             value={body}
@@ -487,12 +483,15 @@ function toneOf(status: TaskStatusName): 'positive' | 'danger' | 'neutral' | 'in
 }
 
 /*
-  Кнопки экрана — одна система: высота 48, скругление `md`, подпись 15/600.
+  Кнопки экрана — одна система, и она же общая для приложения
+  (`SubmitButton`): высота кнопки действия, таблетка, подпись основным
+  кеглем жирным начертанием.
 
   Прежде у каждой кнопки были свои размеры: «Принять» 48, «Вернуть» под
   ней 44, «Фото» и «Отправить» 46; подписи 15/700, 15/600, 15/400 и 13/600
-  в соседних кнопках, рамки то волосяные, то в точку. Рядом они выглядели
-  собранными из разных экранов.
+  в соседних кнопках, рамки то волосяные, то в точку. Потом экран собрался
+  в свою систему со скруглением 14 — и стал выглядеть взятым из другого
+  приложения рядом с таблетками карточки заказа и кассы.
 */
 const styles = StyleSheet.create({
   flex: {
@@ -507,19 +506,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.lg,
   },
-  shiftBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.warningSoft,
-  },
-  shiftBannerText: {
-    ...typography.caption,
-    color: colors.warning,
-    flex: 1,
-  },
   details: {
     ...typography.body,
     color: colors.textSecondary,
@@ -530,9 +516,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
   },
   buttonPrimary: {
     backgroundColor: colors.accent,
@@ -543,19 +529,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   buttonPrimaryText: {
-    ...typography.headline,
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.onAccent,
     flexShrink: 1,
   },
   buttonOutlineText: {
-    ...typography.headline,
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textPrimary,
   },
   buttonOutlineMutedText: {
-    ...typography.headline,
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textSecondary,
   },
   /*
@@ -645,7 +634,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
   },
   fileText: {
     ...typography.caption,
@@ -665,8 +654,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   previewRemove: {
-    width: 44,
-    height: 44,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -680,8 +669,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   attachText: {
-    ...typography.headline,
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.accentStrong,
   },
   pressed: {

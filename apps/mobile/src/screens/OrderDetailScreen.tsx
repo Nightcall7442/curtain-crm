@@ -18,13 +18,10 @@ import {
   stageFeesOfOrderType,
   TransitionKind,
   INSTALLATION_SCHEDULABLE_STATUSES,
-  isActiveStatus,
-  isOverdueDate,
 } from '@curtain-crm/shared';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
   Linking,
@@ -33,20 +30,21 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import { BottomSheet } from '../components/BottomSheet';
+import { HeaderIconButton } from '../components/HeaderIconButton';
 import { OrderPayments } from '../components/OrderPayments';
 import { Card, CardTitle, Empty, ErrorState, Pill, Row } from '../components/Card';
+import { orderStatusTone } from '../components/OrderCard';
 import { OrderManagement } from '../components/OrderManagement';
 import { OrderCommentsCard } from '../components/order/OrderCommentsCard';
 import { OrderCorniceCard } from '../components/order/OrderCorniceCard';
 import { useInstallSlotLabel } from '../components/order/InstallationTimeRow';
 import { OrderItemsCard } from '../components/order/OrderItemsCard';
 import { OrderPackList } from '../components/OrderPackList';
-import { Field, MoneyInput } from '../components/Field';
+import { Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { OrderPhotoUpload } from '../components/OrderPhotoUpload';
 import { Stepper } from '../components/Stepper';
@@ -54,7 +52,7 @@ import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /**
@@ -105,27 +103,19 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
     navigation.setOptions({
       headerRight: editable
         ? () => (
-            <Pressable
+            /*
+              Та же кнопка шапки, что «назад» и «склад» в `RootNavigator`: в
+              браузере рамка 48 с отступом 4 от края, на телефоне — система.
+            */
+            <HeaderIconButton
+              label={m('order.edit')}
+              edge="right"
               onPress={() => {
                 navigation.navigate('OrderEdit', { orderId });
               }}
-              accessibilityRole="button"
-              accessibilityLabel={m('order.edit')}
-              hitSlop={10}
-              /*
-                В браузере `hitSlop` не работает, и карандаш был целью 22×24,
-                прижатой к правому краю экрана, тогда как стрелка «назад»
-                слева стоит в рамке 48×48. Здесь та же рамка и тот же отступ,
-                что у значков шапки в `RootNavigator`. На телефоне отступы
-                шапки даёт система, а цель добирает `hitSlop`.
-              */
-              style={({ pressed }) => [
-                Platform.OS === 'web' ? styles.webHeaderButton : null,
-                pressed ? { opacity: opacity.pressed } : null,
-              ]}
             >
               <Icon name="edit" size={22} color={colors.headerText} />
-            </Pressable>
+            </HeaderIconButton>
           )
         : undefined,
     });
@@ -261,7 +251,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             )}
             <Pill
               text={t(ORDER_STATUS_LABELS, data.status)}
-              tone={statusTone(data.status, data.deadline)}
+              tone={orderStatusTone(data.status, data.deadline)}
             />
           </View>
         </View>
@@ -298,6 +288,9 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             <Row
               label={m('install.title')}
               value={data.installationAt === null ? m('install.notSet') : installSlotLabel(data.installationAt)}
+              // Пустое — приглушённым, как «не назначен» у исполнителей: чёрным
+              // жирным «Время не назначено» читалось как значение.
+              valueColor={data.installationAt === null ? colors.textMuted : undefined}
             />
           )}
           {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
@@ -360,7 +353,6 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
               }}
               accessibilityRole="button"
               accessibilityLabel={feesShown ? m('order.hideFees') : m('order.showFees')}
-              hitSlop={8}
               style={styles.feesHeader}
             >
               <Text style={styles.feesTitle}>{m('order.stageFees')}</Text>
@@ -417,20 +409,16 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
         )}
 
         {/*
-          Метка — значок из того же набора Ionicons, что и остальные, а не
-          эмодзи 📍: тот рисовался системным цветным шрифтом, на Android и в
-          браузере по-разному, и выбивался из зелёных линейных значков.
-          В `Icon` метки нет, поэтому набор взят напрямую.
+          Метка — значок общего набора `Icon`, а не эмодзи 📍: тот рисовался
+          системным цветным шрифтом, на Android и в браузере по-разному, и
+          выбивался из зелёных линейных значков. `Icon` стиля не принимает,
+          поэтому сдвиг к первой строке адреса несёт обёртка.
         */}
         {data.installAddress !== null && (
           <View style={styles.addressRow}>
-            <Ionicons
-              name="location-outline"
-              size={16}
-              color={colors.textMuted}
-              accessible={false}
-              style={styles.addressIcon}
-            />
+            <View style={styles.addressIcon}>
+              <Icon name="location" size={ADDRESS_ICON} color={colors.textMuted} />
+            </View>
             <Text style={styles.address}>{data.installAddress}</Text>
           </View>
         )}
@@ -514,13 +502,17 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             <Text style={styles.reasonTitle}>
               {m('order.reasonRequired', { status: t(ORDER_STATUS_LABELS, pendingStatus) })}
             </Text>
-            <TextInput
+            {/*
+              Общее поле, а не свой `TextInput`: глобальное правило в
+              `public/index.html` снимает кольцо фокуса браузера, и у
+              самодельного поля в PWA фокуса не было видно вовсе. `Input`
+              рисует его рамкой акцента и в браузере растёт вместе с текстом.
+            */}
+            <Input
               value={reason}
               onChangeText={setReason}
               placeholder={m('order.reasonPlaceholder')}
-              placeholderTextColor={colors.textMuted}
               multiline
-              numberOfLines={3}
               style={styles.reasonInput}
             />
             <View style={styles.reasonButtons}>
@@ -538,6 +530,8 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                   reason.trim().length < 3 ? styles.disabled : null,
                   pressed ? styles.pressed : null,
                 ]}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: reason.trim().length < 3 || changeStatus.isPending }}
               >
                 <Text style={styles.confirmText}>{m('common.confirm')}</Text>
               </Pressable>
@@ -547,6 +541,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                   setPendingStatus(null);
                 }}
                 style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
+                accessibilityRole="button"
               >
                 <Text style={styles.cancelText}>{m('common.cancel')}</Text>
               </Pressable>
@@ -595,6 +590,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                     : null,
                   pressed ? styles.pressed : null,
                 ]}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmText}>{m('common.confirm')}</Text>
               </Pressable>
@@ -603,6 +599,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                   setPricing(null);
                 }}
                 style={({ pressed }) => [styles.cancelButton, pressed ? styles.pressed : null]}
+                accessibilityRole="button"
               >
                 <Text style={styles.cancelText}>{m('common.cancel')}</Text>
               </Pressable>
@@ -744,41 +741,10 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
   );
 }
 
-/**
- * Тон плашки статуса — то же правило, что у чипа в списке заказов
- * (`OrderCard`): ждёт решения — янтарный, в работе — зелёный, брак и
- * просрочка — терракота, закрытые — нейтральный.
- *
- * Прежде карточка красила любой статус в синий: «Отменён» и «Выполнен»
- * выглядели как работа в процессе, и статус менял цвет при открытии заказа.
- */
-const WAITING_STATUSES: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
-  OrderStatusValue.NEW,
-  OrderStatusValue.PENDING_ADMIN_REVIEW,
-  OrderStatusValue.REJECTED_TO_CEO,
-  OrderStatusValue.PENDING_SEWING_ASSIGNMENT,
-  OrderStatusValue.PENDING_INSTALLATION_ASSIGNMENT,
-]);
-
-function statusTone(
-  status: OrderStatus,
-  deadline: string | null,
-): 'positive' | 'warning' | 'danger' | 'neutral' {
-  const isOverdue = deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
-  if (isOverdue || status === OrderStatusValue.QC_FAILED) return 'danger';
-  if (!isActiveStatus(status)) return 'neutral';
-  if (WAITING_STATUSES.has(status)) return 'warning';
-  return 'positive';
-}
+/** Метка адреса: под строку подписи (18), по центру первой строки. */
+const ADDRESS_ICON = 16;
 
 const styles = StyleSheet.create({
-  webHeaderButton: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.xs,
-  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
@@ -820,7 +786,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   callButton: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -854,7 +820,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     // Цель в палец ростом, а строка — прежней высоты: лишнее забирают
     // отрицательные поля (`hitSlop` в браузере не работает).
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     marginTop: -spacing.md,
     marginBottom: spacing.xs - spacing.md,
   },
@@ -886,8 +852,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   addressIcon: {
-    // Значок по центру первой строки адреса: строка 18, значок 16.
-    marginTop: 1,
+    // Значок по центру первой строки адреса, а не у верхнего края блока.
+    marginTop: (typography.caption.lineHeight - ADDRESS_ICON) / 2,
   },
   address: {
     ...typography.caption,
@@ -898,9 +864,16 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
   },
+  /*
+    Кнопки экрана — одна система, та же, что у `SubmitButton`: высота
+    `buttonHeight`, таблетка, подпись основным кеглем жирным начертанием.
+    Прежде на одной карточке заказа жили четыре высоты (44, 46, 48, 52) и
+    три скругления: «Пошив завершён» выглядел кнопкой из другого
+    приложения рядом с «Сохранить цену» и «Принять оплату».
+  */
   primaryAction: {
-    minHeight: 52,
-    borderRadius: radius.md,
+    minHeight: sizes.buttonHeight,
+    borderRadius: radius.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -910,23 +883,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.header,
   },
   primaryActionText: {
-    ...typography.headline,
+    ...typography.body,
     fontFamily: fonts.bold,
     color: colors.onAccent,
     fontWeight: '700',
+    textAlign: 'center',
   },
+  /* Второе действие — светло-зелёная таблетка, как `SubmitButton variant="secondary"`. */
   moreAction: {
-    minHeight: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
+    minHeight: sizes.buttonHeight,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
   },
   moreActionText: {
-    ...typography.caption,
+    ...typography.body,
     fontFamily: fonts.bold,
-    color: colors.textSecondary,
+    color: colors.accentStrong,
     fontWeight: '700',
+    textAlign: 'center',
   },
   sheetRow: {
     flexDirection: 'row',
@@ -934,6 +911,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
+    // Подсветка нажатия шире строки на свой отступ, а значки стоят ровно
+    // под заголовком шторки: внутренний отступ съедается внешним минусом.
+    marginHorizontal: -spacing.xs,
     borderRadius: radius.md,
   },
   sheetRowPressed: {
@@ -984,51 +964,47 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   reasonInput: {
-    fontFamily: fonts.medium,
     marginTop: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    fontSize: 14,
-    color: colors.textPrimary,
-    minHeight: 72,
-    textAlignVertical: 'top',
   },
   reasonButtons: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
+  /* Пара «Подтвердить · Отмена» — те же таблетки, что и остальные кнопки экрана. */
   confirmButton: {
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
     flex: 1,
     backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   confirmText: {
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
     color: colors.onAccent,
-    fontWeight: '600',
-    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   cancelButton: {
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
     flex: 1,
-    borderWidth: 1,
+    borderWidth: hairline,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelText: {
-    fontFamily: fonts.medium,
+    ...typography.body,
+    fontFamily: fonts.bold,
     color: colors.textSecondary,
-    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   disabled: {
     opacity: opacity.disabled,
@@ -1040,9 +1016,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: {
-    fontFamily: fonts.medium,
+    ...typography.caption,
     color: colors.danger,
-    fontSize: 13,
-    lineHeight: 19,
   },
 });

@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Empty, Pill } from './Card';
 
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   stage: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.md,
     // Подпись по центру высоты: без этого строка садилась к верху чипа на 4 px.
     justifyContent: 'center',
@@ -319,32 +319,40 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.md,
   },
+  /*
+    Пара кнопок — система `SubmitButton`: высота `buttonHeight`, таблетка,
+    основной кегль жирным. Главная — акцентная, вторая — светло-зелёная.
+    Прежде здесь были 45 точек, скругление 10 и кегль 14, тогда как
+    остальные кнопки карточки заказа — 48 и крупнее: пара выглядела
+    кнопками из другого приложения.
+  */
   action: {
     flex: 1,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: sizes.buttonHeight,
   },
   actionPrimary: {
     backgroundColor: colors.accent,
   },
   actionSecondary: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.accentSoft,
   },
   actionPrimaryText: {
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
     color: colors.onAccent,
-    fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   actionSecondaryText: {
-    fontFamily: fonts.medium,
-    color: colors.textSecondary,
-    fontSize: 14,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    color: colors.accentStrong,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   pressed: {
     opacity: opacity.pressed,

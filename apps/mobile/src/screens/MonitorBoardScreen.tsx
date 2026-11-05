@@ -16,7 +16,7 @@ import { STATUS_COLOR } from '../components/monitor/monitorStyle';
 import { PersonRow } from '../components/monitor/PersonRow';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, hairline, radius, sizes, spacing, tabBarSpace, typography } from '../theme';
 import type { RootStackScreenProps } from '../types';
 
 /** Статусы, которые бывают у группы: на выезд ездят только выездные. */
@@ -91,7 +91,11 @@ export function MonitorBoardScreen({ route, navigation }: RootStackScreenProps<'
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={styles.summary}>
-            {m('monitor.onShift', { n: data.summary.onShift, total: data.summary.headcount })}
+            {/*
+              Ключ живёт и посреди фразы («Цех, на смене …» в плитке), поэтому
+              в словаре со строчной; здесь он — начало строки.
+            */}
+            {capitalize(m('monitor.onShift', { n: data.summary.onShift, total: data.summary.headcount }), locale)}
           </Text>
           <ScrollView
             horizontal
@@ -178,13 +182,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
   },
-  /* Чип — по мерке `ChipSelect` (Field.tsx): 44 в высоту, поля 16,
-     волосяная рамка. Было 38 и рамка в пиксель. */
+  /* Чип-фильтр — как фильтры «Ленты» и «Работы»: высотой в цель нажатия,
+     поля 16, волосяная рамка. Было 38 и рамка в пиксель. */
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
@@ -213,3 +217,8 @@ const styles = StyleSheet.create({
     height: spacing.md,
   },
 });
+
+/** Первая буква — заглавная, по правилам языка экрана. */
+function capitalize(text: string, locale: string): string {
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}

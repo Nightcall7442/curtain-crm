@@ -1,11 +1,11 @@
 import { STOCK_KIND_LABELS, STOCK_KINDS, type StockKind } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,9 +17,10 @@ import { Card, CardLink, CardTitle, Empty, ErrorState, Skeleton } from '../compo
 import { CodeScanner } from '../components/CodeScanner';
 import { ChipSelect, Field, Input } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { SubmitButton } from '../components/SubmitButton';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -89,14 +90,6 @@ export function FabricStockScreen({
     },
   });
 
-  if (rows.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={rows.error.message} />
-      </View>
-    );
-  }
-
   const all = (rows.data ?? []).filter((row) => (STOCK_KINDS as readonly string[]).includes(row.kind));
   const needle = search.trim().toLowerCase();
   const canSave = code.trim() !== '' && !create.isPending && !update.isPending;
@@ -122,6 +115,15 @@ export function FabricStockScreen({
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={rows.isRefetching}
+            onRefresh={() => {
+              void rows.refetch();
+            }}
+            tintColor={colors.accent}
+          />
+        }
       >
         {header}
 
@@ -198,6 +200,12 @@ export function FabricStockScreen({
                 />
               </Field>
 
+              {/*
+                Кнопки — общей системы: 48 и таблеткой, как «Отмена /
+                Выплачено» в зарплате. Были 44 со скруглением 14 — ниже и
+                квадратнее остальных кнопок приложения. Ряд выровнен по низу:
+                у общей кнопки свой отступ сверху.
+              */}
               <View style={styles.formRow}>
                 <Pressable
                   onPress={closeForm}
@@ -213,39 +221,27 @@ export function FabricStockScreen({
                   делала — ни ошибки, ни отклика: казалось, что приложение
                   зависло.
                 */}
-                <Pressable
-                  onPress={() => {
-                    const name = code.trim();
-                    if (name === '') return;
-                    const card = {
-                      name,
-                      description: description.trim() === '' ? null : description.trim(),
-                    };
+                <View style={styles.submitFlex}>
+                  <SubmitButton
+                    label={editingId === null ? m('fabric.create') : m('emp.save')}
+                    onPress={() => {
+                      const name = code.trim();
+                      if (name === '') return;
+                      const card = {
+                        name,
+                        description: description.trim() === '' ? null : description.trim(),
+                      };
 
-                    if (editingId === null) {
-                      create.mutate({ ...card, kind });
-                    } else {
-                      update.mutate({ id: editingId, ...card });
-                    }
-                  }}
-                  disabled={!canSave}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !canSave }}
-                  style={({ pressed }) => [
-                    styles.submit,
-                    styles.submitFlex,
-                    code.trim() === '' ? styles.submitOff : null,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  {create.isPending || update.isPending ? (
-                    <ActivityIndicator color={colors.onAccent} size="small" />
-                  ) : (
-                    <Text style={styles.submitText}>
-                      {editingId === null ? m('fabric.create') : m('emp.save')}
-                    </Text>
-                  )}
-                </Pressable>
+                      if (editingId === null) {
+                        create.mutate({ ...card, kind });
+                      } else {
+                        update.mutate({ id: editingId, ...card });
+                      }
+                    }}
+                    disabled={!canSave}
+                    pending={create.isPending || update.isPending}
+                  />
+                </View>
               </View>
             </View>
           )}
@@ -278,13 +274,29 @@ export function FabricStockScreen({
             </View>
           )}
 
-          {rows.data === undefined ? (
+          {/*
+            Ошибка — внутри карточки списка, а не вместо всего экрана:
+            переключатель разделов сверху и «+ Позиция» от списка не зависят,
+            и при сбое до «Закупки» и «Витрины» было не добраться. Текст —
+            свой, локализованный: ответ сервера при сбое бывает английским.
+          */}
+          {rows.isError ? (
+            <ErrorState />
+          ) : rows.data === undefined ? (
             <Skeleton />
           ) : items.length === 0 ? (
-            <Empty
-              message={all.length === 0 ? m('fabric.noCodes') : m('fabric.notFound')}
-              hint={all.length === 0 ? m('fabric.noCodesHint') : m('fabric.checkCode')}
-            />
+            /*
+              Три разных «пусто»: кодов нет вовсе; есть, но не этого вида
+              (выбран только фильтр — «проверьте код» тут ни при чём, код
+              никто не вводил); и не нашлось по набранному в поиске.
+            */
+            all.length === 0 ? (
+              <Empty message={m('fabric.noCodes')} hint={m('fabric.noCodesHint')} />
+            ) : needle === '' ? (
+              <Empty message={m('fabric.noKindCodes')} />
+            ) : (
+              <Empty message={m('fabric.notFound')} hint={m('fabric.checkCode')} />
+            )
           ) : (
             items.map((row, index) => (
               <Pressable
@@ -340,11 +352,6 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
@@ -357,9 +364,11 @@ const styles = StyleSheet.create({
   codeInput: {
     flex: 1,
   },
+  /* Высота поля рядом, а не 44: кнопка стоит с полем в одном ряду, и
+     разница в два пикселя была видна ступенькой по верху и низу. */
   scanButton: {
-    width: 44,
-    height: 44,
+    width: sizes.controlHeight,
+    height: sizes.controlHeight,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,
@@ -381,7 +390,7 @@ const styles = StyleSheet.create({
   formRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   search: {
     marginTop: spacing.sm,
@@ -400,37 +409,26 @@ const styles = StyleSheet.create({
   itemText: {
     flex: 1,
   },
+  // Вес — семейством: `fontWeight` поверх Medium браузер дорисовывает ложным жирным.
   itemName: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     color: colors.textPrimary,
     fontWeight: '600',
   },
+  /* 13, а не сноска: описание кода — то, ради чего экран открывают у
+     стеллажа, а не служебная пометка. */
   itemMeta: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textMuted,
-  },
-  submit: {
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   submitFlex: {
     flex: 1,
   },
-  submitOff: {
-    opacity: opacity.disabled,
-  },
-  submitText: {
-    ...typography.body,
-    color: colors.onAccent,
-    fontWeight: '600',
-  },
   cancel: {
-    height: 44,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: hairline,
     borderColor: colors.border,
     alignItems: 'center',
@@ -441,7 +439,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   note: {
-    ...typography.footnote,
+    ...typography.caption,
     color: colors.textMuted,
     marginTop: spacing.sm,
   },

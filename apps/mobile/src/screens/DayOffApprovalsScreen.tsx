@@ -22,7 +22,7 @@ import { Input } from '../components/Field';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Заявки на отгул: одобрить или отклонить.
@@ -81,37 +81,34 @@ export function DayOffApprovalsScreen(): ReactElement {
     },
   });
 
-  if (query.isError) {
-    return (
-      <View style={styles.center}>
-        <ErrorState message={query.error.message} />
-      </View>
-    );
-  }
-
-  if (query.data === undefined) {
-    return (
-      <View style={contentStyle}>
-        <Card>
-          <Skeleton />
-        </Card>
-      </View>
-    );
-  }
-
   const isBusy = approve.isPending || reject.isPending;
 
+  /*
+    Сбой и загрузка — внутри своей карточки, а не вместо всего экрана.
+
+    Прежде при обрыве связи экран целиком заменялся надписью по центру:
+    пропадал и график «Кто отдыхает», который грузится отдельно и мог быть
+    цел, а текстом шёл служебный ответ сервера, порой по-английски.
+  */
   return (
     <ScrollView contentContainerStyle={contentStyle}>
       <TeamDaysOff />
 
-      {query.data.items.length === 0 && (
+      {query.isError ? (
+        <Card>
+          <ErrorState />
+        </Card>
+      ) : query.data === undefined ? (
+        <Card>
+          <Skeleton />
+        </Card>
+      ) : query.data.items.length === 0 ? (
         <Card>
           <Empty message={m('approvals.none')} hint={m('approvals.noneHint')} />
         </Card>
-      )}
+      ) : null}
 
-      {query.data.items.map((item) => {
+      {(query.data?.items ?? []).map((item) => {
         const isPending = item.status === DayOffStatus.PENDING;
 
         return (
@@ -206,6 +203,7 @@ export function DayOffApprovalsScreen(): ReactElement {
                     }}
                     disabled={reason.trim().length === 0 || isBusy}
                     accessibilityRole="button"
+                    accessibilityState={{ disabled: reason.trim().length === 0 || isBusy, busy: reject.isPending }}
                     style={({ pressed }) => [
                       styles.button,
                       styles.buttonDanger,
@@ -257,11 +255,6 @@ function toneOf(status: DayOffStatusName): 'neutral' | 'positive' | 'warning' | 
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
@@ -286,11 +279,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  /*
+    Кнопки — общей системы приложения (`SubmitButton`): высота кнопки
+    действия, таблетка, подпись основным кеглем жирным начертанием. Своя
+    здесь только пара в ряд и цвет «Отклонить» — общая кнопка не умеет ни
+    того, ни другого. Было скругление 14 и полужирный — рядом с таблетками
+    соседних экранов кнопки выглядели взятыми из другого набора.
+  */
   button: {
     flex: 1,
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -304,22 +304,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  // Одна прозрачность «недоступно» на всё приложение — как у `SubmitButton`.
   buttonOff: {
-    opacity: 0.4,
+    opacity: opacity.disabled,
   },
   buttonPressed: {
     opacity: opacity.pressed,
   },
   buttonPrimaryText: {
-    ...typography.headline,
+    ...typography.body,
     // Насыщенность — семейством: вес на Medium браузер рисует поддельным жирным.
-    fontFamily: fonts.semibold,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.onAccent,
+    textAlign: 'center',
   },
   buttonGhostText: {
-    ...typography.headline,
-    fontFamily: fonts.semibold,
+    ...typography.body,
+    fontFamily: fonts.bold,
+    fontWeight: '700',
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   rejectBox: {
     marginTop: spacing.md,

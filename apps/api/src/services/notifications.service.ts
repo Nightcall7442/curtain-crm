@@ -299,7 +299,12 @@ export async function notifyOrderStatusChanged(
       userId,
       type,
       title: `Заказ ${order.orderNumber}: ${statusLabel}`,
-      body: `${params.actorName} перевёл заказ в статус «${statusLabel}».${reason}`,
+      /*
+        Безличная форма и автор в скобках: «перевёл» ставило глагол в мужской
+        род для любого автора — «Нигора Азизова перевёл заказ». Род по имени
+        не угадать, а «Статус изменён (автор)» верно для всех.
+      */
+      body: `Статус заказа изменён на «${statusLabel}» (${params.actorName}).${reason}`,
       relatedOrderId: order.orderId,
     })),
   );
@@ -344,12 +349,24 @@ export async function notifyOrderCommentAdded(
   );
 }
 
-/** Смена скорректирована руководством задним числом. */
+/**
+ * Смена скорректирована: руководством задним числом или системой.
+ *
+ * Тело — безличное, автор в скобках: «Дилноза изменил время смены» ставило
+ * глагол в мужской род для любого автора, а автоматическое закрытие читалось
+ * как «Система изменил время смены» — да ещё с причиной в третьем лице
+ * («сотрудник не отметил уход») в уведомлении самому сотруднику.
+ */
 export async function notifyShiftAdjusted(
   executor: DbExecutor,
   userId: number,
-  /** `shiftDate` — `YYYY-MM-DD`. */
-  params: { readonly actorName: string; readonly reason: string; readonly shiftDate: string },
+  params: {
+    /** `null` — смену закрыла система: человек не отметил уход. */
+    readonly actorName: string | null;
+    readonly reason: string;
+    /** `YYYY-MM-DD` — день смены по Ташкенту (`workshopDayIso`). */
+    readonly shiftDate: string;
+  },
 ): Promise<void> {
   await createNotification(executor, {
     userId,
@@ -361,7 +378,10 @@ export async function notifyShiftAdjusted(
       даты не зависит.
     */
     title: `Смена ${formatIsoDateShort(params.shiftDate)} скорректирована`,
-    body: `${params.actorName} изменил время смены. Причина: ${params.reason}`,
+    body:
+      params.actorName === null
+        ? 'Смена закрыта автоматически — вы не отметили уход'
+        : `Время смены изменено (${params.actorName}). Причина: ${params.reason}`,
   });
 }
 
@@ -394,7 +414,12 @@ export async function notifyPayroll(
   });
 }
 
-/** Сотруднику выдана или отозвана роль. */
+/**
+ * Сотруднику выдана или отозвана роль.
+ *
+ * Безличная форма с автором в скобках — по той же причине, что у статуса:
+ * «назначил»/«отозвал» не подходили руководителю-женщине.
+ */
 export async function notifyRoleChanged(
   executor: DbExecutor,
   userId: number,
@@ -405,8 +430,8 @@ export async function notifyRoleChanged(
     type: NotificationType.ROLE_CHANGED,
     title: params.granted ? 'Вам выдана новая роль' : 'Роль отозвана',
     body: params.granted
-      ? `${params.actorName} назначил вам роль «${ROLE_LABELS_RU[params.role]}»`
-      : `${params.actorName} отозвал роль «${ROLE_LABELS_RU[params.role]}»`,
+      ? `Вам назначена роль «${ROLE_LABELS_RU[params.role]}» (${params.actorName})`
+      : `Роль «${ROLE_LABELS_RU[params.role]}» отозвана (${params.actorName})`,
   });
 }
 
@@ -429,9 +454,10 @@ export async function notifyTaskAssigned(
     userId: assigneeId,
     type: NotificationType.TASK_ASSIGNED,
     title: 'Новое поручение',
+    // Срок — «18.11», как во всём приложении, а не сырое «2026-11-18».
     body:
       `${params.creatorName}: «${params.title}»` +
-      (params.dueDate === null ? '' : ` — срок до ${params.dueDate}`),
+      (params.dueDate === null ? '' : ` — срок до ${formatIsoDateShort(params.dueDate)}`),
     relatedTaskId: params.taskId,
   });
 }
@@ -545,9 +571,16 @@ export async function notifyTaskCancelled(
 /*                            Запросы на выходные                             */
 /* -------------------------------------------------------------------------- */
 
-/** Форматирует период одной строкой: один день короче, чем диапазон. */
+/**
+ * Период одной строкой: «18.11» или «18.11 — 19.11».
+ *
+ * Даты — как везде в приложении, без года: сырое «2026-11-18 — 2026-11-19»
+ * читалось служебной строкой рядом с временем ленты «31.10». Один день
+ * короче, чем диапазон.
+ */
 function formatPeriod(startDate: string, endDate: string): string {
-  return startDate === endDate ? startDate : `${startDate} — ${endDate}`;
+  const start = formatIsoDateShort(startDate);
+  return startDate === endDate ? start : `${start} — ${formatIsoDateShort(endDate)}`;
 }
 
 /** Сотрудник запросил выходные — узнаёт руководство. */
@@ -579,7 +612,8 @@ export async function notifyDayOffApproved(
     userId,
     type: NotificationType.DAY_OFF_APPROVED,
     title: 'Выходные одобрены',
-    body: `${params.reviewerName} одобрил ваш запрос на ${formatPeriod(params.startDate, params.endDate)}`,
+    // Автор в скобках: «одобрил» не подходило руководителю-женщине.
+    body: `Запрос на ${formatPeriod(params.startDate, params.endDate)} одобрен (${params.reviewerName})`,
   });
 }
 

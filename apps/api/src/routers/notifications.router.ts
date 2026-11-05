@@ -12,7 +12,10 @@ import {
 } from '../services/telegram.service';
 import { router } from '../trpc';
 import { toOffset, toPage } from '../types';
-import { translateNotificationText } from '../lib/notificationTranslations';
+import {
+  modernizeStoredNotification,
+  translateNotificationText,
+} from '../lib/notificationTranslations';
 
 /**
  * Уведомления сотрудника.
@@ -73,12 +76,17 @@ export const notificationsRouter = router({
       ]);
 
       // Уведомление хранится по-русски; на узбекский переводится показ —
-      // см. `lib/notificationTranslations.ts`.
-      const localized = items.map((item) => ({
-        ...item,
-        title: translateNotificationText(item.title, ctx.locale),
-        body: translateNotificationText(item.body, ctx.locale),
-      }));
+      // см. `lib/notificationTranslations.ts`. Записи в старой формулировке
+      // («… перевёл заказ», «Смена 2026-10-25 …») сначала приводятся к
+      // нынешней — и по-русски, и перед переводом.
+      const localized = items.map((item) => {
+        const stored = modernizeStoredNotification(item.type, item.title, item.body);
+        return {
+          ...item,
+          title: translateNotificationText(stored.title, ctx.locale),
+          body: translateNotificationText(stored.body, ctx.locale),
+        };
+      });
 
       return toPage(localized, totalRow?.value ?? 0, input);
     }),

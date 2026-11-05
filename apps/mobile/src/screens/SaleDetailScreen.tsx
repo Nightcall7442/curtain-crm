@@ -1,4 +1,4 @@
-import { formatPhone, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
+import { formatPhone, formatQuantity, parseMoney, PURCHASE_UNIT_LABELS } from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -89,9 +89,14 @@ export function SaleDetailScreen({ route }: RootStackScreenProps<'SaleDetail'>):
                 вместо него: продавец пробивает метры и штуки, и «сколько
                 взяли» — первое, что потом проверяют по чеку.
               */}
-              {/* Дробная часть — через запятую, как пишут и по-русски, и по-узбекски: «12,75 м». */}
+              {/*
+                Количество — тем же правилом, что остаток на витрине: дробь
+                через запятую, разряды неразрывным пробелом («1 250 м»,
+                «12,75 м»). Своя запись здесь разряды теряла, и одно и то же
+                число в чеке и на складе выглядело по-разному.
+              */}
               <Text style={styles.lineMeta}>
-                {`${Number.parseFloat(line.quantity).toString().replace('.', ',')} ${t(
+                {`${formatQuantity(Number.parseFloat(line.quantity))} ${t(
                   PURCHASE_UNIT_LABELS,
                   line.unit,
                 )} × ${money(parseMoney(line.unitPrice))}`}

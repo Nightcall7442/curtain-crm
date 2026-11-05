@@ -1,25 +1,28 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { formatDateTime } from '@curtain-crm/shared';
-import { useLayoutEffect, useRef, useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
 import { trpc } from '../../lib/trpc';
-import { colors, fonts, opacity, radius, spacing, typography } from '../../theme';
+import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../../theme';
 import { Card, CardTitle, Empty } from '../Card';
+import { useWebAutoGrow } from '../Field';
+import { Icon } from '../Icon';
 import { VoiceCommentPlayer, VoiceRecorderButton } from '../VoiceComment';
 
 /**
- * Высота строки ввода — та же, что у полей и кнопок форм (`Input` — 46):
- * поле и кнопка «отправить» рядом обязаны быть одного роста.
+ * Высота строки ввода — та же, что у полей форм (`controlHeight`): поле и
+ * кнопка «отправить» рядом обязаны быть одного роста.
  */
-const CONTROL_HEIGHT = 46;
+const CONTROL_HEIGHT = sizes.controlHeight;
 const INPUT_LINE = typography.body.lineHeight;
 const INPUT_BORDER = 1;
 /** Одна строка текста ровно в `CONTROL_HEIGHT` — без пустоты под ней. */
 const INPUT_PADDING_V = (CONTROL_HEIGHT - INPUT_LINE - INPUT_BORDER * 2) / 2;
 /** Дальше четырёх строк поле не растёт — прокрутка внутри. */
 const INPUT_MAX = INPUT_LINE * 4 + INPUT_PADDING_V * 2 + INPUT_BORDER * 2;
+/** Значок на кнопке отправки. */
+const SEND_ICON = 18;
 
 /** Комментарии к заказу: текст и голос, своя лента и своя форма. */
 export function OrderCommentsCard({ orderId }: { readonly orderId: number }): ReactElement {
@@ -40,23 +43,18 @@ export function OrderCommentsCard({ orderId }: { readonly orderId: number }): Re
     На телефоне многострочное поле растёт само, от одной строки до
     `maxHeight`. В браузере это `<textarea>` высотой в две строки по
     умолчанию, и он не растёт вовсе: пустое поле было выше кнопки рядом, а
-    третья строка уезжала под рамку. Высота считается по содержимому после
-    каждой правки — сначала поле схлопывается, чтобы `scrollHeight` умел и
-    уменьшаться, когда текст стёрли (так же устроен `Input` в `Field`).
+    третья строка уезжала под рамку. Расчёт общий с `Input` из `Field` —
+    своя копия того же кода уже однажды с ним разошлась.
   */
   const input = useRef<TextInput>(null);
-  const [webHeight, setWebHeight] = useState<number | undefined>(undefined);
-  useLayoutEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const node = input.current as unknown as HTMLTextAreaElement | null;
-    if (node === null) return;
-    const borders = node.offsetHeight - node.clientHeight;
-    const previous = node.style.height;
-    node.style.height = '0px';
-    const content = node.scrollHeight + borders;
-    node.style.height = previous;
-    setWebHeight(Math.min(INPUT_MAX, Math.max(CONTROL_HEIGHT, content)));
-  }, [comment]);
+  const webHeight = useWebAutoGrow(input, comment, { min: CONTROL_HEIGHT, max: INPUT_MAX });
+
+  /*
+    Фокус — рамкой акцента, как у полей форм. Кольцо браузера снято
+    глобально в `public/index.html`, и без своей рамки в PWA не было видно,
+    что поле вообще в фокусе.
+  */
+  const [focused, setFocused] = useState(false);
 
   const list = comments.data ?? [];
 
@@ -71,7 +69,17 @@ export function OrderCommentsCard({ orderId }: { readonly orderId: number }): Re
           onChangeText={setComment}
           placeholder={m('order.commentPlaceholder')}
           placeholderTextColor={colors.textMuted}
-          style={[styles.commentInput, webHeight === undefined ? null : { height: webHeight }]}
+          onFocus={() => {
+            setFocused(true);
+          }}
+          onBlur={() => {
+            setFocused(false);
+          }}
+          style={[
+            styles.commentInput,
+            webHeight === undefined ? null : { height: webHeight },
+            focused ? styles.commentInputFocused : null,
+          ]}
           multiline
           // В браузере — одна строка вместо двух по умолчанию у `<textarea>`.
           // На телефоне не задаётся: там это зафиксировало бы высоту поля.
@@ -90,9 +98,8 @@ export function OrderCommentsCard({ orderId }: { readonly orderId: number }): Re
           accessibilityRole="button"
           accessibilityLabel={m('order.sendComment')}
         >
-          {/* Значок того же набора Ionicons, что и остальные (в `Icon`
-              «отправить» нет), а не символ «➤» системного шрифта. */}
-          <Ionicons name="send" size={18} color={colors.onAccent} accessible={false} />
+          {/* Значок общего набора, а не символ «➤» системного шрифта. */}
+          <Icon name="send" size={SEND_ICON} color={colors.onAccent} />
         </Pressable>
       </View>
 
@@ -157,7 +164,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: 2,
-    lineHeight: 18,
   },
   commentForm: {
     flexDirection: 'row',
@@ -179,13 +185,20 @@ const styles = StyleSheet.create({
     maxHeight: INPUT_MAX,
     borderWidth: INPUT_BORDER,
     borderColor: colors.border,
-    borderRadius: radius.sm,
+    // Скругление полей форм: рядом на той же карточке заказа поля метража и
+    // цены скруглены на `md`, и поле комментария с `sm` выглядело чужим.
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: INPUT_PADDING_V,
     color: colors.textPrimary,
-    backgroundColor: colors.background,
+    // Белое, как любое поле ввода: на бежевой подложке живое поле выглядело
+    // бледнее отключённых полей той же карточки.
+    backgroundColor: colors.surface,
     // Android по умолчанию ставит текст многострочного поля по центру.
     textAlignVertical: 'top',
+  },
+  commentInputFocused: {
+    borderColor: colors.accent,
   },
   commentTime: {
     ...typography.footnote,
@@ -200,7 +213,7 @@ const styles = StyleSheet.create({
   sendButton: {
     width: CONTROL_HEIGHT,
     height: CONTROL_HEIGHT,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',

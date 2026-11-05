@@ -116,9 +116,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     flex: 1,
   },
+  // Вес — семейством: `fontWeight` поверх Medium из `body` браузер рисует
+  // дорисованным жирным, а Android не применяет вовсе.
   lineAmount: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
   },
 });

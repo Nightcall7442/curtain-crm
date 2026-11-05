@@ -3,7 +3,8 @@ import type { ReactElement } from 'react';
 
 import { colors, fonts, hairline, radius, spacing, typography } from '../theme';
 
-import { Card } from './Card';
+import { Card, CardTitle } from './Card';
+import { Icon } from './Icon';
 import { useLocale } from '../hooks/useLocale';
 import type { MessageKey } from '../i18n/messages';
 
@@ -54,6 +55,13 @@ export function WeekAttendance({
 
   return (
     <Card>
+      {/*
+        Заголовок — как у соседних карточек профиля. Без него неделя была
+        единственной карточкой экрана без латунной черты и подписи: семь
+        кружков без слов читались как украшение, а не как табель.
+      */}
+      <CardTitle title={m('week.title')} icon="calendar" />
+
       <View style={styles.row}>
         {days.map((day, index) => {
           const kind = kinds[index] ?? 'future';
@@ -71,11 +79,7 @@ export function WeekAttendance({
               <Text style={styles.date}>{day.date.slice(8, 10)}</Text>
 
               <View style={[styles.mark, MARK_STYLE[kind]]}>
-                {kind !== 'future' && (
-                  <Text style={[styles.markGlyph, kind === 'dayOff' ? styles.markGlyphDayOff : null]}>
-                    {kind === 'dayOff' ? m('week.dayOffGlyph') : kind === 'present' ? '✓' : '✕'}
-                  </Text>
-                )}
+                {kind !== 'future' && <MarkGlyph kind={kind} size="day" letter={m('week.dayOffGlyph')} />}
               </View>
             </View>
           );
@@ -96,14 +100,7 @@ export function WeekAttendance({
           {legend.map((entry) => (
             <View key={entry.kind} style={styles.legendItem}>
               <View style={[styles.legendMark, MARK_STYLE[entry.kind]]}>
-                <Text
-                  style={[
-                    styles.legendGlyph,
-                    entry.kind === 'dayOff' ? styles.markGlyphDayOff : null,
-                  ]}
-                >
-                  {entry.kind === 'dayOff' ? m('week.dayOffGlyph') : entry.kind === 'present' ? '✓' : '✕'}
-                </Text>
+                <MarkGlyph kind={entry.kind} size="legend" letter={m('week.dayOffGlyph')} />
               </View>
               <Text style={styles.legendText}>{m(CAPTIONS[entry.kind])}</Text>
             </View>
@@ -115,6 +112,42 @@ export function WeekAttendance({
 }
 
 type DayKind = 'present' | 'absent' | 'dayOff' | 'future';
+
+/**
+ * Знак внутри кружка дня: галочка, крестик или буква выходного.
+ *
+ * Галочка и крестик — значками набора, а не символами «✓» и «✕» из
+ * шрифта. Символов нет в Manrope, и каждая платформа подставляла свой
+ * шрифт: в браузере, на Android и на iOS знаки были разной толщины и
+ * сидели в кружке на разной высоте. В легенде к тому же стоял кегль 11 —
+ * ниже минимума шкалы. Буква выходного — текст, ступенью шкалы.
+ */
+function MarkGlyph({
+  kind,
+  size,
+  letter,
+}: {
+  readonly kind: Exclude<DayKind, 'future'>;
+  readonly size: 'day' | 'legend';
+  readonly letter: string;
+}): ReactElement {
+  if (kind === 'dayOff') {
+    return <Text style={size === 'day' ? styles.markLetter : styles.legendLetter}>{letter}</Text>;
+  }
+  return (
+    <Icon
+      name={kind === 'present' ? 'check' : 'close'}
+      size={size === 'day' ? MARK_ICON : LEGEND_ICON}
+      color={colors.onAccent}
+    />
+  );
+}
+
+/** Кружок дня и кружок легенды; значок в них — по росту буквы выходного рядом. */
+const MARK = 24;
+const LEGEND_MARK = 16;
+const MARK_ICON = 16;
+const LEGEND_ICON = 12;
 
 const CAPTIONS = {
   present: 'week.shiftWas',
@@ -153,17 +186,18 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
   },
+  // Кегль заголовка карточки, но полужирным: число дня крупное, а не кричащее.
   date: {
     fontFamily: fonts.semibold,
-    fontSize: 17,
+    fontSize: typography.sectionTitle.fontSize,
     fontWeight: '600',
     color: colors.textPrimary,
     fontVariant: ['tabular-nums'],
     marginTop: 1,
   },
   mark: {
-    width: 24,
-    height: 24,
+    width: MARK,
+    height: MARK,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -185,15 +219,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  markGlyphDayOff: {
-    color: colors.textMuted,
-  },
-  markGlyph: {
+  markLetter: {
+    ...typography.caption,
     fontFamily: fonts.bold,
-    color: colors.onAccent,
-    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 16,
+    color: colors.textMuted,
   },
   legend: {
     flexDirection: 'row',
@@ -212,18 +242,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   legendMark: {
-    width: 16,
-    height: 16,
+    width: LEGEND_MARK,
+    height: LEGEND_MARK,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  legendGlyph: {
+  legendLetter: {
+    ...typography.footnote,
     fontFamily: fonts.bold,
-    color: colors.onAccent,
-    fontSize: 11,
     fontWeight: '700',
-    lineHeight: 14,
+    color: colors.textMuted,
   },
   legendText: {
     ...typography.caption,

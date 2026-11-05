@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
 import { trpc } from '../../lib/trpc';
-import { colors, radius, spacing, typography } from '../../theme';
+import { colors, fonts, radius, sizes, spacing, typography } from '../../theme';
 import { BottomSheet } from '../BottomSheet';
 import { Skeleton } from '../Card';
 import { Input } from '../Field';
@@ -84,15 +84,27 @@ export function ExecutorFilterSheet({
   );
 }
 
+/**
+ * Насколько строка выходит за поля шторки — как в выборе статуса.
+ *
+ * Подсветка выбранной строки шире текста, но имена обязаны стоять на одной
+ * линии с заголовком шторки и полем поиска. Прежде отступ строки
+ * прибавлялся к полю шторки, и имена начинались на 12 точек правее
+ * «Фильтр по исполнителю».
+ */
+const ROW_BLEED = spacing.sm;
+
 const styles = StyleSheet.create({
   list: {
     maxHeight: 400,
     marginTop: spacing.sm,
+    marginHorizontal: -ROW_BLEED,
   },
   row: {
-    minHeight: 48,
+    minHeight: sizes.touchTarget,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: ROW_BLEED,
+    paddingVertical: spacing.xs,
     borderRadius: radius.md,
   },
   rowActive: {
@@ -108,9 +120,11 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
   },
+  // Насыщенность — семейством: вес поверх Medium браузер рисует поддельным жирным.
   nameActive: {
-    color: colors.accent,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+    color: colors.accent,
   },
   roles: {
     ...typography.footnote,

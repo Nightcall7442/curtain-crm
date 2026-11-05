@@ -21,8 +21,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
+import { Card, CardLink, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { CatalogPicker } from '../components/CatalogPicker';
 import { BottomSheet } from '../components/BottomSheet';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
@@ -30,7 +31,7 @@ import { Icon } from '../components/Icon';
 import { SubmitButton } from '../components/SubmitButton';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, hairline, opacity, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -96,6 +97,7 @@ export function ReadyMadeStockScreen(): ReactElement {
   const navigation = useNavigation();
   const { m, t, money } = useLocale();
   const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [adding, setAdding] = useState(false);
@@ -296,7 +298,15 @@ export function ReadyMadeStockScreen(): ReactElement {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        /*
+          Снизу — обычный отступ и безопасная зона, а не место под панель
+          вкладок: склад открыт поверх вкладок, панели под ним нет, и прежний
+          отступ оставлял под списком пустую полосу в 114 точек.
+        */
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/*
           Склад — единственный вход во всё про готовые шторы. Две кнопки рядом:
           продать то, что лежит, и заказать цеху ещё. На экране «Работа» они
@@ -347,8 +357,12 @@ export function ReadyMadeStockScreen(): ReactElement {
           <Card>
             <CardTitle title={m('stock.new')} icon="window" />
 
-            {/* Окно или дверь — иначе дверную штору на полку было не завести. */}
-            <Field label={m('create.kind')}>
+            {/*
+              Окно или дверь — иначе дверную штору на полку было не завести.
+              Подпись — «Что это», а не «Тип» из заказа: на складе выбирают
+              вещь на полке, а не вид работы.
+            */}
+            <Field label={m('stock.kind')}>
               <ChipSelect
                 value={form.kind}
                 onChange={(kind) => {
@@ -362,10 +376,12 @@ export function ReadyMadeStockScreen(): ReactElement {
             </Field>
 
             <Field label={m('create.model')} required>
+              {/* Пока справочник грузится, шторка крутит загрузку, а не пишет «пуст». */}
               <CatalogPicker
                 value={form.model}
                 placeholder={m('create.notChosen')}
                 options={modelOptions}
+                loading={catalog.isLoading}
                 sheetTitle={m('sell.modelRange')}
                 onChange={(model) => {
                   patch({ model });
@@ -490,19 +506,22 @@ export function ReadyMadeStockScreen(): ReactElement {
               <View key={mate.id} style={styles.mate}>
                 <View style={styles.mateHead}>
                   <Text style={styles.mateTitle}>{m('stock.mate', { n: index + 2 })}</Text>
-                  {/* Полная цель для пальца: `hitSlop` в браузере не работает, и в PWA
-                      попадать приходилось в строку текста высотой 18. */}
-                  <Pressable
+                  {/*
+                    Общая ссылка-действие, как «Удалить» у позиции в продаже с
+                    полки: тот же кегль, тот же цвет опасного действия и цель
+                    в 44 точки. Своя подпись была зелёной — удаление читалось
+                    как обычная кнопка.
+                  */}
+                  <CardLink
+                    label={m('create.remove')}
+                    tone="danger"
+                    accessibilityLabel={m('create.removeItem', { n: index + 2 })}
                     onPress={() => {
                       patch({ mates: form.mates.filter((entry) => entry.id !== mate.id) });
                     }}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.mateRemove, pressed ? styles.pressed : null]}
-                  >
-                    <Text style={styles.mateRemoveText}>{m('create.remove')}</Text>
-                  </Pressable>
+                  />
                 </View>
-                <Field label={m('create.kind')}>
+                <Field label={m('stock.kind')}>
                   <ChipSelect
                     value={mate.kind}
                     onChange={(kind) => {
@@ -661,8 +680,13 @@ export function ReadyMadeStockScreen(): ReactElement {
           ) : items.data.length === 0 ? (
             <Empty message={m('stock.none')} hint={m('stock.noneHint')} />
           ) : (
-            items.data.map((item, index) => (
-              <View key={item.id} style={styles.item}>
+            items.data.map((item, index, all) => (
+              <View
+                key={item.id}
+                // Под последней шторой линии нет: её роль — делить строки, а
+                // не отчёркивать список от скруглённого низа карточки.
+                style={[styles.item, index === all.length - 1 ? styles.itemLast : null]}
+              >
                 {/*
                   Комплект: шторы из одного пошива (окно + дверь) лежат и
                   продаются вместе. Заголовок — над первой позицией комплекта,
@@ -868,12 +892,15 @@ const styles = StyleSheet.create({
     borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
+  /* Как шапка карточки (`CardTitle`): ссылка «Удалить» своей целью в 44
+     заходит на отступы, а сама строка остаётся высотой в текст, и до
+     первого поля — те же 12, что под заголовком карточки. */
   mateHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   mateTitle: {
     ...typography.body,
@@ -882,27 +909,13 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flexShrink: 1,
   },
-  /* Справа заходит на поле карточки ровно на свой отступ — подпись стоит
-     по правому краю полей формы, а цель для пальца остаётся полной. */
-  mateRemove: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    marginRight: -spacing.md,
-  },
-  mateRemoveText: {
-    ...typography.caption,
-    fontFamily: fonts.bold,
-    fontWeight: '700',
-    color: colors.accentStrong,
-  },
   /* Та же «добавить строку», что «Добавить позицию» в продаже с полки. */
   addMate: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.lg,
     borderRadius: radius.pill,
@@ -962,7 +975,9 @@ const styles = StyleSheet.create({
   },
   rowAction: {
     flexGrow: 1,
-    minHeight: 44,
+    // 48, как «Пошив для склада» выше и любая кнопка действия: на одном
+    // экране кнопки в 44 и в 48 выглядели собранными из разных наборов.
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -979,7 +994,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: {
     padding: spacing.lg,
-    paddingBottom: tabBarSpace,
     gap: spacing.lg,
   },
   actions: {
@@ -994,7 +1008,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.pill,
     borderWidth: hairline,
@@ -1014,7 +1028,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
@@ -1049,8 +1063,8 @@ const styles = StyleSheet.create({
     marginRight: 'auto',
   },
   photoButton: {
-    width: 44,
-    height: 44,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1061,6 +1075,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: hairline,
     borderBottomColor: colors.border,
     gap: spacing.md,
+  },
+  itemLast: {
+    borderBottomWidth: 0,
   },
   itemHead: {
     flexDirection: 'row',

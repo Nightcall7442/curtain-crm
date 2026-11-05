@@ -1,6 +1,7 @@
 import { formatTime, parseMoney, todayIso } from '@curtain-crm/shared';
 import { useEffect, useState, type ReactElement } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
 import { DateField } from '../components/DateField';
@@ -9,7 +10,7 @@ import { PayTypeBadge } from '../components/PayTypeBadge';
 import { TerminalDaySummary } from '../components/TerminalDaySummary';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
+import { colors, fonts, radius, spacing, typography } from '../theme';
 
 /**
  * Терминальные чеки за день — с фото.
@@ -23,27 +24,48 @@ import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
  */
 export function TerminalChecksScreen(): ReactElement {
   const { m, money } = useLocale();
+  const insets = useSafeAreaInsets();
   const [day, setDay] = useState(() => todayIso());
   const query = trpc.terminalChecks.byDay.useQuery({ day });
   /*
     «Сегодня N из 3» — только про сегодня. За прошлый день подпись
-    показывала «Сегодня 4 из 3» — вчерашние чеки под словом «сегодня». Сколько
-    чеков было в тот день, и так написано строкой ниже, в «Итого за день».
+    показывала «Сегодня 4 из 3» — вчерашние чеки под словом «сегодня».
+    Для прошлого дня — то же «N из 3», но без «сегодня»: выполнил ли
+    продавец норму в тот день, руководитель и спрашивает, листая дни назад.
   */
   const isToday = day === todayIso();
   const summary = query.data?.summary;
   const hasSummary = summary != null && summary.count > 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView
+      /*
+        Экран открыт поверх вкладок: снизу — обычный отступ и безопасная
+        зона, а не место под панель вкладок, которой здесь нет (было 114
+        точек пустоты под последним чеком).
+      */
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + insets.bottom }]}
+      refreshControl={
+        <RefreshControl
+          refreshing={query.isRefetching}
+          onRefresh={() => {
+            void query.refetch();
+          }}
+          tintColor={colors.accent}
+        />
+      }
+    >
       <Card>
         <CardTitle
           title={m('terminal.title')}
           icon="paid"
           action={
-            query.data === undefined || !isToday ? undefined : (
+            query.data === undefined ? undefined : (
               <Text style={styles.total}>
-                {m('terminal.progress', { n: query.data.count, target: query.data.target })}
+                {m(isToday ? 'terminal.progress' : 'terminal.dayProgress', {
+                  n: query.data.count,
+                  target: query.data.target,
+                })}
               </Text>
             )
           }
@@ -51,9 +73,11 @@ export function TerminalChecksScreen(): ReactElement {
         {/* Без итогов под ним поле — последнее в карточке, и его нижний отступ не нужен. */}
         <Field label={m('terminal.day')} last={!hasSummary}>
           {/*
-            День нужен всегда: «очистить» возвращает к сегодняшнему, а не
-            оставляет пустую дату. С пустой сервер отвечал 400, а экран
-            показывал «Чеков за этот день нет» — сбой выглядел как пустой день.
+            День нужен всегда, поэтому «очистить» у поля нет: прежний крестик
+            ничего не стирал — пустую дату тут же подменял сегодняшний день.
+            С пустой датой сервер отвечал 400, а экран показывал «Чеков за
+            этот день нет» — сбой выглядел как пустой день; подмена на
+            сегодня осталась на всякий случай.
           */}
           <DateField
             value={day}
@@ -61,6 +85,7 @@ export function TerminalChecksScreen(): ReactElement {
               setDay(value === '' ? todayIso() : value);
             }}
             placeholder={m('terminal.day')}
+            clearable={false}
           />
         </Field>
         {hasSummary && <TerminalDaySummary summary={summary} title={m('terminal.dayTotal')} />}
@@ -68,11 +93,13 @@ export function TerminalChecksScreen(): ReactElement {
 
       {/*
         Сбой — ошибкой, а не пустым днём: «Чеков за этот день нет» при
-        упавшем запросе читалось как «сегодня никто не пробивал».
+        упавшем запросе читалось как «сегодня никто не пробивал». Текст —
+        свой, локализованный: ответ сервера при сбое бывает служебным
+        английским («Missing result»).
       */}
       {query.isError ? (
         <Card>
-          <ErrorState message={query.error.message} />
+          <ErrorState />
         </Card>
       ) : query.isLoading ? (
         <Card>
@@ -162,10 +189,11 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: tabBarSpace,
   },
+  // Вес — семейством: `fontWeight` поверх Medium браузер дорисовывает ложным жирным.
   total: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.accent,
   },
@@ -176,6 +204,7 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.body,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     color: colors.textPrimary,
     flex: 1,

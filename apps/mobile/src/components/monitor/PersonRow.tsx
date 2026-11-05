@@ -52,9 +52,16 @@ export function PersonRow({
       <View style={styles.card}>
         <View>
           <PersonPhoto uri={person.photoUrl} name={person.fullName} dimmed={away} style={styles.photo} />
-          <View style={styles.place}>
-            <Text style={styles.placeText}>{person.place.toString()}</Text>
-          </View>
+          {/*
+            Место — только за сделанное. Место считается по объёму месяца, и
+            все, у кого пока ноль, делят одно и то же: в начале месяца у
+            всего цеха на фото стояло «1», будто все лидеры.
+          */}
+          {person.counts.month > 0 && (
+            <View style={styles.place}>
+              <Text style={styles.placeText}>{person.place.toString()}</Text>
+            </View>
+          )}
         </View>
 
         <View style={[styles.body, away ? styles.awayBody : null]}>
@@ -123,9 +130,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   placeText: {
+    ...typography.caption,
     fontFamily: fonts.bold,
-    fontWeight: '800',
-    fontSize: 13,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   body: {
@@ -136,14 +143,15 @@ const styles = StyleSheet.create({
   awayBody: {
     opacity: 0.75,
   },
+  /* Вес — семейством: `fontWeight` поверх Medium в браузере дорисовывается грубым жирным. */
   name: {
     ...typography.body,
+    fontFamily: fonts.bold,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   subtitle: {
-    ...typography.caption,
-    fontSize: 12,
+    ...typography.footnote,
     color: colors.textMuted,
   },
   status: {
@@ -158,6 +166,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     flexShrink: 1,
   },
@@ -182,9 +191,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: colors.textPrimary,
   },
+  // 12 — нижняя ступень шкалы: 11 под крупной цифрой на телефоне в цеху уже щурились.
   countLabel: {
-    ...typography.caption,
-    fontSize: 11,
+    ...typography.footnote,
     color: colors.textMuted,
   },
 });

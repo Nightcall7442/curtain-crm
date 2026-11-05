@@ -74,6 +74,12 @@ export function ManagementScreen(): ReactElement {
       ? null
       : payroll.data.items.filter((row) => row.status !== 'paid').length;
 
+  /*
+    Значки — по смыслу пункта, и у каждого свой. Прежде зарплата шла
+    пачкой купюр, закупочные материалы — кошельком зарплаты, а поручения —
+    «плюсом» назначения: соседние строки обменялись значками, и список
+    читался по подписям, а не с одного взгляда.
+  */
   const entries: readonly Entry[] = [
     {
       route: 'DayOffApprovals',
@@ -84,14 +90,14 @@ export function ManagementScreen(): ReactElement {
     },
     {
       route: 'PayrollApprovals',
-      icon: 'paid',
+      icon: 'payroll',
       title: m('mgmt.payroll'),
       hint: m('mgmt.payrollHint'),
       badge: payrollWaiting,
     },
     {
       route: 'TaskAssign',
-      icon: 'assigned',
+      icon: 'task',
       title: m('mgmt.tasks'),
       hint: m('mgmt.tasksHint'),
       badge: tasks.data?.total ?? null,
@@ -103,7 +109,7 @@ export function ManagementScreen(): ReactElement {
         привезённый в цех товар, и правят их за один заход.
       */
       route: 'PurchasePrices',
-      icon: 'payroll',
+      icon: 'materials',
       title: m('mgmt.prices'),
       hint: m('mgmt.pricesHint'),
       /*

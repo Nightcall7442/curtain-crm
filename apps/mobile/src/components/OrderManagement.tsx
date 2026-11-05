@@ -22,11 +22,12 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { Card, CardTitle, Row, Skeleton } from './Card';
 import { Field, MoneyInput } from './Field';
 import { InstallationTimeRow } from './order/InstallationTimeRow';
+import { SubmitButton } from './SubmitButton';
 
 /**
  * Управление заказом: назначение, цена, расценки, отмена.
@@ -175,7 +176,8 @@ export function OrderManagement({
       {/* --- Деньги по заказу (только руководству) --------------------------- */}
       {isFullAccess && (
       <Card>
-        <CardTitle title={m('manage.economics')} icon="payroll" />
+        {/* Свой значок: кошелёк уже у «Расценок» ниже, и две карточки читались одной. */}
+        <CardTitle title={m('manage.economics')} icon="economics" />
 
         {economics.data === undefined ? (
           <Skeleton rows={2} />
@@ -214,11 +216,17 @@ export function OrderManagement({
       <Card>
         <CardTitle title={m('manage.assignment')} icon="people" />
 
-        {assignedRoles.map((role) => {
+        {assignedRoles.map((role, index) => {
           const current = assignees[role] ?? null;
 
           return (
-            <View key={role}>
+            /*
+              Черта — СВЕРХУ каждой роли, кроме первой, а не под каждой: под
+              последней («Установщик») линия висела над скруглённым низом
+              карточки и ничего не отделяла. Сверху она заодно отбивает роль
+              от времени установки и списка людей предыдущей.
+            */
+            <View key={role} style={index === 0 ? null : styles.assignDivided}>
               <Pressable
                 onPress={() => {
                   setAssigning(assigning === role ? null : role);
@@ -228,8 +236,11 @@ export function OrderManagement({
                 style={({ pressed }) => [styles.assignRow, pressed ? styles.pressed : null]}
               >
                 <Text style={styles.assignRole}>{t(ROLE_LABELS, role)}</Text>
+                {/* «не назначена» у швеи — как в «Исполнителях» выше: одна роль не
+                    может стоять в соседних карточках в двух родах. */}
                 <Text style={current === null ? styles.assignEmpty : styles.assignName}>
-                  {current?.fullName ?? m('order.notAssignedM')}
+                  {current?.fullName ??
+                    (role === RoleValue.SEWER ? m('order.notAssignedF') : m('order.notAssignedM'))}
                 </Text>
               </Pressable>
 
@@ -345,7 +356,13 @@ export function OrderManagement({
           <MoneyInput value={price} onChangeText={setPrice} placeholder={trimAmount(workPrice)} />
         </Field>
 
-        <Pressable
+        {/*
+          Общая кнопка формы: одна высота и один вид «недоступна» с
+          «Сохранить метраж» выше. Своя кнопка гасилась до 0,4 против 0,5 у
+          соседней, и две неактивные кнопки экрана были разного цвета.
+        */}
+        <SubmitButton
+          label={m('manage.savePrice')}
           onPress={() => {
             const parsedPrice = Number.parseFloat(price.replace(',', '.'));
 
@@ -354,20 +371,9 @@ export function OrderManagement({
               ...(Number.isFinite(parsedPrice) ? { workPrice: parsedPrice } : {}),
             });
           }}
-          disabled={setPriceMutation.isPending || price.trim() === ''}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            price.trim() === '' ? styles.submitOff : null,
-            pressed ? styles.pressed : null,
-          ]}
-        >
-          {setPriceMutation.isPending ? (
-            <ActivityIndicator color={colors.onAccent} size="small" />
-          ) : (
-            <Text style={styles.submitText}>{m('manage.savePrice')}</Text>
-          )}
-        </Pressable>
+          disabled={price.trim() === ''}
+          pending={setPriceMutation.isPending}
+        />
       </Card>
 
       {/* --- Расценки по этапам (только руководству) ------------------------- */}
@@ -418,6 +424,7 @@ export function OrderManagement({
                     setFeeDrafts((current) => ({ ...current, sewing: next }));
                   }}
                   accessibilityRole="button"
+                  style={({ pressed }) => [styles.suggestTarget, pressed ? styles.pressed : null]}
                 >
                   <Text style={styles.suggest}>
                     {m('manage.applySuggested', { v: money(suggested) })}
@@ -428,7 +435,8 @@ export function OrderManagement({
           );
         })}
 
-        <Pressable
+        <SubmitButton
+          label={m('manage.saveFees')}
           onPress={() => {
             const payload: Record<string, number> = {};
             for (const stage of stages) {
@@ -437,20 +445,9 @@ export function OrderManagement({
             }
             setFees.mutate({ id: orderId, ...payload });
           }}
-          disabled={setFees.isPending || Object.keys(feeDrafts).length === 0}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.submit,
-            Object.keys(feeDrafts).length === 0 ? styles.submitOff : null,
-            pressed ? styles.pressed : null,
-          ]}
-        >
-          {setFees.isPending ? (
-            <ActivityIndicator color={colors.onAccent} size="small" />
-          ) : (
-            <Text style={styles.submitText}>{m('manage.saveFees')}</Text>
-          )}
-        </Pressable>
+          disabled={Object.keys(feeDrafts).length === 0}
+          pending={setFees.isPending}
+        />
       </Card>
       )}
     </>
@@ -489,10 +486,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    minHeight: 46,
+    minHeight: sizes.controlHeight,
     paddingVertical: spacing.sm,
-    borderBottomWidth: hairline,
-    borderBottomColor: colors.border,
+  },
+  assignDivided: {
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
   },
   assignRole: {
     ...typography.caption,
@@ -518,7 +517,7 @@ const styles = StyleSheet.create({
   // 44 — общая высота цели нажатия в приложении; 40 рядом со строками в 46
   // выглядело недоделкой и промахивалось пальцем.
   chip: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     borderRadius: radius.pill,
@@ -547,33 +546,30 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.headerText,
+    // Начертанием, а не `fontWeight` поверх Medium: браузер дорисовывал
+    // ложный полужирный, и выбранное имя в PWA расплывалось.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
+  },
+  /*
+    Подсказка-ссылка «Применить …» — цель в палец ростом. Голая подпись
+    давала 18 точек в высоту; `hitSlop` в браузере не работает.
+  */
+  suggestTarget: {
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
   },
   suggest: {
     ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
     color: colors.accent,
-    marginTop: spacing.xs,
   },
   hint: {
     ...typography.caption,
     color: colors.textMuted,
     marginBottom: spacing.md,
-  },
-  submit: {
-    minHeight: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  submitOff: {
-    opacity: 0.4,
-  },
-  submitText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.onAccent,
   },
   pressed: {
     opacity: opacity.pressed,

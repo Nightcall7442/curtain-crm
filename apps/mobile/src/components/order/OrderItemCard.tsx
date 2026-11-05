@@ -14,7 +14,7 @@ import type { ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../../hooks/useLocale';
-import { colors, hairline, opacity, radius, spacing, typography } from '../../theme';
+import { colors, hairline, opacity, radius, sizes, spacing, typography } from '../../theme';
 import { Card, CardLink, CardTitle } from '../Card';
 import { CatalogPicker } from '../CatalogPicker';
 import { ChipSelect, Field, Input } from '../Field';
@@ -351,7 +351,7 @@ export function OrderItemCard({
         <View style={styles.moneyItem}>
           <Field
             label={m('create.width')}
-            hint={area === null ? undefined : m('create.area', { a: area.toFixed(2) })}
+            hint={area === null ? undefined : m('create.area', { a: formatArea(area) })}
           >
             <Input
               value={item.widthCm}
@@ -633,7 +633,8 @@ export function OrderItemCard({
         )}
       </View>
 
-      <Field label={m('create.comment')}>
+      {/* Последнее поле карточки — без нижнего отступа, иначе снизу 32 при 16 сверху. */}
+      <Field label={m('create.comment')} last>
         <Input
           value={item.comment}
           onChangeText={(comment) => {
@@ -645,6 +646,17 @@ export function OrderItemCard({
       </Field>
     </Card>
   );
+}
+
+/**
+ * Площадь с десятичной запятой и без лишних нулей: «8,54», «12».
+ *
+ * `toFixed(2)` давал «8.54» с точкой, тогда как площадь в карточке заказа,
+ * метраж и проценты наценки пишутся с запятой — одно число на двух экранах
+ * выглядело по-разному.
+ */
+function formatArea(area: number): string {
+  return area.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
 const styles = StyleSheet.create({
@@ -700,10 +712,10 @@ const styles = StyleSheet.create({
   accessoryQuantity: {
     width: 72,
   },
-  // Высота — как у полей рядом (46), ширина — не меньше пальца.
+  // Высота — как у полей рядом, ширина — не меньше пальца.
   accessoryRemove: {
-    width: 44,
-    height: 46,
+    width: sizes.touchTarget,
+    height: sizes.controlHeight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -740,11 +752,11 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: opacity.pressed,
   },
-  // Квадрат той же высоты, что и поле кода рядом (46): при 44 кнопка
-  // была на две точки ниже поля и не держала с ним общий край.
+  // Квадрат той же высоты, что и поле кода рядом: при 44 кнопка была на
+  // две точки ниже поля и не держала с ним общий край.
   scanButton: {
-    width: 46,
-    height: 46,
+    width: sizes.controlHeight,
+    height: sizes.controlHeight,
     borderRadius: radius.md,
     borderWidth: hairline,
     borderColor: colors.border,

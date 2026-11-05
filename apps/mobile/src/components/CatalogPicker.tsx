@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, hairline, radius, spacing, typography } from '../theme';
+import { colors, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
@@ -101,7 +101,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    minHeight: 46,
+    // Высота поля ввода: выбор модели стоит в одном ряду с полем «Кол-во».
+    minHeight: sizes.controlHeight,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: hairline,
@@ -109,7 +110,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   controlPressed: {
-    opacity: 0.7,
+    opacity: opacity.pressed,
   },
   value: {
     ...typography.body,

@@ -7,10 +7,11 @@ import {
   useState,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
  * Поля ввода.
@@ -72,6 +73,48 @@ const MULTILINE_MIN = typography.body.lineHeight * 3 + spacing.sm * 2;
 const MULTILINE_MAX = typography.body.lineHeight * 7 + spacing.sm * 2;
 
 /**
+ * Многострочное поле в браузере растёт вместе с текстом.
+ *
+ * На телефоне это делает сама система. В браузере `<textarea>` стоит
+ * фиксированной высоты в две строки: третья строка уезжала вверх, и
+ * первая видимая резалась рамкой пополам. Высота считается по содержимому
+ * после каждой правки — сначала поле схлопывается, чтобы `scrollHeight`
+ * умел и уменьшаться, когда текст стёрли.
+ *
+ * Отдельным хуком — для полей, которые собраны не на `Input` (поле
+ * комментария с кнопкой отправки): вторая копия того же расчёта рано или
+ * поздно разошлась бы с первой. Вне браузера и для однострочного поля
+ * возвращает `undefined` — высоту тогда ведёт сама платформа.
+ */
+export function useWebAutoGrow(
+  ref: RefObject<TextInput | null>,
+  value: string | undefined,
+  { enabled = true, min = MULTILINE_MIN, max = MULTILINE_MAX }: {
+    readonly enabled?: boolean;
+    readonly min?: number;
+    readonly max?: number;
+  } = {},
+): number | undefined {
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || !enabled) return;
+    const node = ref.current as unknown as HTMLTextAreaElement | null;
+    if (node === null) return;
+    const borders = node.offsetHeight - node.clientHeight;
+    const previous = node.style.height;
+    node.style.height = '0px';
+    const content = node.scrollHeight + borders;
+    node.style.height = previous;
+    // Та же высота — то же значение, и React повторный рендер пропускает:
+    // поле перерисовывается, только когда меняется число строк.
+    setHeight(Math.min(max, Math.max(min, content)));
+  }, [ref, value, enabled, min, max]);
+
+  return Platform.OS === 'web' && enabled ? height : undefined;
+}
+
+/**
  * Однострочный (или с `multiline` — многострочный) ввод.
  *
  * `forwardRef` нужен для перевода фокуса по клавише «Далее»: без него форму
@@ -80,34 +123,21 @@ const MULTILINE_MAX = typography.body.lineHeight * 7 + spacing.sm * 2;
  * Фокус показывается рамкой цвета акцента — так же на телефоне и в
  * браузере. Своё кольцо браузера (оранжевое, поверх скруглённой рамки)
  * снято глобально в `public/index.html`: оно выдавало в PWA веб-форму.
+ *
+ * Поле только для чтения (`editable={false}` или `readOnly`) приглушено:
+ * серая подложка и вторичный цвет текста. В белом поле вычисленную сумму
+ * пытались исправить — и не понимали, почему клавиатура не открывается.
  */
 export const Input = forwardRef<TextInput, TextInputProps & { readonly invalid?: boolean }>(
-  function Input({ invalid = false, style, onFocus, onBlur, multiline, value, ...rest }, ref): ReactElement {
+  function Input(
+    { invalid = false, style, onFocus, onBlur, multiline, value, editable, readOnly, ...rest },
+    ref,
+  ): ReactElement {
     const [focused, setFocused] = useState(false);
-    const [webHeight, setWebHeight] = useState<number | undefined>(undefined);
     const inner = useRef<TextInput>(null);
     useImperativeHandle(ref, () => inner.current as TextInput);
-
-    /*
-      Многострочное поле растёт вместе с текстом.
-
-      На телефоне это делает сама система. В браузере `<textarea>` стоит
-      фиксированной высоты в две строки: третья строка уезжала вверх, и
-      первая видимая резалась рамкой пополам. Высота считается по
-      содержимому после каждой правки — сначала поле схлопывается, чтобы
-      `scrollHeight` умел и уменьшаться, когда текст стёрли.
-    */
-    useLayoutEffect(() => {
-      if (Platform.OS !== 'web' || multiline !== true) return;
-      const node = inner.current as unknown as HTMLTextAreaElement | null;
-      if (node === null) return;
-      const borders = node.offsetHeight - node.clientHeight;
-      const previous = node.style.height;
-      node.style.height = '0px';
-      const content = node.scrollHeight + borders;
-      node.style.height = previous;
-      setWebHeight(Math.min(MULTILINE_MAX, Math.max(MULTILINE_MIN, content)));
-    }, [multiline, value]);
+    const webHeight = useWebAutoGrow(inner, value, { enabled: multiline === true });
+    const locked = editable === false || readOnly === true;
 
     return (
       <TextInput
@@ -115,6 +145,8 @@ export const Input = forwardRef<TextInput, TextInputProps & { readonly invalid?:
         {...rest}
         value={value}
         multiline={multiline}
+        {...(editable === undefined ? {} : { editable })}
+        {...(readOnly === undefined ? {} : { readOnly })}
         onFocus={(event) => {
           setFocused(true);
           onFocus?.(event);
@@ -127,10 +159,13 @@ export const Input = forwardRef<TextInput, TextInputProps & { readonly invalid?:
         style={[
           styles.input,
           multiline === true ? styles.inputMultiline : null,
-          focused ? styles.inputFocused : null,
+          // Рассчитанная высота идёт ДО стиля вызывающего экрана: высота,
+          // заданная экраном явно, главнее подсчёта по тексту.
+          webHeight === undefined ? null : { height: webHeight },
+          locked ? styles.inputReadOnly : null,
+          focused && !locked ? styles.inputFocused : null,
           invalid ? styles.inputInvalid : null,
           style,
-          webHeight === undefined ? null : { height: webHeight },
         ]}
       />
     );
@@ -239,8 +274,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     // Высота больше порога нажатия: поле — такая же цель для пальца, как кнопка.
-    minHeight: 46,
+    minHeight: sizes.controlHeight,
     paddingVertical: spacing.sm,
+  },
+  inputReadOnly: {
+    backgroundColor: colors.surfaceMuted,
+    color: colors.textSecondary,
   },
   inputMultiline: {
     minHeight: MULTILINE_MIN,
@@ -270,9 +309,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chip: {
-    minHeight: 44,
+    // Высота поля, а не 44: чипы «сум / %» стоят в одной строке с полем
+    // суммы, и разница в два пикселя была видна по верхнему и нижнему краю.
+    minHeight: sizes.controlHeight,
+    // Не уже своей высоты: однобуквенный «%» был 38 × 46 — меньше пальца и
+    // вытянутым овалом рядом с круглым «сум». Так он — ровный круг.
+    minWidth: sizes.controlHeight,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    // 12, а не 16: на экране в 360 точек группа из трёх-четырёх вариантов
+    // («Обычный · Срочный · Критический», «Наличные · Карта · QR · Click»)
+    // не помещалась в строку на считанные пиксели, и последний вариант
+    // одиноко висел на второй строке.
+    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: hairline,
@@ -289,6 +338,9 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.headerText,
+    // Начертанием, а не `fontWeight` поверх Medium — иначе браузер
+    // дорисовывает ложный полужирный.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
 });

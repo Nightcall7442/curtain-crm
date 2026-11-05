@@ -1,19 +1,18 @@
 import { useState, type ReactElement } from 'react';
 import {
-  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
+import { Input } from '../components/Field';
+import { SubmitButton } from '../components/SubmitButton';
 import { useAuth } from '../hooks/useAuth';
-import { colors, radius, spacing, typography, opacity, fonts } from '../theme';
+import { colors, radius, spacing, typography, fonts } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
 /**
@@ -33,7 +32,8 @@ export function LoginScreen(): ReactElement {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
 
-  const canSubmit = phone.trim().length > 0 && password.length > 0 && !isSigningIn;
+  const filled = phone.trim().length > 0 && password.length > 0;
+  const canSubmit = filled && !isSigningIn;
 
   const handleSubmit = (): void => {
     if (!canSubmit) return;
@@ -81,12 +81,20 @@ export function LoginScreen(): ReactElement {
         <View style={styles.form}>
           <Text style={styles.formTitle}>{m('login.title')}</Text>
 
+          {/*
+            Поля — общий `Input`, а не свой `TextInput`. Свой не показывал
+            фокус вовсе: кольцо браузера снято для всего приложения, а рамку
+            акцента рисует только `Input`, — и в PWA было не видно, в какое
+            поле идёт ввод. Заодно поле той же высоты, что во всех формах
+            (`controlHeight`), и растёт с системным размером шрифта, а не
+            обрезает текст в жёстких 48. Подложка — лён: на белой форме
+            белое поле теряется.
+          */}
           <Text style={styles.label}>{m('login.phone')}</Text>
-          <TextInput
+          <Input
             value={phone}
             onChangeText={setPhone}
             placeholder="+998 90 123 45 67"
-            placeholderTextColor={colors.textMuted}
             keyboardType="phone-pad"
             autoComplete="tel"
             textContentType="telephoneNumber"
@@ -95,11 +103,10 @@ export function LoginScreen(): ReactElement {
           />
 
           <Text style={[styles.label, styles.labelSpacing]}>{m('login.password')}</Text>
-          <TextInput
+          <Input
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            placeholderTextColor={colors.textMuted}
             secureTextEntry
             autoComplete="current-password"
             textContentType="password"
@@ -115,22 +122,19 @@ export function LoginScreen(): ReactElement {
             </View>
           )}
 
-          <Pressable
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            style={({ pressed }) => [
-              styles.button,
-              !canSubmit ? styles.buttonDisabled : null,
-              pressed ? styles.buttonPressed : null,
-            ]}
-            accessibilityRole="button"
-          >
-            {isSigningIn ? (
-              <ActivityIndicator color={colors.onAccent} />
-            ) : (
-              <Text style={styles.buttonText}>{m('login.submit')}</Text>
-            )}
-          </Pressable>
+          {/*
+            Кнопка — та же `SubmitButton`, что во всём приложении: высота 48,
+            таблетка, жирная подпись и одно «недоступно». Первый экран, который
+            видит каждый, был собран из своей кнопки другой формы.
+          */}
+          <View style={styles.submit}>
+            <SubmitButton
+              label={m('login.submit')}
+              onPress={handleSubmit}
+              disabled={!filled}
+              pending={isSigningIn}
+            />
+          </View>
 
           <Text style={styles.hint}>{m('login.hint')}</Text>
         </View>
@@ -138,9 +142,6 @@ export function LoginScreen(): ReactElement {
     </KeyboardAvoidingView>
   );
 }
-
-/** Высота полей и кнопки формы входа — одна на всех, на сетке 4/8. */
-const CONTROL_HEIGHT = 48;
 
 const styles = StyleSheet.create({
   container: {
@@ -211,22 +212,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   /*
-    Поля и кнопка — одной высоты, 48. Высота складывалась из отступов и
-    строки текста: поле выходило 47 (12 + 21 + 12 + рамка 2), кнопка — 49
-    (`minHeight` 48 плюс отступы), и три элемента одной колонки стояли
-    разной высоты мимо сетки. Теперь высота задана явно, а текст в поле
-    центрируется по вертикали сам.
+    Только подложка: высоту (`controlHeight` как минимум, не жёстко),
+    шрифт, рамку и её цвет в фокусе задаёт `Input`. Рамку здесь не
+    переопределяем — иначе пропал бы цвет фокуса.
   */
   input: {
-    fontFamily: fonts.medium,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    height: CONTROL_HEIGHT,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 0,
-    fontSize: 15,
-    color: colors.textPrimary,
     backgroundColor: colors.background,
   },
   error: {
@@ -236,29 +226,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: {
-    fontFamily: fonts.medium,
+    ...typography.caption,
     color: colors.danger,
-    fontSize: 13,
   },
-  button: {
-    marginTop: spacing.xl,
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: CONTROL_HEIGHT,
-  },
-  buttonDisabled: {
-    opacity: opacity.disabled,
-  },
-  buttonPressed: {
-    opacity: opacity.pressed,
-  },
-  buttonText: {
-    fontFamily: fonts.semibold,
-    color: colors.onAccent,
-    fontSize: 15,
-    fontWeight: '600',
+  // 24 до кнопки, как было: 16 здесь и 8 — собственный отступ `SubmitButton`.
+  submit: {
+    marginTop: spacing.lg,
   },
   hint: {
     ...typography.caption,

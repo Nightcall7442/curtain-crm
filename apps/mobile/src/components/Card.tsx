@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { isValidElement, useState, type ReactElement, type ReactNode } from 'react';
 
-import { cardShadow, colors, hairline, opacity, radius, spacing, typography, fonts } from '../theme';
+import { cardShadow, colors, hairline, opacity, radius, sizes, spacing, typography, fonts } from '../theme';
 
 import { Icon, type IconName } from './Icon';
 import { useLocale } from '../hooks/useLocale';
@@ -162,12 +162,19 @@ export function CardLink({
 }
 
 /**
- * Пробел, на котором строку можно перенести.
+ * Число или сумма — значение, которое переносить нельзя.
  *
- * Суммы собираются через неразрывные пробелы (`486\u00A0380\u00A0414\u00A0сум`),
- * поэтому значение без обычного пробела — одно неделимое слово.
+ * Цифры, сгруппированные неразрывными пробелами (`486\u00A0380\u00A0414`),
+ * со знаком, запятой, точкой, двоеточием или процентом, и не больше двух
+ * единиц через неразрывный пробел: «сум», «млн сум», «шт». Так собирают
+ * суммы `formatMoney` и `formatMoneyShort`.
+ *
+ * Прежде неделимым считалось ЛЮБОЕ значение без обычного пробела, и под
+ * правило попадали коды через дефис, телефоны без пробелов, почта, имя из
+ * одного слова: такие значения переставали переноситься и уходили за край
+ * карточки. Теперь неделимы только числа, всё остальное переносится.
  */
-const BREAKABLE_SPACE = /[ \n]/;
+const NUMBER_LIKE = /^[-−+]?\d[\d\u00A0\u202F.,:%]*(?:[\u00A0\u202F][^\s]+){0,2}$/;
 
 /** Строка «подпись — значение». */
 export function Row({
@@ -180,14 +187,14 @@ export function Row({
   readonly valueColor?: string;
 }): ReactElement {
   /*
-    Кто уступает место, решает ЗНАЧЕНИЕ. Имя или адрес переносятся по
-    словам — тогда ужимается значение, а подпись из словаря остаётся в одну
-    строку. Сумму перенести нельзя: она собрана неразрывными пробелами, и
-    пока подпись не уступала, «На руках · У 4 сотрудников, сейчас» вытолкнула
-    «486 380 414 сум» за край карточки и экрана. Для неделимого значения
-    переносится подпись.
+    Кто уступает место, решает ЗНАЧЕНИЕ. Имя, адрес или код переносятся —
+    тогда ужимается значение, а подпись из словаря остаётся в одну строку.
+    Сумму перенести нельзя: она собрана неразрывными пробелами, и пока
+    подпись не уступала, «На руках · У 4 сотрудников, сейчас» вытолкнула
+    «486 380 414 сум» за край карточки и экрана. Для числа переносится
+    подпись.
   */
-  const unbreakable = !BREAKABLE_SPACE.test(value);
+  const unbreakable = NUMBER_LIKE.test(value);
 
   return (
     <View style={styles.row}>
@@ -468,6 +475,9 @@ export function Skeleton({ rows = 3 }: { readonly rows?: number }): ReactElement
   );
 }
 
+/** Точка-индикатор плашки — та же, что у плашек в карточке заказа. */
+const PILL_DOT = 6;
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
@@ -519,8 +529,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   link: {
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: sizes.touchTarget,
+    minWidth: sizes.touchTarget,
     justifyContent: 'center',
     alignItems: 'flex-end',
     // Зона нажатия шире подписи и влево — туда, где палец, а не к краю
@@ -553,6 +563,9 @@ const styles = StyleSheet.create({
     // Пока сжимались обе, пара «Контроль качества — Абдурахмонов Шерзодбек
     // Улугбекович» разъезжалась в три этажа и переставала читаться.
     flexShrink: 0,
+    // Но не больше 60% строки: если подписью пришло имя, значению всё равно
+    // остаётся место, и оно не сжимается до столбика из одной буквы.
+    maxWidth: '60%',
     marginRight: spacing.md,
   },
   rowLabelWrap: {
@@ -567,6 +580,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     flexShrink: 1,
     flexGrow: 1,
+    // В браузере минимум ширины у элемента flex — самое длинное слово:
+    // «Чиланзар-Центральный-склад» не переносился и уходил за край.
+    minWidth: 0,
     // Через эту строку идёт вся числовая и денежная отчётность приложения:
     // без табличных цифр правый край колонки сумм получается неровным.
     fontVariant: ['tabular-nums'],
@@ -575,24 +591,31 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
     // Плашка обязана ужиматься: в узкой карточке «Смена закрыта» вылезала
     // за белый край на серый фон — RN без этого ничего не обрезает.
     flexShrink: 1,
+    // В вебе плашка в одну строку берёт ширину по тексту (`alignSelf` плюс
+    // `nowrap`) и без предела выходит из узкой колонки, а не ужимается.
+    maxWidth: '100%',
   },
   pillDot: {
-    width: 6,
-    height: 6,
+    width: PILL_DOT,
+    height: PILL_DOT,
     borderRadius: radius.pill,
   },
   pillText: {
+    // Строка сноски задана явно: высота плашки — ровно 16 + 2 × 4 на любом
+    // экране, а не «normal» шрифта, который браузер и Android считают
+    // по-разному.
+    ...typography.footnote,
     fontFamily: fonts.semibold,
-    fontSize: 12,
     fontWeight: '600',
     flexShrink: 1,
+    minWidth: 0,
   },
   progressTrack: {
     height: 6,
@@ -625,7 +648,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   retry: {
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     marginTop: spacing.md,
     paddingHorizontal: spacing.xl,
     alignItems: 'center',
@@ -662,6 +685,9 @@ const styles = StyleSheet.create({
     // Разрядка — единственное место, где она уместна: мелкие прописные без
     // неё сливаются в сплошную полосу.
     letterSpacing: 0.6,
+    // Полужирный — своим начертанием: от `fontWeight` на Medium браузер
+    // рисует поддельный жирный, размытый и шире настоящего.
+    fontFamily: fonts.semibold,
     fontWeight: '600',
     flex: 1,
   },
@@ -671,7 +697,7 @@ const styles = StyleSheet.create({
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     // Отступ от края карточки живёт здесь, а не на карточке: только так
     // подсветка нажатой строки доходит до её краёв.
     paddingHorizontal: spacing.lg,
@@ -719,7 +745,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     // Высота строки та же, что у настоящей: 44 — минимальная зона нажатия,
     // и заглушка обязана занимать ровно столько же, иначе список подпрыгнет.
-    minHeight: 44,
+    minHeight: sizes.touchTarget,
     paddingVertical: spacing.md,
   },
   skeletonBlock: {

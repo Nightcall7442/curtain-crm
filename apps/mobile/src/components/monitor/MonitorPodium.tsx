@@ -154,9 +154,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   medalText: {
+    ...typography.footnote,
     fontFamily: fonts.bold,
     fontWeight: '700',
-    fontSize: 12,
   },
   name: {
     ...typography.caption,
@@ -170,14 +170,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.textPrimary,
   },
+  /*
+    Единица внутри жирного числа: вложенный текст в браузере наследует
+    `fontWeight: 700` родителя, и Medium поверх него дорисовывался ложным
+    жирным — «шт» выходило толще и шире, чем в приложении. Вес задан явно.
+  */
   unit: {
-    ...typography.caption,
-    fontSize: 12,
+    ...typography.footnote,
+    fontFamily: fonts.medium,
+    fontWeight: '500',
     color: colors.textSecondary,
   },
   percent: {
-    ...typography.caption,
-    fontSize: 12,
+    ...typography.footnote,
     color: colors.textMuted,
   },
 });

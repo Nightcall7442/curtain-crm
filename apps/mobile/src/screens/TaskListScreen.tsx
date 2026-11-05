@@ -1,19 +1,17 @@
 import {
   availableTransitions,
-  isActiveStatus,
-  isOverdueDate,
   isTaskActive,
   ORDER_STATUS_LABELS,
-  OrderStatus,
   transitionLabel,
   TransitionKind,
-  type OrderStatus as OrderStatusName,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, type ReactElement } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Empty, ErrorState, Pill, SectionHeader, Skeleton } from '../components/Card';
+import { Empty, ErrorState, SectionHeader, Skeleton } from '../components/Card';
+import { OrderChip, orderStatusTone } from '../components/OrderCard';
+import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
 import { TaskCard } from '../components/TaskCard';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
@@ -73,6 +71,12 @@ export function TaskListScreen(): ReactElement {
       }}
       ListHeaderComponent={
         <>
+          {/*
+            Без смены сервер не даёт ни отметить поручение, ни сдвинуть заказ
+            (412), и галочка в карточке поручения погашена. Баннер говорит
+            почему и ведёт туда, где смену начинают.
+          */}
+          <ShiftRequiredBanner style={styles.banner} />
           {activeAssigned.length > 0 && (
             <View style={styles.assigned}>
               <SectionHeader title={m('work.filterTasks')} />
@@ -111,9 +115,14 @@ export function TaskListScreen(): ReactElement {
             <Text style={styles.number}>
               {item.order.orderNumber ?? `#${item.order.id.toString()}`}
             </Text>
-            <Pill
+            {/*
+              Статус — та же плашка, что в списке заказов: длинный
+              («Ждёт назначения установщика») переносится, а не режется
+              многоточием и не ломает номер заказа на «DH-» и «000507».
+            */}
+            <OrderChip
               text={t(ORDER_STATUS_LABELS, item.order.status)}
-              tone={statusTone(item.order.status, item.order.deadline)}
+              tone={orderStatusTone(item.order.status, item.order.deadline)}
             />
           </View>
 
@@ -136,34 +145,10 @@ export function TaskListScreen(): ReactElement {
   );
 }
 
-/**
- * Статусы, в которых заказ стоит и ждёт чьего-то решения, — янтарём.
- *
- * То же правило, что у чипа статуса в `OrderCard`: прежде здесь каждый
- * статус был синим («В пошиве» и «Ждёт проверки админа» одним цветом), и
- * экран выпадал из цветового языка остальных списков.
- */
-const WAITING_STATUSES: ReadonlySet<OrderStatusName> = new Set<OrderStatusName>([
-  OrderStatus.NEW,
-  OrderStatus.PENDING_ADMIN_REVIEW,
-  OrderStatus.REJECTED_TO_CEO,
-  OrderStatus.PENDING_SEWING_ASSIGNMENT,
-  OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
-]);
-
-/** Брак и просрочка — терракота, ожидание — янтарь, работа в движении — зелёный. */
-function statusTone(
-  status: OrderStatusName,
-  deadline: string | null,
-): 'neutral' | 'positive' | 'warning' | 'danger' {
-  const overdue = deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
-  if (overdue || status === OrderStatus.QC_FAILED) return 'danger';
-  if (!isActiveStatus(status)) return 'neutral';
-  if (WAITING_STATUSES.has(status)) return 'warning';
-  return 'positive';
-}
-
 const styles = StyleSheet.create({
+  banner: {
+    marginBottom: spacing.md,
+  },
   assigned: {
     marginBottom: spacing.sm,
   },
@@ -189,13 +174,17 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   number: {
     ...typography.value,
     color: colors.header,
-    fontWeight: '700',
+    // Номер не ужимается: «DH-000507» читают целиком, ужимается статус.
+    flexShrink: 0,
+    // Высота строки = высоте плашки статуса (16 + 2 × 4): номер стоит по её центру.
+    lineHeight: typography.footnote.lineHeight + spacing.xs * 2,
   },
   client: {
     ...typography.caption,

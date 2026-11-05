@@ -1,6 +1,5 @@
 import {
-  RATING_SCOPE_LABELS,
-  RATING_SCOPES,
+  formatQuantity,
   RatingScope,
   type RatingScope as RatingScopeName,
 } from '@curtain-crm/shared';
@@ -8,7 +7,7 @@ import { useState, type ReactElement } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from '../components/Card';
-import { ChipSelect } from '../components/Field';
+import { RatingScopeSwitch } from '../components/RatingScopeSwitch';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, spacing, tabBarSpace, typography } from '../theme';
@@ -21,7 +20,7 @@ import { colors, fonts, hairline, spacing, tabBarSpace, typography } from '../th
  * причиной, чтобы не гадать, почему человека нет в списке.
  */
 export function RatingBoardScreen(): ReactElement {
-  const { t, m } = useLocale();
+  const { m } = useLocale();
   const [scope, setScope] = useState<RatingScopeName>(RatingScope.MONTH);
   const now = new Date();
   const board = trpc.rating.board.useQuery({
@@ -38,12 +37,16 @@ export function RatingBoardScreen(): ReactElement {
 
     В начале периода у всех ноль, сервер ставит всех на общее первое место,
     и экран показывал двадцать «первых» с зелёными стрелками «↑18», «↑17» —
-    будто все победили. Пока ни у кого нет балла больше нуля, соревнования
-    ещё нет: показываем готовое «За период никто не набрал баллов». А когда
-    лидеры есть, место и стрелку получают только они — ноль местом не
-    награждается.
+    будто все победили. Пока у всех ровно ноль, соревнования ещё нет:
+    показываем готовое «За период никто не набрал баллов». А когда баллы
+    есть, место и стрелку получают только набравшие больше нуля — ноль и
+    штраф местом не награждаются.
+
+    «Не началось» — именно ноль у всех, а не «ни у кого нет плюса»: в балл
+    входят штрафы дисциплины, и месяц, где пока есть только опоздания, —
+    уже таблица. Строки с «−2» директору нужно видеть, а не прятать.
   */
-  const hasLeaders = ranked.some((row) => (row.score ?? 0) > 0);
+  const notStarted = ranked.every((row) => row.score === null || row.score === 0);
 
   return (
     <ScrollView
@@ -57,19 +60,20 @@ export function RatingBoardScreen(): ReactElement {
         />
       }
     >
-      <ChipSelect
-        value={scope}
-        onChange={setScope}
-        options={RATING_SCOPES.map((value) => ({ value, label: t(RATING_SCOPE_LABELS, value) }))}
-      />
+      <RatingScopeSwitch value={scope} onChange={setScope} />
 
       <Card>
         <CardTitle title={m('ratingBoard.title')} icon="rating" />
+        {/*
+          Без текста из ответа: при обрыве связи пакетный запрос отдаёт
+          служебное английское «Missing result», а в узбекском интерфейсе —
+          русский текст сервера. Своё «Не удалось загрузить» и повтор.
+        */}
         {board.isError ? (
-          <ErrorState message={board.error.message} />
+          <ErrorState />
         ) : board.isLoading ? (
           <Skeleton rows={5} />
-        ) : !hasLeaders ? (
+        ) : notStarted ? (
           <Empty message={m('ratingBoard.empty')} />
         ) : (
           ranked.map((row, index) => {
@@ -85,7 +89,10 @@ export function RatingBoardScreen(): ReactElement {
                   <Text style={styles.name}>{row.fullName}</Text>
                   <Text style={styles.meta}>{m('ratingBoard.stages', { n: row.ordersCount })}</Text>
                 </View>
-                <Text style={styles.score}>{row.score ?? 0}</Text>
+                {/* Штраф — с типографским минусом, как баллы дисциплины в приложении. */}
+                <Text style={[styles.score, (row.score ?? 0) < 0 ? styles.down : null]}>
+                  {formatQuantity(row.score ?? 0)}
+                </Text>
                 {/*
                   Колонка стрелки есть в каждой строке, даже пустая: иначе в
                   строках без стрелки балл уезжал к правому краю на 36 px, и

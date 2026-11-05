@@ -1,11 +1,12 @@
-import { formatMonthPeriod, workshopToday } from '@curtain-crm/shared';
+import { workshopToday } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
-import { colors, hairline, opacity, radius, spacing, typography } from '../theme';
-import { Card, CardTitle, Empty, Skeleton } from './Card';
+import { colors, hairline, spacing, typography } from '../theme';
+import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
+import { MonthNav } from './MonthSchedule';
 
 /**
  * Кто отдыхает в этом месяце — руководству.
@@ -18,27 +19,12 @@ import { Card, CardTitle, Empty, Skeleton } from './Card';
  * запросы — одним полем `daysOff`.
  */
 export function TeamDaysOff(): ReactElement {
-  const { m, locale } = useLocale();
+  const { m } = useLocale();
   const today = workshopToday();
   const [year, setYear] = useState(today.year);
   const [month, setMonth] = useState(today.month);
 
   const timesheet = trpc.shifts.timesheet.useQuery({ year, month });
-
-  const step = (delta: number): void => {
-    const next = month + delta;
-    if (next < 1) {
-      setMonth(12);
-      setYear(year - 1);
-      return;
-    }
-    if (next > 12) {
-      setMonth(1);
-      setYear(year + 1);
-      return;
-    }
-    setMonth(next);
-  };
 
   const byDay = new Map<number, string[]>();
   for (const row of timesheet.data?.rows ?? []) {
@@ -50,45 +36,37 @@ export function TeamDaysOff(): ReactElement {
 
   return (
     <Card>
+      {/*
+        Переключатель месяца — тот же, что в графике сотрудника: кнопки
+        с полной зоной нажатия и значками набора вместо «‹ ›» из шрифта.
+      */}
       <CardTitle
         title={m('teamDaysOff.title')}
         icon="calendar"
         action={
-          <View style={styles.nav}>
-            <Pressable
-              onPress={() => {
-                step(-1);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={m('schedule.prevMonth')}
-              style={({ pressed }) => [styles.navButton, pressed ? styles.pressed : null]}
-            >
-              <Text style={styles.navText}>‹</Text>
-            </Pressable>
-            <Text style={styles.period}>{formatMonthPeriod(year, month, locale)}</Text>
-            <Pressable
-              onPress={() => {
-                step(1);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={m('schedule.nextMonth')}
-              style={({ pressed }) => [styles.navButton, pressed ? styles.pressed : null]}
-            >
-              <Text style={styles.navText}>›</Text>
-            </Pressable>
-          </View>
+          <MonthNav
+            year={year}
+            month={month}
+            onChange={(nextYear, nextMonth) => {
+              setYear(nextYear);
+              setMonth(nextMonth);
+            }}
+          />
         }
       />
 
-      {timesheet.isLoading ? (
+      {/* Сбой — ошибкой с повтором, а не пустым «никто не отдыхает». */}
+      {timesheet.isError ? (
+        <ErrorState />
+      ) : timesheet.isLoading ? (
         <Skeleton rows={3} />
       ) : days.length === 0 ? (
         <Empty message={m('teamDaysOff.empty')} />
       ) : (
-        days.map((day) => {
+        days.map((day, index) => {
           const isToday = day === today.day && month === today.month && year === today.year;
           return (
-            <View key={day} style={styles.row}>
+            <View key={day} style={[styles.row, index === 0 ? null : styles.rowDivided]}>
               <Text style={[styles.day, isToday ? styles.dayToday : null]}>{day}</Text>
               <Text style={styles.names}>{(byDay.get(day) ?? []).join(', ')}</Text>
             </View>
@@ -99,47 +77,33 @@ export function TeamDaysOff(): ReactElement {
   );
 }
 
+/** Колонка числа: «30» жирным с запасом, чтобы имена стояли ровным краем. */
+const DAY_COLUMN = 28;
+
 const styles = StyleSheet.create({
-  nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  navButton: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
-    borderWidth: hairline,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navText: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  period: {
-    ...typography.footnote,
-    color: colors.textSecondary,
-    minWidth: 96,
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: opacity.pressed,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  /*
+    Линия — только МЕЖДУ числами. Над первым она стояла вплотную под
+    заголовком и дублировала его нижний отступ, а строки по 4 точки сверху
+    и снизу слипались в таблицу.
+  */
+  rowDivided: {
     borderTopWidth: hairline,
     borderTopColor: colors.border,
   },
   day: {
     ...typography.value,
     color: colors.textSecondary,
-    width: 28,
+    width: DAY_COLUMN,
     textAlign: 'center',
+    // Строка числа — как у имён рядом: иначе при переносе имён число
+    // стояло выше первой строки.
+    lineHeight: typography.body.lineHeight,
   },
   dayToday: {
     color: colors.accent,

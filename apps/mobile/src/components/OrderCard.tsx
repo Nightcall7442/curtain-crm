@@ -17,7 +17,7 @@ import {
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 import { useLocale } from '../hooks/useLocale';
-import { cardShadow, colors, radius, spacing, typography, fonts } from '../theme';
+import { cardShadow, colors, fonts, hairline, radius, spacing, typography } from '../theme';
 
 import { Icon, type IconName } from './Icon';
 import { PressableScale } from './PressableScale';
@@ -54,6 +54,7 @@ export function OrderCard({
   installationAt = null,
   executor,
   awaitingPayment = false,
+  note,
   onPress,
 }: {
   readonly orderNumber: string;
@@ -76,11 +77,16 @@ export function OrderCard({
   readonly executor?: { readonly name: string | null } | null;
   /** Установка сделана, остаток не получен — пометка «Ждёт оплаты». */
   readonly awaitingPayment?: boolean;
+  /**
+   * Пояснение последней строкой внутри карточки — например, статус карнизов
+   * на вкладке «Карнизы». Отдельным текстом под карточкой оно висело на
+   * бежевом фоне между карточками и читалось как подпись к соседней.
+   */
+  readonly note?: string;
   readonly onPress: () => void;
 }): ReactElement {
   const { t, m, locale } = useLocale();
-  const isOverdue =
-    deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
+  const isOverdue = isOrderOverdue(status, deadline);
 
   const deadlineLabel =
     deadline === null ? m('orderCard.noDeadline') : m('orderCard.until', { date: formatIsoDateShort(deadline) });
@@ -113,27 +119,29 @@ export function OrderCard({
           {orderNumber}
         </Text>
         <View style={styles.statusSlot}>
-          <Chip
-            text={t(ORDER_STATUS_LABELS, status)}
-            tone={statusTone(status, isOverdue)}
-            wrap
-          />
+          <OrderChip text={t(ORDER_STATUS_LABELS, status)} tone={orderStatusTone(status, deadline)} />
         </View>
       </View>
 
+      {/*
+        Имя клиента и имя исполнителя переносятся на вторую строку, а не
+        режутся многоточием: карточка в списке может стать выше, а
+        «Собирова Гульна…» рядом с «Шухрат Ибрагим…» не читал никто —
+        оба имени ради того и выведены, чтобы их узнать с первого взгляда.
+      */}
       <View style={[styles.headerRow, styles.clientRow]}>
-        <Text style={styles.client} numberOfLines={1}>
+        <Text style={styles.client} numberOfLines={2}>
           {clientName}
         </Text>
         {(awaitingPayment || executor != null) && (
           <View style={styles.sideChips}>
-            {awaitingPayment && <Chip text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />}
+            {awaitingPayment && <OrderChip text={AWAITING_PAYMENT_LABEL[locale]} tone="warning" />}
             {/* Кто сейчас ведёт заказ — сразу под статусом, как просил заказчик. */}
             {executor != null &&
               (executor.name === null ? (
-                <Chip text={EXECUTOR_NOT_ASSIGNED_LABEL[locale]} tone="neutral" icon="profile" />
+                <OrderChip text={EXECUTOR_NOT_ASSIGNED_LABEL[locale]} tone="neutral" icon="profile" />
               ) : (
-                <Chip text={executor.name} tone="accent" icon="profile" />
+                <OrderChip text={executor.name} tone="accent" icon="profile" />
               ))}
           </View>
         )}
@@ -173,39 +181,44 @@ export function OrderCard({
           </View>
         )}
       </View>
+
+      {note !== undefined && <Text style={styles.note}>{note}</Text>}
     </View>
   );
 
+  /*
+    Своего внешнего отступа у карточки нет — расстояние между карточками
+    держит список (`ORDER_CARD_GAP`). Масштабируется при нажатии только
+    внутренняя часть, поэтому соседние карточки не дёргаются.
+  */
   return (
-    <View style={styles.cardWrapper}>
-      <SwipeableRow
-        left={
-          clientPhone === undefined
-            ? undefined
-            : {
-                icon: 'call',
-                label: m('orderCard.call'),
-                color: colors.accentBright,
-                onTrigger: () => {
-                  void Linking.openURL(`tel:${clientPhone}`);
-                },
-              }
-        }
-        right={{
-          icon: 'forward',
-          label: m('orderCard.open'),
-          color: colors.header,
-          onTrigger: onPress,
-        }}
+    <SwipeableRow
+      left={
+        clientPhone === undefined
+          ? undefined
+          : {
+              icon: 'call',
+              label: m('orderCard.call'),
+              color: colors.accentBright,
+              onTrigger: () => {
+                void Linking.openURL(`tel:${clientPhone}`);
+              },
+            }
+      }
+      right={{
+        icon: 'forward',
+        label: m('orderCard.open'),
+        color: colors.header,
+        onTrigger: onPress,
+      }}
+    >
+      <PressableScale
+        onPress={onPress}
+        accessibilityLabel={m('orderCard.a11y', { n: orderNumber, client: clientName, status: t(ORDER_STATUS_LABELS, status) })}
       >
-        <PressableScale
-          onPress={onPress}
-          accessibilityLabel={m('orderCard.a11y', { n: orderNumber, client: clientName, status: t(ORDER_STATUS_LABELS, status) })}
-        >
-          {card}
-        </PressableScale>
-      </SwipeableRow>
-    </View>
+        {card}
+      </PressableScale>
+    </SwipeableRow>
   );
 }
 
@@ -226,19 +239,20 @@ type ChipTone = 'positive' | 'warning' | 'danger' | 'neutral' | 'info' | 'accent
  * Скругление `radius.md`, а не «пилюля»: у плашки в строку высотой 24 оно
  * всё равно даёт полукруглые торцы, а у перенесённой в две строки — ровный
  * прямоугольник вместо вытянутого овала.
+ *
+ * Текст любой плашки переносится на вторую строку целиком: и статус, и имя
+ * исполнителя читают, а не угадывают по первым буквам. Поэтому тот же
+ * статус в «Моих задачах» — эта плашка, а не однострочный `Pill`.
  */
-function Chip({
+export function OrderChip({
   text,
   tone,
   icon,
-  wrap = false,
 }: {
   readonly text: string;
   readonly tone: ChipTone;
   /** Иконка вместо точки-индикатора — у плашки, которая не статус. */
   readonly icon?: IconName;
-  /** Разрешить вторую строку. Имя исполнителя — в одну, с многоточием. */
-  readonly wrap?: boolean;
 }): ReactElement {
   const palette = CHIP_PALETTE[tone];
 
@@ -248,10 +262,10 @@ function Chip({
         <View style={[styles.chipDot, { backgroundColor: palette.fg }]} />
       ) : (
         <View style={styles.chipIcon}>
-          <Icon name={icon} size={12} color={palette.fg} />
+          <Icon name={icon} size={CHIP_ICON} color={palette.fg} />
         </View>
       )}
-      <Text style={[styles.chipText, { color: palette.fg }]} numberOfLines={wrap ? 2 : 1}>
+      <Text style={[styles.chipText, { color: palette.fg }]} numberOfLines={2}>
         {text}
       </Text>
     </View>
@@ -271,8 +285,13 @@ const CHIP_PALETTE: Record<ChipTone, { readonly bg: string; readonly fg: string 
 /**
  * Статусы, в которых заказ СТОИТ и ждёт чьего-то решения, — им янтарный чип.
  * Работа в движении — зелёный, брак — терракота, закрытые — нейтральный.
+ *
+ * Экспортируется вместе с `orderStatusTone`: тем же правилом красят статус
+ * карточка заказа и список поручений. Пока у каждого экрана была своя копия,
+ * новый статус в перечислении расходился бы по цвету между списком и
+ * карточкой — тот же заказ менял цвет при открытии.
  */
-const WAITING_STATUSES: ReadonlySet<OrderStatusName> = new Set<OrderStatusName>([
+export const WAITING_STATUSES: ReadonlySet<OrderStatusName> = new Set<OrderStatusName>([
   OrderStatus.NEW,
   OrderStatus.PENDING_ADMIN_REVIEW,
   OrderStatus.REJECTED_TO_CEO,
@@ -280,25 +299,60 @@ const WAITING_STATUSES: ReadonlySet<OrderStatusName> = new Set<OrderStatusName>(
   OrderStatus.PENDING_INSTALLATION_ASSIGNMENT,
 ]);
 
+/** Тон статуса заказа — те же имена, что у тонов `Pill`. */
+export type OrderStatusTone = 'positive' | 'warning' | 'danger' | 'neutral';
+
 /**
- * Тон чипа по положению заказа на конвейере.
+ * Тон статуса по положению заказа на конвейере — одно правило на всё
+ * приложение (список заказов, карточка заказа, поручения).
  *
- * Просрочка перекрашивает чип в терракоту независимо от статуса — она важнее.
+ * Просрочка перекрашивает статус в терракоту независимо от этапа — она
+ * важнее. Считается здесь же, по сроку, а не передаётся снаружи: иначе
+ * каждый экран снова решал бы сам, что считать просрочкой.
  */
-function statusTone(status: OrderStatusName, isOverdue: boolean): ChipTone {
-  if (isOverdue || status === OrderStatus.QC_FAILED) return 'danger';
+export function orderStatusTone(status: OrderStatusName, deadline: string | null): OrderStatusTone {
+  if (isOrderOverdue(status, deadline) || status === OrderStatus.QC_FAILED) return 'danger';
   if (!isActiveStatus(status)) return 'neutral';
   if (WAITING_STATUSES.has(status)) return 'warning';
 
   return 'positive';
 }
 
+/** Срок прошёл, а заказ ещё в работе. Закрытый заказ просроченным не бывает. */
+function isOrderOverdue(status: OrderStatusName, deadline: string | null): boolean {
+  return deadline !== null && isActiveStatus(status) && isOverdueDate(deadline);
+}
+
+/**
+ * Зазор между карточками заказов в списке.
+ *
+ * Отступ задаёт СПИСОК, а не карточка. Пока карточка несла свой нижний
+ * отступ, последняя в секции добавляла его к отступу секции, и на главной
+ * под «Просроченными заказами» выходило 28 вместо 16, как между всеми
+ * остальными блоками. В `View` со стопкой карточек — `gap: ORDER_CARD_GAP`,
+ * в `FlatList` — `ItemSeparatorComponent={OrderCardSeparator}`.
+ */
+export const ORDER_CARD_GAP = spacing.md;
+
+/** Разделитель карточек заказов для `FlatList` — см. `ORDER_CARD_GAP`. */
+export function OrderCardSeparator(): ReactElement {
+  return <View style={styles.separator} />;
+}
+
+/** Размер точки-индикатора в плашке. */
+const CHIP_DOT = 6;
+/** Значок в плашке исполнителя — под строку сноски. */
+const CHIP_ICON = 12;
+/**
+ * Высота плашки в одну строку: строка сноски и два вертикальных отступа.
+ * По ней же выставлена строка номера и клиента — тогда номер стоит по
+ * центру статуса, а не прижат к его верху.
+ */
+const CHIP_HEIGHT = typography.footnote.lineHeight + spacing.xs * 2;
+
 const styles = StyleSheet.create({
-  // Внешняя обёртка держит отступ между карточками, внутренняя — саму
-  // карточку. Разделены потому, что масштабируется при нажатии ВНУТРЕННЯЯ:
-  // если сжимать вместе с отступом, соседние карточки дёргаются.
-  cardWrapper: {
-    marginBottom: spacing.md,
+  separator: {
+    height: ORDER_CARD_GAP,
   },
   card: {
     backgroundColor: colors.surface,
@@ -335,14 +389,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   /*
-    Плашки справа от клиента — не шире половины карточки, чтобы имя
-    клиента не сжималось в многоточие из-за длинного имени исполнителя.
-    Саму плашку держит `maxWidth: '100%'`: без него в вебе она шире
-    колонки, если имя не помещается в одну строку.
+    Плашки справа от клиента берут свою ширину, но не больше 60% строки:
+    короткое имя исполнителя не отнимает места у клиента, а длинное
+    переносится внутри плашки, оставляя клиенту не меньше 40%. Прежний
+    жёсткий предел в половину резал оба имени сразу, хотя одно из них
+    помещалось. Саму плашку держит `maxWidth: '100%'`: без него в вебе она
+    шире колонки, если имя не помещается в одну строку.
   */
   sideChips: {
     flexShrink: 1,
-    maxWidth: '50%',
+    maxWidth: '60%',
     gap: spacing.xs,
   },
   chip: {
@@ -352,20 +408,20 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     flexShrink: 1,
     minWidth: 0,
-    gap: 5,
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
   },
-  /* Точка и иконка — по центру ПЕРВОЙ строки текста (высота строки 16). */
+  /* Точка и иконка — по центру ПЕРВОЙ строки текста, а не всей плашки. */
   chipDot: {
-    width: 6,
-    height: 6,
-    marginTop: 5,
+    width: CHIP_DOT,
+    height: CHIP_DOT,
+    marginTop: (typography.footnote.lineHeight - CHIP_DOT) / 2,
     borderRadius: radius.pill,
   },
   chipIcon: {
-    height: 16,
+    height: typography.footnote.lineHeight,
     justifyContent: 'center',
   },
   chipText: {
@@ -377,20 +433,31 @@ const styles = StyleSheet.create({
   },
   number: {
     fontFamily: fonts.extrabold,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     fontWeight: '800',
-    // Высота строки = высоте плашки (16 + 2 × 4): номер стоит по центру
-    // статуса, а не прижат к его верху.
-    lineHeight: 24,
+    // Высота строки = высоте плашки: номер стоит по центру статуса.
+    lineHeight: CHIP_HEIGHT,
     color: colors.textPrimary,
     flexShrink: 0,
   },
   client: {
     ...typography.body,
-    lineHeight: 24,
+    // Строка обычного текста, а не высоты плашки: длинное имя переносится,
+    // и при строке в 24 две его половины читались как две разные записи.
+    // Отступ сверху и снизу добирает строку до высоты плашки — имя в одну
+    // строку стоит по центру плашки исполнителя справа.
+    paddingVertical: (CHIP_HEIGHT - typography.body.lineHeight) / 2,
     color: colors.textSecondary,
     flex: 1,
     minWidth: 0,
+  },
+  note: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: hairline,
+    borderTopColor: colors.border,
   },
   footer: {
     marginTop: spacing.md,
@@ -408,12 +475,17 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '500',
   },
+  // Вес — своим начертанием, а не `fontWeight` поверх Medium: браузер
+  // дорисовывал бы ложный полужирный, и «просрочен» в PWA выходил
+  // расплывшимся по сравнению с приложением.
   slot: {
     color: colors.accentStrong,
+    fontFamily: fonts.semibold,
     fontWeight: '600',
   },
   overdue: {
     color: colors.danger,
+    fontFamily: fonts.bold,
     fontWeight: '700',
   },
   money: {
@@ -435,7 +507,7 @@ const styles = StyleSheet.create({
   },
   price: {
     fontFamily: fonts.extrabold,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     fontWeight: '800',
     color: colors.textPrimary,
     fontVariant: ['tabular-nums'],

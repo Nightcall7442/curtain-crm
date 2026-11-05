@@ -43,3 +43,5 @@ export const PLURAL_PARTICIPANTS: PluralForms = ['участник', 'участ
 export const PLURAL_DAYS: PluralForms = ['день', 'дня', 'дней'];
 export const PLURAL_YEARS: PluralForms = ['год', 'года', 'лет'];
 export const PLURAL_MONTHS: PluralForms = ['месяц', 'месяца', 'месяцев'];
+/** После «у»: «у 1 сотрудника», «у 3 сотрудников», «у 21 сотрудника». */
+export const PLURAL_EMPLOYEES_GENITIVE: PluralForms = ['сотрудника', 'сотрудников', 'сотрудников'];
