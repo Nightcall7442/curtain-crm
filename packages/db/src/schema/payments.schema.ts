@@ -14,7 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { branches } from './branches.schema';
-import { paymentKindEnum, paymentMethodEnum } from './enums';
+import { paymentKindEnum, paymentMethodEnum, terminalPayTypeEnum } from './enums';
 import { orders } from './orders.schema';
 import { payrollRecords } from './payroll.schema';
 import { retailSales } from './retail.schema';
@@ -70,6 +70,14 @@ export const payments = pgTable(
     photoKey: text('photo_key'),
 
     /**
+     * Чем клиент заплатил по терминальному чеку (Click, Payme, …, наличные).
+     * Только у `terminal_check`: способ проводки чека всегда `card`, а тип —
+     * то, что продавец выбрал, пробивая чек. `null` — чек пробит до того,
+     * как тип стали спрашивать.
+     */
+    terminalPayType: terminalPayTypeEnum('terminal_pay_type'),
+
+    /**
      * Перенос: строка заведена миграцией из поля «предоплата» заказов, что
      * были до книги. Считается в «оплачено» по заказу и только в нём: через
      * руки и кассу в системе эти деньги не проходили, и класть их продавцу
@@ -104,6 +112,11 @@ export const payments = pgTable(
     ),
     // День «за что выдано» бывает только у выплат.
     check('payments_day_only_payroll', sql`${table.day} is null or ${table.kind} = 'payroll'`),
+    // Тип оплаты по терминалу бывает только у терминального чека.
+    check(
+      'payments_terminal_pay_type_only_checks',
+      sql`${table.terminalPayType} is null or ${table.kind} = 'terminal_check'`,
+    ),
     // Инкассация — только наличными: безнал через руки не проходит.
     check(
       'payments_collection_cash',

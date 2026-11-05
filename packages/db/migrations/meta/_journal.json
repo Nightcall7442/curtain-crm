@@ -512,6 +512,13 @@
       "when": 1793488717883,
       "tag": "0072_board_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793854895838,
+      "tag": "0073_terminal_pay_type",
+      "breakpoints": true
     }
   ]
 }
