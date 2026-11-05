@@ -1,4 +1,12 @@
-import { formatTime, inputToMajor, ORDER_INTAKE_ROLES, parseMoney } from '@curtain-crm/shared';
+import {
+  formatTime,
+  inputToMajor,
+  ORDER_INTAKE_ROLES,
+  parseMoney,
+  TERMINAL_PAY_TYPE_LABELS,
+  TERMINAL_PAY_TYPES,
+  type TerminalPayType,
+} from '@curtain-crm/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -13,6 +21,8 @@ import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle } from './Card';
 import { Field, Input, MoneyInput } from './Field';
 import { Icon } from './Icon';
+import { PayTypeBadge } from './PayTypeBadge';
+import { TerminalDaySummary } from './TerminalDaySummary';
 
 /**
  * Терминальные чеки — задание продавцов на день.
@@ -25,7 +35,7 @@ import { Icon } from './Icon';
  * не пробить лишний и не спорить, чей был второй.
  */
 export function TerminalCheckCard(): ReactElement {
-  const { m, money } = useLocale();
+  const { m, money, locale } = useLocale();
   const utils = trpc.useUtils();
   const today = trpc.terminalChecks.today.useQuery();
   const { user } = useAuth();
@@ -35,6 +45,8 @@ export function TerminalCheckCard(): ReactElement {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
+  /** Чем заплатил клиент — спрашивается у каждого нового чека (заказчик, 05.11). */
+  const [payType, setPayType] = useState<TerminalPayType | null>(null);
   const [photo, setPhoto] = useState<{ uri: string; base64: string; mimeType: string } | null>(
     null,
   );
@@ -76,7 +88,8 @@ export function TerminalCheckCard(): ReactElement {
       setPhoto(null);
       setAmount('');
       setComment('');
-      await utils.terminalChecks.today.invalidate();
+      setPayType(null);
+      await Promise.all([utils.terminalChecks.today.invalidate(), utils.terminalChecks.byDay.invalidate()]);
     },
     onError(error) {
       Alert.alert(m('common.saveError'), error.message);
@@ -120,16 +133,25 @@ export function TerminalCheckCard(): ReactElement {
               <Text style={styles.rowName} numberOfLines={1}>
                 {row.fullName}
               </Text>
+              <PayTypeBadge type={row.payType} />
               <Text style={styles.rowAmount}>{money(parseMoney(row.amount))}</Text>
               <Text style={styles.rowTime}>{formatTime(row.createdAt)}</Text>
               <Icon name="completed" size={16} color={colors.textMuted} />
             </View>
           ))}
 
+          {data.summary != null && data.summary.count > 0 && (
+            <TerminalDaySummary summary={data.summary} title={m('terminal.todayTotal')} />
+          )}
           {canCreate && (
             <Pressable
               onPress={() => {
+                // Каждый чек — с чистого листа: тип, фото и сумма от
+                // брошенной попытки не должны уйти со следующим клиентом.
                 setAmount('');
+                setPayType(null);
+                setPhoto(null);
+                setComment('');
                 setOpen(true);
               }}
               accessibilityRole="button"
@@ -178,6 +200,28 @@ export function TerminalCheckCard(): ReactElement {
             </Pressable>
           </View>
         </Field>
+        <Field label={m('terminal.payType')} required hint={m('terminal.payTypeHint')}>
+          <View style={styles.typeGrid} accessibilityRole="radiogroup">
+            {TERMINAL_PAY_TYPES.map((type) => (
+              <Pressable
+                key={type}
+                onPress={() => {
+                  setPayType(type);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: payType === type }}
+                accessibilityLabel={TERMINAL_PAY_TYPE_LABELS[locale][type]}
+                style={({ pressed }) => [
+                  styles.typeTile,
+                  payType === type ? styles.typeTileActive : null,
+                  pressed ? styles.pressed : null,
+                ]}
+              >
+                <PayTypeBadge type={type} size="lg" />
+              </Pressable>
+            ))}
+          </View>
+        </Field>
         <Field label={m('terminal.amount')} required>
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
@@ -191,14 +235,15 @@ export function TerminalCheckCard(): ReactElement {
         <SubmitButton
           label={m('terminal.submit')}
           onPress={() => {
-            if (photo === null) return;
+            if (photo === null || payType === null) return;
             create.mutate({
               photo: { mimeType: photo.mimeType, content: photo.base64 },
               amount: inputToMajor(amount),
+              payType,
               comment: comment.trim() === '' ? null : comment.trim(),
             });
           }}
-          disabled={photo === null || inputToMajor(amount) <= 0}
+          disabled={photo === null || payType === null || inputToMajor(amount) <= 0}
           pending={create.isPending}
         />
       </BottomSheet>
@@ -207,6 +252,26 @@ export function TerminalCheckCard(): ReactElement {
 }
 
 const styles = StyleSheet.create({
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  typeTile: {
+    width: '31%',
+    flexGrow: 1,
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  typeTileActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
   loader: {
     paddingVertical: spacing.md,
   },

@@ -1,9 +1,18 @@
 'use client';
 
-import { formatMoney, parseMoney, todayIso } from '@curtain-crm/shared';
+import {
+  formatMoney,
+  moneyToDecimalString,
+  parseMoney,
+  summarizeTerminalChecks,
+  TERMINAL_PAY_TYPE_LABELS_RU,
+  terminalPayTypeOf,
+  todayIso,
+} from '@curtain-crm/shared';
 import { Download } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
+import { PayTypeBadge, TerminalSummaryLine } from '@/components/cash/PayTypeBadge';
 import { useToast } from '@/components/providers/ToastProvider';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, FilterBar, Input } from '@/components/ui/Form';
@@ -20,7 +29,13 @@ import { formatDateTime } from '@/lib/utils';
  * дням, а за месяц. В файл идут те же колонки, что на экране, плюс ссылка
  * на фото — по ней чек открывается и из таблицы.
  */
-const HEADERS = ['Дата и время', 'Сотрудник', 'Сумма', 'Комментарий', 'Фото'] as const;
+const HEADERS = ['Дата и время', 'Сотрудник', 'Тип оплаты', 'Сумма', 'Комментарий', 'Фото'] as const;
+
+/** Подпись типа для Excel; старый чек или незнакомый тип — пусто. */
+function payTypeLabel(value: string | null | undefined): string {
+  const known = terminalPayTypeOf(value);
+  return known === null ? '' : TERMINAL_PAY_TYPE_LABELS_RU[known];
+}
 
 function monthStart(): string {
   return `${todayIso().slice(0, 7)}-01`;
@@ -33,7 +48,8 @@ export default function TerminalArchivePage(): ReactElement {
 
   const query = trpc.terminalChecks.list.useQuery({ from, to }, { enabled: to >= from });
   const rows = query.data ?? [];
-  const total = rows.reduce((sum, row) => sum + parseMoney(row.amount), 0);
+  // Итог периода с разбивкой по типам — тем же правилом, что сумма дня.
+  const summary = summarizeTerminalChecks(rows);
 
   const exportRows = (): void => {
     void exportToXlsx({
@@ -43,7 +59,9 @@ export default function TerminalArchivePage(): ReactElement {
       rows: rows.map((row) => [
         formatDateTime(row.createdAt),
         row.fullName,
-        parseMoney(row.amount).toString(),
+        payTypeLabel(row.payType),
+        // Рубли, а не тийины: файл сверяют с выписками Click и Payme.
+        moneyToDecimalString(parseMoney(row.amount)),
         row.comment ?? '',
         row.photoUrl ?? '',
       ]),
@@ -128,6 +146,12 @@ export default function TerminalArchivePage(): ReactElement {
             render: (row) => <span className="text-primary">{row.fullName}</span>,
           },
           {
+            key: 'type',
+            header: 'Тип оплаты',
+            sortValue: (row) => row.payType ?? '',
+            render: (row) => <PayTypeBadge type={row.payType} />,
+          },
+          {
             key: 'amount',
             header: 'Сумма',
             align: 'right',
@@ -160,12 +184,7 @@ export default function TerminalArchivePage(): ReactElement {
           },
         ]}
       />
-      {rows.length > 0 && (
-        <p className="px-5 pb-4 text-caption text-secondary">
-          {`Чеков: ${rows.length.toString()} · Итого: `}
-          <strong className="tabular-nums">{formatMoney(total)}</strong>
-        </p>
-      )}
+      <TerminalSummaryLine summary={summary} label="Итого за период" />
     </Card>
   );
 }

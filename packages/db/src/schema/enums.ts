@@ -22,6 +22,7 @@ import {
   PURCHASE_UNITS,
   ROLES,
   TASK_STATUSES,
+  TERMINAL_PAY_TYPES,
 } from '@curtain-crm/shared';
 import { pgEnum } from 'drizzle-orm/pg-core';
 
@@ -62,3 +63,6 @@ export const disciplineKindEnum = pgEnum('discipline_kind', DISCIPLINE_KINDS);
 
 /** Фото табло по статусу: «Работает», «Без заказа», «На перерыве». */
 export const boardPhotoKindEnum = pgEnum('board_photo_kind', BOARD_PHOTO_KINDS);
+
+/** Чем заплатили по терминальному чеку: Click, Payme, Uzum, Humo, Uzcard, наличные. */
+export const terminalPayTypeEnum = pgEnum('terminal_pay_type', TERMINAL_PAY_TYPES);

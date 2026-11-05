@@ -19,6 +19,7 @@ import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Field, Input } from '@/components/ui/Form';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable } from '@/components/ui/Table';
+import { PayTypeBadge, TerminalSummaryLine } from '@/components/cash/PayTypeBadge';
 import { trpc } from '@/lib/trpc';
 import { useToday } from '@/lib/useToday';
 import { cn } from '@/lib/utils';
@@ -280,6 +281,8 @@ export default function CashPage(): ReactElement {
           emptyMessage="Чеков за этот день нет"
           columns={[
             { key: 'who', header: 'Кто', render: (row) => row.fullName },
+            // Тип оплаты — значком, как на экране чеков в приложении (заказчик, 05.11).
+            { key: 'type', header: 'Тип', render: (row) => <PayTypeBadge type={row.payType} /> },
             {
               key: 'when',
               header: 'Когда',
@@ -315,6 +318,7 @@ export default function CashPage(): ReactElement {
             },
           ]}
         />
+        {checks.data?.summary != null && <TerminalSummaryLine summary={checks.data.summary} label="Итого за день" />}
       </Card>
 
       <Card>

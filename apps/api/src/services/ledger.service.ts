@@ -11,6 +11,7 @@ import {
   type PaymentIncomeKind,
   type PaymentKind as PaymentKindName,
   type PaymentMethod as PaymentMethodName,
+  type TerminalPayType,
 } from '@curtain-crm/shared';
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
 
@@ -56,6 +57,8 @@ export interface LedgerPost {
   /** У выплат — за какой день. */
   readonly day?: string | null;
   readonly photoKey?: string | null;
+  /** Чем заплатили по терминальному чеку — только у `terminal_check`. */
+  readonly terminalPayType?: TerminalPayType | null;
   readonly comment?: string | null;
   readonly at?: Date;
 }
@@ -82,6 +85,7 @@ export async function post(executor: DbExecutor, entry: LedgerPost): Promise<num
       payrollRecordId: entry.payrollRecordId ?? null,
       day: entry.day ?? null,
       photoKey: entry.photoKey ?? null,
+      terminalPayType: entry.terminalPayType ?? null,
       comment: entry.comment ?? null,
       receivedBy: entry.actorId,
       ...(entry.at === undefined ? {} : { receivedAt: entry.at }),
@@ -511,6 +515,8 @@ export interface LedgerEntry {
   readonly photoUrl: string | null;
   /** Перенос из старого учёта: в кассе и на руках не участвует. */
   readonly opening: boolean;
+  /** Чем заплатили по терминальному чеку; у остальных проводок — `null`. */
+  readonly terminalPayType: TerminalPayType | null;
 }
 
 /**
@@ -549,6 +555,7 @@ export async function entries(
       payrollRecordId: payments.payrollRecordId,
       photoKey: payments.photoKey,
       opening: payments.opening,
+      terminalPayType: payments.terminalPayType,
     })
     .from(payments)
     .innerJoin(users, eq(users.id, payments.receivedBy))

@@ -61,7 +61,9 @@ import {
   PayrollSchemeType,
   planPercent,
   QueueStatus,
+  TerminalPayType,
   Role,
+  workshopDayIso,
   workshopToday,
   type Role as RoleName,
 } from '@curtain-crm/shared';
@@ -1300,7 +1302,7 @@ async function run(db: Database): Promise<void> {
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
   };
   const beforeStandalone = await terminalChecksToday(db, null);
-  await sellerCaller.terminalChecks.create({ photo: pixel, amount: 150000, comment: 'чек без заказа' });
+  await sellerCaller.terminalChecks.create({ photo: pixel, amount: 150000, comment: 'чек без заказа', payType: TerminalPayType.PAYME });
   const afterStandalone = await terminalChecksToday(db, null);
   const cardRowsAfter = await installerCaller.payments.byOrder({ orderId: cashOrder.id });
   /* Чек не должен добавить прочий приход по карте — проверяем напрямую по книге. */
@@ -2983,6 +2985,61 @@ async function run(db: Database): Promise<void> {
     queuesAgain.cornice.total === Number.parseInt(corniceCount?.n ?? '-1', 10) &&
       queuesAgain.cornice.total >= queuesAgain.cornice.items.length,
     `${queuesAgain.cornice.total.toString()} / ${corniceCount?.n ?? '?'}`,
+  );
+
+  /* --------------- 12. Терминальные чеки: тип оплаты и сумма дня ---------- */
+
+  /*
+    Заказчик (05.11): у чека — значок типа оплаты (Click, Payme, Uzum, Humo,
+    Uzcard, наличные), его спрашивают при новом чеке; под «День» — общая
+    сумма за день.
+  */
+  await sellerCaller.terminalChecks.create({ photo: pixel, amount: 300000, payType: TerminalPayType.CLICK });
+  await sellerCaller.terminalChecks.create({ photo: pixel, amount: 200000, payType: TerminalPayType.CASH });
+  const todayChecks = await caller.terminalChecks.byDay({ day: workshopDayIso(new Date()) });
+  const clickRow = todayChecks.rows.find((row) => row.payType === TerminalPayType.CLICK);
+  check(
+    'терминал: тип оплаты сохраняется у чека',
+    clickRow !== undefined && todayChecks.rows.some((row) => row.payType === TerminalPayType.CASH),
+    JSON.stringify(todayChecks.rows.map((row) => [row.amount, row.payType])),
+  );
+  const rowsTotal = todayChecks.rows.reduce((sum, row) => sum + parseMoney(row.amount), 0);
+  const clickLine = todayChecks.summary.byType.find((line) => line.payType === TerminalPayType.CLICK);
+  check(
+    'терминал: сумма дня — все чеки дня, разбивка по типам',
+    todayChecks.summary.total === rowsTotal &&
+      todayChecks.summary.count === todayChecks.rows.length &&
+      clickLine !== undefined &&
+      clickLine.amount >= parseMoney('300000'),
+    `${moneyToDecimalString(todayChecks.summary.total)} / ${moneyToDecimalString(rowsTotal)}`,
+  );
+  const sellerToday = await sellerCaller.terminalChecks.today();
+  check(
+    'терминал: на «Работе» у продавца — та же сумма дня',
+    sellerToday.summary?.total === todayChecks.summary.total,
+  );
+  // Старое приложение (APK до 05.11) поля не знает: ему — понятная просьба
+  // обновиться, а не «Поле обязательно».
+  await expectRejectedWith(
+    'терминал: новый чек без типа оплаты не пробивается — с просьбой обновить приложение',
+    () => sellerCaller.terminalChecks.create({ photo: pixel, amount: 1000 } as never),
+    (message) => message.includes('Обновите приложение'),
+  );
+  const sewerToday = await sewerCaller.terminalChecks.today();
+  check(
+    'терминал: швея видит норму, но не суммы, типы и фото',
+    sewerToday.count === todayChecks.count && sewerToday.rows.length === 0 && sewerToday.summary === null,
+    JSON.stringify({ count: sewerToday.count, rows: sewerToday.rows.length, summary: sewerToday.summary }),
+  );
+  await expectRejected('терминал: тип оплаты бывает только у терминального чека', () =>
+    db.insert(payments).values({
+      branchId: branch.id,
+      kind: PaymentKind.OTHER,
+      method: PaymentMethod.CARD,
+      amount: '1000.00',
+      receivedBy: seller.id,
+      terminalPayType: TerminalPayType.PAYME,
+    }),
   );
 }
 

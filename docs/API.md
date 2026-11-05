@@ -237,6 +237,21 @@ refresh-токен. Предъявление уже отозванного refre
 маржи и рентабельности: сколько мастерская заработала на клиенте —
 управленческая цифра.
 
+## terminalChecks — чеки с терминала
+
+| Процедура | Тип | Доступ | Назначение |
+|---|---|---|---|
+| `terminalChecks.create` | mutation | вошедший | Пробить чек: `photo`, `amount`, `payType` (обязателен: `click \| payme \| uzum \| humo \| uzcard \| cash`), `comment?`. Без `payType` — `BAD_REQUEST` «Обновите приложение: …» (старая сборка). В ответе `count` и `target` нормы дня |
+| `terminalChecks.today` | query | вошедший | Норма дня (`target`, `count`, `remaining`); `rows` и `summary` — продавцам и руководству, остальным `[]` и `null` |
+| `terminalChecks.byDay` | query | руководство | Чеки дня `day`: `rows`, `count`, `target`, `summary` |
+| `terminalChecks.list` | query | руководство | Архив за `from`–`to` (до 5000 чеков) |
+
+Строка чека: `id`, `userId`, `fullName`, `amount`, `payType` (`null` у чеков до
+05.11.2026), `comment`, `photoUrl`, `createdAt`, `orderNumber`. `summary` —
+`{ total, count, byType: { payType, count, amount }[] }`: типы в порядке
+`TERMINAL_PAY_TYPES`, «без типа» (`payType: null`) — последней строкой,
+пустые типы не попадают.
+
 ## reports
 
 Все — только руководству.

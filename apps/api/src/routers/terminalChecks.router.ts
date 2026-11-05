@@ -4,7 +4,9 @@ import {
   parseMoney,
   PaymentKind,
   Role,
+  summarizeTerminalChecks,
   TERMINAL_CHECKS_DAILY_TARGET,
+  TERMINAL_PAY_TYPES,
   type Role as RoleName,
 } from '@curtain-crm/shared';
 import { branches, userRoles, users, type DbExecutor } from '@curtain-crm/db';
@@ -28,10 +30,9 @@ import { dayRange, workshopToday } from './payments.router';
  * Терминальные чеки — обязанность продавцов: за день не меньше
  * `TERMINAL_CHECKS_DAILY_TARGET` чеков по платёжному терминалу на всех.
  *
- * Чек — не отдельная сущность, а приход по карте в книге проводок с фото
- * чека. Поэтому «пробито сегодня» и «принято картой» — одно число, и
- * карта, принятая по заказу продавцом или установщиком, тоже идёт в норму.
- * Роутер оставлен как фасад: экранам нужен именно «чеки за день».
+ * Чек — проводка вида `terminal_check` в книге: фото, сумма и тип оплаты.
+ * Это не деньги мастерской: в кассу и на счёт не идёт, а приход по карте
+ * по заказу в норму не засчитывается — владелец развёл эти две вещи.
  */
 
 export async function sellerUserIds(executor: DbExecutor): Promise<number[]> {
@@ -56,6 +57,8 @@ const toCheck = (row: Awaited<ReturnType<typeof entries>>[number]) => ({
   photoUrl: row.photoUrl,
   createdAt: row.receivedAt,
   orderNumber: row.orderNumber,
+  /** Чем заплатили: Click, Payme, …, наличные; у старых чеков — `null`. */
+  payType: row.terminalPayType,
 });
 
 /** Видит суммы и фото чеков тот, кто их пробивает или считает кассу. */
@@ -89,7 +92,11 @@ async function branchFor(executor: DbExecutor, user: { primaryBranchId: number |
 
 export const terminalChecksRouter = router({
   /**
-   * Пробить чек: фото с терминала и сумма.
+   * Пробить чек: фото с терминала, сумма и тип оплаты.
+   *
+   * Тип оплаты (Click, Payme, Uzum, Humo, Uzcard, наличные) спрашивается у
+   * каждого нового чека — так попросил заказчик 05.11: у чека значок, по
+   * дню — сумма с разбивкой по типам.
    *
    * Чек — запись о пробитом фискальном чеке, а не деньги: в кассу и на счёт
    * он не идёт, в приход по источникам не входит. Прикрепить фото к приходу
@@ -100,6 +107,11 @@ export const terminalChecksRouter = router({
       z.object({
         photo: base64FileSchema,
         amount: moneySchema.refine((value) => value > 0, 'Сумма должна быть больше нуля'),
+        // Без типа присылает только приложение до 05.11: продавцу — понятная
+        // просьба обновиться, а не «Поле обязательно».
+        payType: z.enum(TERMINAL_PAY_TYPES, {
+          required_error: 'Обновите приложение: в новой версии у чека выбирают тип оплаты',
+        }),
         comment: optionalText(200),
       }),
     )
@@ -121,6 +133,7 @@ export const terminalChecksRouter = router({
           method: 'card',
           amount: parseMoney(input.amount),
           photoKey: stored.key,
+          terminalPayType: input.payType,
           actorId: ctx.user.id,
           comment: input.comment ?? null,
         });
@@ -145,14 +158,19 @@ export const terminalChecksRouter = router({
       });
     }),
 
-  /** Норму дня видят все (она общая), суммы и фото — только продавцы и руководство. */
+  /**
+   * Норму дня видят все (она общая), суммы и фото — только продавцы и
+   * руководство. Сумма дня — им же: остальным `summary` = `null`, а не ноль.
+   */
   today: protectedProcedure.query(async ({ ctx }) => {
     const rows = await checksInRange(ctx.db, dayRange(workshopToday()));
+    const sees = seesChecks(ctx.user.roles);
     return {
       target: TERMINAL_CHECKS_DAILY_TARGET,
       count: rows.length,
       remaining: Math.max(0, TERMINAL_CHECKS_DAILY_TARGET - rows.length),
-      rows: seesChecks(ctx.user.roles) ? rows : [],
+      rows: sees ? rows : [],
+      summary: sees ? summarizeTerminalChecks(rows) : null,
     };
   }),
 
@@ -169,6 +187,7 @@ export const terminalChecksRouter = router({
 
   byDay: managementProcedure.input(z.object({ day: z.string().date() })).query(async ({ ctx, input }) => {
     const rows = await checksInRange(ctx.db, dayRange(input.day));
-    return { target: TERMINAL_CHECKS_DAILY_TARGET, count: rows.length, rows };
+    // Сумма дня с разбивкой по типам — под «День» (просьба заказчика 05.11).
+    return { target: TERMINAL_CHECKS_DAILY_TARGET, count: rows.length, rows, summary: summarizeTerminalChecks(rows) };
   }),
 });

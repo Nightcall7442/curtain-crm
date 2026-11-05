@@ -116,6 +116,8 @@ const EXACT: Readonly<Record<string, string>> = {
 
   // terminalChecks
   'Конец периода раньше начала': 'Davr oxiri boshidan oldin',
+  'Обновите приложение: в новой версии у чека выбирают тип оплаты':
+    "Ilovani yangilang: yangi versiyada chek uchun to'lov turi tanlanadi",
 
   // dayOff
   'Не удалось создать запрос': "So'rov yaratib bo'lmadi",
