@@ -104,7 +104,12 @@ export function CashCollectionCard(): ReactElement | null {
           <MoneyInput value={amount} onChangeText={setAmount} placeholder="0" />
         </Field>
         {/* Инкассация — касса, а касса — только на смене (412). */}
-        <ShiftRequiredBanner style={styles.shiftBanner} />
+        <ShiftRequiredBanner
+          style={styles.shiftBanner}
+          onNavigate={() => {
+            setOpen(false);
+          }}
+        />
         <SubmitButton
           label={m('collection.confirm')}
           onPress={() => {

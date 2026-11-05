@@ -22,6 +22,7 @@ import {
   View,
 } from 'react-native';
 
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
@@ -48,6 +49,7 @@ export function OrderPhotoUpload({
   readonly orderStatus: OrderStatus;
 }): ReactElement {
   const { t, m } = useLocale();
+  const needsShift = useNeedsShift();
   const { user } = useAuth();
   const roles = user?.roles ?? [];
 
@@ -219,11 +221,16 @@ export function OrderPhotoUpload({
 
       <View style={styles.actions}>
         <Pressable
-          disabled={upload.isPending}
+          disabled={upload.isPending || needsShift}
           onPress={() => {
             confirmAndSend(true);
           }}
-          style={({ pressed }) => [styles.action, styles.actionPrimary, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [
+            styles.action,
+            styles.actionPrimary,
+            pressed ? styles.pressed : null,
+            needsShift ? styles.off : null,
+          ]}
           accessibilityRole="button"
         >
           {upload.isPending ? (
@@ -234,11 +241,16 @@ export function OrderPhotoUpload({
         </Pressable>
 
         <Pressable
-          disabled={upload.isPending}
+          disabled={upload.isPending || needsShift}
           onPress={() => {
             confirmAndSend(false);
           }}
-          style={({ pressed }) => [styles.action, styles.actionSecondary, pressed ? styles.pressed : null]}
+          style={({ pressed }) => [
+            styles.action,
+            styles.actionSecondary,
+            pressed ? styles.pressed : null,
+            needsShift ? styles.off : null,
+          ]}
           accessibilityRole="button"
         >
           <Text style={styles.actionSecondaryText}>{m('photo.gallery')}</Text>
@@ -268,6 +280,10 @@ export function OrderPhotoUpload({
 }
 
 const styles = StyleSheet.create({
+  // Без смены сервер действие отклонит (412) — кнопка гаснет, как «Отправить».
+  off: {
+    opacity: opacity.disabled,
+  },
   label: {
     ...typography.caption,
     color: colors.textMuted,

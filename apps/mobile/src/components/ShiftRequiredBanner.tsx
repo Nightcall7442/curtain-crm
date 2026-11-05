@@ -36,9 +36,17 @@ export function useNeedsShift(): boolean {
 
 export function ShiftRequiredBanner({
   style,
+  onNavigate,
 }: {
   /** Внешние отступы: в списке без `gap` баннеру нужен свой зазор снизу. */
-  style?: StyleProp<ViewStyle>;
+  readonly style?: StyleProp<ViewStyle>;
+  /**
+   * Вызывается перед переходом на «Смену». Баннер внутри шторки передаёт
+   * сюда её закрытие: шторка — модальное окно экрана-вкладки, и без этого
+   * она оставалась поверх «Смены» (в браузере) или гасла без ведома
+   * экрана и потом не открывалась снова (на Android).
+   */
+  readonly onNavigate?: () => void;
 }): ReactElement | null {
   const { m } = useLocale();
   const navigation = useNavigation();
@@ -55,6 +63,7 @@ export function ShiftRequiredBanner({
           экраны над ними, а не кладёт поверх вторую копию. С вкладки
           действие поднимается к тому же стеку, так что путь один.
         */
+        onNavigate?.();
         navigation.dispatch(CommonActions.navigate('Tabs', { screen: 'CheckInOut' }, { pop: true }));
       }}
       accessibilityRole="button"

@@ -214,7 +214,10 @@ export function OrderCard({
     >
       <PressableScale
         onPress={onPress}
-        accessibilityLabel={m('orderCard.a11y', { n: orderNumber, client: clientName, status: t(ORDER_STATUS_LABELS, status) })}
+        accessibilityLabel={`${m('orderCard.a11y', { n: orderNumber, client: clientName, status: t(ORDER_STATUS_LABELS, status) })}${
+          // У нажимаемой карточки чтец читает только эту подпись — пояснение добавляем сюда.
+          note === undefined ? '' : `. ${note}`
+        }`}
       >
         {card}
       </PressableScale>

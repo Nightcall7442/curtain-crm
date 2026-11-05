@@ -275,7 +275,10 @@ function PodiumRow({
         entry.isMe ? styles.podiumRowMine : null,
       ]}
     >
-      <Text style={styles.podiumPlace}>{entry.place === null ? '—' : entry.place.toString()}</Text>
+      {/* Место — только за баллы, как в карточке «Ваше место» и на табло. */}
+      <Text style={styles.podiumPlace}>
+        {(entry.score ?? 0) > 0 && entry.place !== null ? entry.place.toString() : '—'}
+      </Text>
 
       <Text style={styles.podiumName} numberOfLines={1}>
         {entry.fullName}

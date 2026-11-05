@@ -925,8 +925,8 @@ const ru = {
   'cashDay.onAccountParts': 'карта {card} · QR {qr} · Click {click}',
   'cashDay.inKassaNone': 'наличные через систему ещё не сдавали',
   'cashDay.onHands': 'На руках',
-  // Число и слово — неразрывно; слово склоняется: «у 1 сотрудника», «у 5 сотрудников».
-  'cashDay.onHandsWho': 'У {n}\u00A0{who}, сейчас',
+  // «У», число и слово — неразрывно; слово склоняется: «у 1 сотрудника», «у 5 сотрудников».
+  'cashDay.onHandsWho': 'У\u00A0{n}\u00A0{who}, сейчас',
   'cashDay.bySource': 'Приход по источникам',
   'cashDay.noIncome': 'За этот день приходов нет',
   'cashDay.methodTotal': '{method} итого',
@@ -1577,7 +1577,8 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'pw.title': 'Shaxsiy ish',
   'pw.hint': 'Ish joyi uskunasida o\'zingiz uchun nima qilayotganingizni yozing. Rahbariyat bandlikni ko\'radi — bu taqiq emas, hisob: band mashina buzilgandek, sarflangan mato kamomaddek ko\'rinmaydi.',
   'pw.what': 'Nima tikyapsiz',
-  'pw.whatPlaceholder': 'Masalan, «Yotoqxonaga parda, o\'zimga»',
+  // Короче русского: длинный пример обрезался в поле на 360 точках.
+  'pw.whatPlaceholder': 'Masalan, «Yotoqxonaga parda»',
   'pw.details': 'Tafsilotlar',
   'pw.detailsHint': 'Ixtiyoriy: mato, o\'lchamlar, kim uchun',
   'pw.detailsPlaceholder': 'Bu ish haqida nimani eslab qolish kerak',

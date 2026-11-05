@@ -181,10 +181,16 @@ export function Row({
   label,
   value,
   valueColor,
+  empty = false,
 }: {
   readonly label: string;
   readonly value: string;
   readonly valueColor?: string;
+  /**
+   * Значения нет («Время не назначено»): приглушённым обычным начертанием,
+   * как «не назначен» у исполнителей. Жирным чёрным пустое читалось как данные.
+   */
+  readonly empty?: boolean;
 }): ReactElement {
   /*
     Кто уступает место, решает ЗНАЧЕНИЕ. Имя, адрес или код переносятся —
@@ -203,6 +209,7 @@ export function Row({
         style={[
           styles.rowValue,
           unbreakable ? styles.rowValueWhole : null,
+          empty ? styles.rowValueEmpty : null,
           valueColor === undefined ? null : { color: valueColor },
         ]}
       >
@@ -574,6 +581,13 @@ const styles = StyleSheet.create({
   rowValueWhole: {
     flexGrow: 0,
     flexShrink: 0,
+  },
+  rowValueEmpty: {
+    // Обычное начертание и вес 400: жирный вес поверх Medium браузер
+    // дорисовал бы поддельным жирным.
+    fontFamily: typography.body.fontFamily,
+    fontWeight: '400',
+    color: colors.textMuted,
   },
   rowValue: {
     ...typography.value,

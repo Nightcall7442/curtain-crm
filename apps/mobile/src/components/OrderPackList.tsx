@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, CardTitle, Skeleton } from './Card';
 import { Icon } from './Icon';
+import { useNeedsShift } from './ShiftRequiredBanner';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, opacity, spacing, typography } from '../theme';
@@ -20,6 +21,7 @@ import { useLocale } from '../hooks/useLocale';
  */
 export function OrderPackList({ orderId }: { readonly orderId: number }): ReactElement | null {
   const { m } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const rows = trpc.orders.packList.useQuery({ id: orderId });
 
@@ -61,9 +63,9 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
           onPress={() => {
             setPacked.mutate({ id: orderId, key: row.key, packed: !row.checked });
           }}
-          disabled={setPacked.isPending}
+          disabled={setPacked.isPending || needsShift}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: row.checked }}
+          accessibilityState={{ checked: row.checked, disabled: needsShift }}
           accessibilityLabel={row.label}
           /*
             Черта — сверху каждой строки, кроме первой: под последней она
@@ -73,6 +75,8 @@ export function OrderPackList({ orderId }: { readonly orderId: number }): ReactE
             styles.row,
             index === 0 ? null : styles.rowDivided,
             pressed ? styles.pressed : null,
+            // Без смены отметку не сохранят (412): строки гаснут, как погашенная кнопка.
+            needsShift ? styles.off : null,
           ]}
         >
           {/*
@@ -125,6 +129,9 @@ const CHECKBOX_RADIUS = 6;
 const TICK_SIZE = 16;
 
 const styles = StyleSheet.create({
+  off: {
+    opacity: opacity.disabled,
+  },
   counter: {
     ...typography.footnote,
     // Начертанием, а не `fontWeight` поверх Medium: браузер рисовал ложный полужирный.

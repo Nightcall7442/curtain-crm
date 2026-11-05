@@ -39,6 +39,7 @@ import { OrderPayments } from '../components/OrderPayments';
 import { Card, CardTitle, Empty, ErrorState, Pill, Row } from '../components/Card';
 import { orderStatusTone } from '../components/OrderCard';
 import { OrderManagement } from '../components/OrderManagement';
+import { ShiftRequiredBanner, useNeedsShift } from '../components/ShiftRequiredBanner';
 import { OrderCommentsCard } from '../components/order/OrderCommentsCard';
 import { OrderCorniceCard } from '../components/order/OrderCorniceCard';
 import { useInstallSlotLabel } from '../components/order/InstallationTimeRow';
@@ -92,6 +93,11 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
   const order = trpc.orders.byId.useQuery({ id: orderId });
   const transitions = trpc.orders.availableTransitions.useQuery({ id: orderId });
+  /*
+    Без смены сервер отклонит любое действие с заказом (412): кнопки этапа
+    гаснут, а баннер сверху говорит почему и ведёт на «Смену».
+  */
+  const needsShift = useNeedsShift();
 
   /*
     Карандаш в шапке — тем, кому сервер разрешит правку (`canEditOrder`):
@@ -242,6 +248,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
+      <ShiftRequiredBanner />
       <Card>
         <View style={styles.headerRow}>
           <Text style={styles.orderNumber}>{data.orderNumber ?? `#${data.id.toString()}`}</Text>
@@ -288,9 +295,8 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
             <Row
               label={m('install.title')}
               value={data.installationAt === null ? m('install.notSet') : installSlotLabel(data.installationAt)}
-              // Пустое — приглушённым, как «не назначен» у исполнителей: чёрным
-              // жирным «Время не назначено» читалось как значение.
-              valueColor={data.installationAt === null ? colors.textMuted : undefined}
+              // Пустое — как ниже в строке установки: приглушённым обычным, не жирным чёрным.
+              empty={data.installationAt === null}
             />
           )}
           {/* Суммы приходят `null` тем, кому их не показывают, — цеху. */}
@@ -459,7 +465,7 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                 <>
                   {/* Недоступный переход виден, но неактивен — и говорит почему. */}
                   <Pressable
-                    disabled={changeStatus.isPending || primary.blockedReason !== null}
+                    disabled={changeStatus.isPending || primary.blockedReason !== null || needsShift}
                     onPress={() => {
                       startTransition(primary.to, primary.requiresComment);
                     }}
@@ -467,10 +473,14 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
                       styles.primaryAction,
                       primary.kind === TransitionKind.FORWARD ? null : styles.primaryActionMuted,
                       pressed ? styles.pressed : null,
-                      changeStatus.isPending || primary.blockedReason !== null ? styles.disabled : null,
+                      changeStatus.isPending || primary.blockedReason !== null || needsShift
+                        ? styles.disabled
+                        : null,
                     ]}
                     accessibilityRole="button"
-                    accessibilityState={{ disabled: changeStatus.isPending || primary.blockedReason !== null }}
+                    accessibilityState={{
+                      disabled: changeStatus.isPending || primary.blockedReason !== null || needsShift,
+                    }}
                   >
                     <Text style={styles.primaryActionText}>{primary.label}</Text>
                   </Pressable>
@@ -480,11 +490,17 @@ export function OrderDetailScreen({ route }: RootStackScreenProps<'OrderDetail'>
 
                   {list.length > 1 && (
                     <Pressable
+                      disabled={needsShift}
                       onPress={() => {
                         setSheetOpen(true);
                       }}
-                      style={({ pressed }) => [styles.moreAction, pressed ? styles.pressed : null]}
+                      style={({ pressed }) => [
+                        styles.moreAction,
+                        pressed ? styles.pressed : null,
+                        needsShift ? styles.disabled : null,
+                      ]}
                       accessibilityRole="button"
+                      accessibilityState={{ disabled: needsShift }}
                     >
                       <Text style={styles.moreActionText}>
                         {m('order.allActions', { n: list.length })}

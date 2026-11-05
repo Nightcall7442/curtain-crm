@@ -28,6 +28,7 @@ import { CatalogPicker } from '../components/CatalogPicker';
 import { BottomSheet } from '../components/BottomSheet';
 import { ChipSelect, Field, Input, MoneyInput } from '../components/Field';
 import { Icon } from '../components/Icon';
+import { ShiftRequiredBanner, useNeedsShift } from '../components/ShiftRequiredBanner';
 import { SubmitButton } from '../components/SubmitButton';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
@@ -96,6 +97,8 @@ const toNumber = (raw: string): number => Number.parseFloat(raw.replace(',', '.'
 export function ReadyMadeStockScreen(): ReactElement {
   const navigation = useNavigation();
   const { m, t, money } = useLocale();
+  // Склад правят только на смене (412 без неё): кнопки гаснут, баннер сверху объясняет.
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const insets = useSafeAreaInsets();
 
@@ -318,6 +321,7 @@ export function ReadyMadeStockScreen(): ReactElement {
           однострочной соседкой. Прежний значок к тому же был тем же «плюсом»,
           что у «Добавить готовые шторы», — третье действие с одним знаком.
         */}
+        <ShiftRequiredBanner />
         <View style={styles.actions}>
           <Pressable
             onPress={() => {
@@ -660,7 +664,12 @@ export function ReadyMadeStockScreen(): ReactElement {
               <Text style={styles.addMateText}>{m('stock.addMate')}</Text>
             </Pressable>
 
-            <SubmitButton label={m('stock.submit')} onPress={submit} pending={create.isPending} />
+            <SubmitButton
+              label={m('stock.submit')}
+              onPress={submit}
+              disabled={needsShift}
+              pending={create.isPending}
+            />
           </Card>
         )}
 
@@ -772,16 +781,23 @@ export function ReadyMadeStockScreen(): ReactElement {
                     </Pressable>
                   )}
                   <Pressable
+                    disabled={needsShift}
                     onPress={() => {
                       setCounting(item.id);
                       setCountValue(item.quantity.toString());
                     }}
                     accessibilityRole="button"
-                    style={({ pressed }) => [styles.rowAction, pressed ? styles.pressed : null]}
+                    accessibilityState={{ disabled: needsShift }}
+                    style={({ pressed }) => [
+                      styles.rowAction,
+                      pressed ? styles.pressed : null,
+                      needsShift ? styles.off : null,
+                    ]}
                   >
                     <Text style={styles.rowActionText}>{m('stock.recount')}</Text>
                   </Pressable>
                   <Pressable
+                    disabled={needsShift}
                     onPress={() => {
                       setPricing(item.id);
                       setPriceValue(
@@ -789,7 +805,12 @@ export function ReadyMadeStockScreen(): ReactElement {
                       );
                     }}
                     accessibilityRole="button"
-                    style={({ pressed }) => [styles.rowAction, pressed ? styles.pressed : null]}
+                    accessibilityState={{ disabled: needsShift }}
+                    style={({ pressed }) => [
+                      styles.rowAction,
+                      pressed ? styles.pressed : null,
+                      needsShift ? styles.off : null,
+                    ]}
                   >
                     <Text style={styles.rowActionText}>
                       {parseMoney(item.price) > 0 ? m('stock.changePrice') : m('stock.setPrice')}
@@ -886,6 +907,9 @@ function SheetSubject({
   кнопки: 44 и 48 в высоту, скругление 14 и 999, с рамкой и без.
 */
 const styles = StyleSheet.create({
+  off: {
+    opacity: opacity.disabled,
+  },
   mate: {
     marginTop: spacing.lg,
     paddingTop: spacing.lg,

@@ -9,6 +9,7 @@ import { Card, CardTitle, Empty } from '../Card';
 import { useWebAutoGrow } from '../Field';
 import { Icon } from '../Icon';
 import { VoiceCommentPlayer, VoiceRecorderButton } from '../VoiceComment';
+import { useNeedsShift } from '../ShiftRequiredBanner';
 
 /**
  * Высота строки ввода — та же, что у полей форм (`controlHeight`): поле и
@@ -27,6 +28,7 @@ const SEND_ICON = 18;
 /** Комментарии к заказу: текст и голос, своя лента и своя форма. */
 export function OrderCommentsCard({ orderId }: { readonly orderId: number }): ReactElement {
   const { m } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const [comment, setComment] = useState('');
   const comments = trpc.orderComments.listByOrder.useQuery({ orderId });
@@ -86,13 +88,14 @@ export function OrderCommentsCard({ orderId }: { readonly orderId: number }): Re
           {...(Platform.OS === 'web' ? { numberOfLines: 1 } : {})}
         />
         <Pressable
-          disabled={comment.trim().length === 0 || addComment.isPending}
+          // Без смены комментарий не примут (412) — «Отправить» гаснет.
+          disabled={comment.trim().length === 0 || addComment.isPending || needsShift}
           onPress={() => {
             addComment.mutate({ orderId, body: comment.trim() });
           }}
           style={({ pressed }) => [
             styles.sendButton,
-            comment.trim().length === 0 ? styles.disabled : null,
+            comment.trim().length === 0 || needsShift ? styles.disabled : null,
             pressed ? styles.pressed : null,
           ]}
           accessibilityRole="button"

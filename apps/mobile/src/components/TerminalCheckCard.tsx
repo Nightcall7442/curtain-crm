@@ -255,7 +255,12 @@ export function TerminalCheckCard(): ReactElement {
           />
         </Field>
         {/* Без смены чек не примут (412): баннер объясняет погашенную кнопку. */}
-        <ShiftRequiredBanner style={styles.shiftBanner} />
+        <ShiftRequiredBanner
+          style={styles.shiftBanner}
+          onNavigate={() => {
+            setOpen(false);
+          }}
+        />
         <SubmitButton
           label={m('terminal.submit')}
           onPress={() => {

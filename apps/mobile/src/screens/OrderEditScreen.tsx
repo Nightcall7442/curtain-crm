@@ -36,6 +36,7 @@ import {
   useOrderCatalog,
   validateOrderForm,
 } from '../components/order/OrderForm';
+import { ShiftRequiredBanner, useNeedsShift } from '../components/ShiftRequiredBanner';
 import type { DraftItem } from '../components/order/OrderItemCard';
 import { SubmitButton } from '../components/SubmitButton';
 import { useLocale } from '../hooks/useLocale';
@@ -81,6 +82,8 @@ export function OrderEditScreen({ route }: RootStackScreenProps<'OrderEdit'>): R
 
 function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElement {
   const { t, m } = useLocale();
+  // Правку без смены сервер не примет (412): «Сохранить» гаснет, баннер сверху говорит почему.
+  const needsShift = useNeedsShift();
   const navigation = useNavigation();
   const utils = trpc.useUtils();
   const catalog = useOrderCatalog();
@@ -185,6 +188,7 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ShiftRequiredBanner />
         {!forStock && (
           <Card>
             <CardTitle title={m('create.client')} icon="person" />
@@ -260,7 +264,12 @@ function OrderEditForm({ order }: { readonly order: OrderDetails }): ReactElemen
         )}
 
         {/* Общая кнопка формы — как «Создать заказ» и кнопки карточки заказа. */}
-        <SubmitButton label={m('edit.save')} onPress={submit} pending={update.isPending} />
+        <SubmitButton
+          label={m('edit.save')}
+          onPress={submit}
+          disabled={needsShift}
+          pending={update.isPending}
+        />
       </ScrollView>
       <CodeScanner
         visible={scanning !== null}

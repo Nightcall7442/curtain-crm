@@ -8,6 +8,7 @@ import {
 import { useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useNeedsShift } from '../ShiftRequiredBanner';
 import { useLocale } from '../../hooks/useLocale';
 import { notifyError, notifySuccess } from '../../lib/haptics';
 import { trpc } from '../../lib/trpc';
@@ -74,6 +75,7 @@ export function InstallationTimeRow({
   readonly editable: boolean;
 }): ReactElement {
   const { m } = useLocale();
+  const needsShift = useNeedsShift();
   const label = useInstallSlotLabel();
   const utils = trpc.useUtils();
   /** Шаг выбора: дата, потом время. `null` — ничего не выбирают. */
@@ -143,10 +145,13 @@ export function InstallationTimeRow({
           <ActivityIndicator color={colors.accent} />
         ) : (
           <Pressable
+            // Время установки без смены не сохранится (412) — выбор не открываем.
+            disabled={needsShift}
             onPress={open}
             accessibilityRole="button"
             accessibilityLabel={m('install.pick')}
-            style={({ pressed }) => [styles.change, pressed ? styles.pressed : null]}
+            accessibilityState={{ disabled: needsShift }}
+            style={({ pressed }) => [styles.change, pressed ? styles.pressed : null, needsShift ? styles.off : null]}
           >
             <Icon name="calendar" size={16} color={colors.accentStrong} />
             <Text style={styles.changeText}>{installationAt === null ? m('install.set') : m('install.change')}</Text>
@@ -317,6 +322,10 @@ function WebPickerField({
 }
 
 const styles = StyleSheet.create({
+  // Без смены сервер действие отклонит (412) — кнопка гаснет, как «Отправить».
+  off: {
+    opacity: opacity.disabled,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

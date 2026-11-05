@@ -13,6 +13,7 @@ import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
+import { ShiftRequiredBanner, useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
 import { Card, CardTitle, Empty, ErrorState, Skeleton } from './Card';
 import { Field, Input } from './Field';
@@ -31,6 +32,7 @@ export function DisciplineCard({
   readonly period: { year: number; month: number };
 }): ReactElement {
   const { m, t } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const query = trpc.discipline.my.useQuery(period);
   const [explaining, setExplaining] = useState<{ id: number; title: string } | null>(null);
@@ -156,13 +158,20 @@ export function DisciplineCard({
             style={styles.textarea}
           />
         </Field>
+        {/* Объяснение — тоже действие на смене: без неё сервер его не примет (412). */}
+        <ShiftRequiredBanner
+          style={styles.shiftBanner}
+          onNavigate={() => {
+            setExplaining(null);
+          }}
+        />
         <SubmitButton
           label={m('discipline.send')}
           onPress={() => {
             if (explaining === null) return;
             explain.mutate({ id: explaining.id, comment: comment.trim() });
           }}
-          disabled={comment.trim().length === 0}
+          disabled={comment.trim().length === 0 || needsShift}
           pending={explain.isPending}
         />
       </BottomSheet>
@@ -213,6 +222,10 @@ function Stat({
 const LINK_SLACK = (sizes.touchTarget - typography.footnote.lineHeight) / 2;
 
 const styles = StyleSheet.create({
+  // В шторке у полей свой нижний отступ, у баннера — этот: до кнопки тот же шаг.
+  shiftBanner: {
+    marginBottom: spacing.md,
+  },
   stats: {
     flexDirection: 'row',
     gap: spacing.sm,

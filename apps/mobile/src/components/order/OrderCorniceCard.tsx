@@ -2,6 +2,7 @@ import { CORNICE_STATUS_LABELS, CorniceStatus, formatDateTime, Role } from '@cur
 import type { ReactElement } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
+import { useNeedsShift } from '../ShiftRequiredBanner';
 import { useAuth } from '../../hooks/useAuth';
 import { useLocale } from '../../hooks/useLocale';
 import { notifyError, notifySuccess } from '../../lib/haptics';
@@ -22,6 +23,7 @@ export function OrderCorniceCard({
   readonly order: Pick<Order, 'id' | 'corniceStatus' | 'corniceInstaller' | 'corniceDoneAt'>;
 }): ReactElement | null {
   const { t, m } = useLocale();
+  const needsShift = useNeedsShift();
   const utils = trpc.useUtils();
   const { user } = useAuth();
   const orderId = order.id;
@@ -80,6 +82,7 @@ export function OrderCorniceCard({
           onPress={() => {
             takeCornice.mutate({ id: orderId });
           }}
+          disabled={needsShift}
           pending={takeCornice.isPending}
         />
       )}
@@ -93,6 +96,7 @@ export function OrderCorniceCard({
               onPress={() => {
                 finishCornice.mutate({ id: orderId });
               }}
+              disabled={needsShift}
               pending={finishCornice.isPending}
             />
             <Text style={styles.corniceHint}>{m('order.corniceHint')}</Text>
