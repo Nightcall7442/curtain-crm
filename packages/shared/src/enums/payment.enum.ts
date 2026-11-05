@@ -73,6 +73,8 @@ export const TERMINAL_PAY_TYPE_LABELS: Translated<TerminalPayType> = {
   uz: { click: 'Click', payme: 'Payme', uzum: 'Uzum', humo: 'Humo', uzcard: 'Uzcard', cash: 'Naqd' },
 };
 
+export const TERMINAL_PAY_TYPE_LABELS_RU = TERMINAL_PAY_TYPE_LABELS.ru;
+
 /**
  * Значок типа: надпись и цвета, общие для сайта и приложения. Фирменные
  * цвета и название — не логотипы: их рисовать не берёмся, а надпись

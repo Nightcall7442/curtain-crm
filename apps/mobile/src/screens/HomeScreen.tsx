@@ -17,6 +17,7 @@ import { Avatar } from '../components/Avatar';
 import { EventsBoard } from '../components/EventsBoard';
 import { Card, CardTitle, Empty, ErrorState, Pill, Row, Skeleton } from '../components/Card';
 import { Icon, type IconName } from '../components/Icon';
+import { PayTypeBadge } from '../components/PayTypeBadge';
 import { OrderCard } from '../components/OrderCard';
 import { RatingBoard } from '../components/RatingBoard';
 import { MonitorTiles } from '../components/monitor/MonitorTiles';
@@ -752,6 +753,7 @@ function TerminalTodayCard(): ReactElement | null {
             <Text style={styles.terminalName} numberOfLines={1}>
               {row.fullName}
             </Text>
+            {row.payType !== null && <PayTypeBadge type={row.payType} />}
             <Text style={styles.terminalAmount}>{money(parseMoney(row.amount))}</Text>
             <Text style={styles.terminalTime}>{formatTime(row.createdAt)}</Text>
           </View>

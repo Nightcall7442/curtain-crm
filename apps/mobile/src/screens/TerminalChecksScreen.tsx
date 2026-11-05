@@ -5,6 +5,8 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card, CardTitle, Empty, Skeleton } from '../components/Card';
 import { DateField } from '../components/DateField';
 import { Field } from '../components/Field';
+import { PayTypeBadge } from '../components/PayTypeBadge';
+import { TerminalDaySummary } from '../components/TerminalDaySummary';
 import { useLocale } from '../hooks/useLocale';
 import { trpc } from '../lib/trpc';
 import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
@@ -15,6 +17,9 @@ import { colors, radius, spacing, tabBarSpace, typography } from '../theme';
  * Руководитель открывает с главной по «Подробнее»: там только кто, сколько
  * и когда; здесь — сами чеки, как их сняли. Фото во всю ширину: цифры на
  * чеке мелкие, и превью-квадратик читать пришлось бы через увеличение.
+ *
+ * Под «День» — сумма чеков за день с разбивкой по типам оплаты, у чека —
+ * значок типа рядом с именем (просьба заказчика 05.11).
  */
 export function TerminalChecksScreen(): ReactElement {
   const { m, money } = useLocale();
@@ -38,6 +43,9 @@ export function TerminalChecksScreen(): ReactElement {
         <Field label={m('terminal.day')}>
           <DateField value={day} onChange={setDay} placeholder={m('terminal.day')} />
         </Field>
+        {query.data !== undefined && query.data.summary.count > 0 && (
+          <TerminalDaySummary summary={query.data.summary} title={m('terminal.dayTotal')} />
+        )}
       </Card>
 
       {query.isLoading ? (
@@ -53,7 +61,12 @@ export function TerminalChecksScreen(): ReactElement {
           <Card key={row.id}>
             <View style={styles.head}>
               <View style={styles.headText}>
-                <Text style={styles.name}>{row.fullName}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {row.fullName}
+                  </Text>
+                  {row.payType !== null && <PayTypeBadge type={row.payType} />}
+                </View>
                 <Text style={styles.time}>
                   {formatTime(row.createdAt)}
                   {row.comment === null ? '' : ` · ${row.comment}`}
@@ -96,10 +109,17 @@ const styles = StyleSheet.create({
   headText: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   name: {
     ...typography.body,
     fontWeight: '600',
     color: colors.textPrimary,
+    flexShrink: 1,
   },
   time: {
     ...typography.footnote,
