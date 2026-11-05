@@ -55,6 +55,22 @@ export function TabNavigator(): ReactElement {
   return (
     <>
     <Tab.Navigator
+      /*
+        Переход по вкладке — своим вызовом `navigate(имя, параметры)`.
+
+        Панель вкладок этой версии переходит через `navigate({ … })` с
+        объектом, а установленное ядро навигации считает такой вызов
+        устаревшим и на каждое нажатие пишет предупреждение в консоль — и
+        в APK, и в PWA. Поведение то же: уже открытую вкладку не трогаем
+        (её нажатие оставлено экрану), на другую переходим.
+      */
+      screenListeners={({ navigation, route }) => ({
+        tabPress: (event) => {
+          if (navigation.isFocused()) return;
+          event.preventDefault();
+          navigation.navigate(route.name, route.params);
+        },
+      })}
       screenOptions={{
         headerStyle: { backgroundColor: colors.header },
         headerTintColor: colors.headerText,
