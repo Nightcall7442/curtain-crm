@@ -14,11 +14,13 @@ import { Alert, AppState, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import superjson from 'superjson';
 
+import { WebAlertHost } from './src/components/WebAlertHost';
 import { AuthContext, type AuthState, type AuthUser } from './src/hooks/useAuth';
 import { LocaleProvider, useLocale, type Translate } from './src/hooks/useLocale';
 import { authFetch, isUnauthorized, setSessionExpiredHandler } from './src/lib/authFetch';
 import { accountStorage, tokenStorage } from './src/lib/storage';
 import { resolveApiUrl, trpc } from './src/lib/trpc';
+import { installWebAlert } from './src/lib/webAlert';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 /*
@@ -30,6 +32,12 @@ import { RootNavigator } from './src/navigation/RootNavigator';
   открыли, — свернул утром, развернул вечером, а «сегодня» всё утреннее.
   PWA живёт в браузере и слушает вкладку сама — её не трогаем.
 */
+/*
+  В браузере `Alert.alert` ничего не показывает — подтверждения и ошибки
+  молча пропадали. Подменяем до первого рендера; окна рисует `WebAlertHost`.
+*/
+installWebAlert();
+
 if (Platform.OS !== 'web') {
   focusManager.setEventListener((handleFocus) => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -121,6 +129,7 @@ export default function App(): ReactElement | null {
                 <RootNavigator />
               </NavigationContainer>
             </AuthGate>
+            <WebAlertHost />
           </SafeAreaProvider>
         </LocaleProvider>
       </QueryClientProvider>
