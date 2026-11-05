@@ -28,12 +28,57 @@
       html,
       body {
         height: 100%;
+        /* Страница не тянется и не обновляется жестом — как приложение, а не сайт. */
+        overscroll-behavior: none;
+      }
+      html {
+        /* Поля вокруг «телефона» на широком экране. */
+        background-color: #0e2f2b;
       }
       body {
         overflow: hidden;
-        margin: 0;
+        margin: 0 auto;
         /* Цвет фона приложения: пока грузится бандл, страница не мигает белым. */
         background-color: #14504a;
+        /*
+          Приложение — телефонного размера и на компьютере, и на планшете:
+          экраны свёрстаны под телефон, растянутые на 1440 px они выглядят
+          сайтом. Колонка в ширину большого телефона, по центру.
+        */
+        max-width: 480px;
+        /*
+          transform делает body «рамкой» для position: fixed — модальные окна
+          и нижние шторки react-native-web открываются внутри колонки, а не
+          на весь монитор.
+        */
+        transform: translateZ(0);
+        -webkit-text-size-adjust: 100%;
+        /* Как в приложении: текст интерфейса не выделяется долгим нажатием. */
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      @media (min-width: 481px) {
+        body {
+          box-shadow:
+            0 0 0 1px rgba(255, 255, 255, 0.06),
+            0 24px 80px rgba(0, 0, 0, 0.45);
+        }
+      }
+      input,
+      textarea,
+      [contenteditable='true'] {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      * {
+        /* Без синей вспышки при нажатии — у кнопок своё нажатое состояние. */
+        -webkit-tap-highlight-color: transparent;
+        /* Полос прокрутки в приложении нет; листается как обычно. */
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        display: none;
       }
       #root {
         display: flex;
