@@ -37,9 +37,15 @@ export const workPlans = pgTable(
     unique('work_plans_role_user_month_unique')
       .on(table.role, table.userId, table.effectiveFrom)
       .nullsNotDistinct(),
+    /*
+      Сравнение — как текст, а не как значения enum. Литерал 'cornice_installer'
+      в сравнении с enum — «использование нового значения»: на пустой базе
+      все миграции идут одной транзакцией, значение добавлено в ней же
+      (0024), и Postgres отказывал — CI не мог накатить схему с нуля.
+    */
     check(
       'work_plans_role_planned',
-      sql`${table.role} in (${sql.raw(PLAN_ROLES.map((role) => `'${role}'`).join(', '))})`,
+      sql`${table.role}::text in (${sql.raw(PLAN_ROLES.map((role) => `'${role}'`).join(', '))})`,
     ),
     check('work_plans_effective_from_first_day', sql`extract(day from ${table.effectiveFrom}) = 1`),
     check('work_plans_target_positive', sql`${table.target} > 0`),
