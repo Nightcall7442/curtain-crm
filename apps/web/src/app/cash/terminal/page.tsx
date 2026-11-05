@@ -2,9 +2,11 @@
 
 import {
   formatMoney,
+  moneyToDecimalString,
   parseMoney,
   summarizeTerminalChecks,
   TERMINAL_PAY_TYPE_LABELS_RU,
+  terminalPayTypeOf,
   todayIso,
 } from '@curtain-crm/shared';
 import { Download } from 'lucide-react';
@@ -29,6 +31,12 @@ import { formatDateTime } from '@/lib/utils';
  */
 const HEADERS = ['Дата и время', 'Сотрудник', 'Тип оплаты', 'Сумма', 'Комментарий', 'Фото'] as const;
 
+/** Подпись типа для Excel; старый чек или незнакомый тип — пусто. */
+function payTypeLabel(value: string | null | undefined): string {
+  const known = terminalPayTypeOf(value);
+  return known === null ? '' : TERMINAL_PAY_TYPE_LABELS_RU[known];
+}
+
 function monthStart(): string {
   return `${todayIso().slice(0, 7)}-01`;
 }
@@ -51,8 +59,9 @@ export default function TerminalArchivePage(): ReactElement {
       rows: rows.map((row) => [
         formatDateTime(row.createdAt),
         row.fullName,
-        row.payType === null ? '' : TERMINAL_PAY_TYPE_LABELS_RU[row.payType],
-        parseMoney(row.amount).toString(),
+        payTypeLabel(row.payType),
+        // Рубли, а не тийины: файл сверяют с выписками Click и Payme.
+        moneyToDecimalString(parseMoney(row.amount)),
         row.comment ?? '',
         row.photoUrl ?? '',
       ]),

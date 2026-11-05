@@ -2,6 +2,7 @@
 
 import {
   formatMoney,
+  moneyToDecimalString,
   MONTH_NAMES_RU,
   parseMoney,
   PAYROLL_RECORD_STATUS_LABELS_RU,
@@ -65,8 +66,8 @@ export function PayrollArchiveCard(): ReactElement {
         period(row),
         row.userFullName,
         ROLE_LABELS_RU[row.role],
-        parseMoney(row.calculatedAmount).toString(),
-        parseMoney(row.paidAmount).toString(),
+        moneyToDecimalString(parseMoney(row.calculatedAmount)),
+        moneyToDecimalString(parseMoney(row.paidAmount)),
         PAYROLL_RECORD_STATUS_LABELS_RU[row.status],
         row.approvedAt === null ? '' : formatDate(row.approvedAt),
         row.paidAt === null ? '' : formatDate(row.paidAt),
