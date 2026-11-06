@@ -136,14 +136,29 @@ export function workshopDayIso(at: Date | string): string {
   return `${year.toString()}-${pad(month)}-${pad(day)}`;
 }
 
+/*
+  Время и даты показываются по часам мастерской, а не по поясу устройства.
+
+  Пояс телефона бывает чужим: айфон, настроенный в США, живёт по
+  Тихоокеанскому времени, а часы на нём выставлены «на глаз» по Ташкенту.
+  Тогда смена, открытая в 09:01, показывалась начатой в «20:01». Все,
+  кто пользуется системой, работают в Ташкенте, и время у них одно — так
+  же его считает и сервер (`workshopToday`).
+*/
+
 /** Время момента: `14:05`. Строка — как отдаёт сервер (`createdAt`), число — `Date.now()`. */
 export function formatTime(at: Date | string | number): string {
-  return new Date(at).toLocaleTimeString(NUMERIC_LOCALE, { hour: '2-digit', minute: '2-digit' });
+  return new Date(at).toLocaleTimeString(NUMERIC_LOCALE, {
+    timeZone: WORKSHOP_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 /** День момента: `20.09.2026`. Для календарной строки `YYYY-MM-DD` — `formatIsoDate`. */
 export function formatDate(at: Date | string | number): string {
   return new Date(at).toLocaleDateString(NUMERIC_LOCALE, {
+    timeZone: WORKSHOP_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -153,6 +168,7 @@ export function formatDate(at: Date | string | number): string {
 /** Момент целиком: `20.09.2026, 14:05`; с `withYear: false` — `20.09, 14:05`. */
 export function formatDateTime(at: Date | string | number, withYear = true): string {
   return new Date(at).toLocaleString(NUMERIC_LOCALE, {
+    timeZone: WORKSHOP_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     ...(withYear ? { year: 'numeric' } : {}),

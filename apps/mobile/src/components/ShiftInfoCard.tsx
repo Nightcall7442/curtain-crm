@@ -1,7 +1,8 @@
-import { formatTime, monthNameGenitive, weekdayName } from '@curtain-crm/shared';
+import { formatTime, monthNameGenitive, weekdayName, workshopToday } from '@curtain-crm/shared';
 import { StyleSheet, Text, View } from 'react-native';
 import type { ReactElement } from 'react';
 
+import { serverNow } from '../lib/serverClock';
 import { colors, spacing, typography, fonts } from '../theme';
 
 import { Card, CardTitle, Pill, Row } from './Card';
@@ -31,7 +32,7 @@ export function ShiftInfoCard({
   const duration = ((): string => {
     if (startedAt === null) return '—';
 
-    const minutes = Math.max(0, Math.round((Date.now() - startedAt.getTime()) / 60_000));
+    const minutes = Math.max(0, Math.round((serverNow() - startedAt.getTime()) / 60_000));
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
 
@@ -46,9 +47,12 @@ export function ShiftInfoCard({
   const dateLabel = ((): string => {
     if (startedAt === null) return '—';
 
-    const weekday = weekdayName(((startedAt.getDay() + 6) % 7) + 1, locale);
-    const month = monthNameGenitive(startedAt.getMonth() + 1, locale);
-    return `${weekday}, ${startedAt.getDate().toString()} ${month}`;
+    // День — по Ташкенту, как и время рядом: у телефона с чужим поясом
+    // вечерняя смена иначе попадала на соседнее число.
+    const { year, month, day } = workshopToday(startedAt);
+    const weekdayIndex = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const weekday = weekdayName(((weekdayIndex + 6) % 7) + 1, locale);
+    return `${weekday}, ${day.toString()} ${monthNameGenitive(month, locale)}`;
   })();
 
   /*

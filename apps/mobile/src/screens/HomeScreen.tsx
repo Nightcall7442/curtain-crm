@@ -8,6 +8,7 @@ import {
   plural,
   PLURAL_EMPLOYEES_GENITIVE,
   RatingScope,
+  WORKSHOP_TIME_ZONE,
   yesterdayIso,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
@@ -28,6 +29,7 @@ import { useAuth, useCanDispatchOrders, useIsManagement } from '../hooks/useAuth
 import { useLocale } from '../hooks/useLocale';
 import { useToday } from '../hooks/useToday';
 import type { MessageKey } from '../i18n/messages';
+import { serverNow } from '../lib/serverClock';
 import { trpc } from '../lib/trpc';
 import {
   colors,
@@ -489,14 +491,25 @@ export function HomeScreen(): ReactElement {
 
 /* -------------------------------------------------------------------------- */
 
+/** Час по Ташкенту: один форматтер на модуль, а не новый на каждый рендер. */
+const WORKSHOP_HOUR = new Intl.DateTimeFormat('en-US', {
+  timeZone: WORKSHOP_TIME_ZONE,
+  hour: 'numeric',
+  hourCycle: 'h23',
+});
+
 /**
  * Приветствие по времени суток.
  *
- * Час берётся локальный, а не UTC: «Доброе утро» в восемь вечера — мелочь,
- * которая сразу читается как неработающее приложение.
+ * Час — по Ташкенту и по часам сервера, а не телефона: «Доброе утро» в
+ * восемь вечера — мелочь, которая сразу читается как неработающее
+ * приложение, а у телефона с чужим поясом или сбитыми часами она была.
  */
 function greeting(): MessageKey {
-  const hour = new Date().getHours();
+  // Час — частью формата, а не разбором строки: «9 PM» превратился бы в NaN.
+  const part = WORKSHOP_HOUR.formatToParts(serverNow()).find((entry) => entry.type === 'hour');
+  const parsed = Number(part?.value);
+  const hour = Number.isFinite(parsed) ? parsed % 24 : new Date().getHours();
 
   if (hour < 6) return 'home.greetingNight';
   if (hour < 12) return 'home.greetingMorning';

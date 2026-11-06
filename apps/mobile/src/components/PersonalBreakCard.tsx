@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notifyError, notifySuccess } from '../lib/haptics';
+import { serverNow } from '../lib/serverClock';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 
@@ -64,12 +65,12 @@ export function PersonalBreakCard({
 
   // Тикает раз в секунду, только пока отлучка открыта — на минуту, а не на
   // сутки, поэтому секунды здесь читаемы и не выглядят лишней точностью.
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => serverNow());
   useEffect(() => {
     if (active === null) return undefined;
 
     const timer = setInterval(() => {
-      setNow(Date.now());
+      setNow(serverNow());
     }, 1000);
 
     return () => {

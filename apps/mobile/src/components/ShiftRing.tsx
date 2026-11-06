@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
+import { serverNow } from '../lib/serverClock';
 import { colors, radius, spacing, typography, fonts } from '../theme';
 import { useLocale } from '../hooks/useLocale';
 
@@ -116,13 +117,13 @@ function useElapsed(
   pausedSeconds: number,
   pausedSince: Date | null,
 ): string {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => serverNow());
 
   useEffect(() => {
     if (startedAt === null) return undefined;
 
     const timer = setInterval(() => {
-      setNow(Date.now());
+      setNow(serverNow());
     }, 1000);
 
     return () => {

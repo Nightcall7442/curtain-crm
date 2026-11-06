@@ -116,7 +116,9 @@ describe('workshopToday', () => {
 });
 
 describe('formatTime / formatDateTime', () => {
-  const at = new Date(2026, 8, 20, 14, 5);
+  // Момент задан в UTC: 09:05 UTC — это 14:05 в Ташкенте. Время в
+  // приложении — время мастерской, а не пояса, выставленного в телефоне.
+  const at = new Date('2026-09-20T09:05:00Z');
 
   it('время двумя парами цифр', () => {
     expect(formatTime(at)).toBe('14:05');
@@ -126,6 +128,25 @@ describe('formatTime / formatDateTime', () => {
     expect(formatDate(at)).toBe('20.09.2026');
     expect(formatDateTime(at)).toBe('20.09.2026, 14:05');
     expect(formatDateTime(at, false)).toBe('20.09, 14:05');
+  });
+
+  it('по Ташкенту, даже если в телефоне чужой часовой пояс', () => {
+    /*
+      Телефон с поясом Тихоокеанского времени (так бывает у айфонов,
+      настроенных в США): раньше начало смены в 09:01 по Ташкенту
+      показывалось как «20:01».
+    */
+    const saved = process.env['TZ'];
+    process.env['TZ'] = 'America/Los_Angeles';
+    try {
+      // 20:30 UTC 20 сентября — уже 01:30 21 сентября в Ташкенте.
+      const lateUtc = new Date('2026-09-20T20:30:00Z');
+      expect(formatTime(lateUtc)).toBe('01:30');
+      expect(formatDate(lateUtc)).toBe('21.09.2026');
+      expect(formatDateTime(lateUtc)).toBe('21.09.2026, 01:30');
+    } finally {
+      process.env['TZ'] = saved;
+    }
   });
 });
 

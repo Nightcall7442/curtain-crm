@@ -2,6 +2,7 @@ import { DEFAULT_LOCALE, type Locale } from '@curtain-crm/shared';
 import { TRPCClientError } from '@trpc/client';
 
 import { ensureReadable, readableFailure } from './readableResponse';
+import { noteServerTime } from './serverClock';
 import { resolveApiUrl } from './trpc';
 import { tokenStorage } from './storage';
 
@@ -122,8 +123,11 @@ export const authFetch: typeof fetch = async (input, init) => {
   init = { ...init, headers: localized };
 
   let response: Response;
+  const sentAt = Date.now();
   try {
     response = await fetch(input, init);
+    // Часы сервера — для таймеров смены (см. `serverClock.ts`).
+    noteServerTime(response.headers.get('x-server-time'), sentAt, Date.now());
   } catch (error) {
     console.warn(`Нет связи с API: ${String(error)}`);
     return readableFailure(input, NO_CONNECTION[requestLocale], 503);
