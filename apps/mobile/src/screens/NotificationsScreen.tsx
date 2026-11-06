@@ -2,13 +2,13 @@ import {
   formatIsoDateShort,
   formatTime,
   isImportantNotification,
-  notificationTone,
   notificationDestination,
   type NotificationDestination,
+  notificationTone,
   type NotificationTone,
   type NotificationType,
   PayrollRecordStatus,
-  todayIso,
+  workshopDayIso,
 } from '@curtain-crm/shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState, type ReactElement } from 'react';
@@ -24,6 +24,7 @@ import {
 
 import { Empty, ErrorState } from '../components/Card';
 import { Icon, NOTIFICATION_ICONS, type IconName } from '../components/Icon';
+import { serverNow } from '../lib/serverClock';
 import { trpc } from '../lib/trpc';
 import {
   cardShadow,
@@ -349,19 +350,18 @@ const TILE_PALETTE: Readonly<
  * сотруднику нужно понять «только что или на прошлой неделе».
  */
 function shortTime(value: string | Date, yesterdayLabel: string): string {
-  const date = new Date(value);
-  const now = new Date();
+  /*
+    «Сегодня» и «вчера» — по Ташкенту и часам сервера, как и само время:
+    у телефона с чужим поясом утреннее уведомление иначе помечалось
+    «вчера», а время рядом печаталось уже ташкентское.
+  */
+  const day = workshopDayIso(new Date(value));
+  const now = serverNow();
 
-  const sameDay = (a: Date, b: Date): boolean => a.toDateString() === b.toDateString();
+  if (day === workshopDayIso(new Date(now))) return formatTime(value);
+  if (day === workshopDayIso(new Date(now - 24 * 60 * 60 * 1000))) return yesterdayLabel;
 
-  if (sameDay(date, now)) {
-    return formatTime(date);
-  }
-
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  if (sameDay(date, yesterday)) return yesterdayLabel;
-
-  return formatIsoDateShort(todayIso(date));
+  return formatIsoDateShort(day);
 }
 
 /**

@@ -161,7 +161,7 @@ export function SlideToConfirm({
 
   return (
     <View
-      style={[styles.track, WEB_GESTURE, disabled ? styles.trackDisabled : null]}
+      style={[styles.track, WEB_NO_SELECT, disabled ? styles.trackDisabled : null]}
       onLayout={(event: LayoutChangeEvent) => {
         trackWidth.current = event.nativeEvent.layout.width;
       }}
@@ -222,12 +222,15 @@ const GRAB_EXTRA = 24;
   Экран «Смена» на телефоне длиннее экрана, поэтому едва заметный увод
   пальца вниз запускал прокрутку — и бегунок в PWA не ехал вовсе или
   срывался на середине. `touch-action: none` говорит браузеру не
-  прокручивать от касаний внутри дорожки; `user-select: none` убирает
+  прокручивать от касаний внутри зоны бегунка — только её: с подписи
+  справа страница по-прежнему листается. `user-select: none` убирает
   выделение текста при долгом нажатии на айфоне. На телефоне в APK
   жестом и так управляет сам React Native — там стиль не нужен.
 */
 const WEB_GESTURE: ViewStyle | null =
   Platform.OS === 'web' ? ({ touchAction: 'none', userSelect: 'none' } as unknown as ViewStyle) : null;
+const WEB_NO_SELECT: ViewStyle | null =
+  Platform.OS === 'web' ? ({ userSelect: 'none' } as unknown as ViewStyle) : null;
 /** Сколько ждать, что дотянутый жест запустил действие (`busy`). */
 const CONFIRM_GRACE_MS = 400;
 

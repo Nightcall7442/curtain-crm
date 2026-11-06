@@ -491,6 +491,13 @@ export function HomeScreen(): ReactElement {
 
 /* -------------------------------------------------------------------------- */
 
+/** Час по Ташкенту: один форматтер на модуль, а не новый на каждый рендер. */
+const WORKSHOP_HOUR = new Intl.DateTimeFormat('en-US', {
+  timeZone: WORKSHOP_TIME_ZONE,
+  hour: 'numeric',
+  hourCycle: 'h23',
+});
+
 /**
  * Приветствие по времени суток.
  *
@@ -499,11 +506,10 @@ export function HomeScreen(): ReactElement {
  * приложение, а у телефона с чужим поясом или сбитыми часами она была.
  */
 function greeting(): MessageKey {
-  const hour = Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: WORKSHOP_TIME_ZONE, hour: 'numeric', hourCycle: 'h23' }).format(
-      serverNow(),
-    ),
-  );
+  // Час — частью формата, а не разбором строки: «9 PM» превратился бы в NaN.
+  const part = WORKSHOP_HOUR.formatToParts(serverNow()).find((entry) => entry.type === 'hour');
+  const parsed = Number(part?.value);
+  const hour = Number.isFinite(parsed) ? parsed % 24 : new Date().getHours();
 
   if (hour < 6) return 'home.greetingNight';
   if (hour < 12) return 'home.greetingMorning';

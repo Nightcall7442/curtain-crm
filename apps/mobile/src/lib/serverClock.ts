@@ -15,13 +15,26 @@
  */
 
 let offsetMs = 0;
+let hasSample = false;
+
+/**
+ * Запрос дольше этого в поправку не идёт, если она уже есть.
+ *
+ * Сервер ставит отметку в конце обработки, а не в середине пути: у
+ * загрузки фото или голоса на медленной связи «середина запроса» далека от
+ * момента отметки, и таймеры прыгали бы на секунды. Короткие запросы идут
+ * постоянно — точная поправка всегда найдётся.
+ */
+const MAX_SAMPLE_ROUND_TRIP_MS = 2_000;
 
 /** Отметка сервера пришла: запоминаем, насколько часы телефона расходятся с ним. */
 export function noteServerTime(header: string | null, sentAt: number, receivedAt: number): void {
   if (header === null) return;
   const serverMs = Number(header);
   if (!Number.isFinite(serverMs) || serverMs <= 0) return;
+  if (hasSample && receivedAt - sentAt > MAX_SAMPLE_ROUND_TRIP_MS) return;
   offsetMs = serverMs - (sentAt + receivedAt) / 2;
+  hasSample = true;
 }
 
 /** «Сейчас» по часам сервера, в миллисекундах эпохи — замена `Date.now()` для таймеров. */

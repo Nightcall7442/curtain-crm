@@ -1,3 +1,4 @@
+import { WORKSHOP_TIME_ZONE } from '@curtain-crm/shared';
 import { clsx, type ClassValue } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
 
@@ -60,6 +61,7 @@ export function formatDate(value: Date | string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return '—';
 
   return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: WORKSHOP_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -73,7 +75,13 @@ export function formatDateTime(value: Date | string | null | undefined): string 
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
 
+  /*
+    Время мастерской, а не пояса браузера: так же его показывает
+    приложение (см. `formatTime` в общем пакете). Браузер с чужим поясом
+    показывал начало смены «20:01» вместо «09:01».
+  */
   return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: WORKSHOP_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
