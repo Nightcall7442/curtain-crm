@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon';
 import { InstallationTripCard } from '../components/InstallationTripCard';
 import { ShiftControl } from '../components/ShiftControl';
 import { useIsCeo } from '../hooks/useAuth';
+import { serverNow } from '../lib/serverClock';
 import { trpc } from '../lib/trpc';
 import { colors, hairline, spacing, tabBarSpace, typography } from '../theme';
 import { useLocale, type Translate } from '../hooks/useLocale';
@@ -221,7 +222,7 @@ const clock = (value: Date): string => formatTime(value);
 
 /** Сколько прошло с начала смены — в часах и минутах. */
 function elapsed(startedAt: Date, m: Translate): string {
-  return humanize(Date.now() - startedAt.getTime(), m);
+  return humanize(serverNow() - startedAt.getTime(), m);
 }
 
 function worked(startedAt: Date, endedAt: Date | null, m: Translate): string {

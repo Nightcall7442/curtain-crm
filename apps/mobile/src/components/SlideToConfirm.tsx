@@ -3,10 +3,12 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
+  Platform,
   StyleSheet,
   Text,
   View,
   type LayoutChangeEvent,
+  type ViewStyle,
 } from 'react-native';
 
 import { NATIVE_DRIVER } from '../lib/animation';
@@ -159,7 +161,7 @@ export function SlideToConfirm({
 
   return (
     <View
-      style={[styles.track, disabled ? styles.trackDisabled : null]}
+      style={[styles.track, WEB_GESTURE, disabled ? styles.trackDisabled : null]}
       onLayout={(event: LayoutChangeEvent) => {
         trackWidth.current = event.nativeEvent.layout.width;
       }}
@@ -183,19 +185,25 @@ export function SlideToConfirm({
       <Text style={styles.label} numberOfLines={2}>
         {label}
       </Text>
+      {/*
+        Область захвата шире самого бегунка, но не на всю дорожку: палец
+        редко попадает точно в кружок — смену отмечают на ходу, часто в
+        перчатках, — а касание любой точки дорожки не должно тянуть
+        ползунок. Зона — это сам двигающийся блок, а не `hitSlop`: в
+        браузере `hitSlop` не работает, и в PWA бегунок ловился только
+        кружком в 48 точек.
+      */}
       <Animated.View
-        style={[styles.thumb, { transform: [{ translateX: pos }] }]}
-        // Палец редко попадает точно в кружок: смену отмечают на ходу, часто
-        // в перчатках. Область захвата шире самого бегунка, но не на всю
-        // дорожку — иначе касание любой её точки уже тянуло бы ползунок.
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 24 }}
+        style={[styles.grab, WEB_GESTURE, { transform: [{ translateX: pos }] }]}
         {...responder.panHandlers}
       >
-        {busy ? (
-          <ActivityIndicator color={colors.accent} />
-        ) : (
-          <Icon name="forward" size={20} color={colors.accent} />
-        )}
+        <View style={styles.thumb}>
+          {busy ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Icon name="forward" size={20} color={colors.accent} />
+          )}
+        </View>
       </Animated.View>
     </View>
   );
@@ -203,6 +211,23 @@ export function SlideToConfirm({
 
 const THUMB = 48;
 const PAD = 5;
+/** Сколько точек справа от кружка ещё ловят палец. */
+const GRAB_EXTRA = 24;
+
+/*
+  В браузере жест у дорожки забирает сам браузер.
+
+  React Native Web слушает касания на документе пассивно и отменить
+  прокрутку страницы не может, а любой `scroll` обрывает начатый жест.
+  Экран «Смена» на телефоне длиннее экрана, поэтому едва заметный увод
+  пальца вниз запускал прокрутку — и бегунок в PWA не ехал вовсе или
+  срывался на середине. `touch-action: none` говорит браузеру не
+  прокручивать от касаний внутри дорожки; `user-select: none` убирает
+  выделение текста при долгом нажатии на айфоне. На телефоне в APK
+  жестом и так управляет сам React Native — там стиль не нужен.
+*/
+const WEB_GESTURE: ViewStyle | null =
+  Platform.OS === 'web' ? ({ touchAction: 'none', userSelect: 'none' } as unknown as ViewStyle) : null;
 /** Сколько ждать, что дотянутый жест запустил действие (`busy`). */
 const CONFIRM_GRACE_MS = 400;
 
@@ -230,10 +255,16 @@ const styles = StyleSheet.create({
     marginLeft: PAD + THUMB + PAD + spacing.sm,
     marginRight: spacing.lg,
   },
-  thumb: {
+  grab: {
     position: 'absolute',
-    left: PAD,
-    top: PAD,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: PAD + THUMB + GRAB_EXTRA,
+    paddingLeft: PAD,
+    justifyContent: 'center',
+  },
+  thumb: {
     width: THUMB,
     height: THUMB,
     borderRadius: radius.pill,

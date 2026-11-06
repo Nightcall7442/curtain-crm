@@ -4,6 +4,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { useLocation } from '../hooks/useLocation';
 import { notifyError, notifySuccess } from '../lib/haptics';
+import { serverNow } from '../lib/serverClock';
 import { trpc } from '../lib/trpc';
 import { colors, spacing, typography } from '../theme';
 
@@ -71,12 +72,12 @@ export function InstallationTripCard({
 
   // Тикает раз в минуту: выезд длится часами, и секунды в нём — ложная
   // точность, из-за которой экран перерисовывался бы весь день.
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => serverNow());
   useEffect(() => {
     if (active === null) return undefined;
 
     const timer = setInterval(() => {
-      setNow(Date.now());
+      setNow(serverNow());
     }, 60_000);
 
     return () => {
