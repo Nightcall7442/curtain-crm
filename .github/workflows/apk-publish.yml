@@ -1,0 +1,75 @@
+# Публикация APK по прямой ссылке — без входа в GitHub.
+#
+# Артефакт сборки скачивается только залогиненным и только архивом, а
+# сотруднику нужен файл по ссылке с телефона. Поэтому готовый APK кладётся
+# в GitHub Release. Последний всегда доступен по одной и той же ссылке:
+#
+#   https://github.com/Nightcall7442/curtain-crm/releases/latest/download/parda-bozor.apk
+#
+# Публикуется сам после каждой успешной сборки «APK для Android (без EAS)»;
+# вручную — Actions → «Опубликовать APK» → номер запуска сборки (из адреса
+# её страницы).
+name: Опубликовать APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Номер запуска сборки APK (число из адреса страницы запуска)'
+        required: true
+  workflow_run:
+    workflows: ['APK для Android (без EAS)']
+    types: [completed]
+  push:
+    branches: [claude/keen-hamilton-1lz8tt]
+    paths: ['.github/workflows/apk-publish.yml']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Релиз с APK
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Откуда брать APK: номер из формы, из завершившейся сборки или —
+      # при первом запуске этого файла — сборка от 6 ноября с исправлением
+      # времени смены.
+      - name: Номер сборки
+        id: source
+        env:
+          INPUT_RUN: ${{ inputs.run_id }}
+          FINISHED_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          RUN="${INPUT_RUN:-${FINISHED_RUN:-42218762859}}"
+          if ! [[ "$RUN" =~ ^[0-9]+$ ]]; then
+            echo "::error::Номер запуска — только цифры, получено: $RUN"
+            exit 1
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: curtain-crm-apk
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: apk
+
+      # Одно понятное имя файла: по нему открывается постоянная ссылка.
+      - name: Файл
+        run: |
+          mv apk/*.apk parda-bozor.apk
+          ls -la parda-bozor.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ steps.source.outputs.run }}
+          name: APK для Android — сборка ${{ steps.source.outputs.run }}
+          body: |
+            Приложение для Android. Перед установкой удалите прежнее приложение,
+            если оно ставилось не из этих релизов, — потом войдите заново.
+          files: parda-bozor.apk
+          make_latest: true
