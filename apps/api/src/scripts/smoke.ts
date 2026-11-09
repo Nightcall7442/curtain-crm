@@ -19,6 +19,7 @@ import {
   catalogItems,
   closeDatabase,
   createDatabase,
+  dayOffRequests,
   displayLinks,
   hashPassword,
   installationTrips,
@@ -226,6 +227,10 @@ async function cleanup(db: Database): Promise<void> {
     // Коды склада ссылаются на автора — удаляются раньше пользователей.
     await db.delete(catalogItems).where(like(catalogItems.name, `${PREFIX}%`));
     await db.delete(refreshTokens).where(inArray(refreshTokens.userId, userIds));
+    // Отгулы ссылаются и на просившего, и на решившего — оба restrict.
+    await db
+      .delete(dayOffRequests)
+      .where(or(inArray(dayOffRequests.userId, userIds), inArray(dayOffRequests.reviewedBy, userIds)));
     await db.delete(shifts).where(inArray(shifts.userId, userIds));
     await db.delete(userRoles).where(inArray(userRoles.userId, userIds));
     await db.delete(userBranches).where(inArray(userBranches.userId, userIds));
@@ -2396,6 +2401,26 @@ async function run(db: Database): Promise<void> {
   const byCornice = await managerCaller.orders.list({ assigneeId: corniceMan.id, pageSize: 100 });
   check('список: фильтр по исполнителю находит карнизчика', byCornice.items.some((row) => row.id === withCornice.id));
 
+  // Создатель: в каждой строке — id и имя автора; фильтр сужает, но не расширяет видимость.
+  const byCreator = await managerCaller.orders.list({ creatorId: seller.id, search: `${PREFIX} Список`, pageSize: 100 });
+  check(
+    'список: фильтр «Создатель» — только заказы автора, с его именем в строке',
+    byCreator.items.length > 0 &&
+      byCreator.items.some((row) => row.id === inSewing.id) &&
+      byCreator.items.every((row) => row.creator.id === seller.id && row.creator.fullName === seller.fullName),
+    `${byCreator.items.length.toString()} заказов`,
+  );
+  const byOtherCreator = await managerCaller.orders.list({ creatorId: sewer.id, search: `${PREFIX} Список`, pageSize: 100 });
+  check('список: чужой «Создатель» — пусто', byOtherCreator.total === 0, `${byOtherCreator.total.toString()} заказов`);
+  // Швея видит только свои заказы — фильтр по автору не открывает ей остальные.
+  const sewerByCreator = await sewerCaller.orders.list({ creatorId: seller.id, pageSize: 100 });
+  check(
+    'список: фильтр «Создатель» не расширяет видимость швее',
+    sewerByCreator.items.every((row) => row.sewerId === sewer.id) &&
+      !sewerByCreator.items.some((row) => row.id === inQcPool.id),
+    `${sewerByCreator.items.length.toString()} заказов`,
+  );
+
   const secondPage = await managerCaller.orders.list({ search: `${PREFIX} Список`, pageSize: 1, cursor: 2 });
   check(
     'список: cursor — номер страницы для подгрузки',
@@ -3048,6 +3073,42 @@ async function run(db: Database): Promise<void> {
       receivedBy: seller.id,
       terminalPayType: TerminalPayType.PAYME,
     }),
+  );
+
+  /* -------------------- Отгулы: порядок в списках ------------------------ */
+  // Ждущие — сверху, решённые — свежие первыми: одобренный запрос не должен
+  // «проваливаться» под старую историю (так было, пока порядок шёл от старых).
+  const dayOffRow = async (startDate: string, status: 'pending' | 'approved' | 'rejected') => {
+    const [row] = await db
+      .insert(dayOffRequests)
+      .values({
+        userId: sewer.id,
+        startDate,
+        endDate: startDate,
+        status,
+        ...(status === 'pending' ? {} : { reviewedBy: ceo.id, reviewedAt: new Date() }),
+        ...(status === 'rejected' ? { rejectionReason: `${PREFIX} отказ` } : {}),
+      })
+      .returning();
+    if (row === undefined) throw new Error(`отгул ${startDate} не создан`);
+    return row.id;
+  };
+  const oldApproved = await dayOffRow('2026-01-10', 'approved');
+  const pendingLater = await dayOffRow('2026-03-20', 'pending');
+  const newRejected = await dayOffRow('2026-03-05', 'rejected');
+  const pendingSooner = await dayOffRow('2026-03-01', 'pending');
+  const expectedOrder = [pendingLater, pendingSooner, newRejected, oldApproved];
+  const listedDaysOff = (await ceoCaller.dayOff.list({ userId: sewer.id })).items.map((row) => row.id);
+  check(
+    'отгулы: list — ждущие сверху, затем решённые от свежих к старым',
+    JSON.stringify(listedDaysOff) === JSON.stringify(expectedOrder),
+    JSON.stringify(listedDaysOff),
+  );
+  const myDaysOff = (await sewerCaller.dayOff.my()).map((row) => row.id);
+  check(
+    'отгулы: my — тот же порядок, что у руководства',
+    JSON.stringify(myDaysOff) === JSON.stringify(expectedOrder),
+    JSON.stringify(myDaysOff),
   );
 }
 

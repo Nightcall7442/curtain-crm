@@ -91,6 +91,8 @@ const ORDER_PRESETS: readonly OrdersPreset[] = [
     key: 'archive',
     label: 'Архив',
     statuses: [...ARCHIVED_ORDER_STATUSES],
+    // В архиве важно, КОГДА заказ закрыт, — дата встаёт рядом со статусом.
+    closedDate: true,
     emptyMessage: 'Выполненных и отменённых заказов пока нет',
   },
 ];

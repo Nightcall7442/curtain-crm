@@ -16,7 +16,6 @@ import { Empty, ErrorState } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { PersonalWorkCard } from '../components/PersonalWorkCard';
 import { ShiftRequiredBanner } from '../components/ShiftRequiredBanner';
-import { TerminalCheckCard } from '../components/TerminalCheckCard';
 import { OrderCard, OrderCardSeparator } from '../components/OrderCard';
 import { TaskCard } from '../components/TaskCard';
 import { ExecutorFilterSheet } from '../components/work/ExecutorFilterSheet';
@@ -88,7 +87,6 @@ export function WorkScreen(): ReactElement {
      баннер говорит об этом до того, как кнопка ответит отказом. */
   const shift = trpc.shifts.current.useQuery(undefined, { enabled: !isManager });
   const isCorniceInstaller = (user?.roles ?? []).includes(Role.CORNICE_INSTALLER);
-  const isSeller = (user?.roles ?? []).includes(Role.SELLER);
   const filters = isCorniceInstaller ? [...FILTERS, CORNICE_FILTER] : FILTERS;
 
   /*
@@ -386,11 +384,11 @@ export function WorkScreen(): ReactElement {
         }
         /*
           Над заказами — всё, что раньше стояло неподвижно: баннер смены,
-          «Новый заказ», «Касса», поиск. Теперь они уезжают вместе со
-          списком, и на экране 360×780 под заказы остаётся почти весь
-          экран, а не его треть. Терминальные чеки — задание продавцов на
-          день, поэтому тоже здесь, над заказами: это обязанность, а не
-          касса. Остальным ролям — нет.
+          «Новый заказ», «Метраж», «Касса», поиск. Теперь они уезжают вместе
+          со списком, и на экране 360×780 под заказы остаётся почти весь
+          экран, а не его треть. Терминальных чеков здесь больше нет:
+          владелец попросил перенести их в «Кассу», к своим чекам и
+          инкассации.
         */
         ListHeaderComponent={
           <View style={styles.listHeader}>
@@ -437,53 +435,70 @@ export function WorkScreen(): ReactElement {
             )}
 
             {/*
-              Касса и раздел руководителя — одной строкой, ниже приёма заказа.
+              «Метраж» и «Касса» — одной строкой, ниже приёма заказа.
 
               Рядом с «Новым заказом» их ставить нельзя: заказ и чек — события
               разного веса, и две одинаковые кнопки в ряд заставляют читать
               подписи вместо того, чтобы нажимать не глядя. А между собой они
-              равны: обе уводят в соседний раздел, и каждой отдельная строка
-              стоила слишком дорого — до заказов приходилось прокручивать треть
-              экрана. Отдельной вкладки руководителю не дали намеренно: нижняя
-              панель одна на всех, и пятая вкладка, видимая двоим из восемнадцати,
-              сделала бы её разной у разных людей.
+              пара: на «Метраже» чек пробивают, в «Кассе» его потом находят и
+              сдают за него деньги. Владелец попросил развести их по двум
+              экранам, но держать рядом. «Метраж» — первым, на месте прежней
+              «Кассы»: продавец жал туда за продажей, и палец находит её там же.
             */}
-            {(canCreate || isManager) && (
+            {canCreate && (
               <View style={styles.createRow}>
-                {canCreate && (
-                  <Pressable
-                    onPress={() => {
-                      navigation.navigate('CashDesk');
-                    }}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.createSecondary,
-                      styles.createFlex,
-                      pressed ? styles.createPressed : null,
-                    ]}
-                  >
-                    <Icon name="paid" size={18} color={colors.accentStrong} />
-                    <Text style={styles.createSecondaryText}>{m('work.cashDesk')}</Text>
-                  </Pressable>
-                )}
+                <Pressable
+                  onPress={() => {
+                    navigation.navigate('Metraj');
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.createSecondary,
+                    styles.createFlex,
+                    pressed ? styles.createPressed : null,
+                  ]}
+                >
+                  <Icon name="meterSale" size={18} color={colors.accentStrong} />
+                  <Text style={styles.createSecondaryText}>{m('work.metraj')}</Text>
+                </Pressable>
 
-                {isManager && (
-                  <Pressable
-                    onPress={() => {
-                      navigation.navigate('Management');
-                    }}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.createSecondary,
-                      styles.createFlex,
-                      pressed ? styles.createPressed : null,
-                    ]}
-                  >
-                    <Icon name="roles" size={18} color={colors.accentStrong} />
-                    <Text style={styles.createSecondaryText}>{m('work.management')}</Text>
-                  </Pressable>
-                )}
+                <Pressable
+                  onPress={() => {
+                    navigation.navigate('CashDesk');
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.createSecondary,
+                    styles.createFlex,
+                    pressed ? styles.createPressed : null,
+                  ]}
+                >
+                  <Icon name="paid" size={18} color={colors.accentStrong} />
+                  <Text style={styles.createSecondaryText}>{m('work.cashDesk')}</Text>
+                </Pressable>
               </View>
+            )}
+
+            {/*
+              Раздел руководителя — своей строкой под ними. Третьей кнопкой в
+              ряд он не помещается: в трети ширины 360 подписи рядом со
+              значком остаётся 62 точки, а «Руководство» занимает 95,
+              «Rahbariyat» — 78, и подпись ушла бы на две строки. Отдельной вкладки
+              руководителю не дали намеренно: нижняя панель одна на всех, и
+              пятая вкладка, видимая двоим из восемнадцати, сделала бы её
+              разной у разных людей.
+            */}
+            {isManager && (
+              <Pressable
+                onPress={() => {
+                  navigation.navigate('Management');
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.createSecondary, pressed ? styles.createPressed : null]}
+              >
+                <Icon name="roles" size={18} color={colors.accentStrong} />
+                <Text style={styles.createSecondaryText}>{m('work.management')}</Text>
+              </Pressable>
             )}
             {/* У строки поиска свои поля по краям — в списке они уже есть. */}
             <View style={styles.searchInList}>
@@ -513,7 +528,6 @@ export function WorkScreen(): ReactElement {
                 }}
               />
             </View>
-            {filter === 'active' && isSeller ? <TerminalCheckCard /> : null}
           </View>
         }
         ListEmptyComponent={
@@ -648,8 +662,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.headerText,
   },
-  /* Шапка списка: баннер, кнопки, поиск, чеки — через равный зазор, и
-     от первой карточки — тот же шаг, что между карточками. */
+  /* Шапка списка: баннер, кнопки, поиск — через равный зазор, и от
+     первой карточки — тот же шаг, что между карточками. */
   listHeader: {
     gap: spacing.sm,
     marginBottom: spacing.md,

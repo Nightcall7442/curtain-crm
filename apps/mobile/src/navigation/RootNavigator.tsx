@@ -13,6 +13,7 @@ import { DayOffApprovalsScreen } from '../screens/DayOffApprovalsScreen';
 import { EmployeesScreen } from '../screens/EmployeesScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ManagementScreen } from '../screens/ManagementScreen';
+import { MetrajScreen } from '../screens/MetrajScreen';
 import { MonitorBoardScreen } from '../screens/MonitorBoardScreen';
 import { MonitorPersonScreen } from '../screens/MonitorPersonScreen';
 import { PayrollApprovalsScreen } from '../screens/PayrollApprovalsScreen';
@@ -161,6 +162,7 @@ export function RootNavigator(): ReactElement {
         component={CashDeskScreen}
         options={{ title: m('nav.cashDesk') }}
       />
+      <Stack.Screen name="Metraj" component={MetrajScreen} options={{ title: m('nav.metraj') }} />
       <Stack.Screen
         name="SaleDetail"
         component={SaleDetailScreen}

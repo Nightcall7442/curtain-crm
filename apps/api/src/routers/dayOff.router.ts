@@ -9,7 +9,7 @@ import {
 } from '@curtain-crm/shared';
 import { dayOffRequests, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, optionalText, reasonSchema } from '../lib/schemas';
@@ -57,6 +57,26 @@ const PERIOD_ERROR = {
   message: `Период не может превышать ${MAX_PERIOD_DAYS.toString()} дней, а конец — быть раньше начала`,
   path: ['endDate'],
 };
+
+/**
+ * Порядок запросов в списках — один для `my` и `list`.
+ *
+ * Ждущие решения — сверху: это очередь, ради которой экран и открывают.
+ * Ниже — решённые, СВЕЖИЕ ПЕРВЫМИ: сначала по дате начала, при равной —
+ * по времени подачи. Раньше обе части шли от старых дат к новым, и
+ * одобренный запрос «проваливался» в самый низ, под месяцы истории:
+ * владелец, одобрив отгул, не находил его на экране без долгой прокрутки.
+ * Ждущие идут в том же порядке — их обычно два-три, и два разных
+ * направления сортировки в одном списке читались бы как беспорядок.
+ *
+ * Сетки по датам (табель, «Кто отдыхает») от этого порядка не зависят:
+ * они раскладывают запросы по дням сами и берут их другими процедурами.
+ */
+const DAY_OFF_ORDER = [
+  sql`case ${dayOffRequests.status} when 'pending' then 0 else 1 end`,
+  desc(dayOffRequests.startDate),
+  desc(dayOffRequests.createdAt),
+] as const;
 
 /** Все активные сотрудники с ролью CEO или админ — адресаты нового запроса. */
 async function managementUserIds(executor: DbExecutor): Promise<number[]> {
@@ -133,12 +153,8 @@ export const dayOffRouter = router({
       .from(dayOffRequests)
       .leftJoin(users, eq(dayOffRequests.reviewedBy, users.id))
       .where(eq(dayOffRequests.userId, ctx.user.id))
-      // Ждущие решения сверху; внутри — ближайшие даты первыми.
-      .orderBy(
-        sql`case ${dayOffRequests.status} when 'pending' then 0 else 1 end`,
-        asc(dayOffRequests.startDate),
-        desc(dayOffRequests.createdAt),
-      )
+      // Порядок тот же, что у руководства в `list`, — почему, см. там.
+      .orderBy(...DAY_OFF_ORDER)
       .limit(50);
 
     return rows;
@@ -167,11 +183,7 @@ export const dayOffRouter = router({
             requester: { columns: { id: true, fullName: true } },
             reviewer: { columns: { id: true, fullName: true } },
           },
-          orderBy: [
-            sql`case ${dayOffRequests.status} when 'pending' then 0 else 1 end`,
-            asc(dayOffRequests.startDate),
-            desc(dayOffRequests.createdAt),
-          ],
+          orderBy: [...DAY_OFF_ORDER],
           limit: 200,
         }),
         ctx.db.select({ value: count() }).from(dayOffRequests).where(where),

@@ -15,7 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifySuccess } from '../lib/haptics';
 import { trpc } from '../lib/trpc';
-import { colors, fonts, hairline, opacity, radius, spacing, typography } from '../theme';
+import { colors, fonts, hairline, opacity, radius, sizes, spacing, typography } from '../theme';
 import { BottomSheet } from './BottomSheet';
 import { ShiftRequiredBanner, useNeedsShift } from './ShiftRequiredBanner';
 import { SubmitButton } from './SubmitButton';
@@ -29,8 +29,10 @@ import { TerminalDaySummary } from './TerminalDaySummary';
  * Терминальные чеки — задание продавцов на день.
  *
  * Три чека на терминале за день на всех продавцов, каждый с фото. Карточка
- * живёт в «Работе»: это такая же обязанность, как заказ, а не касса —
- * владелец отдельно сказал, что к наличным и инкассации чек не привязан.
+ * живёт в «Кассе»: сначала она стояла на «Работе», над заказами, но
+ * владелец попросил перенести её туда, где чек и пробивают, — к своим
+ * чекам и инкассации. В деньги кассы чек при этом не попадает: к наличным и
+ * инкассации он не привязан, это по-прежнему отдельное задание.
  *
  * Счётчик общий: пробил один — у всех «2 из 3». Кто и когда — списком, чтобы
  * не пробить лишний и не спорить, чей был второй.
@@ -385,15 +387,19 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontVariant: ['tabular-nums'],
   },
-  /* Та же высота и скругление, что у кнопок «Новый заказ», «Касса» на этом экране. */
+  /*
+    Та же таблетка в 48 на светлой подложке, что «Создать инкассацию» ниже
+    на этом же экране: одна система кнопок в «Кассе», а не скругление
+    карточки у одной и таблетка у другой.
+  */
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: sizes.buttonHeight,
     marginTop: spacing.sm,
-    borderRadius: radius.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
   },
   buttonText: {
