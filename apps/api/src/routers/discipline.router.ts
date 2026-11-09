@@ -255,20 +255,21 @@ export const disciplineRouter = router({
 
         /*
           Ручное опоздание за 05.11 делает повтором системное за 09.11 того же
-          вида — балл той записи пересчитывается. Только записи ПОСЛЕ новой:
-          более ранние от неё не зависят, а строгий обход всего месяца отменял
-          бы бережность одобрений на чужих днях (см. `recountRepeats`). ДО
-          журнала и уведомления: журнал пишет в группу, уведомление — в
-          Telegram, и оба уходят сразу, не дожидаясь коммита; упади пересчёт
-          после них, группа и сотрудник прочли бы о записи, которой нет.
+          вида — балл той записи пересчитывается. Только там, где новая запись
+          стала первым таким опозданием раньше: более ранние от неё не
+          зависят, а записи, у которых такое же раньше уже было, она не
+          меняет — строгий обход месяца отменял бы бережность одобрений на
+          чужих днях (см. `recountRepeats`). ДО журнала и уведомления: журнал
+          пишет в группу, уведомление — в Telegram, и оба уходят сразу, не
+          дожидаясь коммита; упади пересчёт после них, группа и сотрудник
+          прочли бы о записи, которой нет.
         */
         if (late) {
           await recountMonthRepeats(
             tx,
             {
               userId: input.userId,
-              after: { occurredOn: created.occurredOn, id: created.id },
-              kinds: new Set([input.kind]),
+              edits: [{ occurredOn: created.occurredOn, id: created.id, from: null, to: input.kind }],
             },
             { actorId: ctx.user.id, ipAddress: ctx.ipAddress },
             { reason: DisciplineAuditReason.MANUAL_DISCIPLINE_CHANGE, policy: 'any' },
@@ -344,8 +345,7 @@ export const disciplineRouter = router({
           tx,
           {
             userId: removed.userId,
-            after: { occurredOn: removed.occurredOn, id: removed.id },
-            kinds: new Set([removed.kind]),
+            edits: [{ occurredOn: removed.occurredOn, id: removed.id, from: removed.kind, to: null }],
           },
           { actorId: ctx.user.id, ipAddress: ctx.ipAddress },
           { reason: DisciplineAuditReason.MANUAL_DISCIPLINE_CHANGE, policy: 'any' },

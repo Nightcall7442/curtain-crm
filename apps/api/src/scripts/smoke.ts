@@ -3813,6 +3813,11 @@ async function run(db: Database): Promise<void> {
     .update(shifts)
     .set({ endedAt: new Date(Date.now() + 1000) })
     .where(and(eq(shifts.userId, explainedSewer.id), isNull(shifts.endedAt)));
+  // Когда сотрудник объяснил — запись, созданная заново после снятия, должна нести ровно этот момент.
+  const [explainedAt] = await db
+    .select({ at: disciplineEvents.employeeCommentAt })
+    .from(disciplineEvents)
+    .where(eq(disciplineEvents.id, explainedLate.id));
   await ceoCaller.lateRequests.approve({ id: explainedRequest.id });
   const afterExplainedApprove = await lateRows(explainedSewer.id, pastDay);
   check(
@@ -3865,6 +3870,30 @@ async function run(db: Database): Promise<void> {
     'опоздание: в одобрении сказано, что нарушение снято',
     removedNote === `Опоздание ${pastDayShort} до 10:30 согласовано (${ceo.fullName}). Нарушение за ${pastDayShort} снято.`,
     removedNote ?? 'уведомления нет',
+  );
+  /*
+    Замечание проверки (пятый круг): одобрение сняло запись вместе с
+    объяснением сотрудника, а снятие согласования создавало её заново
+    пустой. Объяснение и его время возвращаются из журнала снятия.
+  */
+  await ceoCaller.lateRequests.withdraw({ id: explainedSecond.id });
+  const [explainedRecreated, ...explainedExtra] = await lateRows(explainedSewer.id, pastDay);
+  const [explainedRecreatedAt] = await db
+    .select({ at: disciplineEvents.employeeCommentAt })
+    .from(disciplineEvents)
+    .where(eq(disciplineEvents.id, explainedRecreated?.id ?? 0));
+  check(
+    'опоздание: снятие согласования создаёт снятую одобрением запись заново — с объяснением сотрудника и его временем',
+    explainedRecreated !== undefined &&
+      explainedExtra.length === 0 &&
+      explainedRecreated.id !== explainedLate.id &&
+      explainedRecreated.kind === 'late_over_30' &&
+      explainedRecreated.description === 'Смена с 09:00, отметка в 10:25 — опоздание 85 мин' &&
+      explainedRecreated.employeeComment === explanation &&
+      explainedAt?.at instanceof Date &&
+      explainedRecreatedAt?.at?.getTime() === explainedAt.at.getTime() &&
+      typeof explainedRemovalAudit?.details?.['employeeCommentAt'] === 'string',
+    JSON.stringify({ explainedRecreated, explainedExtra, explainedAt, explainedRecreatedAt }),
   );
 
   // График сняли после отметки: пересчитать не от чего — запись остаётся, а не стирается молча.
@@ -4021,10 +4050,12 @@ async function run(db: Database): Promise<void> {
   );
 
   /*
-    Отметка 09:10 при смене с 09:00 (10 мин, −0,5); потом смену в условиях
-    оплаты переназначили с 08:00, и «приду к 08:30» дало бы от 08:30 40 мин,
-    −2. Перенос самой смены руководителем сюда больше не ведёт: опоздание
-    оценивается по времени отметки (см. раздел 17).
+    Отметка 09:10 при смене с 09:00 (10 мин, −0,5); потом график ЭТОГО дня
+    в условиях оплаты переназначили на 08:00 (схема правится на месте — как
+    если бы новая действовала и в тот день), и «приду к 08:30» дало бы от
+    08:30 40 мин, −2. Смена графика с более поздней даты прошлый день не
+    трогает вовсе (раздел 18); перенос самой смены руководителем сюда тоже
+    не ведёт: опоздание оценивается по времени отметки (раздел 17).
   */
   await checkInAt(worsenSewer, '09:10', '18:00');
   const [worsenLate] = await lateRows(worsenSewer.id, pastDay);
@@ -4441,6 +4472,284 @@ async function run(db: Database): Promise<void> {
     'уведомления: опоздание, записанное системой, в узбекской ленте подписано «Tizim»',
     endFixedUzDiscipline?.body.endsWith('— Tizim') === true,
     endFixedUzDiscipline?.body ?? 'уведомления нет',
+  );
+
+  /* --- 18. График — того дня, повторы — где правка их меняет, отметка — самая ранняя по времени отметки --- */
+
+  /*
+    Замечания проверки (пятый круг): после смены графика снятие согласования
+    переписывало прошлый день по новому графику, а одобрение за прошлый день
+    после переноса графика позже снимало законное опоздание; строгий
+    пересчёт повторов поднимал записи, которых правка не касалась; запись,
+    созданная заново, искала отметку по нынешнему началу первой смены.
+  */
+  const earlierScheduleSewer = await makeUser('График сменили на раньше', Role.SEWER, '+998900000174');
+  const laterScheduleSewer = await makeUser('График сменили на позже', Role.SEWER, '+998900000175');
+  const futureScheduleSewer = await makeUser('График с завтрашнего дня', Role.SEWER, '+998900000176');
+  const strictRepeatSewer = await makeUser('Повторы без лишнего подъёма', Role.SEWER, '+998900000177');
+  const movedFirstSewer = await makeUser('Первую смену перенесли', Role.SEWER, '+998900000178');
+  const addedEarlierSewer = await makeUser('Смену добавили раньше', Role.SEWER, '+998900000179');
+  const otherDaySewer = await makeUser('Смену унесли в другой день', Role.SEWER, '+998900000180');
+  const morningEnteredSewer = await makeUser('Утро завёл руководитель', Role.SEWER, '+998900000181');
+  await db.insert(payrollSchemes).values(
+    [
+      earlierScheduleSewer,
+      laterScheduleSewer,
+      futureScheduleSewer,
+      strictRepeatSewer,
+      movedFirstSewer,
+      addedEarlierSewer,
+      otherDaySewer,
+      morningEnteredSewer,
+    ].map((person) => ({
+      userId: person.id,
+      role: Role.SEWER,
+      type: PayrollSchemeType.HOURLY,
+      rate: '10000.00',
+      shiftStart: '09:00',
+      shiftEnd: '18:00',
+      effectiveFrom: '2020-01-01',
+      createdBy: admin.id,
+    })),
+  );
+  /** Новый график — как на сайте: `payroll.schemes.upsert` гасит прежнюю схему и заводит новую со своей датой. */
+  const rescheduleOf = (person: { readonly id: number }, shiftStart: string, effectiveFrom: string) =>
+    adminCaller.payroll.schemes.upsert({
+      userId: person.id,
+      role: Role.SEWER,
+      type: PayrollSchemeType.HOURLY,
+      rate: 10_000,
+      shiftStart,
+      shiftEnd: '18:00',
+      effectiveFrom,
+    });
+
+  // Ровно сценарий проверки: отметка 09:10 при 09:00 (−0,5), график с сегодня — 08:00, одобрение «приду к 08:30» за вчера, снятие.
+  await checkInAt(earlierScheduleSewer, '09:10', '18:00');
+  const [earlierScheduleLate] = await lateRows(earlierScheduleSewer.id, pastDay);
+  if (earlierScheduleLate === undefined) throw new Error('опоздание при отметке не записано');
+  await rescheduleOf(earlierScheduleSewer, '08:00', lateToday);
+  const earlierScheduleRequest = await pendingLateOn(earlierScheduleSewer, '08:30');
+  await ceoCaller.lateRequests.approve({ id: earlierScheduleRequest.id });
+  const afterEarlierScheduleApprove = await lateRows(earlierScheduleSewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: earlierScheduleRequest.id });
+  const afterEarlierScheduleWithdraw = await lateRows(earlierScheduleSewer.id, pastDay);
+  const earlierScheduleAdjustments = await disciplineAdjustmentsOf(earlierScheduleSewer.id);
+  check(
+    'опоздание: график сменили на 08:00 с сегодня — одобрение и снятие за вчера считают от вчерашнего графика: ровно 10 мин, −0,5, правок в журнале нет',
+    [afterEarlierScheduleApprove, afterEarlierScheduleWithdraw].every(
+      (rows) =>
+        rows.length === 1 &&
+        rows[0]?.id === earlierScheduleLate.id &&
+        rows[0].kind === 'late_under_15' &&
+        rows[0].points === '-0.5' &&
+        !rows[0].isRepeat &&
+        rows[0].description === 'Смена с 09:00, отметка в 09:10 — опоздание 10 мин',
+    ) && earlierScheduleAdjustments.length === 0,
+    JSON.stringify({ afterEarlierScheduleApprove, afterEarlierScheduleWithdraw, earlierScheduleAdjustments }),
+  );
+
+  // График перенесли на 10:00 с сегодня; «приду к 09:30» за вчера — от вчерашних 09:00, а не «пришла вовремя» по новому.
+  await checkInAt(laterScheduleSewer, '09:40', '18:00');
+  const [laterScheduleLate] = await lateRows(laterScheduleSewer.id, pastDay);
+  if (laterScheduleLate === undefined) throw new Error('опоздание при отметке не записано');
+  await rescheduleOf(laterScheduleSewer, '10:00', lateToday);
+  const laterScheduleRequest = await pendingLateOn(laterScheduleSewer, '09:30');
+  await ceoCaller.lateRequests.approve({ id: laterScheduleRequest.id });
+  const afterLaterScheduleApprove = await lateRows(laterScheduleSewer.id, pastDay);
+  check(
+    'опоздание: график перенесли на 10:00 с сегодня — одобрение «приду к 09:30» за вчера законное опоздание не снимает: 10 мин от 09:30, −0,5',
+    laterScheduleLate.kind === 'late_over_30' &&
+      afterLaterScheduleApprove.length === 1 &&
+      afterLaterScheduleApprove[0]?.id === laterScheduleLate.id &&
+      afterLaterScheduleApprove[0].kind === 'late_under_15' &&
+      afterLaterScheduleApprove[0].points === '-0.5' &&
+      afterLaterScheduleApprove[0].description === 'Смена с 09:30, отметка в 09:40 — опоздание 10 мин',
+    JSON.stringify({ laterScheduleLate, afterLaterScheduleApprove }),
+  );
+
+  // Отметка — по графику её дня: новый с сегодня уже действует, назначенный с завтра — ещё нет.
+  await rescheduleOf(futureScheduleSewer, '10:00', lateTomorrow);
+  await recordLatenessIfAny(db, laterScheduleSewer.id, atTashkent(lateToday, '09:40'), null);
+  await recordLatenessIfAny(db, futureScheduleSewer.id, atTashkent(lateToday, '09:40'), null);
+  const laterScheduleToday = await lateRows(laterScheduleSewer.id, lateToday);
+  const futureScheduleToday = await lateRows(futureScheduleSewer.id, lateToday);
+  check(
+    'опоздание: отметка сегодня в 09:40 — по графику с сегодня (10:00) вовремя, а график с завтра (10:00) ещё не действует: 40 мин от 09:00',
+    laterScheduleToday.length === 0 &&
+      futureScheduleToday.length === 1 &&
+      futureScheduleToday[0]?.description === 'Смена с 09:00, отметка в 09:40 — опоздание 40 мин',
+    JSON.stringify({ laterScheduleToday, futureScheduleToday }),
+  );
+
+  /*
+    Пример проверки (E4): 02-го 09:40 (−2), 03-го 09:25 (−1), 06-го 09:10
+    (−0,5). Одобрение 03-го «до 09:20» увело его в «до 15 мин», 06-е бережно
+    осталось не повтором; одобрение 02-го «до 09:35» — тоже в «до 15 мин».
+    Снятие согласования 02-го вернуло его в «больше 30», а строгий обход
+    делал 06-е повтором (−1,5), хотя «до 15 мин» раньше 06-го было и до
+    снятия, и после (03-е).
+  */
+  const e4Day2 = `${prevMonth}-02`;
+  const e4Day3 = `${prevMonth}-03`;
+  const e4Day6 = `${prevMonth}-06`;
+  await checkInOn(strictRepeatSewer, e4Day2, '09:40');
+  await checkInOn(strictRepeatSewer, e4Day3, '09:25');
+  await checkInOn(strictRepeatSewer, e4Day6, '09:10');
+  const e4State = async () => {
+    const [day2] = await lateRows(strictRepeatSewer.id, e4Day2);
+    const [day3] = await lateRows(strictRepeatSewer.id, e4Day3);
+    const [day6] = await lateRows(strictRepeatSewer.id, e4Day6);
+    return { day2, day3, day6 };
+  };
+  const e4RequestOn = async (date: string, arriveBy: string) => {
+    const [request] = await db.insert(lateRequests).values({ userId: strictRepeatSewer.id, date, arriveBy }).returning();
+    if (request === undefined) throw new Error('запрос на опоздание не создан');
+    return request;
+  };
+  const e4Checked = await e4State();
+  await ceoCaller.lateRequests.approve({ id: (await e4RequestOn(e4Day3, '09:20')).id });
+  const e4Day2Request = await e4RequestOn(e4Day2, '09:35');
+  await ceoCaller.lateRequests.approve({ id: e4Day2Request.id });
+  const e4Approved = await e4State();
+  check(
+    'опоздание (E4): при отметке −2, −1, −0,5; одобрения 03-го и 02-го увели оба в «до 15 мин», 06-е бережно не повтор',
+    e4Checked.day2?.points === '-2.0' &&
+      e4Checked.day3?.points === '-1.0' &&
+      e4Checked.day6?.points === '-0.5' &&
+      e4Approved.day2?.kind === 'late_under_15' &&
+      e4Approved.day2.points === '-0.5' &&
+      e4Approved.day3?.kind === 'late_under_15' &&
+      e4Approved.day3.points === '-0.5' &&
+      !e4Approved.day3.isRepeat &&
+      e4Approved.day6?.points === '-0.5' &&
+      !e4Approved.day6.isRepeat,
+    JSON.stringify({ e4Checked, e4Approved }),
+  );
+  await ceoCaller.lateRequests.withdraw({ id: e4Day2Request.id });
+  const e4Withdrawn = await e4State();
+  check(
+    'опоздание (E4): снятие согласования 02-го возвращает ему −2, а 06-е не поднимает до повтора — «до 15 мин» раньше было и до снятия, и после',
+    e4Withdrawn.day2?.kind === 'late_over_30' &&
+      e4Withdrawn.day2.points === '-2.0' &&
+      !e4Withdrawn.day2.isRepeat &&
+      e4Withdrawn.day3?.points === '-0.5' &&
+      !e4Withdrawn.day3.isRepeat &&
+      e4Withdrawn.day6?.points === '-0.5' &&
+      !e4Withdrawn.day6.isRepeat,
+    JSON.stringify(e4Withdrawn),
+  );
+
+  // Отметки в 09:05 и 13:00; одобрение «приду к 09:30» сняло 5 мин; первую смену перенесли на 18:10; снятие.
+  await checkInAt(movedFirstSewer, '09:05', '12:00');
+  await checkInAt(movedFirstSewer, '13:00', '17:00');
+  const movedFirstRequest = await pendingLateOn(movedFirstSewer, '09:30');
+  await ceoCaller.lateRequests.approve({ id: movedFirstRequest.id });
+  const afterMovedFirstApprove = await lateRows(movedFirstSewer.id, pastDay);
+  const [firstShiftOfDay] = await db
+    .select({ id: shifts.id })
+    .from(shifts)
+    .where(and(eq(shifts.userId, movedFirstSewer.id), eq(shifts.startedAt, atTashkent(pastDay, '09:05'))));
+  if (firstShiftOfDay === undefined) throw new Error('смена не найдена');
+  await ceoCaller.shifts.adjustManually({
+    shiftId: firstShiftOfDay.id,
+    userId: movedFirstSewer.id,
+    branchId: branch.id,
+    startedAt: atTashkent(pastDay, '18:10'),
+    endedAt: atTashkent(pastDay, '19:00'),
+    reason: `${PREFIX} перенесли первую смену`,
+  });
+  await ceoCaller.lateRequests.withdraw({ id: movedFirstRequest.id });
+  const afterMovedFirstWithdraw = await lateRows(movedFirstSewer.id, pastDay);
+  check(
+    'опоздание: первую смену перенесли на 18:10 — снятие согласования находит отметку 09:05: 5 мин, −0,5, а не 240 мин от смены с 13:00',
+    afterMovedFirstApprove.length === 0 &&
+      afterMovedFirstWithdraw.length === 1 &&
+      afterMovedFirstWithdraw[0]?.kind === 'late_under_15' &&
+      afterMovedFirstWithdraw[0].points === '-0.5' &&
+      afterMovedFirstWithdraw[0].description === 'Смена с 09:00, отметка в 09:05 — опоздание 5 мин',
+    JSON.stringify({ afterMovedFirstApprove, afterMovedFirstWithdraw }),
+  );
+
+  // Отметка 09:40 (−2); руководитель добавил смену 08:00–09:30 без отметки; одобрение «приду к 09:45» сняло; снятие.
+  await checkInAt(addedEarlierSewer, '09:40', '18:00');
+  await ceoCaller.shifts.adjustManually({
+    userId: addedEarlierSewer.id,
+    branchId: branch.id,
+    startedAt: atTashkent(pastDay, '08:00'),
+    endedAt: atTashkent(pastDay, '09:30'),
+    reason: `${PREFIX} добавили смену`,
+  });
+  const addedEarlierRequest = await pendingLateOn(addedEarlierSewer, '09:45');
+  await ceoCaller.lateRequests.approve({ id: addedEarlierRequest.id });
+  const afterAddedEarlierApprove = await lateRows(addedEarlierSewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: addedEarlierRequest.id });
+  const afterAddedEarlierWithdraw = await lateRows(addedEarlierSewer.id, pastDay);
+  check(
+    'опоздание: руководитель добавил смену 08:00–09:30 без отметки — снятие согласования пропускает её и возвращает 40 мин, −2 по отметке 09:40',
+    afterAddedEarlierApprove.length === 0 &&
+      afterAddedEarlierWithdraw.length === 1 &&
+      afterAddedEarlierWithdraw[0]?.kind === 'late_over_30' &&
+      afterAddedEarlierWithdraw[0].points === '-2.0' &&
+      afterAddedEarlierWithdraw[0].description === 'Смена с 09:00, отметка в 09:40 — опоздание 40 мин',
+    JSON.stringify({ afterAddedEarlierApprove, afterAddedEarlierWithdraw }),
+  );
+
+  /*
+    Отметка 09:40 (−2), смену руководитель унёс на позавчера: нынешнее начало
+    уже не в этом дне, отметка — по журналу правки. Одобрение судит по
+    пояснению записи и снимает её; снятие согласования находит отметку по
+    началу до правки и возвращает штраф.
+  */
+  await checkInAt(otherDaySewer, '09:40', '18:00');
+  const [otherDayShift] = await db.select({ id: shifts.id }).from(shifts).where(eq(shifts.userId, otherDaySewer.id));
+  if (otherDayShift === undefined) throw new Error('смена не найдена');
+  await ceoCaller.shifts.adjustManually({
+    shiftId: otherDayShift.id,
+    userId: otherDaySewer.id,
+    branchId: branch.id,
+    startedAt: atTashkent(lateDay(-2), '20:00'),
+    endedAt: atTashkent(lateDay(-2), '23:00'),
+    reason: `${PREFIX} перенесли смену на другой день`,
+  });
+  const otherDayRequest = await pendingLateOn(otherDaySewer, '09:45');
+  await ceoCaller.lateRequests.approve({ id: otherDayRequest.id });
+  const afterOtherDayApprove = await lateRows(otherDaySewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: otherDayRequest.id });
+  const afterOtherDayWithdraw = await lateRows(otherDaySewer.id, pastDay);
+  check(
+    'опоздание: смену унесли в другой день — одобрение снимает запись по её пояснению, снятие находит отметку 09:40 по журналу и возвращает 40 мин, −2',
+    afterOtherDayApprove.length === 0 &&
+      afterOtherDayWithdraw.length === 1 &&
+      afterOtherDayWithdraw[0]?.kind === 'late_over_30' &&
+      afterOtherDayWithdraw[0].points === '-2.0' &&
+      afterOtherDayWithdraw[0].description === 'Смена с 09:00, отметка в 09:40 — опоздание 40 мин',
+    JSON.stringify({ afterOtherDayApprove, afterOtherDayWithdraw }),
+  );
+
+  /*
+    Обратная сторона: утреннюю смену 08:00–12:00 руководитель завёл ДО
+    отметки (человек забыл открыть), отметка в 14:00 — не первая за день, и
+    опоздания она не писала. Снятие согласования не должно создать «опоздание
+    300 мин» только потому, что у заведённой смены нет координат.
+  */
+  await ceoCaller.shifts.adjustManually({
+    userId: morningEnteredSewer.id,
+    branchId: branch.id,
+    startedAt: atTashkent(pastDay, '08:00'),
+    endedAt: atTashkent(pastDay, '12:00'),
+    reason: `${PREFIX} забыла отметиться утром`,
+  });
+  await checkInAt(morningEnteredSewer, '14:00', '18:00');
+  const morningEnteredRequest = await pendingLateOn(morningEnteredSewer, '10:00');
+  await ceoCaller.lateRequests.approve({ id: morningEnteredRequest.id });
+  await ceoCaller.lateRequests.withdraw({ id: morningEnteredRequest.id });
+  const afterMorningEntered = await lateRows(morningEnteredSewer.id, pastDay);
+  const morningEnteredNotes = await disciplineNotes(morningEnteredSewer.id);
+  check(
+    'опоздание: утреннюю смену завёл руководитель до отметки в 14:00 — снятие согласования опоздание не создаёт, как не писала его и отметка',
+    afterMorningEntered.length === 0 && morningEnteredNotes.length === 0,
+    JSON.stringify({ afterMorningEntered, morningEnteredNotes }),
   );
 
   /* Выходные: условие на статус — в самом UPDATE; второе решение не проходит и не попадает в журнал. */
