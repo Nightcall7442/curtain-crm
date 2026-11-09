@@ -1,13 +1,16 @@
 'use client';
 
 import {
+  ASSIGNABLE_ROLES,
   AWAITING_PAYMENT_LABEL,
   EXECUTOR_LABEL,
   EXECUTOR_NOT_ASSIGNED_LABEL,
   ROLE_LABELS,
+  canDispatchOrders,
   canSeeClientMoney,
   closeBlockedByDebt,
   isAwaitingPayment,
+  formatIsoDate,
   formatIsoDateShort,
   formatMoney,
   formatMoneyShort,
@@ -17,6 +20,7 @@ import {
   isTerminalStatus,
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
+  ORDER_INTAKE_ROLES,
   OrderStatus as OrderStatusValue,
   type OrderStatus,
   parseMoney,
@@ -29,8 +33,11 @@ import {
   PRODUCTION_STAGES,
   type ProductionStageKey,
   Role,
+  type Role as RoleName,
   statusesOfProductionStage,
   TransitionKind,
+  workshopDayIso,
+  workshopToday,
 } from '@curtain-crm/shared';
 import { Plus, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
@@ -45,7 +52,7 @@ import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
 import { Button, controlClass, FilterBar, Input, Select } from '@/components/ui/Form';
 import { DataTable, Pagination, type RowKey } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate, formatDateTime } from '@/lib/utils';
 
 import {
   actionNeedsDialog,
@@ -106,7 +113,30 @@ export interface OrdersPreset {
    * видят только те, кому видны деньги клиента, — цеху её нет.
    */
   readonly withDebt?: true;
+  /**
+   * Показывать рядом со статусом, когда заказ закрыт (`completedAt` или
+   * `cancelledAt`). Только архиву: в работе даты закрытия нет, а на
+   * вкладке «Все» лишняя приписка у редких закрытых строк сбивала бы
+   * чтение колонки.
+   */
+  readonly closedDate?: true;
   readonly emptyMessage?: string;
+}
+
+/**
+ * Роли, по которым ищет фильтр «Исполнитель».
+ *
+ * Те же колонки, что сравнивает сервер в `orders.list` по `assigneeId`:
+ * мастер, швея, ОТК, установщик и карнизчик. Карнизчика нет среди
+ * назначаемых ролей (карниз берут, а не назначают), но исполнителем
+ * заказа он от этого быть не перестаёт.
+ */
+const EXECUTOR_FILTER_ROLES: readonly RoleName[] = [...ASSIGNABLE_ROLES, Role.CORNICE_INSTALLER];
+
+/** Группа в выпадающем списке людей; `label: null` — без заголовка. */
+interface PersonGroup {
+  readonly label: string | null;
+  readonly people: readonly { readonly id: number; readonly fullName: string }[];
 }
 
 export function OrdersView({
@@ -161,6 +191,10 @@ export function OrdersView({
     return { kind: 'all' };
   });
   const [priority, setPriority] = useState<PriorityName | ''>('');
+  /** Фильтр «Создатель»: кто завёл заказ. `null` — любой. */
+  const [creatorId, setCreatorId] = useState<number | null>(null);
+  /** Фильтр «Исполнитель»: человек на любом этапе заказа. `null` — любой. */
+  const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [stockOrderOpen, setStockOrderOpen] = useState(false);
   /** Продавец понял в новом заказе, что клиенту нужна штора с полки. */
@@ -194,6 +228,47 @@ export function OrdersView({
    */
   const canCreate = hasRole(Role.SELLER, Role.ADMIN, Role.CEO);
 
+  /*
+    Фильтры «Создатель» и «Исполнитель» — только тем, кто ведёт заказы
+    (директор, админ, менеджер).
+
+    Списку людей нужен справочник сотрудников, а он открыт ровно им:
+    `users.assignable` стоит за `orderDispatchProcedure`. Продавцу и цеху
+    раздел «Заказы» тоже открыт, но расширять для них справочник ради
+    фильтра незачем: они видят только свои заказы, и выбирать в них
+    «чьи» — не из чего. Отдельную процедуру не заводим: имя и роли уже
+    отдаёт `assignable`, и закрыта она ровно для тех, кому фильтр виден.
+
+    Ограничение честное: в справочнике только работающие сотрудники.
+    Заказы уволенного продавца видны в колонке «Создатель», но в фильтре
+    его нет.
+  */
+  const canFilterPeople = canDispatchOrders(roles);
+  const staff = trpc.users.assignable.useQuery(undefined, { enabled: canFilterPeople });
+
+  const creatorGroups: readonly PersonGroup[] = [
+    {
+      label: null,
+      people: (staff.data ?? []).filter((person) =>
+        person.roles.some((role) => ORDER_INTAKE_ROLES.includes(role)),
+      ),
+    },
+  ];
+  // По группе на роль: человек с двумя ролями стоит в обеих — ищут его
+  // по той работе, о которой сейчас думают.
+  const executorGroups: readonly PersonGroup[] = EXECUTOR_FILTER_ROLES.map((role) => ({
+    label: t(ROLE_LABELS, role),
+    people: (staff.data ?? []).filter((person) => person.roles.includes(role)),
+  })).filter((group) => group.people.length > 0);
+
+  /** Сужает ли что-нибудь выдачу сверх вкладки. */
+  const hasFilters =
+    search.trim() !== '' ||
+    selection.kind !== 'all' ||
+    priority !== '' ||
+    creatorId !== null ||
+    assigneeId !== null;
+
   const selectedStatuses: readonly OrderStatus[] | undefined =
     selection.kind === 'status'
       ? [selection.status]
@@ -215,6 +290,8 @@ export function OrdersView({
     ...(statusFilter === undefined ? {} : { status: [...statusFilter] }),
     ...(withDebt ? { withDebt: true } : {}),
     ...(priority === '' ? {} : { priority }),
+    ...(creatorId === null ? {} : { creatorId }),
+    ...(assigneeId === null ? {} : { assigneeId }),
   });
 
   const rows = query.data?.items ?? [];
@@ -487,41 +564,78 @@ export function OrdersView({
         }
       />
 
-      {allowedPresets !== undefined && allowedPresets.length > 1 && (
-        <nav
-          aria-label="Участки работы"
-          className="flex flex-wrap gap-1.5 border-b border-subtle px-4 py-2"
-        >
-          {allowedPresets.map((entry) => {
-            const isActive = entry.key === presetKey;
-            return (
-              <button
-                key={entry.key}
-                type="button"
-                aria-pressed={isActive}
-                onClick={() => {
-                  setPresetKey(entry.key);
-                  setSelection({ kind: 'all' });
+      {/*
+        Фильтры по людям — в ряду вкладок, справа, а не в шапке.
+
+        Шапка уже несёт поиск, статус, приоритет и две кнопки; ещё два
+        списка в неё не помещались даже на 1440 px — ряд фильтров уходил под
+        заголовок и ломался надвое. В ряду вкладок справа пусто, и это тоже
+        ряд фильтров: вкладка сужает список так же, как выбранный человек.
+        На 1280 px фильтры переносятся под вкладки, вправо.
+      */}
+      {((allowedPresets !== undefined && allowedPresets.length > 1) || canFilterPeople) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-subtle px-4 py-2">
+          {allowedPresets !== undefined && allowedPresets.length > 1 && (
+            <nav aria-label="Участки работы" className="flex flex-wrap gap-1.5">
+              {allowedPresets.map((entry) => {
+                const isActive = entry.key === presetKey;
+                return (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => {
+                      setPresetKey(entry.key);
+                      setSelection({ kind: 'all' });
+                      setPage(1);
+                      clearChecked();
+                      // Вкладка попадает в адрес: ссылку на «Установку» можно
+                      // отправить коллеге, а «назад» возвращает на тот же срез.
+                      router.replace(
+                        entry.key === allowedPresets[0]?.key ? pathname : `${pathname}?tab=${entry.key}`,
+                        { scroll: false },
+                      );
+                    }}
+                    className={
+                      isActive
+                        ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
+                        : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary'
+                    }
+                  >
+                    {entry.label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+
+          {canFilterPeople && (
+            <FilterBar className="ml-auto">
+              <PersonFilter
+                label="Создатель"
+                value={creatorId}
+                groups={creatorGroups}
+                onChange={(next) => {
+                  setCreatorId(next);
                   setPage(1);
-                  clearChecked();
-                  // Вкладка попадает в адрес: ссылку на «Установку» можно
-                  // отправить коллеге, а «назад» возвращает на тот же срез.
-                  router.replace(
-                    entry.key === allowedPresets[0]?.key ? pathname : `${pathname}?tab=${entry.key}`,
-                    { scroll: false },
-                  );
                 }}
-                className={
-                  isActive
-                    ? 'rounded-full bg-accent px-3.5 py-1.5 text-caption font-semibold text-on-accent'
-                    : 'rounded-full border border-subtle px-3.5 py-1.5 text-caption font-medium text-secondary transition-colors hover:bg-ink/[0.08] hover:text-primary'
-                }
-              >
-                {entry.label}
-              </button>
-            );
-          })}
-        </nav>
+              />
+              <PersonFilter
+                label="Исполнитель"
+                // Сервер ищет человека на любом этапе, а колонка рядом
+                // показывает только текущий — без подсказки строка с другим
+                // именем в колонке выглядела бы ошибкой фильтра.
+                hint="Заказы, где человек работал на любом этапе: мастер, швея, ОТК, установка, карнизы. В колонке «Исполнитель» — только текущий этап."
+                value={assigneeId}
+                groups={executorGroups}
+                onChange={(next) => {
+                  setAssigneeId(next);
+                  setPage(1);
+                }}
+              />
+            </FilterBar>
+          )}
+        </div>
       )}
 
       <OrderCreateDialog
@@ -595,14 +709,25 @@ export function OrdersView({
         isLoading={query.isLoading}
         rows={rows}
         rowKey={(row) => row.id}
-        emptyMessage={preset?.emptyMessage ?? emptyMessage}
+        // Десять колонок на ноутбуке 1280 px помещаются только с узкими полями.
+        dense
+        // Фильтры по людям не сбрасываются при смене вкладки: без своей
+        // подписи пустая вкладка говорила «Долгов по заказам нет», хотя
+        // долги есть — их скрыл фильтр.
+        emptyMessage={hasFilters ? 'По выбранным фильтрам заказов нет' : (preset?.emptyMessage ?? emptyMessage)}
         /*
           Кнопка появляется, только когда список пуст ЦЕЛИКОМ, а не когда
           ничего не нашлось по фильтру: предлагать «завести заказ» в ответ на
           неудачный поиск — значит отвечать не на тот вопрос.
+
+          Раньше условие проверяло `status === ''` — переменной с таким
+          именем в компоненте нет, и сравнивался глобальный `window.status`,
+          всегда пустой: кнопка появлялась и при выбранном статусе.
         */
         emptyAction={
-          canCreate && search.trim() === '' && status === '' ? (
+          // Вкладка — тоже фильтр: пустой «С долгом» или «Архив» не повод
+          // заводить заказ. Кнопка — только на первой вкладке («Все»).
+          canCreate && !hasFilters && (preset === undefined || presetKey === allowedPresets?.[0]?.key) ? (
             <Button
               size="sm"
               onClick={() => {
@@ -673,7 +798,12 @@ export function OrdersView({
             render: (row) => (
               // Телефон — по наведению: в строке он превращал список в три
               // этажа, а нужен раз на десять заказов. Поиск по нему остаётся.
-              <span className="block max-w-[16rem] truncate text-primary" title={row.clientPhone}>
+              // Длинное имя обрезается (иначе таблица не влезает в 1280 px),
+              // поэтому в подсказке оно стоит целиком, перед телефоном.
+              <span
+                className="block max-w-[8rem] truncate text-primary 2xl:max-w-[10rem]"
+                title={`${row.clientName} · ${row.clientPhone}`}
+              >
                 {row.clientName}
               </span>
             ),
@@ -681,39 +811,54 @@ export function OrdersView({
           {
             key: 'status',
             header: 'Статус',
-            render: (row) => (
-              // Ширина ограничена: самый длинный статус («Отклонён, решение за
-              // директором») иначе выталкивал кнопки действий за край ноутбука.
-              <span className="flex max-w-[15rem] items-center gap-2">
-                <OrderStatusDot status={row.status} />
-                <OrderTypeBadge orderType={row.orderType} />
-                {isAwaitingPayment(row) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL[locale]}</Badge>}
-              </span>
-            ),
-          },
-          {
-            key: 'executor',
-            header: EXECUTOR_LABEL[locale],
-            sortValue: (row) => row.currentExecutor?.fullName ?? '',
             render: (row) => {
-              // Тот, кто сейчас ведёт этап. «—» — у статуса исполнителя нет
-              // (приём, проверка, закрыт); «не назначен» — этап ждёт человека.
-              const executor = row.currentExecutor;
-              if (executor === null) return <span className="text-muted">—</span>;
-              if (executor.fullName === null) {
-                return (
-                  <span className="text-footnote text-muted">{EXECUTOR_NOT_ASSIGNED_LABEL[locale]}</span>
-                );
-              }
+              const closed = preset?.closedDate === true ? closedAt(row) : null;
               return (
-                <span className="block max-w-[12rem]">
-                  <span className="block truncate text-caption text-primary">{executor.fullName}</span>
-                  <span className="block truncate text-footnote text-muted">
-                    {t(ROLE_LABELS, executor.role)}
+                /*
+                  Ширина ограничена: самый длинный статус («Отклонён, решение
+                  за директором») иначе выталкивал кнопки действий за край
+                  ноутбука. Когда места мало, подпись переносится, а не
+                  обрезается (`wrap`), — так колонка сжимается без потери смысла.
+                */
+                <span className="flex max-w-[15rem] flex-wrap items-center gap-x-2 gap-y-1">
+                  {/* Дата закрытия — в архиве, вплотную к статусу: «Выполнен · 05.11». */}
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <OrderStatusDot status={row.status} wrap />
+                    {closed !== null && (
+                      <span
+                        className="whitespace-nowrap text-footnote text-muted"
+                        title={`${t(ORDER_STATUS_LABELS, row.status)} ${formatDateTime(closed)}`}
+                      >
+                        {`· ${formatClosedDay(closed)}`}
+                      </span>
+                    )}
                   </span>
+                  <OrderTypeBadge orderType={row.orderType} />
+                  {isAwaitingPayment(row) && <Badge tone="warning">{AWAITING_PAYMENT_LABEL[locale]}</Badge>}
                 </span>
               );
             },
+          },
+          {
+            /*
+              Кто завёл заказ. Стоит на прежнем месте исполнителя, сразу за
+              статусом, — так попросил владелец: «чей это заказ» он читает
+              вместе со статусом, а «кто сейчас делает» — рядом с действием.
+            */
+            key: 'creator',
+            header: 'Создатель',
+            sortValue: (row) => row.creator.fullName ?? '',
+            render: (row) =>
+              row.creator.fullName === null ? (
+                <span className="text-muted">—</span>
+              ) : (
+                <span
+                  className="block max-w-[7.5rem] truncate text-caption text-primary 2xl:max-w-[9rem]"
+                  title={row.creator.fullName}
+                >
+                  {row.creator.fullName}
+                </span>
+              ),
           },
           {
             key: 'deadline',
@@ -730,13 +875,18 @@ export function OrdersView({
               // Просрочка называется словом, а не только цветом; дата — без
               // года: сроки живут в горизонте пары месяцев, полная дата есть
               // в карточке.
+              //
+              // «просрочен 06.11» может лечь в две строки — это самая длинная
+              // надпись колонки, и на 1280 px ей не хватало места. Поэтому без
+              // разделителя «·»: при переносе он повисал бы на краю строки.
+              // «до 11.11» не переносится — предлог без даты ничего не значит.
               return (
                 <span
-                  className={overdue ? 'whitespace-nowrap font-semibold text-danger' : 'whitespace-nowrap'}
+                  className={overdue ? 'font-semibold text-danger' : 'whitespace-nowrap'}
                   title={formatDate(row.deadline)}
                 >
                   {overdue
-                    ? `просрочен · ${formatIsoDateShort(row.deadline)}`
+                    ? `просрочен ${formatIsoDateShort(row.deadline)}`
                     : `до ${formatIsoDateShort(row.deadline)}`}
                 </span>
               );
@@ -777,6 +927,37 @@ export function OrdersView({
               return (
                 <span className="font-mono font-medium text-danger">
                   {formatMoneyShort(remaining, { locale, withoutCurrency: true })}
+                </span>
+              );
+            },
+          },
+          {
+            /*
+              Исполнитель — последним перед действиями: он и действие строки
+              читаются вместе («Нигора, швея → Пошив готов»), а место за
+              статусом занял создатель.
+            */
+            key: 'executor',
+            header: EXECUTOR_LABEL[locale],
+            sortValue: (row) => row.currentExecutor?.fullName ?? '',
+            render: (row) => {
+              // Тот, кто сейчас ведёт этап. «—» — у статуса исполнителя нет
+              // (приём, проверка, закрыт); «не назначен» — этап ждёт человека.
+              const executor = row.currentExecutor;
+              if (executor === null) return <span className="text-muted">—</span>;
+              if (executor.fullName === null) {
+                return (
+                  <span className="whitespace-nowrap text-footnote text-muted">
+                    {EXECUTOR_NOT_ASSIGNED_LABEL[locale]}
+                  </span>
+                );
+              }
+              const role = t(ROLE_LABELS, executor.role);
+              return (
+                // Длинное имя обрезается — целиком оно в подсказке.
+                <span className="block max-w-[7.5rem] 2xl:max-w-[9rem]" title={`${executor.fullName} — ${role}`}>
+                  <span className="block truncate text-caption text-primary">{executor.fullName}</span>
+                  <span className="block truncate text-footnote text-muted">{role}</span>
                 </span>
               );
             },
@@ -900,6 +1081,99 @@ function BulkBar({
       </Button>
     </div>
   );
+}
+
+/**
+ * Фильтр по человеку: подпись и выпадающий список.
+ *
+ * Подпись стоит снаружи, а не только пунктом «все» внутри: выбранное имя
+ * само не говорит, создатель это или исполнитель, а два списка с одними
+ * и теми же фамилиями стоят рядом.
+ *
+ * Собственный `<select>`, а не `Select`: исполнителей удобнее искать по
+ * роли, и для этого нужны `<optgroup>`, которых общий компонент не умеет.
+ */
+function PersonFilter({
+  label,
+  hint,
+  value,
+  groups,
+  onChange,
+}: {
+  readonly label: string;
+  /** Подсказка по наведению — что именно ищет фильтр. */
+  readonly hint?: string;
+  readonly value: number | null;
+  readonly groups: readonly PersonGroup[];
+  readonly onChange: (next: number | null) => void;
+}): ReactElement {
+  const options = (people: PersonGroup['people']): ReactNode =>
+    people.map((person) => (
+      <option key={person.id} value={person.id.toString()}>
+        {person.fullName}
+      </option>
+    ));
+
+  return (
+    <label className="flex items-center gap-1.5 text-footnote text-muted" title={hint}>
+      {label}
+      <select
+        value={value === null ? '' : value.toString()}
+        onChange={(event) => {
+          const next = Number.parseInt(event.target.value, 10);
+          onChange(Number.isNaN(next) ? null : next);
+        }}
+        className={controlClass(
+          'sm',
+          // Выбранный фильтр подсвечен: иначе пустой по нему список легко
+          // принять за «заказов нет вообще» и не заметить, что сужает его.
+          // Ширина — под «Фамилию Имя»: родной список обрезает выбранное
+          // значение без многоточия, и узкое поле показывало «Турсуно».
+          cn('w-44 pr-8', value !== null && 'ring-1 ring-accent'),
+        )}
+      >
+        <option value="">Все</option>
+        {groups.map((group) =>
+          group.label === null ? (
+            options(group.people)
+          ) : (
+            <optgroup key={group.label} label={group.label}>
+              {options(group.people)}
+            </optgroup>
+          ),
+        )}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * Когда заказ закрыт: выполненный — `completedAt`, отменённый —
+ * `cancelledAt`. У открытого заказа (и у старой записи без отметки) — `null`.
+ */
+function closedAt(row: {
+  readonly status: OrderStatus;
+  readonly completedAt: Date | null;
+  readonly cancelledAt: Date | null;
+}): Date | null {
+  if (row.status === OrderStatusValue.COMPLETED) return row.completedAt;
+  if (row.status === OrderStatusValue.CANCELLED) return row.cancelledAt;
+  return null;
+}
+
+/**
+ * День закрытия по часам мастерской: `05.11`, а прошлогодний — `05.11.2025`.
+ *
+ * День считается в Ташкенте, а не в поясе браузера: заказ, закрытый в
+ * 02:00 ночи по Ташкенту, — это сегодняшний день, а не вчерашний по UTC.
+ * Год появляется, только когда он не текущий: архив копится годами, и
+ * «05.11» прошлого года иначе выглядело бы позавчерашним.
+ */
+function formatClosedDay(at: Date): string {
+  const day = workshopDayIso(at);
+  return day.startsWith(`${workshopToday().year.toString()}-`)
+    ? formatIsoDateShort(day)
+    : formatIsoDate(day);
 }
 
 /**

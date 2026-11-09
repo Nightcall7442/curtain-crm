@@ -64,6 +64,8 @@ export type IconName =
   | 'trip'
   | 'break'
   | 'materials'
+  | 'meterSale'
+  | 'discount'
   | 'task'
   | 'priority'
   | 'logout'
@@ -142,6 +144,17 @@ const GLYPHS: Readonly<Record<IconName, IoniconName>> = {
   trip: 'car',
   break: 'cafe',
   materials: 'cube',
+  /*
+    «Метраж» — продажа по коду с бирки: код, а не купюра. Рядом в одном
+    ряду стоит «Касса» с купюрой, и две кнопки с деньгами читались бы
+    одной и той же.
+  */
+  meterSale: 'barcode',
+  /*
+    Скидка — ценник. На «Метраже» она стоит прямо над «Оплатой» с купюрой,
+    и одна купюра на двух соседних карточках сливала их в одну.
+  */
+  discount: 'pricetag',
   task: 'checkbox',
   priority: 'flash',
   logout: 'log-out',

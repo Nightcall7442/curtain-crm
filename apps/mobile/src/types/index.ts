@@ -26,7 +26,13 @@ export type RootStackParamList = {
   SellReadyMade: { readyMadeItemId?: number } | undefined;
   DayOff: undefined;
   PersonalWorkCreate: undefined;
+  /**
+   * Касса — деньги: отчёт дня, терминал, свои чеки, инкассация. Сама
+   * продажа по кодам — на «Метраже»: владелец попросил развести их по
+   * двум экранам, оба открываются с «Работы».
+   */
   CashDesk: undefined;
+  Metraj: undefined;
   SaleDetail: { saleId: number };
   TaskDetail: { taskId: number };
   PurchasePrices: undefined;

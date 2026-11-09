@@ -520,6 +520,12 @@ export const ordersRouter = router({
           priority: prioritySchema.optional(),
           branchId: idSchema.optional(),
           assigneeId: idSchema.optional(),
+          /**
+           * Кто завёл заказ (`orders.created_by`). Сужает выдачу поверх
+           * видимости, а не вместо неё: продавец с чужим `creatorId` получит
+           * пустой список, а не чужие заказы.
+           */
+          creatorId: idSchema.optional(),
           search: z.string().trim().max(200).optional(),
           deadlineFrom: z.string().date().optional(),
           deadlineTo: z.string().date().optional(),
@@ -588,6 +594,7 @@ export const ordersRouter = router({
                 eq(orders.corniceInstallerId, input.assigneeId),
               ),
             ]),
+        ...(input.creatorId === undefined ? [] : [eq(orders.createdBy, input.creatorId)]),
         ...(input.search === undefined || input.search.length === 0
           ? []
           : [
@@ -599,41 +606,58 @@ export const ordersRouter = router({
             ]),
       );
 
+      /* Архив (только выполненные и отменённые) — по дате закрытия, свежие
+         сверху: там ищут «что закрыли на днях», а заказ, заведённый месяц
+         назад и закрытый сегодня, при сортировке по созданию тонул внизу.
+         Приоритет в архиве ничего не значит — работа уже сделана. */
+      const archiveOnly =
+        input.status !== undefined &&
+        input.status.length > 0 &&
+        input.status.every((status) => ARCHIVED_ORDER_STATUSES.includes(status));
+      const listOrder = archiveOnly
+        ? [
+            sql`(case ${orders.status} when 'completed' then ${orders.completedAt} when 'cancelled' then ${orders.cancelledAt} end) desc nulls last`,
+            desc(orders.createdAt),
+          ]
+        : [
+            // Срочные заказы сверху, затем свежие: приоритет для того и заводится.
+            sql`case ${orders.priority} when 'critical' then 2 when 'urgent' then 1 else 0 end desc`,
+            desc(orders.createdAt),
+          ];
+
       const [rows, [totalRow]] = await Promise.all([
         ctx.db
           .select()
           .from(orders)
           .where(where)
-          // Срочные заказы сверху, затем свежие: приоритет для того и заводится.
-          .orderBy(
-            sql`case ${orders.priority} when 'critical' then 2 when 'urgent' then 1 else 0 end desc`,
-            desc(orders.createdAt),
-          )
+          .orderBy(...listOrder)
           .limit(paging.pageSize)
           .offset(toOffset(paging)),
         ctx.db.select({ value: count() }).from(orders).where(where),
       ]);
 
       /* Текущий исполнитель — по той же таблице, по которой сервер решает,
-         чей заказ. Имена всей страницы — одним запросом. */
-      const executorIds = [
+         чей заказ. Имена всей страницы — исполнители и авторы вместе —
+         одним запросом: второй запрос ради колонки «Создатель» удвоил бы
+         число обращений к базе на каждую страницу списка. */
+      const personIds = [
         ...new Set(
           rows
-            .map((row) => {
+            .flatMap((row) => {
               const role = currentExecutorRole(row.status);
-              return role === null ? null : row[ASSIGNABLE_ROLE_COLUMNS[role]];
+              return [role === null ? null : row[ASSIGNABLE_ROLE_COLUMNS[role]], row.createdBy];
             })
             .filter((id): id is number => id !== null),
         ),
       ];
       const names = new Map(
-        executorIds.length === 0
+        personIds.length === 0
           ? []
           : (
               await ctx.db
                 .select({ id: users.id, fullName: users.fullName })
                 .from(users)
-                .where(inArray(users.id, executorIds))
+                .where(inArray(users.id, personIds))
             ).map((row) => [row.id, row.fullName] as const),
       );
 
@@ -647,6 +671,12 @@ export const ordersRouter = router({
               role === null
                 ? null
                 : { role, userId, fullName: userId === null ? null : (names.get(userId) ?? null) },
+            /*
+              Автор заказа — только id и имя. Это не расширяет видимость:
+              карточка заказа (`byId`) и так отдаёт автора любому, кто видит
+              заказ, а телефона здесь нет — в списке он не нужен.
+            */
+            creator: { id: row.createdBy, fullName: names.get(row.createdBy) ?? null },
           };
         }),
         totalRow?.value ?? 0,

@@ -76,6 +76,7 @@ export function DataTable<TRow>({
   rowHref,
   selection,
   activeRowKey,
+  dense = false,
 }: {
   readonly rows: readonly TRow[];
   readonly columns: readonly Column<TRow>[];
@@ -111,8 +112,17 @@ export function DataTable<TRow>({
    * по заказу, и таблице про них знать незачем.
    */
   readonly activeRowKey?: RowKey | null;
+  /**
+   * Узкие поля ячеек: 8 px по бокам вместо 12.
+   *
+   * Для таблиц, где колонок много, а экран ноутбука — 1280 px: у списка
+   * заказов десять колонок, и 8 px с каждой — это ещё одна колонка, которая
+   * помещается без прокрутки вбок. Остальным таблицам простор нужнее.
+   */
+  readonly dense?: boolean;
 }): ReactElement {
   const [sort, setSort] = useState<SortState>(null);
+  const padX = dense ? 'px-2' : 'px-3';
 
   const sortedRows = useMemo(() => {
     if (sort === null) return rows;
@@ -198,7 +208,7 @@ export function DataTable<TRow>({
           */}
           <tr className="border-b border-ink/[0.08] bg-ink/[0.03] backdrop-blur-md">
             {selection !== undefined && (
-              <th scope="col" className="w-10 px-3 py-2.5">
+              <th scope="col" className={cn('w-10 py-2.5', padX)}>
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
@@ -227,7 +237,8 @@ export function DataTable<TRow>({
                     active === null ? undefined : active === 'asc' ? 'ascending' : 'descending'
                   }
                   className={cn(
-                    'whitespace-nowrap px-3 py-2.5 text-overline font-semibold uppercase text-muted',
+                    'whitespace-nowrap py-2.5 text-overline font-semibold uppercase text-muted',
+                    padX,
                     alignClass,
                     column.className,
                   )}
@@ -261,9 +272,9 @@ export function DataTable<TRow>({
           {isLoading &&
             Array.from({ length: 5 }, (_unused, index) => (
               <tr key={`skeleton-${index.toString()}`} className="border-b border-subtle/60">
-                {selection !== undefined && <td className="px-3 py-2" />}
+                {selection !== undefined && <td className={cn('py-2', padX)} />}
                 {columns.map((column) => (
-                  <td key={column.key} className="px-3 py-2">
+                  <td key={column.key} className={cn('py-2', padX)}>
                     <span className="block h-3 animate-pulse rounded bg-raised/70" />
                   </td>
                 ))}
@@ -341,7 +352,7 @@ export function DataTable<TRow>({
                   )}
                 >
                   {selection !== undefined && (
-                    <td className="px-3 py-2">
+                    <td className={cn('py-2', padX)}>
                       <Checkbox
                         checked={isSelected}
                         onChange={() => {
@@ -360,7 +371,8 @@ export function DataTable<TRow>({
                           таблицы панели читают списками, и лишние 8 px на строку
                           крадут четверть экрана на каждых двадцати строках.
                         */
-                        'px-3 py-2 text-secondary',
+                        'py-2 text-secondary',
+                        padX,
                         column.align === 'right'
                           ? 'text-right'
                           : column.align === 'center'

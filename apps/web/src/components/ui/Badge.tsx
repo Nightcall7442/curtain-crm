@@ -111,16 +111,41 @@ const TONE_DOT: Readonly<Record<Tone, string>> = {
  * Двадцать разноцветных таблеток подряд, да ещё переносящихся на три
  * строки, превращали таблицу заказов в мозаику. Точка несёт тон, текст —
  * смысл, строка остаётся одной высоты.
+ *
+ * `wrap` разрешает длинной подписи лечь во вторую строку вместо обрезки.
+ * Нужен списку заказов: после колонки «Создатель» таблица на ноутбуке
+ * 1280 px перестала помещаться, а обрезанное «Отклонён, решение за ди…»
+ * прячет как раз ту часть, ради которой статус читают. Перенос — не
+ * мозаика: ячейка исполнителя (имя и роль) и так делает строку двухэтажной,
+ * а в три строки на 1280 px ложится только редкий «Отклонён, решение за
+ * директором».
  */
-export function OrderStatusDot({ status }: { readonly status: OrderStatus }): ReactElement {
+export function OrderStatusDot({
+  status,
+  wrap = false,
+}: {
+  readonly status: OrderStatus;
+  readonly wrap?: boolean;
+}): ReactElement {
   const { t } = useLocale();
   return (
     <span
-      className="inline-flex min-w-0 max-w-full items-center gap-2 whitespace-nowrap text-primary"
+      className={cn(
+        'inline-flex min-w-0 max-w-full gap-2 text-primary',
+        wrap ? 'items-start' : 'items-center whitespace-nowrap',
+      )}
       title={t(ORDER_STATUS_LABELS, status)}
     >
-      <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', TONE_DOT[ORDER_STATUS_TONE[status]])} />
-      <span className="truncate">{t(ORDER_STATUS_LABELS, status)}</span>
+      <span
+        aria-hidden
+        className={cn(
+          'h-2 w-2 shrink-0 rounded-full',
+          // Точка — по центру ПЕРВОЙ строки подписи (18 px строки − 8 px точки) / 2.
+          wrap && 'mt-[5px]',
+          TONE_DOT[ORDER_STATUS_TONE[status]],
+        )}
+      />
+      <span className={wrap ? undefined : 'truncate'}>{t(ORDER_STATUS_LABELS, status)}</span>
     </span>
   );
 }
