@@ -26,7 +26,7 @@ import {
   type Locale,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
 
 import { SYSTEM_AUTHOR_RU } from '../lib/notificationTranslations';
 import { recordAudit } from './audit.service';
@@ -273,14 +273,18 @@ export async function hasEarlierSameKind(
   return prior !== undefined;
 }
 
-/** Строка дисциплины для пересчёта повторов — без лишних колонок. */
-export interface RepeatRow {
+/** Запись в порядке месяца с тем, что меняет пересчёт повторов: признак и балл. */
+export interface RepeatEntry {
   readonly id: number;
-  readonly userId: number;
   readonly kind: DisciplineKindName;
   readonly occurredOn: string;
   readonly isRepeat: boolean;
   readonly points: number;
+}
+
+/** Строка дисциплины для пересчёта повторов — без лишних колонок. */
+export interface RepeatRow extends RepeatEntry {
+  readonly userId: number;
   readonly recordedBy: number;
 }
 
@@ -370,44 +374,116 @@ export function recountRepeats(
   how: { readonly edits: readonly RepeatEdit[]; readonly policy: RepeatRecountPolicy },
 ): RepeatChange[] {
   const edited = new Set(how.edits.map((edit) => edit.id));
-  type EarliestByKind = Map<DisciplineKindName, RepeatPosition>;
-  const earliestNow: EarliestByKind = new Map();
-  const earliestBefore: EarliestByKind = new Map();
-  const noteEarliest = (earliest: EarliestByKind, kind: DisciplineKindName, at: RepeatPosition): void => {
+  const earliest = earliestByKind(rows, how.edits);
+  const changes: RepeatChange[] = [];
+  for (const row of [...rows].sort(comparePosition)) {
+    if (row.recordedBy !== row.userId || edited.has(row.id)) continue;
+    const change = repeatChangeOf(row, earliest, how.policy);
+    if (change !== null) changes.push(change);
+  }
+  return changes;
+}
+
+/**
+ * Повторы записей, которые держит одобрение, — в снимке до него (`late_requests.lateness_before_approval`).
+ *
+ * Снятие согласования возвращает запись из снимка. Но был ли раньше в
+ * месяце такой же вид, пока одобрение в силе, могло поменяться: снятие
+ * одобрения другого дня, ручная запись или прощение более раннего дня.
+ * Проверка поймала все три: (1) 02-го −2, 06-го −3 с повтором; одобрили
+ * 02-е, потом 06-е, сняли 02-е, потом 06-е — 06-е вернулось −2 без
+ * повтора, хотя 02-е снова «больше 30»; (2) ручное «больше 30» за 03-е,
+ * пока одобрение 06-го в силе, — то же; (3) 02-е простили руками — 06-е
+ * вернулось повтором, хотя раньше него ничего такого уже нет. Пересчёт
+ * после возврата саму вернувшуюся запись не трогает (она правленая), и
+ * устаревший признак оставался.
+ *
+ * Поэтому запись в снимке пересчитывается вместе с месяцем — ТЕМ ЖЕ
+ * правилом, что и живая запись на её месте (`repeatChangeOf`, с той же
+ * политикой правки). Без этого одобрения она и прошла бы ровно через эти
+ * правки, так что снятие, вернув снимок как есть, даёт день, каким он был
+ * бы без одобрения. Сравнить при снятии «было ли раньше такое же» в момент
+ * одобрения и сейчас мало: ответ мог смениться из-за одобрения другого дня
+ * (`lower_only` тогда запись не утяжелил бы) или смениться и вернуться
+ * назад — и сравнение концов дало бы не то.
+ *
+ * Запись снимка стоит на своём месте в месяце — день и id до одобрения:
+ * без одобрения она там и лежала бы. Снятая и вставленная заново получает
+ * id больше, но в её день других опозданий тогда нет (`restoreRemoved`),
+ * так что ни для одной записи месяца новое место не отличается от старого.
+ *
+ * Как более раннее событие запись снимка не считается — ни для записей
+ * месяца, ни для других снимков: пока одобрение в силе, в месяце её нет
+ * (или она другого вида), и решения по другим дням принимались без неё.
+ * Правка самой этой записи (её одобрение, прощение руками) снимок не
+ * пересчитывает — как и правленую живую запись в `recountRepeats`.
+ */
+export function recountHeldRepeats(
+  rows: readonly RepeatRow[],
+  held: readonly RepeatEntry[],
+  how: { readonly edits: readonly RepeatEdit[]; readonly policy: RepeatRecountPolicy },
+): RepeatChange[] {
+  const edited = new Set(how.edits.map((edit) => edit.id));
+  const earliest = earliestByKind(rows, how.edits);
+  const changes: RepeatChange[] = [];
+  for (const entry of [...held].sort(comparePosition)) {
+    if (edited.has(entry.id)) continue;
+    const change = repeatChangeOf(entry, earliest, how.policy);
+    if (change !== null) changes.push(change);
+  }
+  return changes;
+}
+
+/** Самая ранняя запись каждого вида в месяце — после правки и до неё. */
+interface EarliestByKind {
+  readonly now: ReadonlyMap<DisciplineKindName, RepeatPosition>;
+  readonly before: ReadonlyMap<DisciplineKindName, RepeatPosition>;
+}
+
+/** Самые ранние записи видов по записям месяца после правки и по самим правкам (см. `recountRepeats`). */
+function earliestByKind(rows: readonly RepeatRow[], edits: readonly RepeatEdit[]): EarliestByKind {
+  const edited = new Set(edits.map((edit) => edit.id));
+  const now = new Map<DisciplineKindName, RepeatPosition>();
+  const before = new Map<DisciplineKindName, RepeatPosition>();
+  const note = (earliest: Map<DisciplineKindName, RepeatPosition>, kind: DisciplineKindName, at: RepeatPosition): void => {
     const known = earliest.get(kind);
     if (known === undefined || comparePosition(at, known) < 0) earliest.set(kind, at);
   };
   for (const row of rows) {
-    noteEarliest(earliestNow, row.kind, row);
+    note(now, row.kind, row);
     // До правки правленой записи на её месте не было — или она была другого вида (ниже).
-    if (!edited.has(row.id)) noteEarliest(earliestBefore, row.kind, row);
+    if (!edited.has(row.id)) note(before, row.kind, row);
   }
-  for (const edit of how.edits) {
-    if (edit.from !== null) noteEarliest(earliestBefore, edit.from, edit);
+  for (const edit of edits) {
+    if (edit.from !== null) note(before, edit.from, edit);
   }
+  return { now, before };
+}
+
+/**
+ * Повтор и балл записи после правки — или `null`, если правка их не меняет.
+ *
+ * Одно правило и для живой записи, и для записи в снимке одобрения: две
+ * копии разошлись бы, и вернувшаяся из снимка запись стояла бы не с тем
+ * повтором, что живая на её месте.
+ */
+function repeatChangeOf(entry: RepeatEntry, earliest: EarliestByKind, policy: RepeatRecountPolicy): RepeatChange | null {
   /** Было ли раньше записи событие её вида: запись стоит после самой ранней записи вида. */
-  const seenEarlier = (earliest: RepeatPosition | undefined, row: RepeatPosition): boolean =>
-    earliest !== undefined && comparePosition(row, earliest) > 0;
+  const seenEarlier = (first: RepeatPosition | undefined): boolean =>
+    first !== undefined && comparePosition(entry, first) > 0;
+  const seenNow = seenEarlier(earliest.now.get(entry.kind));
+  if (seenNow === seenEarlier(earliest.before.get(entry.kind))) return null;
 
-  const changes: RepeatChange[] = [];
-  for (const row of [...rows].sort(comparePosition)) {
-    if (row.recordedBy !== row.userId || edited.has(row.id)) continue;
-    const seenNow = seenEarlier(earliestNow.get(row.kind), row);
-    if (seenNow === seenEarlier(earliestBefore.get(row.kind), row)) continue;
-
-    const isRepeat = isDisciplineViolation(row.kind) && seenNow;
-    const points = disciplinePoints(row.kind, isRepeat);
-    const stricter = points < row.points;
-    if ((isRepeat !== row.isRepeat || points !== row.points) && !(how.policy === 'lower_only' && stricter)) {
-      changes.push({
-        id: row.id,
-        occurredOn: row.occurredOn,
-        from: { isRepeat: row.isRepeat, points: row.points },
-        to: { isRepeat, points },
-      });
-    }
-  }
-  return changes;
+  const isRepeat = isDisciplineViolation(entry.kind) && seenNow;
+  const points = disciplinePoints(entry.kind, isRepeat);
+  const stricter = points < entry.points;
+  if ((isRepeat === entry.isRepeat && points === entry.points) || (policy === 'lower_only' && stricter)) return null;
+  return {
+    id: entry.id,
+    occurredOn: entry.occurredOn,
+    from: { isRepeat: entry.isRepeat, points: entry.points },
+    to: { isRepeat, points },
+  };
 }
 
 /** Кто и откуда меняет опоздание при пересмотре — для журнала. */
@@ -424,11 +500,13 @@ export interface ReviewActor {
  * добавили, убрали или поправили (см. `recountRepeats`); все правки — за
  * один день, он же `reviewedDay` в журнале: из-за записи этого дня
  * пересчитаны повторы. `reason` — код причины (`DisciplineAuditReason`).
- * Меняются только записи системы.
+ * Меняются только записи системы — и записи в снимках одобрений, которые в
+ * силе (`recountHeldRepeats`): иначе снятие согласования вернуло бы запись
+ * с повтором, устаревшим за время одобрения.
  *
  * Вызывающий держит `lockLatenessOf` с самого начала своей транзакции:
- * здесь записи месяца берутся FOR UPDATE, и два пересчёта одного месяца без
- * общего замка блокировали бы друг друга.
+ * здесь записи месяца и запросы со снимками берутся FOR UPDATE, и два
+ * пересчёта одного месяца без общего замка блокировали бы друг друга.
  */
 export async function recountMonthRepeats(
   executor: DbExecutor,
@@ -442,6 +520,7 @@ export async function recountMonthRepeats(
   const { from, to } = monthOf(reviewedDay);
   // Повтор меняется только у видов, которые правка добавила или убрала.
   const kinds = new Set(scope.edits.flatMap((edit) => [edit.from, edit.to]).filter((kind) => kind !== null));
+  const held = await heldSnapshotsIn(executor, scope.userId, { from, to });
   for (const kind of kinds) {
     const rows = await executor
       .select({
@@ -465,10 +544,8 @@ export async function recountMonthRepeats(
       .orderBy(asc(disciplineEvents.occurredOn), asc(disciplineEvents.id))
       .for('update');
 
-    const changes = recountRepeats(
-      rows.map((row) => ({ ...row, points: Number.parseFloat(row.points) })),
-      { edits: scope.edits, policy: how.policy },
-    );
+    const repeatRows = rows.map((row) => ({ ...row, points: Number.parseFloat(row.points) }));
+    const changes = recountRepeats(repeatRows, { edits: scope.edits, policy: how.policy });
     for (const change of changes) {
       await executor
         .update(disciplineEvents)
@@ -493,7 +570,77 @@ export async function recountMonthRepeats(
         ipAddress: actor.ipAddress,
       });
     }
+
+    /*
+      Записи в снимках — без журнала: записи дисциплины с такими значениями
+      сейчас нет, и читать в журнале «повтор пересчитан» у несуществующей
+      записи было бы странно. Значения, с которыми запись вернулась,
+      журнал получит при снятии согласования (`restoreAdjusted` /
+      `restoreRemoved`).
+    */
+    const heldOfKind = held.filter((entry) => entry.snapshot.row.kind === kind);
+    const heldChanges = recountHeldRepeats(
+      repeatRows,
+      heldOfKind.map(({ snapshot }) => ({
+        id: snapshot.row.id,
+        kind: snapshot.row.kind,
+        occurredOn: snapshot.row.occurredOn,
+        isRepeat: snapshot.row.isRepeat,
+        points: Number.parseFloat(snapshot.row.points),
+      })),
+      { edits: scope.edits, policy: how.policy },
+    );
+    for (const change of heldChanges) {
+      const entry = heldOfKind.find(({ snapshot }) => snapshot.row.id === change.id);
+      if (entry === undefined) continue;
+      await rememberBeforeApproval(executor, entry.requestId, {
+        ...entry.snapshot,
+        row: { ...entry.snapshot.row, isRepeat: change.to.isRepeat, points: change.to.points.toFixed(1) },
+      });
+    }
   }
+}
+
+/** Снимок записи до одобрения, которое сейчас в силе, — и чей это запрос. */
+interface HeldSnapshot {
+  readonly requestId: number;
+  readonly snapshot: LatenessBeforeApproval;
+}
+
+/**
+ * Снимки одобрений сотрудника за месяц, которые в силе, — под блокировкой.
+ *
+ * Снимок пишет только одобрение и только проверенным схемой; читается всё
+ * равно через неё — `jsonb` мог поправить кто угодно. Не разобрался или он
+ * о другом дне — пропускаем: вернуть из него запись не даст само снятие
+ * согласования (`parseBeforeApproval`), а ручную правку дисциплины за
+ * месяц испорченный снимок чужого дня ронять не должен.
+ */
+async function heldSnapshotsIn(
+  executor: DbExecutor,
+  userId: number,
+  month: { readonly from: string; readonly to: string },
+): Promise<HeldSnapshot[]> {
+  const requests = await executor
+    .select({ id: lateRequests.id, date: lateRequests.date, snapshot: lateRequests.latenessBeforeApproval })
+    .from(lateRequests)
+    .where(
+      and(
+        eq(lateRequests.userId, userId),
+        eq(lateRequests.status, DayOffStatus.APPROVED),
+        isNotNull(lateRequests.latenessBeforeApproval),
+        gte(lateRequests.date, month.from),
+        lt(lateRequests.date, month.to),
+      ),
+    )
+    .orderBy(asc(lateRequests.id))
+    .for('update');
+  return requests.flatMap((request) => {
+    const parsed = latenessBeforeApprovalSchema.safeParse(request.snapshot);
+    return parsed.success && parsed.data.row.occurredOn === request.date
+      ? [{ requestId: request.id, snapshot: parsed.data }]
+      : [];
+  });
 }
 
 /** Ступень опоздания за день: вид, повтор и балл. */
@@ -948,7 +1095,13 @@ function snapshotOf(row: DisciplineEvent, change: LatenessApprovalChange): Laten
   });
 }
 
-/** Запомнить в запросе, какой была запись дня до его одобрения (см. `latenessBeforeApprovalSchema`). */
+/**
+ * Запомнить в запросе, какой была запись дня до его одобрения (см. `latenessBeforeApprovalSchema`).
+ *
+ * Пишут двое: одобрение (`snapshotOf`) и пересчёт повторов месяца, пока
+ * одобрение в силе (`recountMonthRepeats`). Схемой — при каждой записи:
+ * снимок, который потом не разобрать, сорвал бы снятие согласования.
+ */
 async function rememberBeforeApproval(
   executor: DbExecutor,
   lateRequestId: number,
@@ -956,7 +1109,7 @@ async function rememberBeforeApproval(
 ): Promise<void> {
   await executor
     .update(lateRequests)
-    .set({ latenessBeforeApproval: snapshot })
+    .set({ latenessBeforeApproval: latenessBeforeApprovalSchema.parse(snapshot) })
     .where(eq(lateRequests.id, lateRequestId));
 }
 
@@ -981,7 +1134,8 @@ async function rememberBeforeApproval(
  *    объяснение сотрудника (`discipline.explain`) остаётся при ней;
  *  - поправленная или снятая запись запоминается целиком в запросе
  *    (`rememberBeforeApproval`) — по этому снимку снятие согласования вернёт
- *    её ровно такой;
+ *    её такой, какой она была бы без одобрения: повтор и балл в снимке, пока
+ *    одобрение в силе, пересчитывает месяц (`recountHeldRepeats`);
  *  - повторы месяца — только мягче (`lower_only`) и только там, где правка
  *    этого дня меняет, было ли раньше такое же (`recountRepeats`). Запись,
  *    ушедшая ступенью ниже (25 мин → 10 мин), в новой ступени становится
@@ -1028,6 +1182,7 @@ async function applyApproval(executor: DbExecutor, review: DayReview): Promise<L
   }
 
   // Системное опоздание за день одно; лишние — след старой ошибки, оставляем самое раннее.
+  // Снимка у лишних нет, и снятие согласования их не вернёт — см. `applyWithdrawal`.
   const edits: RepeatEdit[] = [];
   for (const duplicate of duplicates) {
     await removeAutomaticLateness(executor, duplicate, review);
@@ -1066,13 +1221,13 @@ async function applyApproval(executor: DbExecutor, review: DayReview): Promise<L
 type RowBeforeApproval = LatenessBeforeApproval['row'];
 
 /**
- * Снимок до одобрения из запроса; одобрение запись не трогало — `null`.
+ * Снимок до одобрения из запроса; снимка нет — `null` (что это значит — см. `applyWithdrawal`).
  *
- * Снимок пишет только одобрение и только проверенным схемой
- * (`snapshotOf`). Не разобрался или он о другом дне — значит, `jsonb`
- * правили руками, и вернуть день «ровно как было» не из чего. Тогда снятие
- * согласования не проходит вовсе: молча вывести запись заново по графику —
- * ровно то, от чего снимок и спасает.
+ * Снимок пишут только одобрение и пересчёт повторов, и только проверенным
+ * схемой (`rememberBeforeApproval`). Не разобрался или он о другом дне —
+ * значит, `jsonb` правили руками, и вернуть день «ровно как было» не из
+ * чего. Тогда снятие согласования не проходит вовсе: молча вывести запись
+ * заново по графику — ровно то, от чего снимок и спасает.
  */
 function parseBeforeApproval(raw: unknown, day: string): LatenessBeforeApproval | null {
   if (raw === null || raw === undefined) return null;
@@ -1094,8 +1249,11 @@ function explainedAt(row: RowBeforeApproval): Date | null {
 /**
  * Одобрение поправило запись — вернуть ту же строку к снимку.
  *
- * Без графика, без смен и без пересчёта ступени и повтора: вид, повтор,
- * балл и пояснение — ровно из снимка. Объяснение сотрудника одобрение не
+ * Без графика, без смен и без пересчёта ступени: вид, повтор, балл и
+ * пояснение — ровно из снимка. Повтор и балл в нём не застыли на моменте
+ * одобрения: пока оно было в силе, их пересчитывал месяц тем же правилом,
+ * что и запись на этом месте (`recountHeldRepeats`), — снимок и есть
+ * запись, какой она была бы без одобрения. Объяснение сотрудника одобрение не
  * трогает, а пишет его только сам сотрудник (`discipline.explain`), так что
  * нынешнее — либо то же, что в снимке, либо новее: сотрудник объяснил
  * опоздание уже после одобрения. Тогда остаётся нынешнее — оно о том же
@@ -1184,9 +1342,11 @@ async function restoreAdjusted(
  * Вид, повтор, балл, пояснение, объяснение сотрудника и его момент, день —
  * из снимка; автор — сам сотрудник, как у любой записи системы. Без
  * графика, без смен: удалённая после одобрения смена с отметкой штраф уже не
- * теряет. Строка новая (id больше прежнего): в порядке месяца это меняет
- * что-то только против записей того же дня, а других опозданий за день
- * здесь нет — см. ниже.
+ * теряет. Повтор и балл снимка пересчитывались вместе с месяцем, пока
+ * одобрение было в силе, — на прежнем месте записи (`recountHeldRepeats`).
+ * Строка новая (id больше прежнего): в порядке месяца это меняет что-то
+ * только против записей того же дня, а других опозданий за день здесь
+ * нет — см. ниже; так что прежнее место и новое для месяца одно и то же.
  *
  * Пока одобрение было в силе, руководитель мог записать опоздание за этот
  * день руками — тогда второе было бы двойным штрафом, и снятие ничего не
@@ -1252,7 +1412,10 @@ async function restoreRemoved(
 }
 
 /**
- * Снимка нет: одобрение запись дня не трогало — повлиять оно могло только на саму отметку.
+ * Снимка нет: одобрение запись дня не поправило и не сняло — повлиять оно могло только на саму отметку.
+ *
+ * (Снимка нет и в двух случаях, когда одобрение запись всё же трогало, —
+ * их снятие не возвращает, см. `applyWithdrawal`.)
  *
  * Отметку, сделанную ПОСЛЕ одобрения, оценивали уже от «приду к»: пришла в
  * 09:50 при «приду к 10:00» — записи нет; в 10:20 — 20 мин вместо 80 от
@@ -1275,7 +1438,8 @@ async function restoreRemoved(
  * одобрение, и раньше — когда не видела.
  *
  * Отметка была до одобрения — одобрение её не касалось: запись (если есть)
- * остаётся как есть, создавать нечего.
+ * остаётся как есть, создавать нечего. Так же остаётся запись, которую
+ * писала не эта отметка (`cameFromCheckIn`).
  */
 async function undoApprovalAtCheckIn(
   executor: DbExecutor,
@@ -1311,6 +1475,7 @@ async function undoApprovalAtCheckIn(
   }
 
   const fromMinutes = storedLateMinutes(kept.description);
+  if (!cameFromCheckIn(kept, actual)) return { kind: 'unchanged', minutes: fromMinutes };
   const target = await latenessTarget(
     executor,
     { userId: review.userId, day: review.day, keptId: kept.id },
@@ -1330,16 +1495,50 @@ async function undoApprovalAtCheckIn(
 }
 
 /**
+ * Запись дня писала эта отметка — по времени отметки в её пояснении (`storedCheckInTime`).
+ *
+ * Проверка нашла: отметка в 09:40 (40 мин, −2) была до одобрения, потом
+ * смену с ней удалили, и сотрудник отметился ещё раз в 20:24 — уже после
+ * одобрения. Первой отметкой дня стала 20:24, и снятие согласования
+ * поднимало запись до 684 мин, хотя писала её отметка в 09:40, которой
+ * одобрение не касалось (повторная отметка опоздание не писала: за день
+ * оно уже было). Поднимать можно только запись, записанную самой отметкой
+ * после одобрения, — тогда в пояснении её время: пересчёты переписывают
+ * начало и минуты, но время отметки сохраняют. Пояснение не разобрать (так
+ * его не пишет ни одна версия системы, но колонку могли поправить руками) —
+ * не поднимаем: лучше оставить штраф как есть, чем поднять его по чужой
+ * отметке.
+ */
+function cameFromCheckIn(kept: DisciplineEvent, checkInTime: string): boolean {
+  return storedCheckInTime(kept.description) === checkInTime;
+}
+
+/**
  * Снятие согласования: вернуть день к тому, каким он был до одобрения.
  *
  *  - одобрение запись поправило или сняло — в запросе лежит её снимок
  *    (`latenessBeforeApproval`), и запись возвращается ровно к нему: та же
  *    строка (`restoreAdjusted`) или новая с теми же значениями
- *    (`restoreRemoved`). Ни графика, ни смен, ни пересчёта ступени и повтора
- *    — ничего, что могло измениться после одобрения;
- *  - снимка нет — одобрение запись не трогало, и она остаётся как есть.
- *    Кроме одного: отметку, сделанную уже после одобрения, оценивали от
- *    «приду к», и эта уступка снимается (`undoApprovalAtCheckIn`).
+ *    (`restoreRemoved`). Ни графика, ни смен, ни пересчёта ступени —
+ *    ничего, что могло измениться после одобрения. Повтор и балл снимка
+ *    пересчитывал месяц, пока одобрение было в силе (`recountHeldRepeats`):
+ *    повтор зависит от более ранних дней, и они за это время могли
+ *    измениться;
+ *  - снимка нет — одобрение запись системы не поправило и не сняло, и она
+ *    остаётся как есть. Кроме одного: отметку, сделанную уже после
+ *    одобрения, оценивали от «приду к», и эта уступка снимается
+ *    (`undoApprovalAtCheckIn`).
+ *
+ * Снимка нет и в двух случаях, когда одобрение запись всё-таки трогало, —
+ * и снятие это не возвращает:
+ *  - лишние записи системы за тот же день: одобрение оставляет одну, самую
+ *    раннюю (`applyApproval`). Система пишет за день одно опоздание; вторая
+ *    запись — след старой ошибки и второй штраф за то же опоздание. Вернуть
+ *    её — вернуть двойной штраф, поэтому её снятие окончательное;
+ *  - одобрения, сделанные до миграции 0076, когда снимков ещё не было:
+ *    какой запись была до них, взять неоткуда. Запись остаётся, какой её
+ *    оставило одобрение, и заново, как при любом одобрении без снимка,
+ *    оценивается только отметка, сделанная после него.
  */
 async function applyWithdrawal(
   executor: DbExecutor,
@@ -1371,14 +1570,18 @@ async function applyWithdrawal(
  *    повторы других дней (`applyApproval`). Поправленную или снятую запись
  *    оно запоминает в запросе целиком;
  *  - снятие согласования ничего не выводит заново, а возвращает запомненное
- *    как есть — вид, повтор, балл, пояснение, объяснение; поправленную — в
- *    ту же строку (`applyWithdrawal`). Повторы более поздних дней меняются
- *    только там, где возврат вида этой записи меняет, было ли раньше
- *    такое же;
- *  - одобрение запись не трогало — снятие её тоже не трогает. Заново
- *    оценивается одно: отметка, сделанная уже после одобрения. Дня «до
- *    одобрения» у неё не было, и она считается так, как посчитала бы
- *    отметка без «приду к» (`undoApprovalAtCheckIn`);
+ *    — вид, повтор, балл, пояснение, объяснение; поправленную — в ту же
+ *    строку (`applyWithdrawal`). Повтор и балл запомненной записи месяц
+ *    пересчитывает, пока одобрение в силе, — так же, как пересчитал бы её
+ *    саму без одобрения (`recountHeldRepeats`). Повторы более поздних дней
+ *    меняются только там, где возврат вида этой записи меняет, было ли
+ *    раньше такое же;
+ *  - снимка нет — одобрение запись не поправило и не сняло, и снятие её
+ *    тоже не трогает (два исключения, когда снимка нет, хотя одобрение
+ *    запись трогало, — в `applyWithdrawal`). Заново оценивается одно:
+ *    отметка, сделанная уже после одобрения. Дня «до одобрения» у неё не
+ *    было, и она считается так, как посчитала бы отметка без «приду к»
+ *    (`undoApprovalAtCheckIn`);
  *  - решения руководителя, принятые после одобрения, сильнее снятия:
  *    прощённая руками запись не воскресает, а при опоздании, которое он сам
  *    записал за этот день, снятая запись не возвращается — двойного штрафа

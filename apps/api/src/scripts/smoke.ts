@@ -5129,6 +5129,206 @@ async function run(db: Database): Promise<void> {
     .where(eq(lateRequests.id, corruptRequest.id));
   check('опоздание: после отбитого снятия запрос по-прежнему одобрен', corruptAfter?.status === DayOffStatus.APPROVED);
 
+  /* ------ 20. Повтор в снимке — живой, пока одобрение в силе; поднимается только запись своей отметки ------ */
+
+  /*
+    Замечания проверки (седьмой круг): повтор записи, вернувшейся из снимка,
+    брался из снимка как есть, хотя было ли раньше в месяце такое же, за
+    время одобрения могло поменяться: (1) снятие одобрения 02-го раньше
+    снятия 06-го, (2) ручная запись за 03-е, (3) прощение или одобрение
+    02-го. И снятие без снимка поднимало запись, которую писала не отметка
+    после одобрения, а удалённая утренняя (40 мин становились 684).
+  */
+  const heldFifoSewer = await makeUser('Снимок: сняли по порядку', Role.SEWER, '+998900000193');
+  const heldLifoSewer = await makeUser('Снимок: сняли в обратном порядке', Role.SEWER, '+998900000194');
+  const heldManualSewer = await makeUser('Снимок: ручная запись раньше', Role.SEWER, '+998900000195');
+  const heldForgivenSewer = await makeUser('Снимок: раньше простили', Role.SEWER, '+998900000196');
+  const heldExcusedSewer = await makeUser('Снимок: раньше одобрили', Role.SEWER, '+998900000197');
+  const heldLowerSewer = await makeUser('Снимок: одобрение раньше не утяжеляет', Role.SEWER, '+998900000198');
+  const recheckLaterSewer = await makeUser('Отметилась заново после одобрения', Role.SEWER, '+998900000199');
+  await db.insert(payrollSchemes).values(
+    [
+      heldFifoSewer,
+      heldLifoSewer,
+      heldManualSewer,
+      heldForgivenSewer,
+      heldExcusedSewer,
+      heldLowerSewer,
+      recheckLaterSewer,
+    ].map((person) => ({
+      userId: person.id,
+      role: Role.SEWER,
+      type: PayrollSchemeType.HOURLY,
+      rate: '10000.00',
+      shiftStart: '09:00',
+      shiftEnd: '18:00',
+      effectiveFrom: '2020-01-01',
+      createdBy: admin.id,
+    })),
+  );
+  const snapDay3 = `${prevMonth}-03`;
+  /** Запись дня — вид, повтор, балл: то, что сверяют проверки этого раздела. */
+  const gradeOn = async (person: { readonly id: number }, day: string) => {
+    const rows = await lateRows(person.id, day);
+    return rows.map((row) => `${row.kind} ${row.points}${row.isRepeat ? ' повтор' : ''}`);
+  };
+  /** 02-го и 06-го отметка в 09:40: −2 и −3 с повтором. */
+  const lateOn2And6 = async (person: { readonly id: number }) => {
+    await checkInOn(person, snapDay2, '09:40');
+    await checkInOn(person, snapDay6, '09:40');
+  };
+
+  // (1) Одобрили 02-е «до 09:35» (06-е бережно −2), потом 06-е «до 09:45» (снято); сняли 02-е, потом 06-е.
+  await lateOn2And6(heldFifoSewer);
+  const fifoBefore = [await gradeOn(heldFifoSewer, snapDay2), await gradeOn(heldFifoSewer, snapDay6)];
+  const fifoDay2 = await pendingLateOnDay(heldFifoSewer, snapDay2, '09:35');
+  const fifoDay6 = await pendingLateOnDay(heldFifoSewer, snapDay6, '09:45');
+  await ceoCaller.lateRequests.approve({ id: fifoDay2.id });
+  await ceoCaller.lateRequests.approve({ id: fifoDay6.id });
+  const fifoHeldAtApproval = await beforeApprovalOf(fifoDay6.id);
+  await ceoCaller.lateRequests.withdraw({ id: fifoDay2.id });
+  const fifoHeldAfterDay2 = await beforeApprovalOf(fifoDay6.id);
+  await ceoCaller.lateRequests.withdraw({ id: fifoDay6.id });
+  const fifoAfter = [await gradeOn(heldFifoSewer, snapDay2), await gradeOn(heldFifoSewer, snapDay6)];
+  const [fifoDay6Back] = await lateRows(heldFifoSewer.id, snapDay6);
+  check(
+    'опоздание (снимок, 1): одобрили 02-е, потом 06-е, сняли в том же порядке — 06-е вернулось −3 с повтором, как до одобрений',
+    JSON.stringify(fifoBefore) === JSON.stringify([['late_over_30 -2.0'], ['late_over_30 -3.0 повтор']]) &&
+      fifoHeldAtApproval?.row.points === '-2.0' &&
+      !fifoHeldAtApproval.row.isRepeat &&
+      fifoHeldAfterDay2?.row.points === '-3.0' &&
+      fifoHeldAfterDay2.row.isRepeat &&
+      JSON.stringify(fifoAfter) === JSON.stringify(fifoBefore) &&
+      fifoDay6Back?.description === 'Смена с 09:00, отметка в 09:40 — опоздание 40 мин',
+    JSON.stringify({ fifoBefore, fifoHeldAtApproval, fifoHeldAfterDay2, fifoAfter }),
+  );
+
+  // То же, но снятия в обратном порядке: 06-е сначала −2 (02-е ещё одобрено), после снятия 02-го — −3 с повтором.
+  await lateOn2And6(heldLifoSewer);
+  const lifoDay2 = await pendingLateOnDay(heldLifoSewer, snapDay2, '09:35');
+  const lifoDay6 = await pendingLateOnDay(heldLifoSewer, snapDay6, '09:45');
+  await ceoCaller.lateRequests.approve({ id: lifoDay2.id });
+  await ceoCaller.lateRequests.approve({ id: lifoDay6.id });
+  await ceoCaller.lateRequests.withdraw({ id: lifoDay6.id });
+  const lifoMiddle = await gradeOn(heldLifoSewer, snapDay6);
+  await ceoCaller.lateRequests.withdraw({ id: lifoDay2.id });
+  const lifoAfter = [await gradeOn(heldLifoSewer, snapDay2), await gradeOn(heldLifoSewer, snapDay6)];
+  check(
+    'опоздание (снимок, 1): сняли в обратном порядке — 06-е −2, пока 02-е одобрено, и −3 с повтором после снятия 02-го',
+    JSON.stringify(lifoMiddle) === JSON.stringify(['late_over_30 -2.0']) &&
+      JSON.stringify(lifoAfter) === JSON.stringify([['late_over_30 -2.0'], ['late_over_30 -3.0 повтор']]),
+    JSON.stringify({ lifoMiddle, lifoAfter }),
+  );
+
+  // (2) 06-е −2 одно; одобрение «до 09:45» сняло его; руководитель записал «больше 30» за 03-е; снятие.
+  await checkInOn(heldManualSewer, snapDay6, '09:40');
+  const manualDay6 = await pendingLateOnDay(heldManualSewer, snapDay6, '09:45');
+  await ceoCaller.lateRequests.approve({ id: manualDay6.id });
+  await ceoCaller.discipline.record({
+    userId: heldManualSewer.id,
+    kind: 'late_over_30',
+    occurredOn: snapDay3,
+    description: `${PREFIX} опоздание со слов бригадира`,
+  });
+  await ceoCaller.lateRequests.withdraw({ id: manualDay6.id });
+  const manualAfter = [await gradeOn(heldManualSewer, snapDay3), await gradeOn(heldManualSewer, snapDay6)];
+  check(
+    'опоздание (снимок, 2): пока одобрение 06-го в силе, руководитель записал «больше 30» за 03-е — после снятия 06-е −3 с повтором',
+    JSON.stringify(manualAfter) === JSON.stringify([['late_over_30 -2.0'], ['late_over_30 -3.0 повтор']]),
+    JSON.stringify(manualAfter),
+  );
+
+  // (3) 02-е −2, 06-е −3 с повтором; одобрение сняло 06-е; руководитель простил 02-е руками; снятие.
+  await lateOn2And6(heldForgivenSewer);
+  const [forgivenDay2Row] = await lateRows(heldForgivenSewer.id, snapDay2);
+  if (forgivenDay2Row === undefined) throw new Error('опоздание при отметке не записано');
+  const forgivenDay6 = await pendingLateOnDay(heldForgivenSewer, snapDay6, '09:45');
+  await ceoCaller.lateRequests.approve({ id: forgivenDay6.id });
+  await ceoCaller.discipline.remove({ id: forgivenDay2Row.id });
+  await ceoCaller.lateRequests.withdraw({ id: forgivenDay6.id });
+  const forgivenAfter = [await gradeOn(heldForgivenSewer, snapDay2), await gradeOn(heldForgivenSewer, snapDay6)];
+  check(
+    'опоздание (снимок, 3): 02-е простили руками, пока 06-е снято одобрением, — 06-е вернулось −2 без повтора: раньше «больше 30» нет',
+    JSON.stringify(forgivenAfter) === JSON.stringify([[], ['late_over_30 -2.0']]),
+    JSON.stringify(forgivenAfter),
+  );
+
+  // (3) То же, но 02-е снято своим одобрением, и оно остаётся в силе.
+  await lateOn2And6(heldExcusedSewer);
+  const excusedDay6 = await pendingLateOnDay(heldExcusedSewer, snapDay6, '09:45');
+  const excusedDay2 = await pendingLateOnDay(heldExcusedSewer, snapDay2, '09:45');
+  await ceoCaller.lateRequests.approve({ id: excusedDay6.id });
+  await ceoCaller.lateRequests.approve({ id: excusedDay2.id });
+  await ceoCaller.lateRequests.withdraw({ id: excusedDay6.id });
+  const excusedAfter = [await gradeOn(heldExcusedSewer, snapDay2), await gradeOn(heldExcusedSewer, snapDay6)];
+  check(
+    'опоздание (снимок, 3): 02-е снято своим одобрением, пока 06-е снято, — снятие 06-го возвращает −2 без повтора',
+    JSON.stringify(excusedAfter) === JSON.stringify([[], ['late_over_30 -2.0']]),
+    JSON.stringify(excusedAfter),
+  );
+
+  /*
+    Зеркало: 02-е 20 мин (−1), 06-е 10 мин (−0,5). Одобрение сняло 06-е,
+    потом одобрение 02-го «до 09:10» увело его в «до 15 мин». Без одобрения
+    06-го оно бы осталось −0,5: одобрение 02-го не утяжеляет другие дни.
+    Значит, и снятие возвращает −0,5, а не −1,5 с повтором.
+  */
+  await checkInOn(heldLowerSewer, snapDay2, '09:20');
+  await checkInOn(heldLowerSewer, snapDay6, '09:10');
+  const lowerDay6 = await pendingLateOnDay(heldLowerSewer, snapDay6, '09:15');
+  const lowerDay2 = await pendingLateOnDay(heldLowerSewer, snapDay2, '09:10');
+  await ceoCaller.lateRequests.approve({ id: lowerDay6.id });
+  await ceoCaller.lateRequests.approve({ id: lowerDay2.id });
+  await ceoCaller.lateRequests.withdraw({ id: lowerDay6.id });
+  const lowerMiddle = [await gradeOn(heldLowerSewer, snapDay2), await gradeOn(heldLowerSewer, snapDay6)];
+  await ceoCaller.lateRequests.withdraw({ id: lowerDay2.id });
+  const lowerAfter = [await gradeOn(heldLowerSewer, snapDay2), await gradeOn(heldLowerSewer, snapDay6)];
+  check(
+    'опоздание (снимок): одобрение 02-го в «до 15 мин» не делает вернувшееся 06-е повтором — −0,5, и после снятия 02-го тоже',
+    JSON.stringify(lowerMiddle) === JSON.stringify([['late_under_15 -0.5'], ['late_under_15 -0.5']]) &&
+      JSON.stringify(lowerAfter) === JSON.stringify([['late_15_30 -1.0'], ['late_under_15 -0.5']]),
+    JSON.stringify({ lowerMiddle, lowerAfter }),
+  );
+
+  /*
+    Без снимка: отметка в 09:40 (40 мин, −2) до одобрения; одобрение запись
+    не трогало; смену с отметкой удалили, сотрудник отметился заново в 20:24
+    — уже после одобрения. Снятие не должно поднимать запись утренней
+    отметки до 684 мин.
+  */
+  await checkInAt(recheckLaterSewer, '09:40', '12:00');
+  const [recheckLate] = await lateRows(recheckLaterSewer.id, pastDay);
+  if (recheckLate === undefined) throw new Error('опоздание при отметке не записано');
+  const [recheckRequest] = await db
+    .insert(lateRequests)
+    .values({
+      userId: recheckLaterSewer.id,
+      date: pastDay,
+      arriveBy: '08:30',
+      status: DayOffStatus.APPROVED,
+      reviewedBy: ceo.id,
+      reviewedAt: atTashkent(pastDay, '12:30'),
+    })
+    .returning();
+  if (recheckRequest === undefined) throw new Error('запрос на опоздание не создан');
+  await ceoCaller.shifts.remove({ id: await shiftAt(recheckLaterSewer, '09:40'), reason: `${PREFIX} смена по ошибке` });
+  await checkInAt(recheckLaterSewer, '20:24', '21:00');
+  await ceoCaller.lateRequests.withdraw({ id: recheckRequest.id });
+  const recheckAfter = await lateRows(recheckLaterSewer.id, pastDay);
+  const recheckAdjustments = await disciplineAdjustmentsOf(recheckLaterSewer.id);
+  const recheckNote = await latestNote(recheckLaterSewer.id, NotificationType.LATE_WITHDRAWN);
+  check(
+    'опоздание: утреннюю смену удалили, отметка заново после одобрения — снятие не поднимает запись утренней отметки: 40 мин, −2, правок нет',
+    recheckAfter.length === 1 &&
+      recheckAfter[0]?.id === recheckLate.id &&
+      recheckAfter[0].points === '-2.0' &&
+      recheckAfter[0].description === 'Смена с 09:00, отметка в 09:40 — опоздание 40 мин' &&
+      recheckAdjustments.length === 0 &&
+      recheckNote !== null &&
+      !recheckNote.includes('пересчитано'),
+    JSON.stringify({ recheckAfter, recheckAdjustments, recheckNote }),
+  );
+
   /* Выходные: условие на статус — в самом UPDATE; второе решение не проходит и не попадает в журнал. */
   const decisionAudit = (id: number) =>
     db
