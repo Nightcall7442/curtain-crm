@@ -2,11 +2,13 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import {
+  DAY_OFF_STATUS_LABELS,
   ORDER_STATUS_LABELS,
   ORDER_TYPE_LABELS,
   OrderType,
   PRESENCE_STATUS_LABELS,
   PRIORITY_LABELS,
+  type DayOffStatus,
   type OrderStatus,
   type OrderType as OrderTypeName,
   type PresenceStatus,
@@ -197,4 +199,27 @@ export function PresenceBadge({
 }): ReactElement {
   const { t } = useLocale();
   return <Badge tone={PRESENCE_TONE[status]}>{t(PRESENCE_STATUS_LABELS, status)}</Badge>;
+}
+
+const DAY_OFF_STATUS_TONE: Readonly<Record<DayOffStatus, Tone>> = {
+  pending: 'warning',
+  approved: 'positive',
+  rejected: 'danger',
+  cancelled: 'neutral',
+};
+
+/**
+ * Статус запроса сотрудника — на выходной или на опоздание.
+ *
+ * Словарь статусов у двух видов запросов общий, и метка общая: на одной
+ * странице «Одобрен» у выходного и у опоздания обязан выглядеть одинаково,
+ * а две копии тонов разошлись бы при первой правке одной из них.
+ */
+export function DayOffStatusBadge({
+  status,
+}: {
+  readonly status: DayOffStatus;
+}): ReactElement {
+  const { t } = useLocale();
+  return <Badge tone={DAY_OFF_STATUS_TONE[status]}>{t(DAY_OFF_STATUS_LABELS, status)}</Badge>;
 }

@@ -128,6 +128,16 @@ const EXACT: Readonly<Record<string, string>> = {
   'Снять можно только согласованный выходной': "Faqat kelishilgan dam olish kunini olib tashlash mumkin",
   'Это не ваш запрос': "Bu sizning so'rovingiz emas",
 
+  // lateRequests
+  'Опоздание просят заранее — на сегодня или на другой будущий день':
+    "Kechikishga ruxsat oldindan so'raladi — bugunga yoki keyingi kunga",
+  'Это время сегодня уже прошло': "Bugun bu vaqt allaqachon o'tib ketdi",
+  'На этот день уже есть запрос на опоздание — отзовите его или дождитесь решения':
+    "Bu kunga kechikish so'rovi allaqachon bor — uni qaytarib oling yoki qarorni kuting",
+  'Снять можно только одобренное опоздание': 'Faqat tasdiqlangan kechikishni bekor qilish mumkin',
+  'Не удалось прочитать, каким было опоздание до одобрения, — согласование не снято':
+    "Tasdiqlashdan oldin kechikish qanday bo'lganini o'qib bo'lmadi — ruxsat bekor qilinmadi",
+
   // notifications
   'Уведомление не найдено': 'Bildirishnoma topilmadi',
 
@@ -339,6 +349,7 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Позиция «{name}» уже есть в этом справочнике', "«{name}» pozitsiyasi bu ma'lumotnomada allaqachon bor"],
   ['Период не может превышать {n} дней, а конец — быть раньше начала', "Davr {n} kundan oshmasligi, tugashi esa boshlanishidan oldin bo'lmasligi kerak"],
   ['Голосовое сообщение не длиннее {n} секунд', "Ovozli xabar ko'pi bilan {n} soniya"],
+  ['На этот день опоздание уже одобрено — до {time}', 'Bu kunga kechikish allaqachon tasdiqlangan — soat {time} gacha'],
   ['Фото стадии «{stage}» загружает другой исполнитель', '«{stage}» bosqichi suratini boshqa ijrochi yuklaydi'],
   ['«{model}» лежит в другом филиале', '«{model}» boshqa filialda turibdi'],
   ['«{model}» лежит на складе в нескольких вариантах — выберите, какую штору списать', '«{model}» omborda bir necha variantda turibdi — qaysi pardani hisobdan chiqarishni tanlang'],

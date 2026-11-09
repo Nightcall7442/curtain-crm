@@ -1,4 +1,9 @@
-import { DAY_OFF_STATUS_LABELS, DayOffStatus, formatIsoDateShort } from '@curtain-crm/shared';
+import {
+  DAY_OFF_STATUS_LABELS,
+  DayOffStatus,
+  formatIsoDateShort,
+  MAX_DAY_OFF_REASON_LENGTH,
+} from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
   Alert,
@@ -15,84 +20,85 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { DateField } from '../components/DateField';
 import { Field, Input } from '../components/Field';
+import { LateRequestForm } from '../components/LateRequestForm';
 import { MonthSchedule } from '../components/MonthSchedule';
+import { SegmentedControl } from '../components/SegmentedControl';
 import { SubmitButton } from '../components/SubmitButton';
+import {
+  dayOffPeriod,
+  latePeriod,
+  RequestKindLabel,
+  requestStatusTone,
+  type RequestKind,
+} from '../components/TimeOffRequest';
 import { useLocale, type Translate } from '../hooks/useLocale';
+import { mergeRequests } from '../lib/requestOrder';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, hairline, opacity, sizes, spacing, typography } from '../theme';
 
 /**
- * Запрос на выходные.
+ * Запрос на выходные — и на опоздание.
  *
- * Сотрудник просит один или несколько дней подряд не выходить на смену,
- * руководитель (директор или админ) одобряет или отклоняет — на своей
- * стороне, в веб-панели или здесь же, в мобилке, если у него есть телефон
- * под рукой. Экран собирает и форму нового запроса, и историю своих —
- * искать статус решения на отдельном экране незачем.
+ * Сотрудник просит один или несколько дней подряд не выходить на смену
+ * либо прийти в конкретный день позже графика («12.11 приду к 10:30»);
+ * руководитель (директор или админ) одобряет или отклоняет — в веб-панели
+ * или здесь же, в мобилке, на экране «Отгулы и опоздания». Экран собирает и форму
+ * нового запроса, и историю своих — искать статус решения на отдельном
+ * экране незачем.
  *
- * Даты — свободным текстом `2026-09-15`, тем же форматом, что и срок заказа:
- * своего календаря-пикера в приложении нет ни у одной формы, и заводить его
- * ради одного поля значило бы разойтись с остальными.
+ * Опоздание — здесь же, переключателем над формой, а не отдельным
+ * экраном: так просил владелец («внутри запроса на выходные»), и
+ * сотрудник, который отпрашивается, приходит именно сюда. «Мои запросы» —
+ * общий список обоих видов в серверном порядке: ждущие решения сверху.
+ *
+ * Экран доступен без открытой смены: о выходном и об опоздании просят
+ * заранее, до прихода (`ALLOWED_WITHOUT_SHIFT` на сервере).
  */
 export function DayOffScreen(): ReactElement {
   const { t, m } = useLocale();
   const insets = useSafeAreaInsets();
 
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [reason, setReason] = useState('');
-  const [showErrors, setShowErrors] = useState(false);
+  const [kind, setKind] = useState<RequestKind>('dayOff');
 
-  const myRequests = trpc.dayOff.my.useQuery();
+  const myDayOff = trpc.dayOff.my.useQuery();
+  const myLate = trpc.lateRequests.my.useQuery();
 
-  const request = trpc.dayOff.request.useMutation({
-    async onSuccess() {
-      await myRequests.refetch();
-      setStartDate('');
-      setEndDate('');
-      setReason('');
-      setShowErrors(false);
-    },
-    onError(error) {
-      Alert.alert(m('dayoff.sendError'), error.message);
-    },
-  });
-
-  const cancel = trpc.dayOff.cancel.useMutation({
+  const cancelDayOff = trpc.dayOff.cancel.useMutation({
     onSuccess() {
-      void myRequests.refetch();
+      void myDayOff.refetch();
     },
     onError(error) {
       Alert.alert(m('dayoff.withdrawError'), error.message);
     },
   });
 
-  const errors = validate({ startDate, endDate }, m);
-  const hasErrors = Object.keys(errors).length > 0;
+  const cancelLate = trpc.lateRequests.cancel.useMutation({
+    onSuccess() {
+      void myLate.refetch();
+    },
+    onError(error) {
+      Alert.alert(m('dayoff.withdrawError'), error.message);
+    },
+  });
 
-  const submit = (): void => {
-    setShowErrors(true);
-    if (hasErrors) return;
+  const isCancelling = cancelDayOff.isPending || cancelLate.isPending;
 
-    request.mutate({
-      startDate: startDate.trim(),
-      endDate: endDate.trim(),
-      ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
-    });
-  };
-
-  const confirmCancel = (id: number, period: string): void => {
-    Alert.alert(m('dayoff.withdrawTitle', { period }), m('dayoff.withdrawBody'), [
+  const confirmCancel = (title: string, onConfirm: () => void): void => {
+    Alert.alert(title, m('dayoff.withdrawBody'), [
       { text: m('dayoff.keep'), style: 'cancel' },
-      {
-        text: m('dayoff.withdraw'),
-        style: 'destructive',
-        onPress: () => {
-          cancel.mutate({ id });
-        },
-      },
+      { text: m('dayoff.withdraw'), style: 'destructive', onPress: onConfirm },
     ]);
   };
+
+  /*
+    Оба вида — одним списком: человек ищет «что мне ответили», а не «что
+    мне ответили по выходным». Порядок — серверный у каждого вида, слитый
+    по тому же правилу (`mergeRequests`).
+  */
+  const requests = mergeRequests(
+    (myDayOff.data ?? []).map((item) => ({ ...item, kind: 'dayOff' as const })),
+    (myLate.data ?? []).map((item) => ({ ...item, kind: 'late' as const })),
+  );
 
   return (
     <KeyboardAvoidingView
@@ -119,69 +125,72 @@ export function DayOffScreen(): ReactElement {
         <Card>
           <CardTitle title={m('dayoff.new')} icon="send" />
 
-          <View style={styles.dates}>
-            <View style={styles.dateItem}>
-              <Field label={m('dayoff.from')} required error={showErrors ? errors.startDate : undefined}>
-                <DateField
-                  value={startDate}
-                  onChange={setStartDate}
-                  placeholder={m('dayoff.from')}
-                  emptyText={m('common.datePlaceholder')}
-                  invalid={showErrors && errors.startDate !== undefined}
-                  minimumDate={new Date()}
-                />
-              </Field>
-            </View>
-            <View style={styles.dateItem}>
-              <Field label={m('dayoff.to')} required error={showErrors ? errors.endDate : undefined}>
-                <DateField
-                  value={endDate}
-                  onChange={setEndDate}
-                  placeholder={m('dayoff.to')}
-                  emptyText={m('common.datePlaceholder')}
-                  invalid={showErrors && errors.endDate !== undefined}
-                  minimumDate={new Date()}
-                />
-              </Field>
-            </View>
+          <View style={styles.kindSwitch}>
+            <SegmentedControl
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: 'dayOff', label: m('request.kindDayOff'), icon: 'calendar' },
+                { value: 'late', label: m('request.kindLate'), icon: 'shift' },
+              ]}
+            />
           </View>
 
-          <Field label={m('dayoff.reason')} hint={m('dayoff.optional')}>
-            <Input
-              value={reason}
-              onChangeText={setReason}
-              placeholder={m('dayoff.reasonPlaceholder')}
-              multiline
-            />
-          </Field>
-
-          {/* Общая кнопка формы: та же высота и таблетка, что на соседних экранах. */}
-          <SubmitButton label={m('dayoff.submit')} onPress={submit} pending={request.isPending} />
+          {/*
+            Обе формы остаются смонтированными, видна одна: переключиться
+            посмотреть и вернуться — не повод стирать уже выбранные даты.
+          */}
+          <View style={kind === 'dayOff' ? null : styles.hidden}>
+            <DayOffForm />
+          </View>
+          <View style={kind === 'late' ? null : styles.hidden}>
+            <LateRequestForm />
+          </View>
         </Card>
 
         <Card>
           <CardTitle title={m('dayoff.mine')} icon="orders" />
 
-          {myRequests.isLoading ? (
+          {myDayOff.isLoading || myLate.isLoading ? (
             <Skeleton />
-          ) : myRequests.isError ? (
+          ) : myDayOff.isError || myLate.isError ? (
             <ErrorState />
-          ) : (myRequests.data ?? []).length === 0 ? (
+          ) : requests.length === 0 ? (
             <Empty message={m('dayoff.none')} />
           ) : (
-            (myRequests.data ?? []).map((item, index, all) => {
-              const period = formatPeriod(item.startDate, item.endDate);
+            requests.map((item, index, all) => {
+              const period =
+                item.kind === 'late'
+                  ? latePeriod(item.date, item.arriveBy, m)
+                  : dayOffPeriod(item.startDate, item.endDate);
+
+              const withdraw = (): void => {
+                if (item.kind === 'late') {
+                  // В заголовке — только день: «…на опоздание 12.11?», без «до 10:30».
+                  confirmCancel(m('late.withdrawTitle', { date: formatIsoDateShort(item.date) }), () => {
+                    cancelLate.mutate({ id: item.id });
+                  });
+                  return;
+                }
+                confirmCancel(m('dayoff.withdrawTitle', { period }), () => {
+                  cancelDayOff.mutate({ id: item.id });
+                });
+              };
 
               return (
                 <View
-                  key={item.id}
+                  // id у выходных и опозданий — из разных таблиц и могут совпасть.
+                  key={`${item.kind}:${item.id.toString()}`}
                   // Линия — между запросами; под последним её рисовал бы
                   // край карточки второй раз.
                   style={[styles.requestRow, index === all.length - 1 ? styles.requestRowLast : null]}
                 >
                   <View style={styles.requestHeader}>
-                    <Text style={styles.requestPeriod}>{period}</Text>
-                    <Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={statusTone(item.status)} />
+                    <View style={styles.requestMain}>
+                      <RequestKindLabel kind={item.kind} />
+                      <Text style={styles.requestPeriod}>{period}</Text>
+                    </View>
+                    <Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={requestStatusTone(item.status)} />
                   </View>
 
                   {item.reason !== null && <Text style={styles.requestNote}>{item.reason}</Text>}
@@ -198,12 +207,10 @@ export function DayOffScreen(): ReactElement {
                   */}
                   {item.status === DayOffStatus.PENDING && (
                     <Pressable
-                      onPress={() => {
-                        confirmCancel(item.id, period);
-                      }}
+                      onPress={withdraw}
                       accessibilityRole="button"
                       accessibilityLabel={`${m('dayoff.withdraw')}: ${period}`}
-                      disabled={cancel.isPending}
+                      disabled={isCancelling}
                       style={({ pressed }) => [styles.cancelLink, pressed ? styles.pressed : null]}
                     >
                       <Text style={styles.cancelLinkText}>{m('dayoff.withdraw')}</Text>
@@ -221,22 +228,91 @@ export function DayOffScreen(): ReactElement {
 
 /* -------------------------------------------------------------------------- */
 
-function formatPeriod(startDate: string, endDate: string): string {
-  if (startDate === endDate) return formatIsoDateShort(startDate);
-  return `${formatIsoDateShort(startDate)} – ${formatIsoDateShort(endDate)}`;
-}
+/**
+ * Форма «Выходные»: с какого по какой день.
+ *
+ * Дата — календарём (`DateField`), а не набором `2026-09-15`; наружу
+ * уходит та же строка `YYYY-MM-DD`.
+ */
+function DayOffForm(): ReactElement {
+  const { m } = useLocale();
+  const utils = trpc.useUtils();
 
-function statusTone(status: DayOffStatus): 'neutral' | 'positive' | 'warning' | 'danger' {
-  switch (status) {
-    case DayOffStatus.APPROVED:
-      return 'positive';
-    case DayOffStatus.REJECTED:
-      return 'danger';
-    case DayOffStatus.CANCELLED:
-      return 'neutral';
-    default:
-      return 'warning';
-  }
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [reason, setReason] = useState('');
+  const [showErrors, setShowErrors] = useState(false);
+
+  const request = trpc.dayOff.request.useMutation({
+    async onSuccess() {
+      await utils.dayOff.my.invalidate();
+      setStartDate('');
+      setEndDate('');
+      setReason('');
+      setShowErrors(false);
+    },
+    onError(error) {
+      Alert.alert(m('dayoff.sendError'), error.message);
+    },
+  });
+
+  const errors = validate({ startDate, endDate }, m);
+  const hasErrors = Object.keys(errors).length > 0;
+
+  const submit = (): void => {
+    setShowErrors(true);
+    if (hasErrors) return;
+
+    request.mutate({
+      startDate: startDate.trim(),
+      endDate: endDate.trim(),
+      ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
+    });
+  };
+
+  return (
+    <View>
+      <View style={styles.dates}>
+        <View style={styles.dateItem}>
+          <Field label={m('dayoff.from')} required error={showErrors ? errors.startDate : undefined}>
+            <DateField
+              value={startDate}
+              onChange={setStartDate}
+              placeholder={m('dayoff.from')}
+              emptyText={m('common.datePlaceholder')}
+              invalid={showErrors && errors.startDate !== undefined}
+              minimumDate={new Date()}
+            />
+          </Field>
+        </View>
+        <View style={styles.dateItem}>
+          <Field label={m('dayoff.to')} required error={showErrors ? errors.endDate : undefined}>
+            <DateField
+              value={endDate}
+              onChange={setEndDate}
+              placeholder={m('dayoff.to')}
+              emptyText={m('common.datePlaceholder')}
+              invalid={showErrors && errors.endDate !== undefined}
+              minimumDate={new Date()}
+            />
+          </Field>
+        </View>
+      </View>
+
+      <Field label={m('dayoff.reason')} hint={m('dayoff.optional')}>
+        <Input
+          value={reason}
+          onChangeText={setReason}
+          placeholder={m('dayoff.reasonPlaceholder')}
+          maxLength={MAX_DAY_OFF_REASON_LENGTH}
+          multiline
+        />
+      </Field>
+
+      {/* Общая кнопка формы: та же высота и таблетка, что на соседних экранах. */}
+      <SubmitButton label={m('dayoff.submit')} onPress={submit} pending={request.isPending} />
+    </View>
+  );
 }
 
 /**
@@ -284,6 +360,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.lg,
   },
+  kindSwitch: {
+    marginBottom: spacing.lg,
+  },
+  hidden: {
+    display: 'none',
+  },
   dates: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -309,6 +391,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  requestMain: {
+    flex: 1,
+    minWidth: 0,
   },
   requestPeriod: {
     ...typography.value,

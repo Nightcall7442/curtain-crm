@@ -251,6 +251,235 @@ describe('опоздания и прогулы в ленте', () => {
 
     expect(feed).toEqual({ title: 'Ishga chiqmaslik', body: 'Xodim: Karimova Nodira' });
   });
+
+  it('опоздание, пересчитанное после решения по запросу, второй раз в группу не идёт', () => {
+    const feed = describeForGroup(
+      disciplineEvent({
+        actorId: 23,
+        details: { auto: true, kind: 'late_over_30', lateBy: 120, recomputed: true },
+      }),
+      lateContext,
+      'uz',
+    );
+
+    expect(feed).toBeNull();
+  });
+});
+
+/*
+  Запросы на выходной и опоздание — словами владельца (09.11): «X dam olish
+  so'rovini jo'natdi», «X, vam odobreno na <date> vyxodnoy», «X, vam
+  otkloneno vyxodnoy, prichina: …». Сотрудник Karimova Nodira (id 23)
+  просит, админ Rustamov Muzaffar (id 5) решает.
+*/
+describe('запросы на выходной в ленте', () => {
+  const requestContext: FeedContext = { ...context, order: null };
+  const dayOffEvent = (
+    input: Partial<RecordAuditInput> & Pick<RecordAuditInput, 'action'>,
+  ): RecordAuditInput => event({ entityType: 'day_off_request', entityId: 31, ...input });
+
+  it('запрос — имя и дата, без причины сотрудника', () => {
+    const feed = describeForGroup(
+      dayOffEvent({
+        actorId: 23,
+        action: 'dayoff.requested',
+        // Даже если причина попадёт в журнал, в группу она уйти не должна.
+        details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-12', reason: 'Kasalman, shifokorga boraman' },
+      }),
+      { ...requestContext, actorRoles: ['sewer'] },
+      'uz',
+    );
+
+    expect(feed).toEqual({ title: "Karimova Nodira dam olish so'rovini jo'natdi", body: 'Sana: 12.11' });
+  });
+
+  it('запрос никогда не несёт причину — ни на одном языке', () => {
+    for (const locale of ['uz', 'ru'] as const) {
+      const feed = describeForGroup(
+        dayOffEvent({
+          actorId: 23,
+          action: 'dayoff.requested',
+          details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-14', reason: 'SECRET-REASON' },
+        }),
+        requestContext,
+        locale,
+      );
+      expect(feed, locale).not.toBeNull();
+      expect(JSON.stringify(feed), locale).not.toContain('SECRET-REASON');
+    }
+  });
+
+  it('несколько дней — диапазон дат', () => {
+    const feed = describeForGroup(
+      dayOffEvent({ actorId: 23, action: 'dayoff.requested', details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-14' } }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed?.body).toBe('Sanalar: 12.11 — 14.11');
+  });
+
+  it('одобрение — имя просившего (а не руководителя) и дата', () => {
+    const feed = describeForGroup(
+      dayOffEvent({ action: 'dayoff.approved', details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-12' } }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({ title: 'Karimova Nodira, sizga 12.11 kuni dam olish tasdiqlandi', body: '' });
+  });
+
+  it('одобрение нескольких дней — «kunlari»', () => {
+    const feed = describeForGroup(
+      dayOffEvent({ action: 'dayoff.approved', details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-13' } }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed?.title).toBe('Karimova Nodira, sizga 12.11 — 13.11 kunlari dam olish tasdiqlandi');
+  });
+
+  it('отказ — имя, дата и причина руководителя', () => {
+    const feed = describeForGroup(
+      dayOffEvent({
+        action: 'dayoff.rejected',
+        details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-12', reason: "Buyurtmalar ko'p" },
+      }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: "Karimova Nodira, 12.11 kuni dam olish so'rovingiz rad etildi",
+      body: "Sabab: Buyurtmalar ko'p",
+    });
+  });
+
+  it('по-русски — для разработчика, теми же словами', () => {
+    const approved = describeForGroup(
+      dayOffEvent({ action: 'dayoff.approved', details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-12' } }),
+      requestContext,
+      'ru',
+    );
+    const rejected = describeForGroup(
+      dayOffEvent({ action: 'dayoff.rejected', details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-12', reason: 'Много заказов' } }),
+      requestContext,
+      'ru',
+    );
+
+    expect(approved?.title).toBe('Karimova Nodira, вам одобрен выходной на 12.11');
+    expect(rejected).toEqual({ title: 'Karimova Nodira, вам отклонён выходной на 12.11', body: 'Причина: Много заказов' });
+  });
+
+  it('без того, о ком решение, одобрение не пишется — чтобы не назвать руководителя', () => {
+    const feed = describeForGroup(
+      dayOffEvent({ action: 'dayoff.approved', details: { startDate: '2026-11-12', endDate: '2026-11-12' } }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed).toBeNull();
+  });
+
+  it('назначение, отзыв и снятие выходного в группу не идут', () => {
+    const hidden: RecordAuditInput[] = [
+      dayOffEvent({ action: 'dayoff.assigned', details: { userId: 23, startDate: '2026-11-12', endDate: '2026-11-12' } }),
+      dayOffEvent({ actorId: 23, action: 'dayoff.cancelled', details: {} }),
+      dayOffEvent({ action: 'dayoff.withdrawn', details: { startDate: '2026-11-12', endDate: '2026-11-12' } }),
+      dayOffEvent({ action: 'dayoff.weekly_set', entityType: 'user', details: { from: { weekday: null }, to: { weekday: 5 } } }),
+    ];
+
+    for (const input of hidden) {
+      expect(describeForGroup(input, requestContext, 'uz'), input.action).toBeNull();
+    }
+  });
+});
+
+describe('запросы на опоздание в ленте', () => {
+  const requestContext: FeedContext = { ...context, order: null };
+  const lateEvent = (
+    input: Partial<RecordAuditInput> & Pick<RecordAuditInput, 'action'>,
+  ): RecordAuditInput => event({ entityType: 'late_request', entityId: 8, ...input });
+
+  it('запрос — имя, дата и время прихода, без причины', () => {
+    const feed = describeForGroup(
+      lateEvent({
+        actorId: 23,
+        action: 'late.requested',
+        details: { userId: 23, date: '2026-11-12', arriveBy: '10:30', reason: 'SECRET-REASON' },
+      }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: "Karimova Nodira kechikish so'rovini jo'natdi",
+      body: 'Sana: 12.11, kelish vaqti: 10:30',
+    });
+    expect(JSON.stringify(feed)).not.toContain('SECRET-REASON');
+  });
+
+  it('одобрение — имя просившего, дата и время', () => {
+    const feed = describeForGroup(
+      lateEvent({ action: 'late.approved', details: { userId: 23, date: '2026-11-12', arriveBy: '10:30' } }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: 'Karimova Nodira, sizga 12.11 kuni 10:30 gacha kechikishga ruxsat berildi',
+      body: '',
+    });
+  });
+
+  it('отказ — с причиной руководителя', () => {
+    const feed = describeForGroup(
+      lateEvent({
+        action: 'late.rejected',
+        details: { userId: 23, date: '2026-11-12', arriveBy: '10:30', reason: 'Ertalab buyurtma bor' },
+      }),
+      requestContext,
+      'uz',
+    );
+
+    expect(feed).toEqual({
+      title: "Karimova Nodira, 12.11 kuni kechikish so'rovingiz rad etildi",
+      body: 'Sabab: Ertalab buyurtma bor',
+    });
+  });
+
+  it('по-русски', () => {
+    const requested = describeForGroup(
+      lateEvent({ actorId: 23, action: 'late.requested', details: { userId: 23, date: '2026-11-12', arriveBy: '10:30' } }),
+      requestContext,
+      'ru',
+    );
+    const approved = describeForGroup(
+      lateEvent({ action: 'late.approved', details: { userId: 23, date: '2026-11-12', arriveBy: '10:30' } }),
+      requestContext,
+      'ru',
+    );
+
+    expect(requested).toEqual({ title: 'Karimova Nodira просит разрешения опоздать', body: 'Дата: 12.11, приход к 10:30' });
+    expect(approved?.title).toBe('Karimova Nodira, вам разрешено опоздать 12.11 — до 10:30');
+  });
+
+  it('отзыв запроса и снятие согласованного опоздания в группу не идут', () => {
+    expect(
+      describeForGroup(
+        lateEvent({ actorId: 23, action: 'late.cancelled', details: { userId: 23, date: '2026-11-12' } }),
+        requestContext,
+        'uz',
+      ),
+    ).toBeNull();
+    expect(
+      describeForGroup(
+        lateEvent({ action: 'late.withdrawn', details: { userId: 23, date: '2026-11-12', arriveBy: '10:30' } }),
+        requestContext,
+        'uz',
+      ),
+    ).toBeNull();
+  });
 });
 
 describe('доп. работы в ленте', () => {

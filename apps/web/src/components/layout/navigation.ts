@@ -115,7 +115,12 @@ export const NAVIGATION: readonly NavItem[] = [
       { href: '/employees', label: 'Сотрудники', roles: MANAGEMENT_ROLES },
       { href: '/employees/tasks', label: 'Доп работы', roles: MANAGEMENT_ROLES },
       { href: '/employees/personal-works', label: 'Личные работы', roles: MANAGEMENT_ROLES },
-      { href: '/employees/day-off', label: 'Выходные', roles: MANAGEMENT_ROLES },
+      /*
+        Здесь же решаются запросы на опоздание (вкладка «Опоздания»), и
+        подпись называет оба: под одним «Выходные» руководитель не искал бы
+        просьбу опоздать. Адрес прежний — на него ведут уведомления.
+      */
+      { href: '/employees/day-off', label: 'Выходные и опоздания', roles: MANAGEMENT_ROLES },
       { href: '/employees/timesheet', label: 'Табель', roles: MANAGEMENT_ROLES },
     ],
   },

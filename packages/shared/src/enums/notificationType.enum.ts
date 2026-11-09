@@ -76,6 +76,26 @@ export const NOTIFICATION_TYPES = [
   'installation_scheduled',
   /** Заказ правили (клиент, срок, позиции, цена) — узнаёт текущий исполнитель. */
   'order_updated',
+  /**
+   * Сотрудник просит разрешения опоздать в конкретный день — видит руководство.
+   *
+   * Отдельно от `day_off_requested`: выходной и опоздание решаются по-разному
+   * (опоздавший всё равно работает), и руководитель должен видеть это ещё в
+   * ленте, не открывая запрос.
+   */
+  'late_requested',
+  /** Опоздание согласовано — узнаёт сотрудник. */
+  'late_approved',
+  /** В опоздании отказано — узнаёт сотрудник, с причиной. */
+  'late_rejected',
+  /**
+   * Согласованное опоздание снято руководством — узнаёт сотрудник.
+   *
+   * Отдельно от `late_rejected`: отказ — ответ на ждущую просьбу, а снятие
+   * отменяет уже данное «да». Человек мог на него рассчитывать, и порог
+   * опоздания в этот день снова считается от графика.
+   */
+  'late_withdrawn',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -107,6 +127,10 @@ export const NotificationType = {
   TERMINAL_CHECK_DUE: 'terminal_check_due',
   INSTALLATION_SCHEDULED: 'installation_scheduled',
   ORDER_UPDATED: 'order_updated',
+  LATE_REQUESTED: 'late_requested',
+  LATE_APPROVED: 'late_approved',
+  LATE_REJECTED: 'late_rejected',
+  LATE_WITHDRAWN: 'late_withdrawn',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -162,6 +186,12 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   installation_scheduled: 'info',
   // Правка заказа — сведение, а не тревога: что изменилось, видно в заказе.
   order_updated: 'info',
+  // Опоздание — тот же ход, что у выходного: ждёт решения, одобрено, отказано.
+  late_requested: 'warning',
+  late_approved: 'accent',
+  late_rejected: 'neutral',
+  // Снятое «да» меняет, к которому часу приходить, — это повод действовать, а не сводка.
+  late_withdrawn: 'warning',
 };
 
 /**
@@ -195,6 +225,10 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
   NotificationType.TASK_ASSIGNED,
   // Запрос на выходные ждёт решения — без действия руководства так и повиснет.
   NotificationType.DAY_OFF_REQUESTED,
+  // Запрос на опоздание — тем более: решать надо до утра того дня.
+  NotificationType.LATE_REQUESTED,
+  // Снятое согласование: прийти теперь надо по графику, а человек рассчитывал на «приду к».
+  NotificationType.LATE_WITHDRAWN,
 ];
 
 export function isImportantNotification(type: NotificationType): boolean {
@@ -251,11 +285,20 @@ export function notificationDestination(
     case 'task_cancelled':
       // Старые уведомления без ссылки на поручение ведут в общий список.
       return related.taskId === null ? { kind: 'tasks' } : { kind: 'task', taskId: related.taskId };
-    // Запрос на выходные приходит только руководству — к очереди на решение.
+    /*
+      Запрос на выходные приходит только руководству — к очереди на решение.
+      Запрос на опоздание живёт на том же экране, что и выходные (так просил
+      владелец), поэтому и ведёт туда же: отдельного назначения клиентам
+      пришлось бы учиться, а экран у них уже есть.
+    */
     case 'day_off_requested':
+    case 'late_requested':
       return { kind: 'dayOffApprovals' };
     case 'day_off_approved':
     case 'day_off_rejected':
+    case 'late_approved':
+    case 'late_rejected':
+    case 'late_withdrawn':
       return { kind: 'dayOff' };
     case 'terminal_check_created':
     case 'terminal_check_due':

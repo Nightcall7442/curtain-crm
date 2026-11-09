@@ -1,13 +1,14 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ORDER_STATUS_LABELS } from '@curtain-crm/shared';
+import { DISCIPLINE_KIND_LABELS, formatDisciplinePoints, ORDER_STATUS_LABELS } from '@curtain-crm/shared';
 import { describe, expect, it } from 'vitest';
 
 import { KNOWN_ERROR_MESSAGES, translateErrorMessage } from './errorTranslations';
 import {
   KNOWN_NOTIFICATION_TEXTS,
   modernizeStoredNotification,
+  SYSTEM_AUTHOR_RU,
   translateNotificationText,
 } from './notificationTranslations';
 
@@ -164,6 +165,18 @@ describe('errorTranslations', () => {
     expect(translateErrorMessage('Нечто новое', 'uz')).toBe('Нечто новое');
   });
 
+  it('повторный запрос на опоздание: ждущий и уже одобренный — разные отказы', () => {
+    expect(
+      translateErrorMessage('На этот день уже есть запрос на опоздание — отзовите его или дождитесь решения', 'uz'),
+    ).toBe("Bu kunga kechikish so'rovi allaqachon bor — uni qaytarib oling yoki qarorni kuting");
+    expect(translateErrorMessage('На этот день опоздание уже одобрено — до 10:30', 'uz')).toBe(
+      'Bu kunga kechikish allaqachon tasdiqlangan — soat 10:30 gacha',
+    );
+    expect(translateErrorMessage('Снять можно только одобренное опоздание', 'uz')).toBe(
+      'Faqat tasdiqlangan kechikishni bekor qilish mumkin',
+    );
+  });
+
   it('расстояние в отказе отметиться — с латинскими единицами', () => {
     expect(
       translateErrorMessage(
@@ -236,6 +249,84 @@ describe('notificationTranslations', () => {
     expect(translateNotificationText('Запрос на 18.11 — 19.11 одобрен (Мирзаев Дилшод)', 'uz')).toBe(
       "18.11 — 19.11 uchun so'rovingiz tasdiqlandi (Мирзаев Дилшод)",
     );
+  });
+
+  it('запрос на опоздание и ответ на него — по-узбекски, с датой и временем', () => {
+    expect(translateNotificationText('Азизова Нигора просит опоздать 12.11 — придёт к 10:30', 'uz')).toBe(
+      "Азизова Нигора 12.11 kuni kechikishni so'ramoqda — soat 10:30 gacha keladi",
+    );
+    expect(translateNotificationText('Можно прийти 12.11 к 10:30 (Мирзаев Дилшод)', 'uz')).toBe(
+      '12.11 kuni soat 10:30 gacha kelishingiz mumkin (Мирзаев Дилшод)',
+    );
+    // День уже наступил, запись не менялась: не «можно прийти» про прошедшую дату.
+    expect(translateNotificationText('Опоздание 08.11 до 10:30 согласовано (Мирзаев Дилшод)', 'uz')).toBe(
+      '08.11 kuni soat 10:30 gacha kechikish tasdiqlandi (Мирзаев Дилшод)',
+    );
+    expect(
+      translateNotificationText('Опоздание 12.11 до 10:30 не согласовано. Причина: много заказов', 'uz'),
+    ).toBe('12.11 kuni soat 10:30 gacha kechikish rad etildi. Sabab: много заказов');
+    expect(translateNotificationText('В опоздании отказано', 'uz')).toBe('Kechikish rad etildi');
+  });
+
+  it('снятое согласование опоздания — по-узбекски, с датой, временем и автором', () => {
+    expect(translateNotificationText('Согласование опоздания снято', 'uz')).toBe('Kechikishga ruxsat bekor qilindi');
+    expect(
+      translateNotificationText('Опоздание 12.11 до 10:30 больше не согласовано (Мирзаев Дилшод)', 'uz'),
+    ).toBe('12.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод)');
+    // Шаблон одобрения без хвоста стоит позже: его ленивое `{time}` не проглатывает «10:30 больше не».
+    expect(
+      translateNotificationText('Опоздание 12.11 до 10:30 больше не согласовано (Мирзаев Дилшод)', 'uz'),
+    ).not.toContain('tasdiqlandi');
+  });
+
+  /*
+    Решение после отметки: записанное опоздание снято или пересчитано, и это
+    сказано в том же уведомлении. Хвост собирается отдельной функцией, и
+    проверка покрытия выше видит только начало тела — поэтому здесь целиком.
+  */
+  it('одобрение после отметки — с тем, что стало с записанным нарушением', () => {
+    expect(
+      translateNotificationText('Опоздание 09.11 до 10:30 согласовано (Мирзаев Дилшод). Нарушение за 09.11 снято.', 'uz'),
+    ).toBe('09.11 kuni soat 10:30 gacha kechikish tasdiqlandi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik bekor qilindi.');
+    expect(
+      translateNotificationText(
+        'Опоздание 09.11 до 10:00 согласовано (Мирзаев Дилшод). Нарушение за 09.11 пересчитано: опоздание 25 мин.',
+        'uz',
+      ),
+    ).toBe(
+      '09.11 kuni soat 10:00 gacha kechikish tasdiqlandi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik qayta hisoblandi: 25 daqiqa kechikish.',
+    );
+  });
+
+  /*
+    Опоздание при отметке система подписывает «— Система». Имя человека в
+    уведомлении не переводится, а это слово не имя: в узбекском уведомлении
+    и в его копии в Telegram оно оставалось по-русски.
+  */
+  it('запись дисциплины от системы — с узбекской подписью «Tizim», имя руководителя — как есть', () => {
+    const body = (by: string): string =>
+      `${DISCIPLINE_KIND_LABELS.ru.late_over_30} (${formatDisciplinePoints(-2)}) за 08.11 — ${by}`;
+    expect(translateNotificationText(body(SYSTEM_AUTHOR_RU), 'uz')).toBe(
+      `${DISCIPLINE_KIND_LABELS.uz.late_over_30} (−2) 08.11 uchun — Tizim`,
+    );
+    expect(translateNotificationText(body('Мирзаев Дилшод'), 'uz')).toBe(
+      `${DISCIPLINE_KIND_LABELS.uz.late_over_30} (−2) 08.11 uchun — Мирзаев Дилшод`,
+    );
+    expect(translateNotificationText(body(SYSTEM_AUTHOR_RU), 'ru')).toBe(body(SYSTEM_AUTHOR_RU));
+  });
+
+  it('снятие согласования с пересчётом — переводится как снятие, а не как одобрение', () => {
+    expect(
+      translateNotificationText(
+        'Опоздание 09.11 до 10:30 больше не согласовано (Мирзаев Дилшод). Нарушение за 09.11 пересчитано: опоздание 100 мин.',
+        'uz',
+      ),
+    ).toBe(
+      '09.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik qayta hisoblandi: 100 daqiqa kechikish.',
+    );
+    expect(
+      translateNotificationText('Опоздание 09.11 до 10:30 больше не согласовано (Мирзаев Дилшод). Нарушение за 09.11 снято.', 'uz'),
+    ).toBe('09.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik bekor qilindi.');
   });
 });
 

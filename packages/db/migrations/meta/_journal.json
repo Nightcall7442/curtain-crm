@@ -519,6 +519,34 @@
       "when": 1793854895838,
       "tag": "0073_terminal_pay_type",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1794219154690,
+      "tag": "0074_late_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1794222390837,
+      "tag": "0075_late_withdrawn_notification",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794235157262,
+      "tag": "0076_lateness_before_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794241293520,
+      "tag": "0077_late_check_ins",
+      "breakpoints": true
     }
   ]
 }

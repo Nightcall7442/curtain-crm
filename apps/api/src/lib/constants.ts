@@ -220,9 +220,22 @@ export const AUDIT_ACTIONS = [
   'dayoff.withdrawn',
   'dayoff.weekly_set',
 
+  'late.requested',
+  'late.approved',
+  'late.rejected',
+  'late.cancelled',
+  // Руководство сняло уже согласованное опоздание; в ленту группы не идёт — как снятие выходного.
+  'late.withdrawn',
+
   'discipline.recorded',
   'discipline.explained',
   'discipline.removed',
+  /*
+    Запись системы поправлена на месте при пересмотре запроса на опоздание:
+    другие минуты, вид или повтор. В ленту группы не идёт — опоздание она уже
+    видела, а балл в группе не называется вовсе.
+  */
+  'discipline.adjusted',
   'event.created',
   'event.removed',
 

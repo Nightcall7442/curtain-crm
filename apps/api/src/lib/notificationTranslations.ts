@@ -23,6 +23,18 @@ import { compileTranslator, type TranslationTable } from './sourceTranslation';
  * таблице не нужны — им перевод не требуется.
  */
 
+/**
+ * Подпись записи, которую сделала сама система: «… за 08.11 — Система».
+ *
+ * Имя человека в уведомлении не переводится, а это слово — не имя, и в
+ * узбекском тексте оно стояло по-русски. Одна константа на запись и
+ * перевод: опоздание подписывает ею `lateness.service`, а шаблон
+ * ниже узнаёт её в конце тела — разойдись они, перевод молча перестал бы
+ * срабатывать.
+ */
+export const SYSTEM_AUTHOR_RU = 'Система';
+const SYSTEM_AUTHOR_UZ = 'Tizim';
+
 const EXACT: Readonly<Record<string, string>> = {
   'Вам выдана новая роль': 'Sizga yangi rol berildi',
   'Роль отозвана': 'Rol olib tashlandi',
@@ -38,6 +50,10 @@ const EXACT: Readonly<Record<string, string>> = {
   'Постоянный выходной снят': 'Doimiy dam olish kuni olib tashlandi',
   'Вам назначен выходной по графику': "Sizga jadval bo'yicha dam olish kuni tayinlandi",
   'Выходные отклонены': 'Dam olish kunlari rad etildi',
+  'Запрос на опоздание': "Kechikish so'rovi",
+  'Опоздание согласовано': 'Kechikish tasdiqlandi',
+  'В опоздании отказано': 'Kechikish rad etildi',
+  'Согласование опоздания снято': 'Kechikishga ruxsat bekor qilindi',
   'Время инкассации': 'Inkassatsiya vaqti',
   'Терминальный чек пробит': 'Terminal cheki urildi',
   'Пробейте терминальный чек': 'Terminal chekini uring',
@@ -84,8 +100,48 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Ответ по поручению «{title}»', "«{title}» topshirig'i bo'yicha javob"],
   ['{requester} просит выходные: {period}', "{requester} dam olish so'ramoqda: {period}"],
   ['Запрос на {period} одобрен ({reviewer})', "{period} uchun so'rovingiz tasdiqlandi ({reviewer})"],
+  ['{requester} просит опоздать {date} — придёт к {time}', "{requester} {date} kuni kechikishni so'ramoqda — soat {time} gacha keladi"],
+  ['Можно прийти {date} к {time} ({reviewer})', '{date} kuni soat {time} gacha kelishingiz mumkin ({reviewer})'],
+  /*
+    Решение по запросу после отметки: записанное опоздание снято или
+    пересчитано, и сотрудник видит это в том же уведомлении (`latePenaltyNote`).
+    «Больше не согласовано» — раньше «согласовано»: иначе ленивое `{time}`
+    в шаблоне одобрения проглотило бы «10:30 больше не», и снятие
+    перевелось бы как одобрение.
+  */
+  [
+    'Опоздание {date} до {time} больше не согласовано ({reviewer}). Нарушение за {day} снято.',
+    '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer}). {day} dagi qoidabuzarlik bekor qilindi.',
+  ],
+  [
+    'Опоздание {date} до {time} больше не согласовано ({reviewer}). Нарушение за {day} пересчитано: опоздание {minutes} мин.',
+    '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer}). {day} dagi qoidabuzarlik qayta hisoblandi: {minutes} daqiqa kechikish.',
+  ],
+  [
+    'Опоздание {date} до {time} согласовано ({reviewer}). Нарушение за {day} снято.',
+    '{date} kuni soat {time} gacha kechikish tasdiqlandi ({reviewer}). {day} dagi qoidabuzarlik bekor qilindi.',
+  ],
+  [
+    'Опоздание {date} до {time} согласовано ({reviewer}). Нарушение за {day} пересчитано: опоздание {minutes} мин.',
+    '{date} kuni soat {time} gacha kechikish tasdiqlandi ({reviewer}). {day} dagi qoidabuzarlik qayta hisoblandi: {minutes} daqiqa kechikish.',
+  ],
+  [
+    'Опоздание {date} до {time} не согласовано. Причина: {reason}',
+    '{date} kuni soat {time} gacha kechikish rad etildi. Sabab: {reason}',
+  ],
+  [
+    'Опоздание {date} до {time} больше не согласовано ({reviewer})',
+    '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer})',
+  ],
+  // Одобрение за уже наступивший день без перемен в записи — после «больше не согласовано» (см. выше).
+  [
+    'Опоздание {date} до {time} согласовано ({reviewer})',
+    '{date} kuni soat {time} gacha kechikish tasdiqlandi ({reviewer})',
+  ],
   ['{by}: выходные теперь только по запросу', "{by}: dam olish kunlari endi faqat so'rov bo'yicha"],
   ['{by}: каждую неделю — {weekday}', '{by}: har hafta — {weekday}'],
+  // Запись системы — раньше общего шаблона: иначе подпись «Система» ушла бы как имя, без перевода.
+  [`{kind} ({points}) за {date} — ${SYSTEM_AUTHOR_RU}`, `{kind} ({points}) {date} uchun — ${SYSTEM_AUTHOR_UZ}`],
   ['{kind} ({points}) за {date} — {by}', '{kind} ({points}) {date} uchun — {by}'],
   ['{by}: сегодня {n} из {target} — цель выполнена', '{by}: bugun {target} dan {n} — maqsad bajarildi'],
   ['{by}: сегодня {n} из {target}, осталось {left}', '{by}: bugun {target} dan {n}, {left} ta qoldi'],

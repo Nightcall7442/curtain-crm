@@ -14,6 +14,7 @@ import { purchaseItems, purchases } from './purchases.schema';
 import { taskMessages } from './taskMessages.schema';
 import { tasks } from './tasks.schema';
 import { dayOffRequests } from './dayOffRequests.schema';
+import { lateRequests } from './lateRequests.schema';
 import { shifts } from './shifts.schema';
 import { refreshTokens, userBranches, userRoles, users } from './users.schema';
 
@@ -268,6 +269,20 @@ export const dayOffRequestsRelations = relations(dayOffRequests, ({ one }) => ({
     fields: [dayOffRequests.reviewedBy],
     references: [users.id],
     relationName: 'dayOffReviewer',
+  }),
+}));
+
+/** Запрос на опоздание: имена просившего и решившего — в списке руководства. */
+export const lateRequestsRelations = relations(lateRequests, ({ one }) => ({
+  requester: one(users, {
+    fields: [lateRequests.userId],
+    references: [users.id],
+    relationName: 'lateRequester',
+  }),
+  reviewer: one(users, {
+    fields: [lateRequests.reviewedBy],
+    references: [users.id],
+    relationName: 'lateReviewer',
   }),
 }));
 

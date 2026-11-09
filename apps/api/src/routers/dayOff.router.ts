@@ -78,8 +78,19 @@ const DAY_OFF_ORDER = [
   desc(dayOffRequests.id),
 ] as const;
 
-/** Все активные сотрудники с ролью CEO или админ — адресаты нового запроса. */
-async function managementUserIds(executor: DbExecutor): Promise<number[]> {
+const alreadyReviewed = (): TRPCError =>
+  new TRPCError({ code: 'CONFLICT', message: 'Запрос уже рассмотрен' });
+
+const notApproved = (): TRPCError =>
+  new TRPCError({ code: 'CONFLICT', message: 'Снять можно только согласованный выходной' });
+
+/**
+ * Все активные сотрудники с ролью CEO или админ — адресаты нового запроса.
+ *
+ * Общая с запросами на опоздание (`lateRequests.router`): кто решает
+ * выходные, тот решает и опоздания, и список адресатов не должен разойтись.
+ */
+export async function managementUserIds(executor: DbExecutor): Promise<number[]> {
   const rows = await executor
     .selectDistinct({ id: users.id })
     .from(users)
@@ -122,7 +133,8 @@ export const dayOffRouter = router({
           action: 'dayoff.requested',
           entityType: 'day_off_request',
           entityId: created.id,
-          details: { startDate: input.startDate, endDate: input.endDate },
+          // Без причины: журнал читает лента в группе, а причина — не для цеха.
+          details: { userId: ctx.user.id, startDate: input.startDate, endDate: input.endDate },
           ipAddress: ctx.ipAddress,
         });
 
@@ -148,6 +160,8 @@ export const dayOffRouter = router({
         status: dayOffRequests.status,
         rejectionReason: dayOffRequests.rejectionReason,
         createdAt: dayOffRequests.createdAt,
+        // Время решения: по нему приложение ставит решённые запросы в общий список с опозданиями.
+        reviewedAt: dayOffRequests.reviewedAt,
         reviewerName: users.fullName,
       })
       .from(dayOffRequests)
@@ -204,23 +218,29 @@ export const dayOffRouter = router({
         if (request === undefined) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Запрос не найден' });
         }
-        if (request.status !== DayOffStatus.PENDING) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Запрос уже рассмотрен' });
-        }
+        if (request.status !== DayOffStatus.PENDING) throw alreadyReviewed();
 
+        /*
+          Условие на статус — в самом UPDATE, а не только в чтении выше: двое
+          руководителей, открывших запрос одновременно, иначе решили бы его
+          оба, и в группу ушли бы и «одобрено», и «отказано». Проигравший
+          получает отказ ДО журнала и уведомлений.
+        */
         const now = new Date();
         const [updated] = await tx
           .update(dayOffRequests)
           .set({ status: DayOffStatus.APPROVED, reviewedBy: ctx.user.id, reviewedAt: now })
-          .where(eq(dayOffRequests.id, input.id))
+          .where(and(eq(dayOffRequests.id, input.id), eq(dayOffRequests.status, DayOffStatus.PENDING)))
           .returning();
+        if (updated === undefined) throw alreadyReviewed();
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'dayoff.approved',
           entityType: 'day_off_request',
           entityId: input.id,
-          details: { startDate: request.startDate, endDate: request.endDate },
+          // `userId` — кому одобрили: группа пишет имя просившего, а не руководителя.
+          details: { userId: request.userId, startDate: request.startDate, endDate: request.endDate },
           ipAddress: ctx.ipAddress,
         });
 
@@ -395,18 +415,15 @@ export const dayOffRouter = router({
         if (request === undefined) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Запись не найдена' });
         }
-        if (request.status !== DayOffStatus.APPROVED) {
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: 'Снять можно только согласованный выходной',
-          });
-        }
+        if (request.status !== DayOffStatus.APPROVED) throw notApproved();
 
+        // Статус — в самом UPDATE, как у одобрения: дважды одно и то же не снимается.
         const [updated] = await tx
           .update(dayOffRequests)
           .set({ status: DayOffStatus.CANCELLED, reviewedBy: null, reviewedAt: null })
-          .where(eq(dayOffRequests.id, input.id))
+          .where(and(eq(dayOffRequests.id, input.id), eq(dayOffRequests.status, DayOffStatus.APPROVED)))
           .returning();
+        if (updated === undefined) throw notApproved();
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
@@ -433,10 +450,9 @@ export const dayOffRouter = router({
         if (request === undefined) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Запрос не найден' });
         }
-        if (request.status !== DayOffStatus.PENDING) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Запрос уже рассмотрен' });
-        }
+        if (request.status !== DayOffStatus.PENDING) throw alreadyReviewed();
 
+        // Статус — в самом UPDATE, почему — см. `approve`.
         const now = new Date();
         const [updated] = await tx
           .update(dayOffRequests)
@@ -446,15 +462,21 @@ export const dayOffRouter = router({
             reviewedAt: now,
             rejectionReason: input.reason,
           })
-          .where(eq(dayOffRequests.id, input.id))
+          .where(and(eq(dayOffRequests.id, input.id), eq(dayOffRequests.status, DayOffStatus.PENDING)))
           .returning();
+        if (updated === undefined) throw alreadyReviewed();
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'dayoff.rejected',
           entityType: 'day_off_request',
           entityId: input.id,
-          details: { reason: input.reason },
+          details: {
+            userId: request.userId,
+            startDate: request.startDate,
+            endDate: request.endDate,
+            reason: input.reason,
+          },
           ipAddress: ctx.ipAddress,
         });
 
@@ -485,15 +507,15 @@ export const dayOffRouter = router({
         if (request.userId !== ctx.user.id && !isManagement(ctx.user.roles)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Это не ваш запрос' });
         }
-        if (request.status !== DayOffStatus.PENDING) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Запрос уже рассмотрен' });
-        }
+        if (request.status !== DayOffStatus.PENDING) throw alreadyReviewed();
 
+        // Статус — в самом UPDATE: отзыв не должен затереть одновременное решение руководства.
         const [updated] = await tx
           .update(dayOffRequests)
           .set({ status: DayOffStatus.CANCELLED })
-          .where(eq(dayOffRequests.id, input.id))
+          .where(and(eq(dayOffRequests.id, input.id), eq(dayOffRequests.status, DayOffStatus.PENDING)))
           .returning();
+        if (updated === undefined) throw alreadyReviewed();
 
         await recordAudit(tx, {
           actorId: ctx.user.id,

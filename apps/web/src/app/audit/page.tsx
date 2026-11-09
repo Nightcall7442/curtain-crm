@@ -33,6 +33,9 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   payroll_record: 'Расчёт зарплаты',
   catalog_item: 'Справочник',
   day_off_request: 'Заявка на отгул',
+  late_request: 'Запрос на опоздание',
+  discipline_event: 'Запись дисциплины',
+  event: 'Мероприятие',
   task: 'Поручение',
   retail_item: 'Товар витрины',
   retail_sale: 'Чек',
@@ -79,6 +82,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'user.role_granted': 'Роль выдана',
   'user.role_revoked': 'Роль снята',
   'user.branches_changed': 'Филиалы изменены',
+  'user.sewer_category_set': 'Категория швеи изменена',
 
   'branch.created': 'Филиал создан',
   'branch.updated': 'Филиал изменён',
@@ -129,9 +133,23 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'dayoff.cancelled': 'Отгул отменён',
   'dayoff.assigned': 'Выходной назначен',
   'dayoff.weekly_set': 'Выходной по графику изменён',
+  'late.requested': 'Опоздание запрошено',
+  'late.approved': 'Опоздание одобрено',
+  'late.rejected': 'Опоздание отклонено',
+  'late.cancelled': 'Запрос на опоздание отозван',
+  'late.withdrawn': 'Опоздание снято',
   'discipline.recorded': 'Дисциплина: запись',
   'discipline.explained': 'Дисциплина: объяснение',
   'discipline.removed': 'Дисциплина: запись удалена',
+  /*
+    Запись дисциплины пересчитана без новой записи. Пишется в двух случаях:
+    при решении по запросу на опоздание (поправлены минуты, вид или повтор)
+    и после ручной правки дисциплины — руководитель добавил или убрал
+    опоздание, и повторы месяца пересчитаны. Отличает их `reason` в деталях,
+    поэтому подпись общая: «пересмотр опоздания» здесь была бы неправдой
+    для второго случая.
+  */
+  'discipline.adjusted': 'Дисциплина: запись пересчитана',
   'terminal_check.created': 'Терминальный чек пробит',
   'display_link.created': 'Ссылка для ТВ создана',
   'display_link.revoked': 'Ссылка для ТВ отозвана',
@@ -139,6 +157,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'work_plan.personal_set': 'Личный план изменён',
   'board_photo.set': 'Фото табло загружено',
   'board_photo.removed': 'Фото табло убрано',
+  'event.created': 'Мероприятие заведено',
+  'event.removed': 'Мероприятие удалено',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 
@@ -282,7 +302,8 @@ export default function AuditPage(): ReactElement {
           {
             key: 'details',
             header: 'Подробности',
-            render: (row) => <AuditDetails details={row.details} />,
+            // Действие передаётся затем, что смысл части полей зависит от него (`auto`).
+            render: (row) => <AuditDetails action={row.action} details={row.details} />,
           },
           {
             key: 'ip',

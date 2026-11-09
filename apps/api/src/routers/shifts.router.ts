@@ -23,7 +23,7 @@ import {
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
-import { recordLatenessIfAny } from '../services/lateness.service';
+import { lockLatenessOf, recordLatenessIfAny } from '../services/lateness.service';
 import {
   measureDistanceToBranch,
   resolveCheckInBranch,
@@ -172,6 +172,12 @@ export const shiftsRouter = router({
 
         const matched = await resolveCheckInBranch(tx, ctx.user.id, input);
 
+        // Замок на опоздания сотрудника — до вставки смены: решение по его
+        // запросу на опоздание за сегодня и эта отметка идут по очереди, и
+        // сверка месяца не увидит смену без факта о ней (или наоборот).
+        // Почему и в каком порядке — `lockLatenessOf`.
+        await lockLatenessOf(tx, ctx.user.id);
+
         const [created] = await tx
           .insert(shifts)
           .values({
@@ -191,8 +197,8 @@ export const shiftsRouter = router({
           });
         }
 
-        // Смена по графику назначена — опоздание записывается само.
-        await recordLatenessIfAny(tx, ctx.user.id, created.startedAt, ctx.ipAddress);
+        // Смена по графику назначена — факт опоздания и запись о нём появляются сами.
+        await recordLatenessIfAny(tx, ctx.user.id, created, ctx.ipAddress);
 
         return { ...created, branchName: matched.branchName };
       }),

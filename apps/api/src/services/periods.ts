@@ -54,3 +54,15 @@ export function workshopMonthBounds(month: string): { readonly start: Date; read
   const at = (utcMidnight: number): Date => new Date(utcMidnight - TASHKENT_OFFSET_MS);
   return { start: at(Date.UTC(year, monthNumber - 1, 1)), end: at(Date.UTC(year, monthNumber, 1)) };
 }
+
+/**
+ * Границы дня `YYYY-MM-DD` по Ташкенту: `[start, end)` — моменты UTC.
+ *
+ * Для «смен, начатых в этот день»: смена, открытая в 03:00 по Ташкенту, в
+ * UTC ещё вчерашняя, и граница по полуночи UTC отнесла бы её не к тому дню.
+ */
+export function workshopDayBounds(day: string): { readonly start: Date; readonly end: Date } {
+  const [year = 1970, month = 1, date = 1] = day.split('-').map((part) => Number.parseInt(part, 10));
+  const at = (utcMidnight: number): Date => new Date(utcMidnight - TASHKENT_OFFSET_MS);
+  return { start: at(Date.UTC(year, month - 1, date)), end: at(Date.UTC(year, month - 1, date + 1)) };
+}

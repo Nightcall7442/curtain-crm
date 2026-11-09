@@ -9,6 +9,7 @@ import {
   isDueToday,
   isOverdueDate,
   todayIso,
+  workshopClockTime,
   workshopDayIso,
   workshopToday,
   yesterdayIso,
@@ -156,5 +157,16 @@ describe('workshopDayIso', () => {
     expect(workshopDayIso(new Date('2026-09-02T22:30:00Z'))).toBe('2026-09-03');
     expect(workshopDayIso('2026-09-03T18:59:00Z')).toBe('2026-09-03');
     expect(workshopDayIso('2026-09-03T19:00:00Z')).toBe('2026-09-04');
+  });
+});
+
+describe('workshopClockTime', () => {
+  it('время на часах мастерской, а не по UTC и не по поясу машины', () => {
+    expect(workshopClockTime(new Date('2026-11-09T04:00:00Z'))).toBe('09:00');
+    expect(workshopClockTime(new Date('2026-11-09T12:20:59Z'))).toBe('17:20');
+  });
+
+  it('полночь — «00:00», а не «24:00»', () => {
+    expect(workshopClockTime(new Date('2026-11-09T19:00:00Z'))).toBe('00:00');
   });
 });

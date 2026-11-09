@@ -24,6 +24,7 @@ export const AUDIT_ENTITY_TYPES = [
   'catalog_item',
   'task',
   'day_off_request',
+  'late_request',
   'retail_item',
   'retail_sale',
   'ready_made_item',

@@ -732,6 +732,156 @@ export async function notifyDayOffRejected(
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/*                           Запросы на опоздание                             */
+/* -------------------------------------------------------------------------- */
+
+/*
+  Адресаты — те же, что у выходных: просьбу видит руководство, ответ —
+  сам сотрудник. Дата без года («12.11»), как у выходных; время — как его
+  ввёл сотрудник. Причина сотрудника в уведомление руководству не идёт:
+  её видно в самом запросе, а уведомление дублируется в Telegram.
+*/
+
+/** Сотрудник просит разрешения опоздать — узнаёт руководство. */
+export async function notifyLateRequested(
+  executor: DbExecutor,
+  recipientIds: readonly number[],
+  params: { readonly requesterName: string; readonly date: string; readonly arriveBy: string },
+): Promise<void> {
+  if (recipientIds.length === 0) return;
+
+  await createNotifications(
+    executor,
+    recipientIds.map((userId) => ({
+      userId,
+      type: NotificationType.LATE_REQUESTED,
+      title: 'Запрос на опоздание',
+      body: `${params.requesterName} просит опоздать ${formatIsoDateShort(params.date)} — придёт к ${params.arriveBy}`,
+    })),
+  );
+}
+
+/**
+ * Что решение по запросу сделало с уже записанным опозданием за этот день.
+ *
+ * `removed` — запись снята, `recounted` — пересчитана на месте, `minutes` —
+ * сколько опоздания теперь. Не изменилось ничего — `null`: тогда и
+ * говорить об опоздании незачем.
+ */
+export type LatePenaltyChange =
+  | { readonly kind: 'removed' }
+  | { readonly kind: 'recounted'; readonly minutes: number };
+
+/**
+ * Хвост уведомления о решении: «Нарушение за 09.11 снято.»
+ *
+ * Без него лента читалась как два штрафа: утром «Зафиксировано нарушение»,
+ * днём «Опоздание согласовано» — и ни слова о том, что утреннее больше не
+ * в силе. Перевод — целым телом, шаблоном в `notificationTranslations.ts`.
+ */
+function latePenaltyNote(day: string, change: LatePenaltyChange): string {
+  return change.kind === 'removed'
+    ? `Нарушение за ${day} снято.`
+    : `Нарушение за ${day} пересчитано: опоздание ${change.minutes.toString()} мин.`;
+}
+
+/**
+ * Опоздание согласовано — узнаёт сотрудник.
+ *
+ * «Можно прийти 12.11 к 10:30» — только о дне, который ещё впереди. День
+ * уже наступил (`dayStarted`: сегодня или задним числом) — «Опоздание 08.11
+ * до 10:30 согласовано»: «можно прийти» про прошедшую дату читалось бы
+ * странно, даже если записанное опоздание не изменилось. Снято оно или
+ * пересчитано — тело говорит и об этом.
+ */
+export async function notifyLateApproved(
+  executor: DbExecutor,
+  userId: number,
+  params: {
+    readonly date: string;
+    readonly arriveBy: string;
+    readonly reviewerName: string;
+    readonly dayStarted: boolean;
+    readonly penalty: LatePenaltyChange | null;
+  },
+): Promise<void> {
+  const day = formatIsoDateShort(params.date);
+  // Автор в скобках — как у выходных: «согласовал» не подходит руководителю-женщине.
+  const approved = `Опоздание ${day} до ${params.arriveBy} согласовано (${params.reviewerName})`;
+  const penalty = params.penalty;
+  let body: string;
+  if (penalty !== null) body = `${approved}. ${latePenaltyNote(day, penalty)}`;
+  else if (params.dayStarted) body = approved;
+  else body = `Можно прийти ${day} к ${params.arriveBy} (${params.reviewerName})`;
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.LATE_APPROVED,
+    title: 'Опоздание согласовано',
+    body,
+  });
+}
+
+/** В опоздании отказано — узнаёт сотрудник, с причиной. */
+export async function notifyLateRejected(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly date: string; readonly arriveBy: string; readonly reason: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.LATE_REJECTED,
+    title: 'В опоздании отказано',
+    body: `Опоздание ${formatIsoDateShort(params.date)} до ${params.arriveBy} не согласовано. Причина: ${params.reason}`,
+  });
+}
+
+/**
+ * Согласованное опоздание снято — узнаёт сотрудник.
+ *
+ * Сотрудник мог рассчитывать на «приду к 10:30», и узнать о снятии он
+ * должен сразу, а не утром в 09:20 по записи об опоздании. Автор в скобках
+ * — как у одобрения. Если опоздание за этот день уже было записано и
+ * теперь пересчитано от графика, тело говорит и об этом; заново
+ * появившаяся запись приходит своим уведомлением о дисциплине.
+ */
+export async function notifyLateWithdrawn(
+  executor: DbExecutor,
+  userId: number,
+  params: {
+    readonly date: string;
+    readonly arriveBy: string;
+    readonly reviewerName: string;
+    readonly penalty: LatePenaltyChange | null;
+  },
+): Promise<void> {
+  const day = formatIsoDateShort(params.date);
+  const penalty = params.penalty;
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.LATE_WITHDRAWN,
+    title: 'Согласование опоздания снято',
+    body:
+      penalty === null
+        ? `Опоздание ${day} до ${params.arriveBy} больше не согласовано (${params.reviewerName})`
+        : `Опоздание ${day} до ${params.arriveBy} больше не согласовано (${params.reviewerName}). ${latePenaltyNote(day, penalty)}`,
+  });
+}
+
+/**
+ * Что сказать сотруднику о новой записи дисциплины.
+ *
+ * Отдельным типом — потому что текст иногда собирают заранее, а отправляют
+ * позже: запись, заново созданная при снятии согласования, объявляется
+ * только последним шагом решения (см. `lateRequests.withdraw`).
+ */
+export interface DisciplineRecordedNotice {
+  readonly kind: DisciplineKind;
+  readonly points: number;
+  readonly occurredOn: string;
+  readonly recordedByName: string;
+}
+
 /**
  * Запись о дисциплине — узнаёт сотрудник.
  *
@@ -742,12 +892,7 @@ export async function notifyDayOffRejected(
 export async function notifyDisciplineRecorded(
   executor: DbExecutor,
   userId: number,
-  params: {
-    readonly kind: DisciplineKind;
-    readonly points: number;
-    readonly occurredOn: string;
-    readonly recordedByName: string;
-  },
+  params: DisciplineRecordedNotice,
 ): Promise<void> {
   const penalty = params.points < 0;
   await createNotification(executor, {

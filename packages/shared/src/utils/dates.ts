@@ -136,6 +136,26 @@ export function workshopDayIso(at: Date | string): string {
   return `${year.toString()}-${pad(month)}-${pad(day)}`;
 }
 
+/**
+ * Время момента на часах мастерской: `09:05`.
+ *
+ * Для сравнения с графиком (`09:00`, «приду к 10:30»), а не для показа:
+ * строка всегда `ЧЧ:ММ` с ведущим нулём, полночь — `00:00`. Отсюда
+ * `hourCycle: 'h23'` — с `hour12: false` движок вправе написать «24:00».
+ */
+export function workshopClockTime(at: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: WORKSHOP_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const value = (type: string): string =>
+    (parts.find((part) => part.type === type)?.value ?? '0').padStart(2, '0');
+
+  return `${value('hour')}:${value('minute')}`;
+}
+
 /*
   Время и даты показываются по часам мастерской, а не по поясу устройства.
 

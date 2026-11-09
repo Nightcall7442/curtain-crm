@@ -1,17 +1,131 @@
 'use client';
 
-import { DAY_OFF_STATUS_LABELS_RU, DayOffStatus, DAY_OFF_STATUSES, type DayOffStatus as DayOffStatusName } from '@curtain-crm/shared';
+import {
+  DAY_OFF_STATUS_LABELS_RU,
+  DayOffStatus,
+  DAY_OFF_STATUSES,
+  MAX_DAY_OFF_REJECTION_REASON_LENGTH,
+  type DayOffStatus as DayOffStatusName,
+} from '@curtain-crm/shared';
 import { CalendarPlus, Check } from 'lucide-react';
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
 import { AssignDayOffDialog } from '@/components/employees/AssignDayOffDialog';
+import { LateRequestsPanel } from '@/components/employees/LateRequestsPanel';
+import { RejectRequestDialog } from '@/components/employees/RejectRequestDialog';
 import { useToast } from '@/components/providers/ToastProvider';
-import { Badge } from '@/components/ui/Badge';
+import { DayOffStatusBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
-import { Button, controlClass, FilterBar, FormError, Modal, Select } from '@/components/ui/Form';
+import { Button, FilterBar, Select } from '@/components/ui/Form';
 import { DataTable } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
+
+/**
+ * Выходные и опоздания.
+ *
+ * Обе просьбы сотрудник отправляет с одного экрана приложения, и решает их
+ * руководитель в одном месте — здесь, двумя вкладками. Опоздание не
+ * подмешано в список выходных: это рабочий день с другим временем начала,
+ * а не отсутствие, и у него своё поле — «приду к».
+ *
+ * Счётчик на вкладке — запросы, ждущие решения. Без него руководитель,
+ * открывший «Выходные», не узнал бы, что на соседней вкладке человек
+ * просит опоздать на сегодня.
+ *
+ * Вкладка адресуется якорем (`#late`), как разделы настроек: на неё ведёт
+ * уведомление о новом запросе на опоздание.
+ */
+const TABS = [
+  { key: 'day-off', label: 'Выходные' },
+  { key: 'late', label: 'Опоздания' },
+] as const;
+
+type Tab = (typeof TABS)[number]['key'];
+
+export default function DayOffRequestsPage(): ReactElement {
+  const [tab, setTab] = useState<Tab>('day-off');
+
+  // Якорь читается после монтирования: при отрисовке на сервере `window`
+  // нет, и вкладка из адреса в `useState` разошлась бы с разметкой сервера.
+  // `hashchange` — для перехода на `#late`, когда страница уже открыта:
+  // браузер тогда не перезагружает её, и одно чтение при монтировании
+  // оставило бы руководителя на выходных.
+  useEffect(() => {
+    const applyHash = (): void => {
+      setTab(window.location.hash === '#late' ? 'late' : 'day-off');
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => {
+      window.removeEventListener('hashchange', applyHash);
+    };
+  }, []);
+
+  // Тот же запрос, что у списка выходных по умолчанию, — второго обращения
+  // к серверу счётчик не делает.
+  const pendingDayOff = trpc.dayOff.list.useQuery({ status: DayOffStatus.PENDING });
+  const pendingLate = trpc.lateRequests.list.useQuery({ status: DayOffStatus.PENDING });
+  const pending: Readonly<Record<Tab, number>> = {
+    'day-off': pendingDayOff.data?.total ?? 0,
+    late: pendingLate.data?.total ?? 0,
+  };
+
+  return (
+    <div className="space-y-3">
+      <div
+        role="tablist"
+        aria-label="Вид запросов"
+        className="inline-flex overflow-hidden rounded-xl border border-ink/10"
+      >
+        {TABS.map((entry) => {
+          const isActive = entry.key === tab;
+          const count = pending[entry.key];
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              role="tab"
+              id={`requests-tab-${entry.key}`}
+              aria-selected={isActive}
+              aria-controls="requests-panel"
+              onClick={() => {
+                setTab(entry.key);
+                window.history.replaceState(
+                  null,
+                  '',
+                  entry.key === 'late'
+                    ? '#late'
+                    : `${window.location.pathname}${window.location.search}`,
+                );
+              }}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 text-caption font-medium transition-colors',
+                isActive
+                  ? 'bg-accent/12 text-accent'
+                  : 'text-secondary hover:bg-ink/[0.08] hover:text-primary',
+              )}
+            >
+              {entry.label}
+              {count > 0 && (
+                <span
+                  className="min-w-[1.25rem] rounded-full bg-warning/20 px-1.5 text-center text-footnote font-semibold tabular-nums text-warning"
+                  aria-label={`ждут решения: ${count.toString()}`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${tab}`}>
+        {tab === 'late' ? <LateRequestsPanel /> : <DayOffPanel />}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Выходные.
@@ -25,13 +139,12 @@ import { formatDate } from '@/lib/utils';
  * видит его в своём графике в приложении, а руководство — буквой «В» в
  * табеле.
  */
-export default function DayOffRequestsPage(): ReactElement {
+function DayOffPanel(): ReactElement {
   const toast = useToast();
 
   const [status, setStatus] = useState<DayOffStatusName | ''>(DayOffStatus.PENDING);
   /** Запрос, ожидающий причину отказа. `null` — окно закрыто. */
   const [rejecting, setRejecting] = useState<{ id: number; period: string } | null>(null);
-  const [reason, setReason] = useState('');
   const [assigning, setAssigning] = useState(false);
 
   const utils = trpc.useUtils();
@@ -64,7 +177,6 @@ export default function DayOffRequestsPage(): ReactElement {
   const reject = trpc.dayOff.reject.useMutation({
     onSuccess() {
       setRejecting(null);
-      setReason('');
       toast.success('Запрос отклонён', 'Сотрудник получит уведомление');
       refresh();
     },
@@ -128,50 +240,20 @@ export default function DayOffRequestsPage(): ReactElement {
         }
       />
 
-      <Modal
-        open={rejecting !== null}
-        title={rejecting === null ? '' : `Отклонить запрос на ${rejecting.period}`}
-        onClose={() => {
-          setRejecting(null);
-        }}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setRejecting(null);
-              }}
-            >
-              Отмена
-            </Button>
-            <Button
-              variant="danger"
-              loading={reject.isPending}
-              disabled={reason.trim().length < 3}
-              onClick={() => {
-                if (rejecting !== null) {
-                  reject.mutate({ id: rejecting.id, reason: reason.trim() });
-                }
-              }}
-            >
-              Отклонить запрос
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <FormError message={reject.error?.message ?? null} />
-          <textarea
-            value={reason}
-            onChange={(event) => {
-              setReason(event.target.value);
-            }}
-            rows={2}
-            placeholder="Причина — её увидит сотрудник в уведомлении"
-            className={controlClass('md')}
-          />
-        </div>
-      </Modal>
+      {rejecting !== null && (
+        <RejectRequestDialog
+          title={`Отклонить запрос на ${rejecting.period}`}
+          maxLength={MAX_DAY_OFF_REJECTION_REASON_LENGTH}
+          isPending={reject.isPending}
+          error={reject.error?.message ?? null}
+          onClose={() => {
+            setRejecting(null);
+          }}
+          onSubmit={(reason) => {
+            reject.mutate({ id: rejecting.id, reason });
+          }}
+        />
+      )}
 
       <DataTable
         isLoading={query.isLoading}
@@ -218,21 +300,7 @@ export default function DayOffRequestsPage(): ReactElement {
           {
             key: 'status',
             header: 'Статус',
-            render: (row) => (
-              <Badge
-                tone={
-                  row.status === DayOffStatus.APPROVED
-                    ? 'positive'
-                    : row.status === DayOffStatus.REJECTED
-                      ? 'danger'
-                      : row.status === DayOffStatus.CANCELLED
-                        ? 'neutral'
-                        : 'warning'
-                }
-              >
-                {DAY_OFF_STATUS_LABELS_RU[row.status]}
-              </Badge>
-            ),
+            render: (row) => <DayOffStatusBadge status={row.status} />,
           },
           {
             key: 'reviewer',
@@ -282,7 +350,8 @@ export default function DayOffRequestsPage(): ReactElement {
                   <button
                     type="button"
                     onClick={() => {
-                      setReason('');
+                      // Ошибка прошлой попытки к новому окну не относится.
+                      reject.reset();
                       setRejecting({
                         id: row.id,
                         period:

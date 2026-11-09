@@ -54,15 +54,22 @@ export function Header({
 
       <ThemeToggle />
 
-      {/* Поиск — пилюля по центру, растягивается на свободное место. */}
+      {/*
+        Поиск — пилюля по центру, растягивается на свободное место. Основа у
+        неё 12rem, а не вся ширина: с `w-full` её основа равнялась ширине
+        шапки, нехватка места делилась пропорционально основам, и почти вся
+        доставалась заголовку — на 1280 px «Рабочие — Выходные и опоздания»
+        обрезалось, а на 1024 px от любого заголовка оставалась одна точка.
+        Теперь заголовок и поиск уступают место соразмерно своей ширине.
+      */}
       <button
         type="button"
         onClick={onOpenSearch}
-        className="mx-auto hidden h-10 w-full max-w-[420px] items-center gap-2 rounded-full border border-ink/10 bg-ink/[0.05] px-4 text-caption text-muted transition-colors hover:border-accent/30 hover:bg-ink/[0.08] md:flex"
+        className="mx-auto hidden h-10 min-w-0 max-w-[420px] flex-1 basis-48 items-center gap-2 rounded-full border border-ink/10 bg-ink/[0.05] px-4 text-caption text-muted transition-colors hover:border-accent/30 hover:bg-ink/[0.08] md:flex"
       >
         <Search className="h-4 w-4 shrink-0" aria-hidden />
         <span className="truncate">Поиск по заказам, сотрудникам, разделам</span>
-        <kbd className="ml-auto hidden rounded-md border border-ink/10 px-1.5 text-overline text-muted lg:block">
+        <kbd className="ml-auto hidden shrink-0 whitespace-nowrap rounded-md border border-ink/10 px-1.5 text-overline text-muted lg:block">
           Ctrl K
         </kbd>
       </button>
