@@ -45,13 +45,19 @@ const ru = {
   'nav.orderCreateStock': 'Пошив для склада',
   'nav.readyMade': 'Готовые шторы',
   'nav.readyMadeStock': 'Склад готовых штор',
-  'nav.dayOff': 'Запрос на выходные',
+  /*
+    Экран сотрудника — про оба вида запросов: переключатель «Выходные /
+    Опоздание» стоит прямо над формой, и заголовок «Запрос на выходные»
+    обещал только половину экрана.
+  */
+  'nav.dayOff': 'Выходные и опоздания',
   'nav.personalWork': 'Личная работа',
   'nav.cashDesk': 'Касса',
   'nav.metraj': 'Метраж',
   'nav.receipt': 'Чек',
   'nav.management': 'Руководство',
-  'nav.dayOffApprovals': 'Отгулы',
+  // Очередь руководства — тоже про оба вида: «Отгулы» прятали опоздания.
+  'nav.dayOffApprovals': 'Отгулы и опоздания',
   'nav.payroll': 'Зарплата',
   'nav.tasks': 'Поручения',
   'nav.task': 'Поручение',
@@ -133,8 +139,9 @@ const ru = {
   'profile.more': 'Ещё',
   'profile.ratingKpi': 'Мой рейтинг и KPI',
   'profile.myTasks': 'Мои задачи',
-  'profile.dayOff': 'Запрос на выходные',
-  'profile.dayOffQueue': 'Запросы на выходные',
+  // Пункты профиля ведут на те же экраны и зовутся так же, как их заголовки.
+  'profile.dayOff': 'Выходные и опоздания',
+  'profile.dayOffQueue': 'Отгулы и опоздания',
   'profile.ratingBoard': 'Рейтинг всех сотрудников',
   'nav.ratingBoard': 'Рейтинг сотрудников',
   'ratingBoard.title': 'Сводный рейтинг',
@@ -627,6 +634,22 @@ const ru = {
   'approvals.why': 'Почему отказ',
   'approvals.whyPlaceholder': 'Сотрудник должен понять причину',
   /*
+    «Снять» — для уже одобренного: назначили не тому, не на тот день или
+    планы поменялись. Без этого исправлять приходилось через базу.
+  */
+  'approvals.withdraw': 'Снять',
+  'approvals.withdrawA11y': 'Снять: {name}, {period}',
+  'approvals.withdrawKeep': 'Не снимать',
+  'approvals.withdrawError': 'Не удалось снять',
+  'approvals.withdrawDayOffTitle': 'Снять одобренный выходной?',
+  'approvals.withdrawDayOffBody': '{name}, {period}. Вернётся обычный график. Уведомление сотруднику не придёт\u00A0— предупредите его сами.',
+  'approvals.withdrawDayOffBodyOwn': '{period}. Вернётся обычный график.',
+  'approvals.withdrawLateTitle': 'Снять одобренное опоздание?',
+  'approvals.withdrawLateBody': '{name}, {period}. Опоздание снова будут считать от начала смены. Сотрудник получит уведомление.',
+  'approvals.withdrawLateBodyOwn': '{period}. Опоздание снова будут считать от начала смены.',
+  // Просьба опоздать сегодня — отметкой у даты, чтобы не потерялась под более свежими.
+  'approvals.today': 'сегодня',
+  /*
     Запрос на опоздание — на том же экране, что выходные (так просил
     владелец): переключатель вида над формой и подпись вида в списках.
   */
@@ -666,8 +689,9 @@ const ru = {
   'rating.notStarted': 'Соревнование ещё не началось',
   'rating.notStartedHint': 'Строки появятся, когда первый заказ месяца дойдёт до статуса «Выполнен»',
   'rating.points': '{n} балл(ов)',
-  'mgmt.dayOff': 'Отгулы',
-  'mgmt.dayOffHint': 'Выходные и опоздания: одобрить или отклонить',
+  'mgmt.dayOff': 'Отгулы и опоздания',
+  // Что здесь лежит, говорит заголовок; подсказка — что с этим можно сделать.
+  'mgmt.dayOffHint': 'Одобрить, отклонить, снять одобренное',
   'mgmt.payroll': 'Зарплата',
   'mgmt.payrollHint': 'Утвердить расчёт и отметить выплату',
   'mgmt.tasks': 'Поручения',
@@ -1070,13 +1094,13 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'nav.orderCreateStock': 'Ombor uchun tikuv',
   'nav.readyMade': 'Tayyor pardalar',
   'nav.readyMadeStock': 'Tayyor pardalar ombori',
-  'nav.dayOff': 'Dam olish so\'rovi',
+  'nav.dayOff': 'Dam olish va kechikish',
   'nav.personalWork': 'Shaxsiy ish',
   'nav.cashDesk': 'Kassa',
   'nav.metraj': 'Metraj',
   'nav.receipt': 'Chek',
   'nav.management': 'Rahbariyat',
-  'nav.dayOffApprovals': 'Dam olish kunlari',
+  'nav.dayOffApprovals': 'Dam olish va kechikishlar',
   'nav.payroll': 'Ish haqi',
   'nav.tasks': 'Topshiriqlar',
   'nav.task': 'Topshiriq',
@@ -1157,8 +1181,8 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'profile.more': 'Yana',
   'profile.ratingKpi': 'Mening reytingim va KPI',
   'profile.myTasks': 'Mening vazifalarim',
-  'profile.dayOff': 'Dam olish so\'rovi',
-  'profile.dayOffQueue': 'Dam olish so\'rovlari',
+  'profile.dayOff': 'Dam olish va kechikish',
+  'profile.dayOffQueue': 'Dam olish va kechikishlar',
   'profile.ratingBoard': 'Barcha xodimlar reytingi',
   'nav.ratingBoard': 'Xodimlar reytingi',
   'ratingBoard.title': 'Umumiy reyting',
@@ -1629,6 +1653,17 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'approvals.approve': 'Tasdiqlash',
   'approvals.why': 'Nega rad etildi',
   'approvals.whyPlaceholder': 'Xodim sababni tushunishi kerak',
+  'approvals.withdraw': 'Bekor qilish',
+  'approvals.withdrawA11y': 'Bekor qilish: {name}, {period}',
+  'approvals.withdrawKeep': 'Qoldirish',
+  'approvals.withdrawError': 'Bekor qilib bo\'lmadi',
+  'approvals.withdrawDayOffTitle': 'Tasdiqlangan dam olishni bekor qilasizmi?',
+  'approvals.withdrawDayOffBody': '{name}, {period}. Odatdagi jadval qaytadi. Xodimga bildirishnoma bormaydi\u00A0— o\'zingiz ogohlantiring.',
+  'approvals.withdrawDayOffBodyOwn': '{period}. Odatdagi jadval qaytadi.',
+  'approvals.withdrawLateTitle': 'Tasdiqlangan kechikishni bekor qilasizmi?',
+  'approvals.withdrawLateBody': '{name}, {period}. Kechikish yana smena boshidan hisoblanadi. Xodim bildirishnoma oladi.',
+  'approvals.withdrawLateBodyOwn': '{period}. Kechikish yana smena boshidan hisoblanadi.',
+  'approvals.today': 'bugun',
   'request.kindDayOff': 'Dam olish',
   'request.kindLate': 'Kechikish',
   'late.intro': 'Oldindan so\'rang. Rahbar tasdiqlasa, shu vaqtgacha kechikish hisoblanmaydi.',
@@ -1665,8 +1700,8 @@ const uz: Readonly<Record<MessageKey, string>> = {
   'rating.notStarted': 'Musobaqa hali boshlanmadi',
   'rating.notStartedHint': 'Oyning birinchi buyurtmasi «Bajarildi» holatiga yetganda qatorlar paydo bo\'ladi',
   'rating.points': '{n} ball',
-  'mgmt.dayOff': 'Dam olish kunlari',
-  'mgmt.dayOffHint': 'Dam olish va kechikish: tasdiqlash yoki rad etish',
+  'mgmt.dayOff': 'Dam olish va kechikishlar',
+  'mgmt.dayOffHint': 'Tasdiqlash, rad etish, tasdiqlanganini bekor qilish',
   'mgmt.payroll': 'Ish haqi',
   'mgmt.payrollHint': 'Hisobni tasdiqlash va to\'lovni belgilash',
   'mgmt.tasks': 'Topshiriqlar',

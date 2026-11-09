@@ -225,7 +225,7 @@ export function Pill({
   tone = 'neutral',
 }: {
   readonly text: string;
-  readonly tone?: 'neutral' | 'positive' | 'warning' | 'danger' | 'info';
+  readonly tone?: 'neutral' | 'positive' | 'warning' | 'danger' | 'info' | 'accent';
 }): ReactElement {
   const palette = {
     neutral: { bg: colors.surfaceMuted, fg: colors.textSecondary },
@@ -233,6 +233,13 @@ export function Pill({
     warning: { bg: colors.warningSoft, fg: colors.warning },
     danger: { bg: colors.dangerSoft, fg: colors.danger },
     info: { bg: colors.infoSoft, fg: colors.info },
+    /*
+      Акцент — не состояние, а «обратите внимание» («сегодня» у просьбы
+      опоздать). Янтарный здесь занят статусом «Ждёт решения», и две
+      янтарные метки в одной карточке читались бы как одна. Текст —
+      `accentStrong`: на `accentSoft` он даёт 9,41:1 против 6,80:1 у `accent`.
+    */
+    accent: { bg: colors.accentSoft, fg: colors.accentStrong },
   }[tone];
 
   return (

@@ -41,6 +41,7 @@ const EXACT: Readonly<Record<string, string>> = {
   'Запрос на опоздание': "Kechikish so'rovi",
   'Опоздание согласовано': 'Kechikish tasdiqlandi',
   'В опоздании отказано': 'Kechikish rad etildi',
+  'Согласование опоздания снято': 'Kechikishga ruxsat bekor qilindi',
   'Время инкассации': 'Inkassatsiya vaqti',
   'Терминальный чек пробит': 'Terminal cheki urildi',
   'Пробейте терминальный чек': 'Terminal chekini uring',
@@ -92,6 +93,10 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   [
     'Опоздание {date} до {time} не согласовано. Причина: {reason}',
     '{date} kuni soat {time} gacha kechikish rad etildi. Sabab: {reason}',
+  ],
+  [
+    'Опоздание {date} до {time} больше не согласовано ({reviewer})',
+    '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer})',
   ],
   ['{by}: выходные теперь только по запросу', "{by}: dam olish kunlari endi faqat so'rov bo'yicha"],
   ['{by}: каждую неделю — {weekday}', '{by}: har hafta — {weekday}'],

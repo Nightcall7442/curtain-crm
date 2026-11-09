@@ -247,6 +247,8 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   // читаются одинаково, а что именно решали, говорит заголовок уведомления.
   late_approved: 'dayOffApproved',
   late_rejected: 'dayOffRejected',
+  // Снятое согласование для сотрудника — то же «нет», что и отказ.
+  late_withdrawn: 'dayOffRejected',
   cash_collection_due: 'collection',
   discipline_recorded: 'discipline',
   terminal_check_created: 'paid',

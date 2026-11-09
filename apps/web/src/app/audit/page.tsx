@@ -34,6 +34,8 @@ const ENTITY_LABELS_RU: Readonly<Record<string, string>> = {
   catalog_item: 'Справочник',
   day_off_request: 'Заявка на отгул',
   late_request: 'Запрос на опоздание',
+  discipline_event: 'Запись дисциплины',
+  event: 'Мероприятие',
   task: 'Поручение',
   retail_item: 'Товар витрины',
   retail_sale: 'Чек',
@@ -80,6 +82,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'user.role_granted': 'Роль выдана',
   'user.role_revoked': 'Роль снята',
   'user.branches_changed': 'Филиалы изменены',
+  'user.sewer_category_set': 'Категория швеи изменена',
 
   'branch.created': 'Филиал создан',
   'branch.updated': 'Филиал изменён',
@@ -134,6 +137,7 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'late.approved': 'Опоздание одобрено',
   'late.rejected': 'Опоздание отклонено',
   'late.cancelled': 'Запрос на опоздание отозван',
+  'late.withdrawn': 'Опоздание снято',
   'discipline.recorded': 'Дисциплина: запись',
   'discipline.explained': 'Дисциплина: объяснение',
   'discipline.removed': 'Дисциплина: запись удалена',
@@ -144,6 +148,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'work_plan.personal_set': 'Личный план изменён',
   'board_photo.set': 'Фото табло загружено',
   'board_photo.removed': 'Фото табло убрано',
+  'event.created': 'Мероприятие заведено',
+  'event.removed': 'Мероприятие удалено',
   'dayoff.withdrawn': 'Выходной снят',
   'user.avatar_changed': 'Фото сотрудника изменено',
 

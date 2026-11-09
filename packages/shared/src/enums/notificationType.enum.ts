@@ -88,6 +88,14 @@ export const NOTIFICATION_TYPES = [
   'late_approved',
   /** В опоздании отказано — узнаёт сотрудник, с причиной. */
   'late_rejected',
+  /**
+   * Согласованное опоздание снято руководством — узнаёт сотрудник.
+   *
+   * Отдельно от `late_rejected`: отказ — ответ на ждущую просьбу, а снятие
+   * отменяет уже данное «да». Человек мог на него рассчитывать, и порог
+   * опоздания в этот день снова считается от графика.
+   */
+  'late_withdrawn',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -122,6 +130,7 @@ export const NotificationType = {
   LATE_REQUESTED: 'late_requested',
   LATE_APPROVED: 'late_approved',
   LATE_REJECTED: 'late_rejected',
+  LATE_WITHDRAWN: 'late_withdrawn',
 } as const satisfies Record<string, NotificationType>;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -181,6 +190,8 @@ export const NOTIFICATION_TONES: Readonly<Record<NotificationType, NotificationT
   late_requested: 'warning',
   late_approved: 'accent',
   late_rejected: 'neutral',
+  // Снятое «да» меняет, к которому часу приходить, — это повод действовать, а не сводка.
+  late_withdrawn: 'warning',
 };
 
 /**
@@ -216,6 +227,8 @@ export const IMPORTANT_NOTIFICATION_TYPES: readonly NotificationType[] = [
   NotificationType.DAY_OFF_REQUESTED,
   // Запрос на опоздание — тем более: решать надо до утра того дня.
   NotificationType.LATE_REQUESTED,
+  // Снятое согласование: прийти теперь надо по графику, а человек рассчитывал на «приду к».
+  NotificationType.LATE_WITHDRAWN,
 ];
 
 export function isImportantNotification(type: NotificationType): boolean {
@@ -285,6 +298,7 @@ export function notificationDestination(
     case 'day_off_rejected':
     case 'late_approved':
     case 'late_rejected':
+    case 'late_withdrawn':
       return { kind: 'dayOff' };
     case 'terminal_check_created':
     case 'terminal_check_due':

@@ -224,6 +224,8 @@ export const AUDIT_ACTIONS = [
   'late.approved',
   'late.rejected',
   'late.cancelled',
+  // Руководство сняло уже согласованное опоздание; в ленту группы не идёт — как снятие выходного.
+  'late.withdrawn',
 
   'discipline.recorded',
   'discipline.explained',

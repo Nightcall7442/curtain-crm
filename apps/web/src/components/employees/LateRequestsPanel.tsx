@@ -33,6 +33,9 @@ import { formatDate, formatDateTime } from '@/lib/utils';
  *
  * Порядок строк задаёт сервер — тот же, что у выходных: ждущие решения
  * сверху, ниже решённые, свежие первыми.
+ *
+ * Одобренное можно снять — так же, как согласованный выходной. Снятый
+ * запрос становится отозванным, и сотрудник может попросить заново.
  */
 export function LateRequestsPanel(): ReactElement {
   const toast = useToast();
@@ -44,14 +47,29 @@ export function LateRequestsPanel(): ReactElement {
   const utils = trpc.useUtils();
   const query = trpc.lateRequests.list.useQuery(status === '' ? {} : { status });
 
+  // Сбрасывает и список, и счётчик ждущих на вкладке: это запросы одной
+  // процедуры, только с разным фильтром статуса.
   const refresh = (): void => {
     void utils.lateRequests.list.invalidate();
+  };
+
+  /*
+    Одобрение и снятие задним числом пересчитывают опоздание за день, если
+    отметка уже была: запись дисциплины может появиться или исчезнуть, а с
+    ней меняются баллы в рейтинге и отчётах. Без сброса руководитель,
+    перейдя в «Дисциплину», увидел бы прежнюю картину из кэша.
+  */
+  const refreshDiscipline = (): void => {
+    void utils.discipline.invalidate();
+    void utils.rating.invalidate();
+    void utils.reports.invalidate();
   };
 
   const approve = trpc.lateRequests.approve.useMutation({
     onSuccess() {
       toast.success('Опоздание одобрено', 'Сотрудник получит уведомление');
       refresh();
+      refreshDiscipline();
     },
     onError(error) {
       toast.error('Не удалось одобрить', error.message);
@@ -66,6 +84,21 @@ export function LateRequestsPanel(): ReactElement {
     },
     onError(error) {
       toast.error('Не удалось отклонить', error.message);
+    },
+  });
+
+  const withdraw = trpc.lateRequests.withdraw.useMutation({
+    onSuccess() {
+      toast.success('Согласование снято', 'Сотрудник получит уведомление');
+      refresh();
+      refreshDiscipline();
+    },
+    onError(error) {
+      toast.error('Не удалось снять', error.message);
+      // Чаще всего отказ значит, что строка устарела: согласование уже снял
+      // другой руководитель. Список перечитывается, чтобы кнопка не осталась
+      // у запроса, который уже отозван.
+      refresh();
     },
   });
 
@@ -158,7 +191,12 @@ export function LateRequestsPanel(): ReactElement {
             render: (row) => (
               <span>
                 {formatDate(row.date)}
-                {row.date === today && (
+                {/*
+                  Только у ждущих решения: метка торопит решить до начала
+                  смены, а у закрытой строки (отозванной, отклонённой,
+                  одобренной) решать нечего — там она просто шум.
+                */}
+                {row.status === DayOffStatus.PENDING && row.date === today && (
                   <span className="ml-1.5 text-footnote font-medium text-warning">сегодня</span>
                 )}
               </span>
@@ -233,7 +271,9 @@ export function LateRequestsPanel(): ReactElement {
                   </button>
                 </span>
               ) : row.reviewer === null ? (
-                // Отозванный сотрудником — решения не было.
+                // Отозванный сотрудником — решения не было. Снятое руководителем
+                // согласование сервер тоже хранит без решившего: кто снял —
+                // в журнале действий, а не в этой колонке.
                 <span className="text-muted">—</span>
               ) : (
                 // Ширина снизу задана: без неё колонка ужималась до имени, и
@@ -250,6 +290,40 @@ export function LateRequestsPanel(): ReactElement {
                     >
                       {`Причина отказа: ${row.rejectionReason}`}
                     </span>
+                  )}
+                  {/*
+                    Одобренное опоздание снимается, как согласованный выходной:
+                    одобрили не тому или не на тот день — иначе исправлять
+                    пришлось бы через базу. Кнопка под именем решившего, а не
+                    отдельной колонкой справа: та держала бы ширину и у
+                    строк без действий, и на 1280 px таблица уезжала бы вбок.
+                  */}
+                  {row.status === DayOffStatus.APPROVED && (
+                    <button
+                      type="button"
+                      disabled={withdraw.isPending}
+                      onClick={() => {
+                        /*
+                          Если день уже наступил, снятие пересчитает опоздание
+                          от графика — человеку могут начислиться баллы.
+                          Случайный щелчок тут не безобиден, поэтому спрашиваем.
+                          Будущий день ничего не пересчитывает — как и у
+                          выходных, снимается сразу.
+                        */
+                        if (
+                          row.date <= today &&
+                          !window.confirm(
+                            `Снять согласование? Опоздание за ${formatDate(row.date)} пересчитают по графику смены.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        withdraw.mutate({ id: row.id });
+                      }}
+                      className="mt-1.5 rounded-xl border border-ink/10 px-2 py-1 text-footnote text-secondary hover:bg-ink/[0.08] disabled:opacity-50"
+                    >
+                      Снять
+                    </button>
                   )}
                 </span>
               ),

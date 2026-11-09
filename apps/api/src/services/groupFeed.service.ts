@@ -471,6 +471,13 @@ export function describeForGroup(
   const actor = actorLine();
 
   if (input.action === 'discipline.recorded') {
+    /*
+      Опоздание, пересчитанное после решения по запросу на опоздание, — не
+      новое опоздание: группа уже видела отметку и само решение. Без даты в
+      сообщении «опоздала на 2 ч» после снятия согласования задним числом
+      читалось бы как сегодняшнее.
+    */
+    if (details['recomputed'] === true) return null;
     const parsed = disciplineKindSchema.safeParse(details['kind']);
     if (!parsed.success || !ATTENDANCE_KINDS.has(parsed.data)) return null;
     const kind = parsed.data;

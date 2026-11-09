@@ -164,6 +164,18 @@ describe('errorTranslations', () => {
     expect(translateErrorMessage('Нечто новое', 'uz')).toBe('Нечто новое');
   });
 
+  it('повторный запрос на опоздание: ждущий и уже одобренный — разные отказы', () => {
+    expect(
+      translateErrorMessage('На этот день уже есть запрос на опоздание — отзовите его или дождитесь решения', 'uz'),
+    ).toBe("Bu kunga kechikish so'rovi allaqachon bor — uni qaytarib oling yoki qarorni kuting");
+    expect(translateErrorMessage('На этот день опоздание уже одобрено — до 10:30', 'uz')).toBe(
+      'Bu kunga kechikish allaqachon tasdiqlangan — soat 10:30 gacha',
+    );
+    expect(translateErrorMessage('Снять можно только одобренное опоздание', 'uz')).toBe(
+      'Faqat tasdiqlangan kechikishni bekor qilish mumkin',
+    );
+  });
+
   it('расстояние в отказе отметиться — с латинскими единицами', () => {
     expect(
       translateErrorMessage(
@@ -249,6 +261,13 @@ describe('notificationTranslations', () => {
       translateNotificationText('Опоздание 12.11 до 10:30 не согласовано. Причина: много заказов', 'uz'),
     ).toBe('12.11 kuni soat 10:30 gacha kechikish rad etildi. Sabab: много заказов');
     expect(translateNotificationText('В опоздании отказано', 'uz')).toBe('Kechikish rad etildi');
+  });
+
+  it('снятое согласование опоздания — по-узбекски, с датой, временем и автором', () => {
+    expect(translateNotificationText('Согласование опоздания снято', 'uz')).toBe('Kechikishga ruxsat bekor qilindi');
+    expect(
+      translateNotificationText('Опоздание 12.11 до 10:30 больше не согласовано (Мирзаев Дилшод)', 'uz'),
+    ).toBe('12.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод)');
   });
 });
 

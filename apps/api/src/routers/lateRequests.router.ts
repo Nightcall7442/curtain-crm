@@ -9,17 +9,19 @@ import {
 } from '@curtain-crm/shared';
 import { lateRequests, users, type DbExecutor } from '@curtain-crm/db';
 import { TRPCError } from '@trpc/server';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { idSchema, optionalText, reasonSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
+import { recomputeLatenessForDay } from '../services/lateness.service';
 import {
   notifyLateApproved,
   notifyLateRejected,
   notifyLateRequested,
+  notifyLateWithdrawn,
 } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -33,12 +35,13 @@ import { managementUserIds } from './dayOff.router';
  *    за коллегу нельзя, увидеть чужие — тоже;
  *  - `cancel` — только автор и только пока запрос ждёт решения. Руководству
  *    отзыв не нужен: у него есть «отклонить», и с причиной;
- *  - `list`, `approve`, `reject` — руководство (CEO, админ), тот же guard,
- *    что у выходных.
+ *  - `list`, `approve`, `reject`, `withdraw` — руководство (CEO, админ), тот
+ *    же guard, что у выходных.
  *
  * Одобренный запрос сдвигает порог опоздания на «приду к» в этот день
  * (`lateness.service`), и больше ни на что не влияет: табель, зарплата и
- * табло считают человека работающим, как и есть.
+ * табло считают человека работающим, как и есть. Если отметка в этот день
+ * уже была, одобрение и снятие пересчитывают записанное опоздание.
  */
 
 /** «10:30» — так же, как время смены в условиях оплаты. */
@@ -68,8 +71,65 @@ async function findRequest(
   return request;
 }
 
+const notApproved = (): TRPCError =>
+  new TRPCError({ code: 'CONFLICT', message: 'Снять можно только одобренное опоздание' });
+
 const alreadyReviewed = (): TRPCError =>
   new TRPCError({ code: 'CONFLICT', message: 'Запрос уже рассмотрен' });
+
+/**
+ * Отказ во втором запросе на тот же день — по тому, что уже лежит.
+ *
+ * «Отзовите или дождитесь решения» верно только для ждущего запроса: у
+ * одобренного ждать нечего, а отозвать его сотрудник не может. Тогда
+ * говорим, до которого часа опоздание уже разрешено. `null` — живого
+ * запроса на день нет.
+ */
+async function activeRequestConflict(
+  executor: DbExecutor,
+  userId: number,
+  date: string,
+): Promise<TRPCError | null> {
+  const [existing] = await executor
+    .select({ status: lateRequests.status, arriveBy: lateRequests.arriveBy })
+    .from(lateRequests)
+    .where(
+      and(
+        eq(lateRequests.userId, userId),
+        eq(lateRequests.date, date),
+        inArray(lateRequests.status, [DayOffStatus.PENDING, DayOffStatus.APPROVED]),
+      ),
+    )
+    .limit(1);
+  if (existing === undefined) return null;
+
+  return existing.status === DayOffStatus.APPROVED
+    ? new TRPCError({ code: 'CONFLICT', message: `На этот день опоздание уже одобрено — до ${existing.arriveBy}` })
+    : new TRPCError({
+        code: 'CONFLICT',
+        message: 'На этот день уже есть запрос на опоздание — отзовите его или дождитесь решения',
+      });
+}
+
+/**
+ * Пересчитать опоздание за день запроса — если этот день уже наступил.
+ *
+ * Будущий день пересчитывать незачем: отметки ещё нет, и порог возьмётся
+ * из запроса в момент отметки. Сегодня и прошлое — по Ташкенту.
+ */
+async function recomputeIfDayStarted(
+  executor: DbExecutor,
+  request: { readonly userId: number; readonly date: string },
+  actor: { readonly actorId: number; readonly ipAddress: string | null },
+): Promise<void> {
+  if (request.date > workshopDayIso(new Date())) return;
+  await recomputeLatenessForDay(executor, {
+    userId: request.userId,
+    day: request.date,
+    actorId: actor.actorId,
+    ipAddress: actor.ipAddress,
+  });
+}
 
 export const lateRequestsRouter = router({
   /** Попросить опоздать в конкретный день. */
@@ -99,8 +159,12 @@ export const lateRequestsRouter = router({
       }
 
       return ctx.db.transaction(async (tx) => {
+        const conflict = await activeRequestConflict(tx, ctx.user.id, input.date);
+        if (conflict !== null) throw conflict;
+
         // Частичный уникальный индекс держит «одна живая договорённость на
-        // день»; без `onConflictDoNothing` второй запрос был бы ошибкой 500.
+        // день» и при гонке двух одновременных запросов; без
+        // `onConflictDoNothing` второй из них был бы ошибкой 500.
         const [created] = await tx
           .insert(lateRequests)
           .values({
@@ -113,10 +177,15 @@ export const lateRequestsRouter = router({
           .returning();
 
         if (created === undefined) {
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: 'На этот день запрос на опоздание уже есть — отзовите его или дождитесь решения',
-          });
+          // Проиграли гонку: соседний запрос уже зафиксирован, и INSERT дождался
+          // его коммита — новый SELECT его видит. Отказ — тот же, что и без гонки.
+          throw (
+            (await activeRequestConflict(tx, ctx.user.id, input.date)) ??
+            new TRPCError({
+              code: 'CONFLICT',
+              message: 'На этот день уже есть запрос на опоздание — отзовите его или дождитесь решения',
+            })
+          );
         }
 
         await recordAudit(tx, {
@@ -229,6 +298,13 @@ export const lateRequestsRouter = router({
           });
         }
 
+        /*
+          Согласовать можно и задним числом — так руководитель прощает уже
+          случившееся опоздание. Отметка в этот день могла быть раньше
+          решения, и записанное при ней опоздание считалось от графика.
+        */
+        await recomputeIfDayStarted(tx, request, { actorId: ctx.user.id, ipAddress: ctx.ipAddress });
+
         return updated;
       }),
     ),
@@ -276,6 +352,54 @@ export const lateRequestsRouter = router({
             reason: input.reason,
           });
         }
+
+        return updated;
+      }),
+    ),
+
+  /**
+   * Снять согласованное опоздание: одобрили по ошибке или передумали.
+   *
+   * Как снятие выходного: запрос становится отозванным, рецензент и время
+   * решения стираются — так требует инвариант БД «решён руководством ⇒ есть
+   * рецензент». Кто и когда снял, остаётся в журнале (`late.withdrawn`); в
+   * группу снятие не пишется — как и снятие выходного. Сотрудник узнаёт
+   * сразу: он рассчитывал на «приду к». Если день уже наступил и отметка
+   * была, опоздание пересчитывается от графика.
+   */
+  withdraw: managementProcedure
+    .input(z.object({ id: idSchema }))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const request = await findRequest(tx, input.id);
+        if (request.status !== DayOffStatus.APPROVED) throw notApproved();
+
+        // Статус — в самом UPDATE: двое руководителей не снимут одно согласование дважды.
+        const [updated] = await tx
+          .update(lateRequests)
+          .set({ status: DayOffStatus.CANCELLED, reviewedBy: null, reviewedAt: null })
+          .where(and(eq(lateRequests.id, input.id), eq(lateRequests.status, DayOffStatus.APPROVED)))
+          .returning();
+        if (updated === undefined) throw notApproved();
+
+        await recordAudit(tx, {
+          actorId: ctx.user.id,
+          action: 'late.withdrawn',
+          entityType: 'late_request',
+          entityId: input.id,
+          details: { userId: request.userId, date: request.date, arriveBy: request.arriveBy },
+          ipAddress: ctx.ipAddress,
+        });
+
+        if (request.userId !== ctx.user.id) {
+          await notifyLateWithdrawn(tx, request.userId, {
+            date: request.date,
+            arriveBy: request.arriveBy,
+            reviewerName: ctx.user.fullName,
+          });
+        }
+
+        await recomputeIfDayStarted(tx, request, { actorId: ctx.user.id, ipAddress: ctx.ipAddress });
 
         return updated;
       }),

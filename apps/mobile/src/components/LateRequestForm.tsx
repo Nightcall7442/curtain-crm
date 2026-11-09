@@ -45,7 +45,7 @@ export function LateRequestForm(): ReactElement {
 
   const create = trpc.lateRequests.create.useMutation({
     async onSuccess() {
-      // Руководитель тоже может попросить опоздание — его очередь «Отгулы»
+      // Руководитель тоже может попросить опоздание — его очередь «Отгулы и опоздания»
       // читает `list`, и обновить надо оба списка.
       await Promise.all([utils.lateRequests.my.invalidate(), utils.lateRequests.list.invalidate()]);
       setDate(workshopDayIso(new Date(serverNow())));

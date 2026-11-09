@@ -251,6 +251,19 @@ describe('опоздания и прогулы в ленте', () => {
 
     expect(feed).toEqual({ title: 'Ishga chiqmaslik', body: 'Xodim: Karimova Nodira' });
   });
+
+  it('опоздание, пересчитанное после решения по запросу, второй раз в группу не идёт', () => {
+    const feed = describeForGroup(
+      disciplineEvent({
+        actorId: 23,
+        details: { auto: true, kind: 'late_over_30', lateBy: 120, recomputed: true },
+      }),
+      lateContext,
+      'uz',
+    );
+
+    expect(feed).toBeNull();
+  });
 });
 
 /*
@@ -451,10 +464,17 @@ describe('запросы на опоздание в ленте', () => {
     expect(approved?.title).toBe('Karimova Nodira, вам разрешено опоздать 12.11 — до 10:30');
   });
 
-  it('отзыв запроса в группу не идёт', () => {
+  it('отзыв запроса и снятие согласованного опоздания в группу не идут', () => {
     expect(
       describeForGroup(
         lateEvent({ actorId: 23, action: 'late.cancelled', details: { userId: 23, date: '2026-11-12' } }),
+        requestContext,
+        'uz',
+      ),
+    ).toBeNull();
+    expect(
+      describeForGroup(
+        lateEvent({ action: 'late.withdrawn', details: { userId: 23, date: '2026-11-12', arriveBy: '10:30' } }),
         requestContext,
         'uz',
       ),

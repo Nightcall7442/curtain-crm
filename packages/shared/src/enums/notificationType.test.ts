@@ -41,11 +41,16 @@ describe('notificationDestination', () => {
     expect(notificationDestination('late_requested', none)).toEqual({ kind: 'dayOffApprovals' });
     expect(notificationDestination('late_approved', none)).toEqual({ kind: 'dayOff' });
     expect(notificationDestination('late_rejected', none)).toEqual({ kind: 'dayOff' });
+    expect(notificationDestination('late_withdrawn', none)).toEqual({ kind: 'dayOff' });
   });
 
   it('запрос на опоздание ждёт решения — важное, как запрос на выходной', () => {
     expect(isImportantNotification('late_requested')).toBe(true);
     expect(isImportantNotification('late_approved')).toBe(false);
+  });
+
+  it('снятое согласование опоздания — важное: прийти теперь надо по графику', () => {
+    expect(isImportantNotification('late_withdrawn')).toBe(true);
   });
 
   it('каждый тип, кроме заказных без заказа, куда-то ведёт', () => {

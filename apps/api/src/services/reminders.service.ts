@@ -1,5 +1,6 @@
 import { dayOffRequests, lateRequests, shifts, userRoles, users, type DbExecutor } from '@curtain-crm/db';
 import {
+  clockMinutes,
   DayOffStatus,
   isoWeekdayOf,
   MANAGEMENT_ROLES,
@@ -20,8 +21,8 @@ import { notifyShiftAdjusted, notifyTerminalCheckDue } from './notifications.ser
 import { workshopPeriodStarts } from './periods';
 import { isTelegramGroupEnabled, sendTelegramGroupMessage } from './telegram.service';
 
-/** Часы по Ташкенту, в которые продавцам напоминают о терминальных чеках. */
-const REMINDER_HOURS = [10, 15] as const;
+/** Время по Ташкенту, в которое продавцам напоминают о терминальных чеках. */
+export const TERMINAL_CHECK_REMINDER_TIMES: readonly string[] = ['10:00', '15:00'];
 const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 /**
@@ -33,50 +34,49 @@ const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
  * наличные продавцы никуда не сдают, а чеки пробить обязаны.
  *
  * В том же ежеминутном тике — напоминания о смене в группу (см. ниже
- * `shiftReminderKind`) и закрытие забытых смен.
+ * `shiftReminderKind`) и закрытие забытых смен. Три части друг от друга не
+ * зависят: упавший запрос забытых смен не должен глушить напоминания, и
+ * наоборот, — поэтому у каждой свой перехват и своя строка в журнале.
  *
- * Раз в минуту смотрим на часы; сработавший слот запоминаем, чтобы не
- * послать дважды. После перезапуска слот может сработать повторно в ту же
- * минуту — это лишнее напоминание, а не потеря.
+ * Слоты срабатывают с допуском (`stepSlots`): `setInterval` плывёт и может
+ * перешагнуть целую минуту, а слот, ждущий точного совпадения минуты, тогда
+ * молча пропал бы. Сработавший слот запоминается на день; после перезапуска
+ * в пределах допуска слот может сработать повторно — это лишнее
+ * напоминание, а не потеря.
  *
- * ponytail: один процесс API — таймер в памяти; при нескольких инстансах
+ * ponytail: один процесс API — отметки в памяти; при нескольких инстансах
  * перенести отметку «слот отправлен» в БД.
  */
 export function startCollectionReminders(executor: DbExecutor): () => void {
-  let lastSlot = '';
-  let lastShiftSlot = '';
+  let shiftSlots: SlotState = EMPTY_SLOT_STATE;
+  let checkSlots: SlotState = EMPTY_SLOT_STATE;
 
   const tick = async (): Promise<void> => {
-    await closeForgottenShifts(executor);
-
-    // Напоминание о смене — до чеков: чеки выходят из тика раньше, если сейчас не их час.
+    // Слоты отмечаются сразу, до первого `await`: тик, затянувшийся дольше
+    // минуты, иначе пересёкся бы со следующим, и тот отправил бы слот снова.
     const now = new Date();
-    const shiftSlot = `${workshopDayIso(now)} ${workshopClockTime(now)}`;
-    const shiftKind = shiftReminderKind(workshopClockTime(now));
-    if (shiftKind !== null && shiftSlot !== lastShiftSlot) {
-      lastShiftSlot = shiftSlot;
-      await remindAboutShift(executor, shiftKind, now);
+    const shift = stepSlots(SHIFT_REMINDER_TIMES, now, shiftSlots);
+    shiftSlots = shift.state;
+    const checks = stepSlots(TERMINAL_CHECK_REMINDER_TIMES, now, checkSlots);
+    checkSlots = checks.state;
+
+    await guarded('Забытые смены не закрыты', () => closeForgottenShifts(executor));
+
+    for (const slot of shift.due) {
+      const kind = shiftReminderKind(slot);
+      if (kind === null) continue;
+      await guarded(`Напоминание о смене (${slot}) не отправлено`, () => remindAboutShift(executor, kind, now));
     }
 
-    const local = new Date(Date.now() + TASHKENT_OFFSET_MS);
-    const hour = local.getUTCHours();
-    if (!(REMINDER_HOURS as readonly number[]).includes(hour) || local.getUTCMinutes() !== 0) return;
-    const slot = `${local.toISOString().slice(0, 10)} ${hour.toString()}`;
-    if (slot === lastSlot) return;
-    lastSlot = slot;
-
-    const count = await terminalChecksToday(executor, null);
-    if (count >= TERMINAL_CHECKS_DAILY_TARGET) return;
-    await notifyTerminalCheckDue(executor, await sellerUserIds(executor), {
-      count,
-      target: TERMINAL_CHECKS_DAILY_TARGET,
-    });
+    if (checks.due.length > 0) {
+      await guarded('Напоминание о терминальных чеках не отправлено', () => remindAboutTerminalChecks(executor));
+    }
   };
 
   const timer = setInterval(() => {
+    // Части перехвачены по отдельности; сюда долетит только сбой самого тика.
     tick().catch((error: unknown) => {
-      process.stderr.write(`Напоминание (чеки или смена) не отправлено: ${String(error)}
-`);
+      process.stderr.write(`Тик напоминаний сломался: ${String(error)}\n`);
     });
   }, 60_000);
   timer.unref();
@@ -84,6 +84,74 @@ export function startCollectionReminders(executor: DbExecutor): () => void {
   return () => {
     clearInterval(timer);
   };
+}
+
+/** Одна часть тика: ошибка пишется в журнал процесса и не останавливает остальные. */
+async function guarded(failure: string, part: () => Promise<void>): Promise<void> {
+  try {
+    await part();
+  } catch (error: unknown) {
+    process.stderr.write(`${failure}: ${String(error)}\n`);
+  }
+}
+
+/** Терминальные чеки: напомнить продавцам, если цель дня ещё не закрыта. */
+async function remindAboutTerminalChecks(executor: DbExecutor): Promise<void> {
+  const count = await terminalChecksToday(executor, null);
+  if (count >= TERMINAL_CHECKS_DAILY_TARGET) return;
+  await notifyTerminalCheckDue(executor, await sellerUserIds(executor), {
+    count,
+    target: TERMINAL_CHECKS_DAILY_TARGET,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Слоты по часам мастерской                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Сколько минут после своего времени слот ещё срабатывает.
+ *
+ * Тик раз в минуту, но не ровно: таймер плывёт, а под нагрузкой тик может
+ * опоздать и перешагнуть минуту слота целиком. Две минуты покрывают один
+ * пропущенный тик с запасом; позже напоминание «откройте смену» в 09:00
+ * уже не о том. Слоты разнесены минимум на пять минут, окна не пересекаются.
+ */
+export const SLOT_GRACE_MINUTES = 2;
+
+/** Какие слоты уже отправлены — за один день мастерской. */
+export interface SlotState {
+  readonly day: string;
+  readonly fired: ReadonlySet<string>;
+}
+
+export const EMPTY_SLOT_STATE: SlotState = { day: '', fired: new Set() };
+
+/**
+ * Слоты, которые пора отправить в этот тик, и новое состояние.
+ *
+ * Слот `ЧЧ:ММ` срабатывает на первом тике в его минуту или позже — в
+ * пределах `SLOT_GRACE_MINUTES` — и один раз за день: отметка — пара «день,
+ * слот», и с новым днём отметки сбрасываются. Чистая функция: таймер и
+ * база живут снаружи, а правило проверяется тестом на любой
+ * последовательности тиков. Слоты мастерской не ближе к полуночи, чем
+ * допуск, поэтому окно не переходит через смену дня.
+ */
+export function stepSlots(
+  slots: readonly string[],
+  now: Date,
+  state: SlotState,
+): { readonly due: readonly string[]; readonly state: SlotState } {
+  const day = workshopDayIso(now);
+  const minute = clockMinutes(workshopClockTime(now));
+  const fired = state.day === day ? state.fired : EMPTY_SLOT_STATE.fired;
+
+  const due = slots.filter((slot) => {
+    const lateBy = minute - clockMinutes(slot);
+    return lateBy >= 0 && lateBy <= SLOT_GRACE_MINUTES && !fired.has(slot);
+  });
+
+  return { due, state: due.length === 0 && state.day === day ? state : { day, fired: new Set([...fired, ...due]) } };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -109,6 +177,9 @@ const SHIFT_REMINDER_SLOTS: Readonly<Record<string, ShiftReminderKind>> = {
   '22:00': 'close',
 };
 
+/** Время слотов напоминания о смене — для `stepSlots`. */
+export const SHIFT_REMINDER_TIMES: readonly string[] = Object.keys(SHIFT_REMINDER_SLOTS);
+
 /**
  * Текст напоминания — дословно слова владельца; группа узбекоязычная
  * (как и лента, `groupFeed.service`), русский — для разработчика. Имён нет:
@@ -121,7 +192,7 @@ export const SHIFT_REMINDER_TEXT: Readonly<Record<ShiftReminderKind, Readonly<Re
 
 const SHIFT_REMINDER_LOCALE: Locale = 'uz';
 
-/** Какое напоминание положено в это время по Ташкенту (`ЧЧ:ММ`); `null` — никакого. */
+/** Какое напоминание у слота `ЧЧ:ММ` (время по Ташкенту); `null` — такого слота нет. */
 export function shiftReminderKind(workshopClock: string): ShiftReminderKind | null {
   return SHIFT_REMINDER_SLOTS[workshopClock] ?? null;
 }

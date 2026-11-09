@@ -792,6 +792,26 @@ export async function notifyLateRejected(
 }
 
 /**
+ * Согласованное опоздание снято — узнаёт сотрудник.
+ *
+ * Сотрудник мог рассчитывать на «приду к 10:30», и узнать о снятии он
+ * должен сразу, а не утром в 09:20 по записи об опоздании. Автор в скобках
+ * — как у одобрения.
+ */
+export async function notifyLateWithdrawn(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly date: string; readonly arriveBy: string; readonly reviewerName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.LATE_WITHDRAWN,
+    title: 'Согласование опоздания снято',
+    body: `Опоздание ${formatIsoDateShort(params.date)} до ${params.arriveBy} больше не согласовано (${params.reviewerName})`,
+  });
+}
+
+/**
  * Запись о дисциплине — узнаёт сотрудник.
  *
  * И нарушение, и поощрение: правило «фиксируем факт, а не спорим» работает

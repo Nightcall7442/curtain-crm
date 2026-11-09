@@ -1,4 +1,4 @@
-import { DAY_OFF_STATUS_LABELS, DayOffStatus } from '@curtain-crm/shared';
+import { DAY_OFF_STATUS_LABELS, DayOffStatus, workshopDayIso } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -21,9 +21,11 @@ import {
   requestStatusTone,
   type RequestKind,
 } from '../components/TimeOffRequest';
+import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
 import { mergeRequests } from '../lib/requestOrder';
+import { serverNow } from '../lib/serverClock';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
@@ -45,9 +47,15 @@ import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../t
  * Причина отказа обязательна и вводится прямо в карточке, а не в
  * `Alert.prompt`: тот есть только на iOS, и на Android отказ молча
  * не работал бы.
+ *
+ * Одобренное можно снять — и выходной (`dayOff.withdraw`), и опоздание
+ * (`lateRequests.withdraw`). Владелец решает с телефона, а снять прежде
+ * можно было только выходной и только в веб-панели: опоздание, одобренное
+ * не тому или не на тот день, оставалось одобренным навсегда.
  */
 export function DayOffApprovalsScreen(): ReactElement {
   const { t, m } = useLocale();
+  const { user } = useAuth();
   const utils = trpc.useUtils();
   const insets = useSafeAreaInsets();
   /* Снизу — безопасная зона и обычный отступ, а не место под панель
@@ -66,14 +74,24 @@ export function DayOffApprovalsScreen(): ReactElement {
   const lateQuery = trpc.lateRequests.list.useQuery({});
 
   /*
+    Обновляется всё, что меняет решение, а не только сами списки.
+
     Счётчик на «Руководстве» читает те же списки с `status: 'pending'` —
-    `invalidate` без входа обновляет и его.
+    `invalidate` без входа обновляет и его; весь роутер, а не `list`, —
+    чтобы руководитель, снявший СВОЙ запрос, увидел это и в «Моих
+    запросах». Выходной меняет табель — из него собрана карточка «Кто
+    отдыхает» прямо на этом экране — и табло цеха. Опоздание, одобренное
+    или снятое за сегодня или прошлый день, сервер пересчитывает, и
+    меняются нарушения.
   */
   const refresh = async (): Promise<void> => {
     await Promise.all([
-      utils.dayOff.list.invalidate(),
-      utils.lateRequests.list.invalidate(),
+      utils.dayOff.invalidate(),
+      utils.lateRequests.invalidate(),
       utils.notifications.list.invalidate(),
+      utils.shifts.timesheet.invalidate(),
+      utils.discipline.invalidate(),
+      utils.monitor.invalidate(),
     ]);
   };
 
@@ -84,22 +102,46 @@ export function DayOffApprovalsScreen(): ReactElement {
     await refresh();
   };
 
-  const onApproveError = (error: { readonly message: string }): void => {
+  /*
+    После отказа сервера список тоже перечитывается: чаще всего это
+    «Запрос уже рассмотрен» — второй руководитель успел раньше, — и
+    карточка с кнопками, которые уже ничего не сделают, не должна
+    оставаться на экране.
+  */
+  const onFailed = (title: string, error: { readonly message: string }): void => {
     notifyError();
-    Alert.alert(m('approvals.approveError'), error.message);
+    Alert.alert(title, error.message);
+    void refresh();
+  };
+  const onApproveError = (error: { readonly message: string }): void => {
+    onFailed(m('approvals.approveError'), error);
+  };
+  const onRejectError = (error: { readonly message: string }): void => {
+    onFailed(m('approvals.rejectError'), error);
+  };
+  const onWithdrawError = (error: { readonly message: string }): void => {
+    onFailed(m('approvals.withdrawError'), error);
   };
 
-  const onRejectError = (error: { readonly message: string }): void => {
-    notifyError();
-    Alert.alert(m('approvals.rejectError'), error.message);
+  const onWithdrawn = async (): Promise<void> => {
+    notifySuccess();
+    await refresh();
   };
 
   const approveDayOff = trpc.dayOff.approve.useMutation({ onSuccess: onDecided, onError: onApproveError });
   const rejectDayOff = trpc.dayOff.reject.useMutation({ onSuccess: onDecided, onError: onRejectError });
   const approveLate = trpc.lateRequests.approve.useMutation({ onSuccess: onDecided, onError: onApproveError });
   const rejectLate = trpc.lateRequests.reject.useMutation({ onSuccess: onDecided, onError: onRejectError });
+  const withdrawDayOff = trpc.dayOff.withdraw.useMutation({ onSuccess: onWithdrawn, onError: onWithdrawError });
+  const withdrawLate = trpc.lateRequests.withdraw.useMutation({ onSuccess: onWithdrawn, onError: onWithdrawError });
 
-  const isBusy = approveDayOff.isPending || rejectDayOff.isPending || approveLate.isPending || rejectLate.isPending;
+  const isBusy =
+    approveDayOff.isPending ||
+    rejectDayOff.isPending ||
+    approveLate.isPending ||
+    rejectLate.isPending ||
+    withdrawDayOff.isPending ||
+    withdrawLate.isPending;
 
   /*
     Крутилка — только на той заявке, что решается сейчас. Прежде она
@@ -114,6 +156,10 @@ export function DayOffApprovalsScreen(): ReactElement {
     ref.kind === 'late'
       ? rejectLate.isPending && rejectLate.variables.id === ref.id
       : rejectDayOff.isPending && rejectDayOff.variables.id === ref.id;
+  const isWithdrawing = (ref: RequestRef): boolean =>
+    ref.kind === 'late'
+      ? withdrawLate.isPending && withdrawLate.variables.id === ref.id
+      : withdrawDayOff.isPending && withdrawDayOff.variables.id === ref.id;
 
   const approve = (ref: RequestRef): void => {
     if (ref.kind === 'late') approveLate.mutate({ id: ref.id });
@@ -124,6 +170,47 @@ export function DayOffApprovalsScreen(): ReactElement {
     if (ref.kind === 'late') rejectLate.mutate(payload);
     else rejectDayOff.mutate(payload);
   };
+
+  /*
+    Снятие — только после подтверждения: оно не откатывается одним
+    нажатием, а у опоздания ещё и пересчитывает нарушение. В тексте —
+    кто и когда, чтобы было видно, ту ли карточку тронули, и что будет
+    дальше: про опоздание сотрудник узнает сам (сервер шлёт уведомление),
+    про выходной — нет, и предупредить его надо самому. Свой запрос
+    руководитель снимает без «сотрудник получит уведомление»: сервер
+    в этом случае его и не шлёт.
+  */
+  const confirmWithdraw = (ref: RequestRef, requester: Requester, period: string): void => {
+    const isOwn = user !== null && requester.id === user.id;
+    const name = requester.fullName;
+    const title = ref.kind === 'late' ? m('approvals.withdrawLateTitle') : m('approvals.withdrawDayOffTitle');
+    const body =
+      ref.kind === 'late'
+        ? isOwn
+          ? m('approvals.withdrawLateBodyOwn', { period })
+          : m('approvals.withdrawLateBody', { name, period })
+        : isOwn
+          ? m('approvals.withdrawDayOffBodyOwn', { period })
+          : m('approvals.withdrawDayOffBody', { name, period });
+
+    Alert.alert(title, body, [
+      { text: m('approvals.withdrawKeep'), style: 'cancel' },
+      {
+        text: m('approvals.withdraw'),
+        style: 'destructive',
+        onPress: () => {
+          if (ref.kind === 'late') withdrawLate.mutate({ id: ref.id });
+          else withdrawDayOff.mutate({ id: ref.id });
+        },
+      },
+    ]);
+  };
+
+  /*
+    «Сегодня» — день цеха (Ташкент) по часам сервера, как его считает и
+    сервер: часы телефона могут стоять в другом поясе или убежать.
+  */
+  const today = workshopDayIso(new Date(serverNow()));
 
   const items = mergeRequests(
     (dayOffQuery.data?.items ?? []).map((item) => ({ ...item, kind: 'dayOff' as const })),
@@ -162,6 +249,17 @@ export function DayOffApprovalsScreen(): ReactElement {
             item.kind === 'late'
               ? latePeriod(item.date, item.arriveBy, m)
               : dayOffPeriod(item.startDate, item.endDate);
+          /*
+            Просьба опоздать СЕГОДНЯ — отметкой у даты. Список идёт по
+            времени подачи, и вчерашняя просьба на сегодня оказывалась ниже
+            свежих на следующую неделю: директор пролистывал её, а решать
+            надо было до начала смены.
+
+            Только у ждущих решения: отметка зовёт решить сейчас, а у
+            отозванной, отклонённой или одобренной карточки решать нечего —
+            там она шум, и среди закрытых терялась единственная живая.
+          */
+          const isToday = isPending && item.kind === 'late' && item.date === today;
 
           return (
             <Card key={`${item.kind}:${item.id.toString()}`}>
@@ -174,7 +272,10 @@ export function DayOffApprovalsScreen(): ReactElement {
               />
 
               <RequestKindLabel kind={item.kind} />
-              <Text style={styles.dates}>{period}</Text>
+              <View style={styles.periodRow}>
+                <Text style={styles.dates}>{period}</Text>
+                {isToday && <Pill text={m('approvals.today')} tone="accent" />}
+              </View>
 
               {item.reason !== null && <Text style={styles.reason}>{item.reason}</Text>}
 
@@ -222,6 +323,32 @@ export function DayOffApprovalsScreen(): ReactElement {
                     )}
                   </Pressable>
                 </View>
+              )}
+
+              {/*
+                «Снять» — ссылкой, а не третьей большой кнопкой: одобренных в
+                истории много, и полноширинная кнопка в каждой карточке
+                превратила бы историю в стену кнопок. Вид и размер — как у
+                «Отозвать» в «Моих запросах»: та же операция над запросом,
+                та же красная подпись, зона нажатия в полные 44 точки.
+              */}
+              {item.status === DayOffStatus.APPROVED && (
+                <Pressable
+                  onPress={() => {
+                    confirmWithdraw(ref, item.requester, period);
+                  }}
+                  disabled={isBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel={m('approvals.withdrawA11y', { name: item.requester.fullName, period })}
+                  accessibilityState={{ disabled: isBusy, busy: isWithdrawing(ref) }}
+                  style={({ pressed }) => [styles.withdrawLink, pressed ? styles.buttonPressed : null]}
+                >
+                  {isWithdrawing(ref) ? (
+                    <ActivityIndicator color={colors.danger} size="small" />
+                  ) : (
+                    <Text style={styles.withdrawText}>{m('approvals.withdraw')}</Text>
+                  )}
+                </Pressable>
               )}
 
               {isOpen && (
@@ -292,10 +419,35 @@ function sameRef(a: RequestRef, b: RequestRef): boolean {
   return a.kind === b.kind && a.id === b.id;
 }
 
+/** Кто просит — как его отдают оба списка (`dayOff.list`, `lateRequests.list`). */
+interface Requester {
+  readonly id: number;
+  readonly fullName: string;
+}
+
+/**
+ * Насколько зона нажатия ссылки «Снять» выступает за строку текста сверху и
+ * снизу. Отрицательный отступ возвращает карточке прежнюю высоту: ссылка
+ * крупнее для пальца, но не для глаза (как «Отозвать» в `DayOffScreen`).
+ */
+const LINK_BLEED = (sizes.touchTarget - typography.caption.lineHeight) / 2;
+
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
+  },
+  /*
+    Дата и «сегодня» — одной строкой, с переносом: «12.11, до 10:30» на
+    узбекском длиннее, и на узком экране метка уходит на вторую строку,
+    а не выдавливает дату за край.
+  */
+  periodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing.sm,
+    rowGap: spacing.xs,
   },
   dates: {
     ...typography.value,
@@ -363,6 +515,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  withdrawLink: {
+    alignSelf: 'flex-start',
+    minHeight: sizes.touchTarget,
+    minWidth: sizes.touchTarget,
+    justifyContent: 'center',
+    // Подпись — в 8 точках под текстом выше, как у «Отозвать».
+    marginTop: spacing.sm - LINK_BLEED,
+    marginBottom: -LINK_BLEED,
+  },
+  // Вид ссылок в шапках карточек (`CardLink`), только красный: снятие отменяет решение.
+  withdrawText: {
+    ...typography.caption,
+    fontFamily: fonts.semibold,
+    fontWeight: '600',
+    color: colors.danger,
   },
   rejectBox: {
     marginTop: spacing.md,

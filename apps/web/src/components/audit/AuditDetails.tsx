@@ -1,5 +1,7 @@
 import type { ReactElement } from 'react';
 import {
+  DISCIPLINE_KIND_LABELS_RU,
+  disciplineKindSchema,
   materialKindLabel,
   ORDER_STATUS_LABELS_RU,
   PAYMENT_METHOD_LABELS_RU,
@@ -121,6 +123,9 @@ function formatValue(key: string, raw: unknown): string {
   if (WEEKDAY_KEYS.has(key)) {
     return weekdayName(Number.parseInt(text, 10)) || text;
   }
+  if (key === 'reason') {
+    return REASON_CODE_LABELS_RU[text] ?? text;
+  }
   if (key === 'method') {
     return PAYMENT_METHOD_LABELS_RU[text as PaymentMethod] ?? text;
   }
@@ -129,7 +134,16 @@ function formatValue(key: string, raw: unknown): string {
       «вид portiere_code» читалось кодом таблицы. Тот же словарь, что и на
       самом складе: там колонка «Вид» называет материал словом.
     */
-    return materialKindLabel(text as CatalogKind);
+    /*
+      Тот же ключ `kind` пишут и записи дисциплины («late_under_15»). Словарь
+      склада таких кодов не знает и возвращал `undefined` — поле в журнале
+      выходило пустым. Поэтому сначала словарь дисциплины, а незнакомый код
+      — как есть: журнал показывает записанное, а не молчит.
+    */
+    const discipline = disciplineKindSchema.safeParse(text);
+    if (discipline.success) return DISCIPLINE_KIND_LABELS_RU[discipline.data];
+    const material: string | undefined = materialKindLabel(text as CatalogKind);
+    return material ?? text;
   }
 
   /*
@@ -181,8 +195,24 @@ function rank(path: string): number {
 const STATUS_KEYS = new Set(['fromStatus', 'toStatus', 'status']);
 const ROLE_KEYS = new Set(['role', 'roles']);
 const DATE_KEYS = new Set(['startedAt', 'endedAt', 'periodStart', 'periodEnd']);
-/** Календарные даты без времени — заявки на выходные. */
-const DAY_KEYS = new Set(['startDate', 'endDate']);
+/**
+ * Календарные даты без времени: заявки на выходные, день запроса на
+ * опоздание (`date`) и день записи дисциплины (`occurredOn`).
+ */
+const DAY_KEYS = new Set(['startDate', 'endDate', 'date', 'occurredOn']);
+
+/**
+ * Причины, которые сервер пишет кодом, а не текстом.
+ *
+ * Обычно `reason` — слова человека, и выводится как есть. Но когда запись
+ * дисциплины убирает сама система (одобрили или сняли опоздание задним
+ * числом и день пересчитан), причина — код: без перевода директор увидел
+ * бы в журнале `late_request_review`.
+ */
+const REASON_CODE_LABELS_RU: Readonly<Record<string, string>> = {
+  late_request_review: 'пересмотр запроса на опоздание',
+};
+
 /** Еженедельный выходной пишется номером дня недели. */
 const WEEKDAY_KEYS = new Set(['weekday', 'weeklyDayOff']);
 const KIND_KEYS = new Set(['kind']);
@@ -254,6 +284,19 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   weekday: 'день недели',
   weeklyDayOff: 'еженедельный выходной',
   viaOrderAssignment: 'по назначению на заказ',
+
+  // опоздания по запросу и дисциплина
+  date: 'дата',
+  arriveBy: 'приду к',
+  occurredOn: 'день',
+  auto: 'автоматически',
+  points: 'баллы',
+  isRepeat: 'повторно',
+  lateBy: 'опоздание, мин',
+  shiftStart: 'начало смены',
+  approvedArriveBy: 'одобрено к',
+  recomputed: 'пересчитано',
+  label: 'подпись',
 
   // справочники и закупки
   name: 'название',

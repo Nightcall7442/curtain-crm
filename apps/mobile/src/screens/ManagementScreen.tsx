@@ -55,8 +55,21 @@ export function ManagementScreen(): ReactElement {
   const now = new Date();
 
   const pendingDayOff = trpc.dayOff.list.useQuery({ status: 'pending' });
-  // Опоздания решаются на том же экране «Отгулы» — и ждут в том же счётчике.
+  // Опоздания решаются на том же экране «Отгулы и опоздания» — и ждут в том же счётчике.
   const pendingLate = trpc.lateRequests.list.useQuery({ status: 'pending' });
+
+  /*
+    Счётчик пропадает, только когда не пришёл НИ ОДИН из двух списков.
+
+    Прежде он требовал оба: сбой или задержка одного списка опозданий
+    прятали и ждущие выходные — директор видел «ничего не ждёт» при трёх
+    заявках в очереди. Недошедший список считается нулём: лучше показать
+    то, что известно, чем не показать ничего.
+  */
+  const requestsWaiting =
+    pendingDayOff.data === undefined && pendingLate.data === undefined
+      ? null
+      : (pendingDayOff.data?.total ?? 0) + (pendingLate.data?.total ?? 0);
   const payroll = trpc.payroll.list.useQuery({
     year: now.getFullYear(),
     month: now.getMonth() + 1,
@@ -88,10 +101,7 @@ export function ManagementScreen(): ReactElement {
       icon: 'calendar',
       title: m('mgmt.dayOff'),
       hint: m('mgmt.dayOffHint'),
-      badge:
-        pendingDayOff.data === undefined || pendingLate.data === undefined
-          ? null
-          : pendingDayOff.data.total + pendingLate.data.total,
+      badge: requestsWaiting,
     },
     {
       route: 'PayrollApprovals',

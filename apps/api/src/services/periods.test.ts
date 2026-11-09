@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { workshopPeriodStarts } from './periods';
+import { workshopDayBounds, workshopPeriodStarts } from './periods';
 
 const iso = (value: Date): string => value.toISOString();
 
@@ -33,5 +33,18 @@ describe('workshopPeriodStarts', () => {
 
     expect(iso(starts.week)).toBe('2026-09-27T19:00:00.000Z');
     expect(iso(starts.month)).toBe('2026-09-30T19:00:00.000Z');
+  });
+});
+
+describe('workshopDayBounds', () => {
+  it('день — от полуночи до полуночи по Ташкенту', () => {
+    const { start, end } = workshopDayBounds('2026-11-09');
+
+    expect(iso(start)).toBe('2026-11-08T19:00:00.000Z');
+    expect(iso(end)).toBe('2026-11-09T19:00:00.000Z');
+  });
+
+  it('последний день месяца кончается первым числом следующего', () => {
+    expect(iso(workshopDayBounds('2026-12-31').end)).toBe('2026-12-31T19:00:00.000Z');
   });
 });
