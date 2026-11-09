@@ -83,6 +83,28 @@ export const DISCIPLINE_KIND_LABELS: Translated<DisciplineKind> = {
 export const DISCIPLINE_KIND_LABELS_RU = DISCIPLINE_KIND_LABELS.ru;
 
 /**
+ * Коды причин в журнале, когда запись дисциплины правит или снимает сама
+ * система (`reason` в `discipline.adjusted` / `discipline.removed`).
+ *
+ * Обычно `reason` в журнале — слова человека. Здесь — код, по которому
+ * сервер отличает правку правилом от решения руководителя (прощение руками
+ * — `forgivenByHand`), а журнал на сайте переводит его в слова. Один список
+ * на сервер и сайт: опечатка в коде на одной стороне молча ломала бы
+ * и разбор, и подпись.
+ *  - `late_request_review` — пересчёт после решения по запросу на опоздание;
+ *  - `manual_discipline_change` — повторы месяца пересчитаны после того, как
+ *    руководитель руками добавил или убрал опоздание.
+ */
+export const DISCIPLINE_AUDIT_REASONS = ['late_request_review', 'manual_discipline_change'] as const;
+
+export type DisciplineAuditReason = (typeof DISCIPLINE_AUDIT_REASONS)[number];
+
+export const DisciplineAuditReason = {
+  LATE_REQUEST_REVIEW: 'late_request_review',
+  MANUAL_DISCIPLINE_CHANGE: 'manual_discipline_change',
+} as const satisfies Record<string, DisciplineAuditReason>;
+
+/**
  * Уровень реакции по штрафным баллам за месяц.
  *
  * Не наказание, а ступень: сначала просто фиксируем, потом разговор, потом

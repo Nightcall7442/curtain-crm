@@ -17,11 +17,13 @@ import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
 import {
+  lockLatenessOf,
   recomputeLatenessForDay,
   type LatenessRecomputeOutcome,
   type LateReviewMode,
 } from '../services/lateness.service';
 import {
+  notifyDisciplineRecorded,
   notifyLateApproved,
   notifyLateRejected,
   notifyLateRequested,
@@ -156,6 +158,25 @@ function penaltyChange(outcome: LatenessRecomputeOutcome): LatePenaltyChange | n
     case 'created':
       return null;
   }
+}
+
+/**
+ * Уведомление о заново созданной записи — последним шагом решения.
+ *
+ * Оно сразу уходит и в Telegram, не дожидаясь коммита. Если бы его
+ * отправлял сам пересчёт — до пересчёта повторов, журнала и уведомления о
+ * решении, — а что-то из них потом упало (хоть взаимная блокировка),
+ * транзакция откатилась бы, а сотрудник уже прочёл бы о штрафе, которого
+ * нет. После этого шага в транзакции остаётся только коммит. Запись создаёт
+ * только снятие согласования, но исход у решений общий — и объявляется
+ * одинаково.
+ */
+async function announceRecreatedLateness(
+  executor: DbExecutor,
+  userId: number,
+  outcome: LatenessRecomputeOutcome,
+): Promise<void> {
+  if (outcome.kind === 'created') await notifyDisciplineRecorded(executor, userId, outcome.notice);
 }
 
 export const lateRequestsRouter = router({
@@ -298,6 +319,12 @@ export const lateRequestsRouter = router({
         const request = await findRequest(tx, input.id);
         if (request.status !== DayOffStatus.PENDING) throw alreadyReviewed();
 
+        // Замок сотрудника — ДО UPDATE запроса: в том же порядке его берёт
+        // отметка прихода (замок, потом строка запроса). Возьми мы его после
+        // UPDATE, решение ждало бы замок со строкой в руках, а отметка — строку
+        // с замком (см. `lockLatenessOf`).
+        await lockLatenessOf(tx, request.userId);
+
         // Условие на статус — в самом UPDATE: двое руководителей, открывших
         // запрос одновременно, не решат его дважды.
         const [updated] = await tx
@@ -340,6 +367,7 @@ export const lateRequestsRouter = router({
             penalty: penaltyChange(lateness),
           });
         }
+        await announceRecreatedLateness(tx, request.userId, lateness);
 
         return updated;
       }),
@@ -410,6 +438,9 @@ export const lateRequestsRouter = router({
         const request = await findRequest(tx, input.id);
         if (request.status !== DayOffStatus.APPROVED) throw notApproved();
 
+        // Замок сотрудника — до UPDATE запроса, как у одобрения.
+        await lockLatenessOf(tx, request.userId);
+
         // Статус — в самом UPDATE: двое руководителей не снимут одно согласование дважды.
         const [updated] = await tx
           .update(lateRequests)
@@ -441,6 +472,8 @@ export const lateRequestsRouter = router({
             penalty: penaltyChange(lateness),
           });
         }
+        // Заново созданная запись — самым последним: после журнала и уведомления о снятии.
+        await announceRecreatedLateness(tx, request.userId, lateness);
 
         return updated;
       }),

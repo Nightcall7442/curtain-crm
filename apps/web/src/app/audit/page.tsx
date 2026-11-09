@@ -141,6 +141,8 @@ const ACTION_LABELS_RU: Readonly<Record<string, string>> = {
   'discipline.recorded': 'Дисциплина: запись',
   'discipline.explained': 'Дисциплина: объяснение',
   'discipline.removed': 'Дисциплина: запись удалена',
+  // Система поправила свою запись при пересмотре запроса на опоздание: минуты, вид или повтор.
+  'discipline.adjusted': 'Дисциплина: запись пересчитана',
   'terminal_check.created': 'Терминальный чек пробит',
   'display_link.created': 'Ссылка для ТВ создана',
   'display_link.revoked': 'Ссылка для ТВ отозвана',

@@ -1,4 +1,5 @@
 import {
+  DisciplineAuditReason,
   disciplineKindSchema,
   disciplineLevel,
   disciplinePoints,
@@ -21,7 +22,13 @@ import { idSchema, optionalText, periodSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
-import { localizeLatenessDescription } from '../services/lateness.service';
+import {
+  hasEarlierSameKind,
+  isLateKind,
+  localizeLatenessDescription,
+  lockLatenessOf,
+  recountMonthRepeats,
+} from '../services/lateness.service';
 import { notifyDisciplineRecorded } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -36,7 +43,11 @@ import { router } from '../trpc';
  *    правилам, и чужую запись объяснять нельзя.
  *
  * Баллы не вводятся руками: категория задаёт балл (`@curtain-crm/shared`),
- * повтор той же категории в том же месяце делает его строже. Уровень
+ * повтор той же категории в том же месяце делает его строже. Повтор —
+ * событие, у которого такое же было РАНЬШЕ в месяце (день, затем id), — тот
+ * же порядок, что у опоздания при отметке и пересчёта повторов
+ * (`lateness.service`). Опоздания система ведёт сама, и ручная запись или
+ * удаление опоздания пересчитывает повторы её записей за месяц. Уровень
  * реакции — от суммы штрафных за месяц; поощрения его не гасят, но видны
  * рядом. Удержаний из зарплаты система не делает и не предлагает.
  */
@@ -53,13 +64,6 @@ function monthBounds(period: Period): { from: string; to: string } {
   return {
     from: `${period.year.toString()}-${pad(period.month)}-01`,
     to: `${next.year.toString()}-${pad(next.month)}-01`,
-  };
-}
-
-function monthOf(isoDate: string): Period {
-  return {
-    year: Number.parseInt(isoDate.slice(0, 4), 10),
-    month: Number.parseInt(isoDate.slice(5, 7), 10),
   };
 }
 
@@ -206,6 +210,13 @@ export const disciplineRouter = router({
     )
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
+        const late = isLateKind(input.kind);
+        // Опоздание: замок сотрудника — до любой записи. Ниже пересчёт
+        // повторов берёт записи месяца FOR UPDATE, как и пересчёт после
+        // решения по запросу; без общего замка они ловили бы взаимную
+        // блокировку (см. `lockLatenessOf`).
+        if (late) await lockLatenessOf(tx, input.userId);
+
         const [target] = await tx
           .select({ id: users.id, isActive: users.isActive })
           .from(users)
@@ -215,19 +226,15 @@ export const disciplineRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Сотрудник не найден или уволен' });
         }
 
-        const { from, to } = monthBounds(monthOf(input.occurredOn));
-        const [prior] = await tx
-          .select({ count: sql<number>`count(*)`.mapWith(Number) })
-          .from(disciplineEvents)
-          .where(
-            and(
-              eq(disciplineEvents.userId, input.userId),
-              eq(disciplineEvents.kind, input.kind),
-              gte(disciplineEvents.occurredOn, from),
-              lt(disciplineEvents.occurredOn, to),
-            ),
-          );
-        const isRepeat = isDisciplineViolation(input.kind) && (prior?.count ?? 0) > 0;
+        /*
+          Повтор — если такое же событие было РАНЬШЕ в этом месяце. Раньше
+          хватало любого в месяце: опоздание за 05.11, записанное задним
+          числом, становилось повтором из-за 09.11, а пересчёт месяца
+          (`recountRepeats`) считал наоборот — 09.11 повтором из-за 05.11.
+        */
+        const isRepeat =
+          isDisciplineViolation(input.kind) &&
+          (await hasEarlierSameKind(tx, { userId: input.userId, kind: input.kind, day: input.occurredOn }));
         const points = disciplinePoints(input.kind, isRepeat);
 
         const [created] = await tx
@@ -244,6 +251,22 @@ export const disciplineRouter = router({
           .returning();
         if (created === undefined) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Не удалось сохранить запись' });
+        }
+
+        /*
+          Ручное опоздание за 05.11 делает повтором системное за 09.11 того же
+          вида — балл той записи пересчитывается. ДО журнала и уведомления:
+          журнал пишет в группу, уведомление — в Telegram, и оба уходят
+          сразу, не дожидаясь коммита; упади пересчёт после них, группа и
+          сотрудник прочли бы о записи, которой нет.
+        */
+        if (late) {
+          await recountMonthRepeats(
+            tx,
+            { userId: input.userId, day: input.occurredOn, kinds: new Set([input.kind]) },
+            { actorId: ctx.user.id, ipAddress: ctx.ipAddress },
+            { reason: DisciplineAuditReason.MANUAL_DISCIPLINE_CHANGE, policy: 'any' },
+          );
         }
 
         await recordAudit(tx, {
@@ -293,16 +316,52 @@ export const disciplineRouter = router({
   /** Убрать ошибочную запись. Факты перед решением проверяются — в том числе так. */
   remove: managementProcedure.input(z.object({ id: idSchema })).mutation(async ({ ctx, input }) =>
     ctx.db.transaction(async (tx) => {
+      const notFound = (): TRPCError => new TRPCError({ code: 'NOT_FOUND', message: 'Запись не найдена' });
+
+      // Чья запись и какого вида — до удаления: замок сотрудника берётся раньше строки (см. `lockLatenessOf`).
+      const [target] = await tx
+        .select({ userId: disciplineEvents.userId, kind: disciplineEvents.kind })
+        .from(disciplineEvents)
+        .where(eq(disciplineEvents.id, input.id))
+        .limit(1);
+      if (target === undefined) throw notFound();
+      const late = isLateKind(target.kind);
+      if (late) await lockLatenessOf(tx, target.userId);
+
+      // Запись могли удалить, пока ждали замка, — тогда её уже нет.
       const [removed] = await tx.delete(disciplineEvents).where(eq(disciplineEvents.id, input.id)).returning();
-      if (removed === undefined) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Запись не найдена' });
+      if (removed === undefined) throw notFound();
+
+      // Убрали опоздание за 05.11 — системное за 09.11 того же вида больше не повтор.
+      if (late) {
+        await recountMonthRepeats(
+          tx,
+          { userId: removed.userId, day: removed.occurredOn, kinds: new Set([removed.kind]) },
+          { actorId: ctx.user.id, ipAddress: ctx.ipAddress },
+          { reason: DisciplineAuditReason.MANUAL_DISCIPLINE_CHANGE, policy: 'any' },
+        );
       }
+
       await recordAudit(tx, {
         actorId: ctx.user.id,
         action: 'discipline.removed',
         entityType: 'discipline_event',
         entityId: removed.id,
-        details: { userId: removed.userId, kind: removed.kind, points: removed.points, occurredOn: removed.occurredOn },
+        details: {
+          userId: removed.userId,
+          kind: removed.kind,
+          points: removed.points,
+          occurredOn: removed.occurredOn,
+          /*
+            Чья была запись. Убрать запись системы — простить опоздание, и
+            снятие согласования его уже не вернёт; стереть свою ошибочную
+            ручную запись — не прощение. Различает это `forgivenByHand` в
+            `lateness.service` — по `recordedBy`; `auto` — то же словом:
+            запись сделала система (`recorded_by` — сам сотрудник).
+          */
+          recordedBy: removed.recordedBy,
+          auto: removed.recordedBy === removed.userId,
+        },
         ipAddress: ctx.ipAddress,
       });
       return removed;

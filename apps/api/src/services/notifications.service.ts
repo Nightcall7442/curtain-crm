@@ -864,6 +864,20 @@ export async function notifyLateWithdrawn(
 }
 
 /**
+ * Что сказать сотруднику о новой записи дисциплины.
+ *
+ * Отдельным типом — потому что текст иногда собирают заранее, а отправляют
+ * позже: запись, заново созданная при снятии согласования, объявляется
+ * только последним шагом решения (см. `lateRequests.withdraw`).
+ */
+export interface DisciplineRecordedNotice {
+  readonly kind: DisciplineKind;
+  readonly points: number;
+  readonly occurredOn: string;
+  readonly recordedByName: string;
+}
+
+/**
  * Запись о дисциплине — узнаёт сотрудник.
  *
  * И нарушение, и поощрение: правило «фиксируем факт, а не спорим» работает
@@ -873,12 +887,7 @@ export async function notifyLateWithdrawn(
 export async function notifyDisciplineRecorded(
   executor: DbExecutor,
   userId: number,
-  params: {
-    readonly kind: DisciplineKind;
-    readonly points: number;
-    readonly occurredOn: string;
-    readonly recordedByName: string;
-  },
+  params: DisciplineRecordedNotice,
 ): Promise<void> {
   const penalty = params.points < 0;
   await createNotification(executor, {
