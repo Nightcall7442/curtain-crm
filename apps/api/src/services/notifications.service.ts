@@ -732,6 +732,65 @@ export async function notifyDayOffRejected(
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/*                           Запросы на опоздание                             */
+/* -------------------------------------------------------------------------- */
+
+/*
+  Адресаты — те же, что у выходных: просьбу видит руководство, ответ —
+  сам сотрудник. Дата без года («12.11»), как у выходных; время — как его
+  ввёл сотрудник. Причина сотрудника в уведомление руководству не идёт:
+  её видно в самом запросе, а уведомление дублируется в Telegram.
+*/
+
+/** Сотрудник просит разрешения опоздать — узнаёт руководство. */
+export async function notifyLateRequested(
+  executor: DbExecutor,
+  recipientIds: readonly number[],
+  params: { readonly requesterName: string; readonly date: string; readonly arriveBy: string },
+): Promise<void> {
+  if (recipientIds.length === 0) return;
+
+  await createNotifications(
+    executor,
+    recipientIds.map((userId) => ({
+      userId,
+      type: NotificationType.LATE_REQUESTED,
+      title: 'Запрос на опоздание',
+      body: `${params.requesterName} просит опоздать ${formatIsoDateShort(params.date)} — придёт к ${params.arriveBy}`,
+    })),
+  );
+}
+
+/** Опоздание согласовано — узнаёт сотрудник. */
+export async function notifyLateApproved(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly date: string; readonly arriveBy: string; readonly reviewerName: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.LATE_APPROVED,
+    title: 'Опоздание согласовано',
+    // Автор в скобках — как у выходных: «согласовал» не подходит руководителю-женщине.
+    body: `Можно прийти ${formatIsoDateShort(params.date)} к ${params.arriveBy} (${params.reviewerName})`,
+  });
+}
+
+/** В опоздании отказано — узнаёт сотрудник, с причиной. */
+export async function notifyLateRejected(
+  executor: DbExecutor,
+  userId: number,
+  params: { readonly date: string; readonly arriveBy: string; readonly reason: string },
+): Promise<void> {
+  await createNotification(executor, {
+    userId,
+    type: NotificationType.LATE_REJECTED,
+    title: 'В опоздании отказано',
+    body: `Опоздание ${formatIsoDateShort(params.date)} до ${params.arriveBy} не согласовано. Причина: ${params.reason}`,
+  });
+}
+
 /**
  * Запись о дисциплине — узнаёт сотрудник.
  *

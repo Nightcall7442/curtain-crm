@@ -78,8 +78,13 @@ const DAY_OFF_ORDER = [
   desc(dayOffRequests.id),
 ] as const;
 
-/** Все активные сотрудники с ролью CEO или админ — адресаты нового запроса. */
-async function managementUserIds(executor: DbExecutor): Promise<number[]> {
+/**
+ * Все активные сотрудники с ролью CEO или админ — адресаты нового запроса.
+ *
+ * Общая с запросами на опоздание (`lateRequests.router`): кто решает
+ * выходные, тот решает и опоздания, и список адресатов не должен разойтись.
+ */
+export async function managementUserIds(executor: DbExecutor): Promise<number[]> {
   const rows = await executor
     .selectDistinct({ id: users.id })
     .from(users)
@@ -122,7 +127,8 @@ export const dayOffRouter = router({
           action: 'dayoff.requested',
           entityType: 'day_off_request',
           entityId: created.id,
-          details: { startDate: input.startDate, endDate: input.endDate },
+          // Без причины: журнал читает лента в группе, а причина — не для цеха.
+          details: { userId: ctx.user.id, startDate: input.startDate, endDate: input.endDate },
           ipAddress: ctx.ipAddress,
         });
 
@@ -220,7 +226,8 @@ export const dayOffRouter = router({
           action: 'dayoff.approved',
           entityType: 'day_off_request',
           entityId: input.id,
-          details: { startDate: request.startDate, endDate: request.endDate },
+          // `userId` — кому одобрили: группа пишет имя просившего, а не руководителя.
+          details: { userId: request.userId, startDate: request.startDate, endDate: request.endDate },
           ipAddress: ctx.ipAddress,
         });
 
@@ -454,7 +461,12 @@ export const dayOffRouter = router({
           action: 'dayoff.rejected',
           entityType: 'day_off_request',
           entityId: input.id,
-          details: { reason: input.reason },
+          details: {
+            userId: request.userId,
+            startDate: request.startDate,
+            endDate: request.endDate,
+            reason: input.reason,
+          },
           ipAddress: ctx.ipAddress,
         });
 

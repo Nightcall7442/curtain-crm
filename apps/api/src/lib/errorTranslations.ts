@@ -128,6 +128,13 @@ const EXACT: Readonly<Record<string, string>> = {
   'Снять можно только согласованный выходной': "Faqat kelishilgan dam olish kunini olib tashlash mumkin",
   'Это не ваш запрос': "Bu sizning so'rovingiz emas",
 
+  // lateRequests
+  'Опоздание просят заранее — на сегодня или на другой будущий день':
+    "Kechikishga ruxsat oldindan so'raladi — bugunga yoki keyingi kunga",
+  'Это время сегодня уже прошло': "Bugun bu vaqt allaqachon o'tib ketdi",
+  'На этот день запрос на опоздание уже есть — отзовите его или дождитесь решения':
+    "Bu kunga kechikish so'rovi allaqachon bor — uni qaytarib oling yoki qarorni kuting",
+
   // notifications
   'Уведомление не найдено': 'Bildirishnoma topilmadi',
 

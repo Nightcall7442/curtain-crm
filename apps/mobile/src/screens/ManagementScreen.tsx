@@ -55,6 +55,8 @@ export function ManagementScreen(): ReactElement {
   const now = new Date();
 
   const pendingDayOff = trpc.dayOff.list.useQuery({ status: 'pending' });
+  // Опоздания решаются на том же экране «Отгулы» — и ждут в том же счётчике.
+  const pendingLate = trpc.lateRequests.list.useQuery({ status: 'pending' });
   const payroll = trpc.payroll.list.useQuery({
     year: now.getFullYear(),
     month: now.getMonth() + 1,
@@ -86,7 +88,10 @@ export function ManagementScreen(): ReactElement {
       icon: 'calendar',
       title: m('mgmt.dayOff'),
       hint: m('mgmt.dayOffHint'),
-      badge: pendingDayOff.data?.total ?? null,
+      badge:
+        pendingDayOff.data === undefined || pendingLate.data === undefined
+          ? null
+          : pendingDayOff.data.total + pendingLate.data.total,
     },
     {
       route: 'PayrollApprovals',

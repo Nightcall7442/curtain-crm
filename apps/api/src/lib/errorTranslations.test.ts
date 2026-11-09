@@ -237,6 +237,19 @@ describe('notificationTranslations', () => {
       "18.11 — 19.11 uchun so'rovingiz tasdiqlandi (Мирзаев Дилшод)",
     );
   });
+
+  it('запрос на опоздание и ответ на него — по-узбекски, с датой и временем', () => {
+    expect(translateNotificationText('Азизова Нигора просит опоздать 12.11 — придёт к 10:30', 'uz')).toBe(
+      "Азизова Нигора 12.11 kuni kechikishni so'ramoqda — soat 10:30 gacha keladi",
+    );
+    expect(translateNotificationText('Можно прийти 12.11 к 10:30 (Мирзаев Дилшод)', 'uz')).toBe(
+      '12.11 kuni soat 10:30 gacha kelishingiz mumkin (Мирзаев Дилшод)',
+    );
+    expect(
+      translateNotificationText('Опоздание 12.11 до 10:30 не согласовано. Причина: много заказов', 'uz'),
+    ).toBe('12.11 kuni soat 10:30 gacha kechikish rad etildi. Sabab: много заказов');
+    expect(translateNotificationText('В опоздании отказано', 'uz')).toBe('Kechikish rad etildi');
+  });
 });
 
 describe('modernizeStoredNotification', () => {

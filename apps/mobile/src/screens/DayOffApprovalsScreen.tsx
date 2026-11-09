@@ -1,9 +1,4 @@
-import {
-  DAY_OFF_STATUS_LABELS,
-  DayOffStatus,
-  formatIsoDateShort,
-  type DayOffStatus as DayOffStatusName,
-} from '@curtain-crm/shared';
+import { DAY_OFF_STATUS_LABELS, DayOffStatus } from '@curtain-crm/shared';
 import { useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
@@ -19,21 +14,33 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, CardTitle, Empty, ErrorState, Pill, Skeleton } from '../components/Card';
 import { TeamDaysOff } from '../components/TeamDaysOff';
 import { Input } from '../components/Field';
+import {
+  dayOffPeriod,
+  latePeriod,
+  RequestKindLabel,
+  requestStatusTone,
+  type RequestKind,
+} from '../components/TimeOffRequest';
 import { useLocale } from '../hooks/useLocale';
 import { notifyError, notifySuccess } from '../lib/haptics';
+import { mergeRequests } from '../lib/requestOrder';
 import { trpc } from '../lib/trpc';
 import { colors, fonts, opacity, radius, sizes, spacing, typography } from '../theme';
 
 /**
- * Заявки на отгул: одобрить или отклонить.
+ * Заявки на отгул и на опоздание: одобрить или отклонить.
  *
  * Решение по отгулу — самое «телефонное» из всего, что делает директор:
  * человек подходит и просит, ответ нужен здесь и сейчас. До этого экрана
  * ответить можно было только из веб-панели, то есть вернувшись к столу.
+ * Опоздание решается так же и туда же: уведомление о нём ведёт сюда
+ * (`notificationDestination` → `dayOffApprovals`), и оба вида стоят одним
+ * списком — подпись над датами говорит, о чём просят.
  *
  * Показываются все заявки, а не только ждущие: директор приходит сюда и
  * с вопросом «а что я решил на той неделе». Ждущие идут первыми — так их
- * упорядочивает сервер.
+ * упорядочивает сервер; два вида сливаются по тому же правилу
+ * (`mergeRequests`).
  *
  * Причина отказа обязательна и вводится прямо в карточке, а не в
  * `Alert.prompt`: тот есть только на iOS, и на Android отказ молча
@@ -47,41 +54,81 @@ export function DayOffApprovalsScreen(): ReactElement {
      вкладок: это экран стека, панели под ним нет. */
   const contentStyle = [styles.content, { paddingBottom: spacing.xl + insets.bottom }];
 
-  /** Заявка, которой пишут причину отказа. `null` — никому. */
-  const [rejecting, setRejecting] = useState<number | null>(null);
+  /**
+   * Заявка, которой пишут причину отказа: вид и id. `null` — никому.
+   * С видом, а не голым id: выходные и опоздания — разные таблицы, и id
+   * у них совпадают.
+   */
+  const [rejecting, setRejecting] = useState<RequestRef | null>(null);
   const [reason, setReason] = useState('');
 
-  const query = trpc.dayOff.list.useQuery({});
+  const dayOffQuery = trpc.dayOff.list.useQuery({});
+  const lateQuery = trpc.lateRequests.list.useQuery({});
 
+  /*
+    Счётчик на «Руководстве» читает те же списки с `status: 'pending'` —
+    `invalidate` без входа обновляет и его.
+  */
   const refresh = async (): Promise<void> => {
-    await Promise.all([utils.dayOff.list.invalidate(), utils.notifications.list.invalidate()]);
+    await Promise.all([
+      utils.dayOff.list.invalidate(),
+      utils.lateRequests.list.invalidate(),
+      utils.notifications.list.invalidate(),
+    ]);
   };
 
-  const approve = trpc.dayOff.approve.useMutation({
-    async onSuccess() {
-      notifySuccess();
-      await refresh();
-    },
-    onError(error) {
-      notifyError();
-      Alert.alert(m('approvals.approveError'), error.message);
-    },
-  });
+  const onDecided = async (): Promise<void> => {
+    notifySuccess();
+    setRejecting(null);
+    setReason('');
+    await refresh();
+  };
 
-  const reject = trpc.dayOff.reject.useMutation({
-    async onSuccess() {
-      notifySuccess();
-      setRejecting(null);
-      setReason('');
-      await refresh();
-    },
-    onError(error) {
-      notifyError();
-      Alert.alert(m('approvals.rejectError'), error.message);
-    },
-  });
+  const onApproveError = (error: { readonly message: string }): void => {
+    notifyError();
+    Alert.alert(m('approvals.approveError'), error.message);
+  };
 
-  const isBusy = approve.isPending || reject.isPending;
+  const onRejectError = (error: { readonly message: string }): void => {
+    notifyError();
+    Alert.alert(m('approvals.rejectError'), error.message);
+  };
+
+  const approveDayOff = trpc.dayOff.approve.useMutation({ onSuccess: onDecided, onError: onApproveError });
+  const rejectDayOff = trpc.dayOff.reject.useMutation({ onSuccess: onDecided, onError: onRejectError });
+  const approveLate = trpc.lateRequests.approve.useMutation({ onSuccess: onDecided, onError: onApproveError });
+  const rejectLate = trpc.lateRequests.reject.useMutation({ onSuccess: onDecided, onError: onRejectError });
+
+  const isBusy = approveDayOff.isPending || rejectDayOff.isPending || approveLate.isPending || rejectLate.isPending;
+
+  /*
+    Крутилка — только на той заявке, что решается сейчас. Прежде она
+    вставала на «Одобрить» у всех ждущих разом, и было не понять, какую
+    заявку одобрили.
+  */
+  const isApproving = (ref: RequestRef): boolean =>
+    ref.kind === 'late'
+      ? approveLate.isPending && approveLate.variables.id === ref.id
+      : approveDayOff.isPending && approveDayOff.variables.id === ref.id;
+  const isRejecting = (ref: RequestRef): boolean =>
+    ref.kind === 'late'
+      ? rejectLate.isPending && rejectLate.variables.id === ref.id
+      : rejectDayOff.isPending && rejectDayOff.variables.id === ref.id;
+
+  const approve = (ref: RequestRef): void => {
+    if (ref.kind === 'late') approveLate.mutate({ id: ref.id });
+    else approveDayOff.mutate({ id: ref.id });
+  };
+  const reject = (ref: RequestRef): void => {
+    const payload = { id: ref.id, reason: reason.trim() };
+    if (ref.kind === 'late') rejectLate.mutate(payload);
+    else rejectDayOff.mutate(payload);
+  };
+
+  const items = mergeRequests(
+    (dayOffQuery.data?.items ?? []).map((item) => ({ ...item, kind: 'dayOff' as const })),
+    (lateQuery.data?.items ?? []).map((item) => ({ ...item, kind: 'late' as const })),
+  );
 
   /*
     Сбой и загрузка — внутри своей карточки, а не вместо всего экрана.
@@ -94,99 +141,57 @@ export function DayOffApprovalsScreen(): ReactElement {
     <ScrollView contentContainerStyle={contentStyle}>
       <TeamDaysOff />
 
-      {query.isError ? (
+      {dayOffQuery.isError || lateQuery.isError ? (
         <Card>
           <ErrorState />
         </Card>
-      ) : query.data === undefined ? (
+      ) : dayOffQuery.data === undefined || lateQuery.data === undefined ? (
         <Card>
           <Skeleton />
         </Card>
-      ) : query.data.items.length === 0 ? (
+      ) : items.length === 0 ? (
         <Card>
           <Empty message={m('approvals.none')} hint={m('approvals.noneHint')} />
         </Card>
-      ) : null}
+      ) : (
+        items.map((item) => {
+          const ref: RequestRef = { kind: item.kind, id: item.id };
+          const isPending = item.status === DayOffStatus.PENDING;
+          const isOpen = rejecting !== null && sameRef(rejecting, ref);
+          const period =
+            item.kind === 'late'
+              ? latePeriod(item.date, item.arriveBy, m)
+              : dayOffPeriod(item.startDate, item.endDate);
 
-      {(query.data?.items ?? []).map((item) => {
-        const isPending = item.status === DayOffStatus.PENDING;
+          return (
+            <Card key={`${item.kind}:${item.id.toString()}`}>
+              <CardTitle
+                title={item.requester.fullName}
+                icon="person"
+                action={
+                  <Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={requestStatusTone(item.status)} />
+                }
+              />
 
-        return (
-          <Card key={item.id}>
-            <CardTitle
-              title={item.requester.fullName}
-              icon="person"
-              action={
-                <Pill text={t(DAY_OFF_STATUS_LABELS, item.status)} tone={toneOf(item.status)} />
-              }
-            />
+              <RequestKindLabel kind={item.kind} />
+              <Text style={styles.dates}>{period}</Text>
 
-            <Text style={styles.dates}>{formatPeriod(item.startDate, item.endDate)}</Text>
+              {item.reason !== null && <Text style={styles.reason}>{item.reason}</Text>}
 
-            {item.reason !== null && <Text style={styles.reason}>{item.reason}</Text>}
+              {item.rejectionReason !== null && (
+                <Text style={styles.decision}>
+                  {m('dayoff.rejection', { reason: item.rejectionReason })}
+                </Text>
+              )}
 
-            {item.rejectionReason !== null && (
-              <Text style={styles.decision}>
-                {m('dayoff.rejection', { reason: item.rejectionReason })}
-              </Text>
-            )}
-
-            {isPending && rejecting !== item.id && (
-              <View style={styles.actions}>
-                <Pressable
-                  onPress={() => {
-                    setRejecting(item.id);
-                    setReason('');
-                  }}
-                  disabled={isBusy}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.button,
-                    styles.buttonGhost,
-                    pressed ? styles.buttonPressed : null,
-                  ]}
-                >
-                  <Text style={styles.buttonGhostText}>{m('approvals.reject')}</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    approve.mutate({ id: item.id });
-                  }}
-                  disabled={isBusy}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.button,
-                    styles.buttonPrimary,
-                    pressed ? styles.buttonPressed : null,
-                  ]}
-                >
-                  {approve.isPending ? (
-                    <ActivityIndicator color={colors.onAccent} size="small" />
-                  ) : (
-                    <Text style={styles.buttonPrimaryText}>{m('approvals.approve')}</Text>
-                  )}
-                </Pressable>
-              </View>
-            )}
-
-            {rejecting === item.id && (
-              <View style={styles.rejectBox}>
-                <Text style={styles.rejectLabel}>{m('approvals.why')}</Text>
-                <Input
-                  value={reason}
-                  onChangeText={setReason}
-                  placeholder={m('approvals.whyPlaceholder')}
-                  multiline
-                  autoFocus
-                />
-
+              {isPending && !isOpen && (
                 <View style={styles.actions}>
                   <Pressable
                     onPress={() => {
-                      setRejecting(null);
+                      setRejecting(ref);
                       setReason('');
                     }}
+                    disabled={isBusy}
                     accessibilityRole="button"
                     style={({ pressed }) => [
                       styles.button,
@@ -194,64 +199,97 @@ export function DayOffApprovalsScreen(): ReactElement {
                       pressed ? styles.buttonPressed : null,
                     ]}
                   >
-                    <Text style={styles.buttonGhostText}>{m('common.cancel')}</Text>
+                    <Text style={styles.buttonGhostText}>{m('approvals.reject')}</Text>
                   </Pressable>
 
                   <Pressable
                     onPress={() => {
-                      reject.mutate({ id: item.id, reason: reason.trim() });
+                      approve(ref);
                     }}
-                    disabled={reason.trim().length === 0 || isBusy}
+                    disabled={isBusy}
                     accessibilityRole="button"
-                    accessibilityState={{ disabled: reason.trim().length === 0 || isBusy, busy: reject.isPending }}
+                    accessibilityState={{ disabled: isBusy, busy: isApproving(ref) }}
                     style={({ pressed }) => [
                       styles.button,
-                      styles.buttonDanger,
-                      reason.trim().length === 0 ? styles.buttonOff : null,
+                      styles.buttonPrimary,
                       pressed ? styles.buttonPressed : null,
                     ]}
                   >
-                    {reject.isPending ? (
+                    {isApproving(ref) ? (
                       <ActivityIndicator color={colors.onAccent} size="small" />
                     ) : (
-                      <Text style={styles.buttonPrimaryText}>{m('approvals.reject')}</Text>
+                      <Text style={styles.buttonPrimaryText}>{m('approvals.approve')}</Text>
                     )}
                   </Pressable>
                 </View>
-              </View>
-            )}
-          </Card>
-        );
-      })}
+              )}
+
+              {isOpen && (
+                <View style={styles.rejectBox}>
+                  <Text style={styles.rejectLabel}>{m('approvals.why')}</Text>
+                  <Input
+                    value={reason}
+                    onChangeText={setReason}
+                    placeholder={m('approvals.whyPlaceholder')}
+                    multiline
+                    autoFocus
+                  />
+
+                  <View style={styles.actions}>
+                    <Pressable
+                      onPress={() => {
+                        setRejecting(null);
+                        setReason('');
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.button,
+                        styles.buttonGhost,
+                        pressed ? styles.buttonPressed : null,
+                      ]}
+                    >
+                      <Text style={styles.buttonGhostText}>{m('common.cancel')}</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => {
+                        reject(ref);
+                      }}
+                      disabled={reason.trim().length === 0 || isBusy}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: reason.trim().length === 0 || isBusy, busy: isRejecting(ref) }}
+                      style={({ pressed }) => [
+                        styles.button,
+                        styles.buttonDanger,
+                        reason.trim().length === 0 ? styles.buttonOff : null,
+                        pressed ? styles.buttonPressed : null,
+                      ]}
+                    >
+                      {isRejecting(ref) ? (
+                        <ActivityIndicator color={colors.onAccent} size="small" />
+                      ) : (
+                        <Text style={styles.buttonPrimaryText}>{m('approvals.reject')}</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </Card>
+          );
+        })
+      )}
     </ScrollView>
   );
 }
 
-/*
-  Период и тон статуса — те же, что у сотрудника в «Моих запросах»
-  (`DayOffScreen`).
-
-  Прежде одна и та же заявка выглядела на двух экранах по-разному: у
-  сотрудника «Ждёт решения» янтарная, у директора — серая, того же цвета,
-  что и «Отозван», и заявка, ждущая решения, сливалась с закрытыми; даты —
-  «18.11 – 19.11» там и «18.11.2026 — 19.11.2026» здесь.
-*/
-function formatPeriod(startDate: string, endDate: string): string {
-  if (startDate === endDate) return formatIsoDateShort(startDate);
-  return `${formatIsoDateShort(startDate)} – ${formatIsoDateShort(endDate)}`;
+/** Какая заявка: вид и id внутри своего вида. */
+interface RequestRef {
+  readonly kind: RequestKind;
+  readonly id: number;
 }
 
-function toneOf(status: DayOffStatusName): 'neutral' | 'positive' | 'warning' | 'danger' {
-  switch (status) {
-    case DayOffStatus.APPROVED:
-      return 'positive';
-    case DayOffStatus.REJECTED:
-      return 'danger';
-    case DayOffStatus.CANCELLED:
-      return 'neutral';
-    default:
-      return 'warning';
-  }
+function sameRef(a: RequestRef, b: RequestRef): boolean {
+  return a.kind === b.kind && a.id === b.id;
 }
 
 const styles = StyleSheet.create({

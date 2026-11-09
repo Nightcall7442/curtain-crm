@@ -1,9 +1,14 @@
-import { disciplineEvents, payrollSchemes, type DbExecutor } from '@curtain-crm/db';
+import { disciplineEvents, lateRequests, payrollSchemes, type DbExecutor } from '@curtain-crm/db';
 import {
+  clockMinutes,
   DISCIPLINE_KIND_LABELS_RU,
   disciplinePoints,
   DisciplineKind,
+  DayOffStatus,
+  effectiveShiftStart,
   isDisciplineViolation,
+  workshopClockTime,
+  workshopDayIso,
   type DisciplineKind as DisciplineKindName,
   type Locale,
 } from '@curtain-crm/shared';
@@ -11,8 +16,6 @@ import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 
 import { recordAudit } from './audit.service';
 import { notifyDisciplineRecorded } from './notifications.service';
-
-const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 /**
  * Пояснение к опозданию: «Смена с 09:00, отметка в 11:52 — опоздание 172 мин».
@@ -65,6 +68,11 @@ export function localizeLatenessDescription(description: string, locale: Locale)
  *
  * Отметился раньше или вовремя — ничего не пишем: «пришёл вовремя» и есть
  * норма, а не заслуга.
+ *
+ * Согласованное опоздание («12.11 приду к 10:30», `late_requests`) сдвигает
+ * начало на этот день: отметка до 10:30 — вовремя, после — опоздание от
+ * 10:30, и в пояснении стоит «Смена с 10:30», чтобы человек видел, от чего
+ * считали. Ждущий решения или отклонённый запрос ничего не сдвигает.
  */
 export async function recordLatenessIfAny(
   executor: DbExecutor,
@@ -78,19 +86,32 @@ export async function recordLatenessIfAny(
     .where(and(eq(payrollSchemes.userId, userId), eq(payrollSchemes.isActive, true), sql`${payrollSchemes.shiftStart} is not null`))
     .orderBy(desc(payrollSchemes.effectiveFrom))
     .limit(1);
-  const shiftStart = scheme?.shiftStart ?? null;
-  if (shiftStart === null) return;
+  const scheduledStart = scheme?.shiftStart ?? null;
+  if (scheduledStart === null) return;
 
-  const local = new Date(startedAt.getTime() + TASHKENT_OFFSET_MS);
-  const [hours, minutes] = shiftStart.split(':').map((part: string) => Number.parseInt(part, 10));
-  const plannedMinutes = (hours ?? 0) * 60 + (minutes ?? 0);
-  const actualMinutes = local.getUTCHours() * 60 + local.getUTCMinutes();
-  const lateBy = actualMinutes - plannedMinutes;
+  // День и время — по часам мастерской: отметка в 03:00 по Ташкенту в UTC ещё вчерашняя.
+  const day = workshopDayIso(startedAt);
+  const actual = workshopClockTime(startedAt);
+
+  const [approvedLate] = await executor
+    .select({ arriveBy: lateRequests.arriveBy })
+    .from(lateRequests)
+    .where(
+      and(
+        eq(lateRequests.userId, userId),
+        eq(lateRequests.date, day),
+        eq(lateRequests.status, DayOffStatus.APPROVED),
+      ),
+    )
+    .limit(1);
+  const shiftStart = effectiveShiftStart(scheduledStart, approvedLate?.arriveBy ?? null);
+
+  const lateBy = clockMinutes(actual) - clockMinutes(shiftStart);
   if (lateBy <= 0) return;
 
-  const day = local.toISOString().slice(0, 10);
   const monthStart = `${day.slice(0, 7)}-01`;
-  const nextMonth = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+  const [year = 0, month = 1] = day.split('-').map((part) => Number.parseInt(part, 10));
+  const nextMonth = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
 
   // Одно опоздание в день — повторная отметка после отлучки не считается.
   const [already] = await executor
@@ -122,7 +143,6 @@ export async function recordLatenessIfAny(
     );
   const isRepeat = isDisciplineViolation(kind) && (prior?.count ?? 0) > 0;
   const points = disciplinePoints(kind, isRepeat);
-  const actual = `${local.getUTCHours().toString().padStart(2, '0')}:${local.getUTCMinutes().toString().padStart(2, '0')}`;
 
   const [created] = await executor
     .insert(disciplineEvents)
@@ -142,7 +162,16 @@ export async function recordLatenessIfAny(
     action: 'discipline.recorded',
     entityType: 'discipline_event',
     entityId: created?.id ?? null,
-    details: { auto: true, kind, points, isRepeat, lateBy, label: DISCIPLINE_KIND_LABELS_RU[kind] },
+    details: {
+      auto: true,
+      kind,
+      points,
+      isRepeat,
+      lateBy,
+      shiftStart,
+      ...(approvedLate === undefined ? {} : { approvedArriveBy: approvedLate.arriveBy }),
+      label: DISCIPLINE_KIND_LABELS_RU[kind],
+    },
     ipAddress,
   });
   await notifyDisciplineRecorded(executor, userId, { kind, points, occurredOn: day, recordedByName: 'Система' });

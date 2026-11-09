@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { NOTIFICATION_TYPES, notificationDestination } from './notificationType.enum';
+import {
+  isImportantNotification,
+  NOTIFICATION_TYPES,
+  notificationDestination,
+} from './notificationType.enum';
 
 const none = { orderId: null, taskId: null };
 
@@ -31,6 +35,17 @@ describe('notificationDestination', () => {
     expect(notificationDestination('day_off_requested', none)).toEqual({ kind: 'dayOffApprovals' });
     expect(notificationDestination('day_off_approved', none)).toEqual({ kind: 'dayOff' });
     expect(notificationDestination('day_off_rejected', none)).toEqual({ kind: 'dayOff' });
+  });
+
+  it('запрос на опоздание — туда же, где выходные: экран один', () => {
+    expect(notificationDestination('late_requested', none)).toEqual({ kind: 'dayOffApprovals' });
+    expect(notificationDestination('late_approved', none)).toEqual({ kind: 'dayOff' });
+    expect(notificationDestination('late_rejected', none)).toEqual({ kind: 'dayOff' });
+  });
+
+  it('запрос на опоздание ждёт решения — важное, как запрос на выходной', () => {
+    expect(isImportantNotification('late_requested')).toBe(true);
+    expect(isImportantNotification('late_approved')).toBe(false);
   });
 
   it('каждый тип, кроме заказных без заказа, куда-то ведёт', () => {

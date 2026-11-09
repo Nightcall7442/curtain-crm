@@ -5,6 +5,7 @@ import {
   disciplineKindSchema,
   findTransition,
   formatIsoDate,
+  formatIsoDateShort,
   isOrderStatus,
   isRole,
   MANAGEMENT_ROLES,
@@ -40,7 +41,8 @@ import {
  * Группа — общая для всех сотрудников, поэтому в неё идёт только ход работы:
  * по заказам — новый заказ, смена статуса, кто назначен, карниз, продажа,
  * фото этапов; по доп. работам — выдача, сдача, приёмка, возврат, отмена;
- * по явке — опоздания и прогулы (`ATTENDANCE_KINDS`).
+ * по явке — опоздания и прогулы (`ATTENDANCE_KINDS`); запросы на выходной и
+ * на опоздание — подача, одобрение, отказ (без причины сотрудника).
  * Деньги (цены, расценки, оплаты, зарплата), дисциплина, права и пароли
  * остаются в журнале панели — их видит руководство, а не двадцать человек
  * в чате. Сумм в ленте нет ни в каком виде.
@@ -68,6 +70,17 @@ const FEED_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
   'task.completed',
   'task.cancelled',
   'discipline.recorded',
+  /*
+    Запросы на выходной и опоздание — по просьбе владельца (09.11): группа
+    узнаёт, кто попросил и что ему ответили. Назначенный руководителем
+    выходной, отзыв и снятие — не новость для цеха: их здесь нет.
+  */
+  'dayoff.requested',
+  'dayoff.approved',
+  'dayoff.rejected',
+  'late.requested',
+  'late.approved',
+  'late.rejected',
 ]);
 
 /**
@@ -90,6 +103,16 @@ const ATTENDANCE_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 interface FeedText {
+  /** «Nigora dam olish so'rovini jo'natdi» — без причины: она не для группы. */
+  readonly dayOffRequested: (name: string) => string;
+  /** `days` — дней больше одного: «kuni» / «kunlari», «выходной» / «выходные». */
+  readonly dayOffApproved: (name: string, period: string, days: boolean) => string;
+  readonly dayOffRejected: (name: string, period: string, days: boolean) => string;
+  readonly lateRequested: (name: string) => string;
+  readonly lateApproved: (name: string, date: string, time: string) => string;
+  readonly lateRejected: (name: string, date: string) => string;
+  readonly requestDate: (date: string, days: boolean) => string;
+  readonly lateDate: (date: string, time: string) => string;
   readonly newOrder: (order: string) => string;
   readonly orderStatus: (order: string, status: string) => string;
   readonly orderCancelled: (order: string) => string;
@@ -133,6 +156,17 @@ interface FeedText {
 
 const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
   ru: {
+    // Настоящее время — без рода: «просит» подходит и Нигоре, и Дилшоду.
+    dayOffRequested: (name) => `${name} просит выходной`,
+    dayOffApproved: (name, period, days) =>
+      `${name}, вам ${days ? 'одобрены выходные' : 'одобрен выходной'} на ${period}`,
+    dayOffRejected: (name, period, days) =>
+      `${name}, вам ${days ? 'отклонены выходные' : 'отклонён выходной'} на ${period}`,
+    lateRequested: (name) => `${name} просит разрешения опоздать`,
+    lateApproved: (name, date, time) => `${name}, вам разрешено опоздать ${date} — до ${time}`,
+    lateRejected: (name, date) => `${name}, вам отказано в опоздании ${date}`,
+    requestDate: (date, days) => `${days ? 'Даты' : 'Дата'}: ${date}`,
+    lateDate: (date, time) => `Дата: ${date}, приход к ${time}`,
     newOrder: (order) => `Новый заказ ${order}`,
     orderStatus: (order, status) => `Заказ ${order}: ${status}`,
     orderCancelled: (order) => `Заказ ${order} отменён`,
@@ -175,6 +209,17 @@ const FEED_TEXT: Readonly<Record<Locale, FeedText>> = {
     someone: 'Сотрудник',
   },
   uz: {
+    dayOffRequested: (name) => `${name} dam olish so'rovini jo'natdi`,
+    dayOffApproved: (name, period, days) =>
+      `${name}, sizga ${period} ${days ? 'kunlari' : 'kuni'} dam olish tasdiqlandi`,
+    dayOffRejected: (name, period, days) =>
+      `${name}, ${period} ${days ? 'kunlari' : 'kuni'} dam olish so'rovingiz rad etildi`,
+    lateRequested: (name) => `${name} kechikish so'rovini jo'natdi`,
+    lateApproved: (name, date, time) =>
+      `${name}, sizga ${date} kuni ${time} gacha kechikishga ruxsat berildi`,
+    lateRejected: (name, date) => `${name}, ${date} kuni kechikish so'rovingiz rad etildi`,
+    requestDate: (date, days) => `${days ? 'Sanalar' : 'Sana'}: ${date}`,
+    lateDate: (date, time) => `Sana: ${date}, kelish vaqti: ${time}`,
     newOrder: (order) => `Yangi buyurtma ${order}`,
     orderStatus: (order, status) => `Buyurtma ${order}: ${status}`,
     orderCancelled: (order) => `${order} buyurtmasi bekor qilindi`,
@@ -344,6 +389,67 @@ function duration(totalMinutes: number, locale: Locale): string {
 }
 
 /**
+ * Запрос на выходной или опоздание — подача, одобрение, отказ.
+ *
+ * Субъект — тот, кто ПРОСИЛ (`details.userId`), а не руководитель, который
+ * решает: «Nigora, sizga … tasdiqlandi», а не имя админа. Решение без
+ * `userId` не описывается вовсе — назвать в группе не того человека хуже,
+ * чем промолчать. Причина сотрудника не выводится никогда, даже если
+ * окажется в деталях: это разговор с руководством, а не новость для цеха.
+ * Причина отказа — выводится: её владелец и просил показать.
+ */
+function describeAttendanceRequest(
+  input: RecordAuditInput,
+  names: ReadonlyMap<number, string>,
+  locale: Locale,
+): FeedMessage | null {
+  const t = FEED_TEXT[locale];
+  const details = input.details ?? {};
+  const isRequest = input.action === 'dayoff.requested' || input.action === 'late.requested';
+  const subjectId = typeof details['userId'] === 'number' ? details['userId'] : isRequest ? input.actorId : null;
+  if (subjectId === null) return null;
+  const who = names.get(subjectId) ?? t.someone;
+  const rejection = line(t.reason, text(details['reason']));
+
+  if (input.action.startsWith('dayoff.')) {
+    const start = text(details['startDate']);
+    const end = text(details['endDate']) ?? start;
+    if (start === null || end === null) return null;
+    const days = start !== end;
+    const period = days
+      ? `${formatIsoDateShort(start)} — ${formatIsoDateShort(end)}`
+      : formatIsoDateShort(start);
+
+    switch (input.action) {
+      case 'dayoff.requested':
+        return message(t.dayOffRequested(who), [t.requestDate(period, days)]);
+      case 'dayoff.approved':
+        return message(t.dayOffApproved(who, period, days), []);
+      case 'dayoff.rejected':
+        return message(t.dayOffRejected(who, period, days), [rejection]);
+      default:
+        return null;
+    }
+  }
+
+  const day = text(details['date']);
+  const time = text(details['arriveBy']);
+  if (day === null || time === null) return null;
+  const date = formatIsoDateShort(day);
+
+  switch (input.action) {
+    case 'late.requested':
+      return message(t.lateRequested(who), [t.lateDate(date, time)]);
+    case 'late.approved':
+      return message(t.lateApproved(who, date, time), []);
+    case 'late.rejected':
+      return message(t.lateRejected(who, date), [rejection]);
+    default:
+      return null;
+  }
+}
+
+/**
  * Текст сообщения для группы или `null`, если действие туда не идёт.
  *
  * Чистая функция: всё, что нужно достать из базы, приходит в `context`.
@@ -383,6 +489,10 @@ export function describeForGroup(
           ? line(t.kind, kindLabel)
           : null,
     ]);
+  }
+
+  if (input.entityType === 'day_off_request' || input.entityType === 'late_request') {
+    return describeAttendanceRequest(input, context.names, locale);
   }
 
   if (input.action === 'ready_made_item.sold') {
@@ -571,8 +681,11 @@ export async function announceToGroup(executor: DbExecutor, input: RecordAuditIn
         ? [details['corniceInstallerId']]
         : input.entityType === 'task'
           ? [details['assigneeId']]
-          : input.entityType === 'discipline_event'
-            ? [details['userId']]
+          : input.entityType === 'discipline_event' ||
+              input.entityType === 'day_off_request' ||
+              input.entityType === 'late_request'
+            ? // О ком запись — не обязательно автор: решает руководитель, а пишем имя просившего.
+              [details['userId']]
             : [];
   const userIds = [input.actorId, ...mentioned].filter((id): id is number => typeof id === 'number');
 

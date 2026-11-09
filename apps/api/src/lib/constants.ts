@@ -220,6 +220,11 @@ export const AUDIT_ACTIONS = [
   'dayoff.withdrawn',
   'dayoff.weekly_set',
 
+  'late.requested',
+  'late.approved',
+  'late.rejected',
+  'late.cancelled',
+
   'discipline.recorded',
   'discipline.explained',
   'discipline.removed',

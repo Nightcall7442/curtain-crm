@@ -91,6 +91,7 @@ export type IconName =
   | 'dayOffRequested'
   | 'dayOffApproved'
   | 'dayOffRejected'
+  | 'lateRequested'
   | 'collection'
   | 'search'
   | 'close'
@@ -182,6 +183,12 @@ const GLYPHS: Readonly<Record<IconName, IoniconName>> = {
   dayOffRequested: 'sunny-outline',
   dayOffApproved: 'checkmark-circle',
   dayOffRejected: 'close-circle',
+  /*
+    Просьба опоздать — часы, а не солнце выходного: в ленте руководителя
+    оба запроса стоят рядом, и решаются они по-разному — опоздавший всё
+    равно работает. Контурная, как и соседний значок просьбы о выходном.
+  */
+  lateRequested: 'time-outline',
   collection: 'cash-outline',
   search: 'search',
   close: 'close',
@@ -235,6 +242,11 @@ export const NOTIFICATION_ICONS: Readonly<Record<NotificationType, IconName>> = 
   day_off_requested: 'dayOffRequested',
   day_off_approved: 'dayOffApproved',
   day_off_rejected: 'dayOffRejected',
+  late_requested: 'lateRequested',
+  // Решение по опозданию выглядит как решение по выходному: «да» и «нет»
+  // читаются одинаково, а что именно решали, говорит заголовок уведомления.
+  late_approved: 'dayOffApproved',
+  late_rejected: 'dayOffRejected',
   cash_collection_due: 'collection',
   discipline_recorded: 'discipline',
   terminal_check_created: 'paid',

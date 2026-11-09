@@ -1,5 +1,6 @@
 'use client';
 
+import { NotificationType } from '@curtain-crm/shared';
 import { BellOff, CheckCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useState, type ReactElement } from 'react';
@@ -8,6 +9,30 @@ import { Card, CardBody, CardHeader, EmptyState, ErrorState, Skeleton } from '@/
 import { Pagination } from '@/components/ui/Table';
 import { trpc } from '@/lib/trpc';
 import { cn, formatDateTime } from '@/lib/utils';
+
+/**
+ * Куда ведёт уведомление без заказа.
+ *
+ * Только просьбы, которые ждут решения руководства: их адресат — директор
+ * и админы, а страница выходных и опозданий — их. Ответ на просьбу
+ * (одобрено, отклонено) приходит сотруднику, которому эта страница
+ * закрыта, поэтому ссылки у него нет.
+ */
+const REQUEST_HREFS: Readonly<Partial<Record<NotificationType, string>>> = {
+  [NotificationType.DAY_OFF_REQUESTED]: '/employees/day-off',
+  [NotificationType.LATE_REQUESTED]: '/employees/day-off#late',
+};
+
+function RequestLink({ type }: { readonly type: NotificationType }): ReactElement | null {
+  const href = REQUEST_HREFS[type];
+  if (href === undefined) return null;
+
+  return (
+    <Link href={href} className="text-footnote text-accent hover:underline">
+      К запросам
+    </Link>
+  );
+}
 
 /**
  * Уведомления сотрудника.
@@ -123,6 +148,7 @@ export default function NotificationsPage(): ReactElement {
                   </div>
 
                   <div className="flex shrink-0 flex-col items-end gap-1">
+                    <RequestLink type={item.type} />
                     {item.relatedOrderId !== null && (
                       <Link
                         href={`/orders/${item.relatedOrderId.toString()}`}

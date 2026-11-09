@@ -21,8 +21,11 @@ import {
   branches,
   closeDatabase,
   createDatabase,
+  dayOffRequests,
+  disciplineEvents,
   hashPassword,
   installationTrips,
+  lateRequests,
   notifications,
   orderComments,
   orderItems,
@@ -58,7 +61,7 @@ import {
   PaymentMethod,
 } from '@curtain-crm/shared';
 import { config as loadEnv } from 'dotenv';
-import { asc, eq, inArray, isNotNull, like } from 'drizzle-orm';
+import { asc, eq, inArray, isNotNull, like, or } from 'drizzle-orm';
 
 import { loadAuthenticatedUser } from '../context';
 import { post } from '../services/ledger.service';
@@ -252,6 +255,17 @@ async function cleanup(db: Database): Promise<void> {
   await db.delete(workPlans);
 
   if (userIds.length > 0) {
+    // Выходные, опоздания по согласованию и дисциплина держат людей (restrict):
+    // без них удаление сотрудников ниже падало, стоило кому-то попросить отгул.
+    await db
+      .delete(lateRequests)
+      .where(or(inArray(lateRequests.userId, userIds), inArray(lateRequests.reviewedBy, userIds)));
+    await db
+      .delete(dayOffRequests)
+      .where(or(inArray(dayOffRequests.userId, userIds), inArray(dayOffRequests.reviewedBy, userIds)));
+    await db
+      .delete(disciplineEvents)
+      .where(or(inArray(disciplineEvents.userId, userIds), inArray(disciplineEvents.recordedBy, userIds)));
     await db.delete(auditLog).where(inArray(auditLog.actorId, userIds));
     await db.delete(refreshTokens).where(inArray(refreshTokens.userId, userIds));
     await db.delete(shifts).where(inArray(shifts.userId, userIds));

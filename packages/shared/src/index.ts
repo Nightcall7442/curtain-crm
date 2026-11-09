@@ -38,6 +38,7 @@ export * from './constants/stageFee';
 export * from './constants/discipline';
 export * from './constants/terminalCheck';
 export * from './constants/shift';
+export * from './constants/lateRequest';
 export * from './constants/sewerCategory';
 export * from './constants/monitor';
 

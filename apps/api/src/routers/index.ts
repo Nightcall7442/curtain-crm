@@ -8,6 +8,7 @@ import { displayRouter } from './display.router';
 import { displayLinksRouter } from './displayLinks.router';
 import { disciplineRouter } from './discipline.router';
 import { eventsRouter } from './events.router';
+import { lateRequestsRouter } from './lateRequests.router';
 import { terminalChecksRouter } from './terminalChecks.router';
 import { notificationsRouter } from './notifications.router';
 import { monitorRouter } from './monitor.router';
@@ -62,6 +63,8 @@ export const appRouter = router({
   personalWorks: personalWorksRouter,
   retail: retailRouter,
   dayOff: dayOffRouter,
+  /* Опоздание по согласованию: «12.11 приду к 10:30» — рядом с выходными, но не выходной. */
+  lateRequests: lateRequestsRouter,
   discipline: disciplineRouter,
   events: eventsRouter,
   terminalChecks: terminalChecksRouter,
