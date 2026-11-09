@@ -540,6 +540,13 @@
       "when": 1794235157262,
       "tag": "0076_lateness_before_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794241293520,
+      "tag": "0077_late_check_ins",
+      "breakpoints": true
     }
   ]
 }

@@ -50,14 +50,13 @@ export const DisciplineKind = {
 export const disciplineKindSchema = z.enum(DISCIPLINE_KINDS);
 
 /**
- * Виды опоздания: такую запись система пишет сама при отметке и пересчитывает
- * после решения по запросу на опоздание; остальное в дисциплине — руками
- * руководства.
+ * Виды опоздания: такую запись система выводит сама из фактов отметки
+ * (`evaluateMonthLateness`); остальное в дисциплине — руками руководства.
  *
- * Здесь, а не в сервере: тот же список проверяет снимок записи до одобрения
- * (`latenessBeforeApprovalSchema`), и две копии разошлись бы при первом же
- * новом пороге. Ссылки на `DisciplineKind`, а не новые строки, — опечатка не
- * пройдёт мимо компилятора.
+ * Здесь, а не в сервере: тот же список нужен чистой оценке месяца и
+ * серверу, и две копии разошлись бы при первом же новом пороге. Ссылки на
+ * `DisciplineKind`, а не новые строки, — опечатка не пройдёт мимо
+ * компилятора.
  */
 export const LATE_DISCIPLINE_KINDS = [
   DisciplineKind.LATE_UNDER_15,
@@ -103,25 +102,31 @@ export const DISCIPLINE_KIND_LABELS: Translated<DisciplineKind> = {
 export const DISCIPLINE_KIND_LABELS_RU = DISCIPLINE_KIND_LABELS.ru;
 
 /**
- * Коды причин в журнале, когда запись дисциплины правит или снимает сама
- * система (`reason` в `discipline.adjusted` / `discipline.removed`).
+ * Коды причин в журнале, когда запись дисциплины правит, снимает или
+ * создаёт заново сама система, сверяя месяц с оценкой по фактам
+ * (`reason` в `discipline.adjusted` / `discipline.removed`).
  *
- * Обычно `reason` в журнале — слова человека. Здесь — код, по которому
- * сервер отличает правку правилом от решения руководителя (прощение руками
- * — `forgivenByHand`), а журнал на сайте переводит его в слова. Один список
- * на сервер и сайт: опечатка в коде на одной стороне молча ломала бы
- * и разбор, и подпись.
- *  - `late_request_review` — пересчёт после решения по запросу на опоздание;
- *  - `manual_discipline_change` — повторы месяца пересчитаны после того, как
- *    руководитель руками добавил или убрал опоздание.
+ * Обычно `reason` в журнале — слова человека. Здесь — код того, ЧТО
+ * изменило состояние и заставило пересчитать месяц, а журнал на сайте
+ * переводит его в слова. Один список на сервер и сайт: опечатка в коде на
+ * одной стороне молча ломала бы и разбор, и подпись.
+ *  - `late_request_review` — решение по запросу на опоздание (одобрение или
+ *    снятие согласования);
+ *  - `manual_discipline_change` — руководитель руками добавил или убрал
+ *    опоздание;
+ *  - `check_in_recount` — новая отметка с опозданием, а записи других дней
+ *    месяца разошлись с оценкой (так бывает только с записями, сделанными до
+ *    перехода на оценку по фактам): без своего кода их правка читалась бы в
+ *    журнале как решение руководителя.
  */
-export const DISCIPLINE_AUDIT_REASONS = ['late_request_review', 'manual_discipline_change'] as const;
+export const DISCIPLINE_AUDIT_REASONS = ['late_request_review', 'manual_discipline_change', 'check_in_recount'] as const;
 
 export type DisciplineAuditReason = (typeof DISCIPLINE_AUDIT_REASONS)[number];
 
 export const DisciplineAuditReason = {
   LATE_REQUEST_REVIEW: 'late_request_review',
   MANUAL_DISCIPLINE_CHANGE: 'manual_discipline_change',
+  CHECK_IN_RECOUNT: 'check_in_recount',
 } as const satisfies Record<string, DisciplineAuditReason>;
 
 /**

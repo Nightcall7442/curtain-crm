@@ -63,10 +63,13 @@ export * from './payroll/shiftPay';
 /* Терминальные чеки */
 export * from './payments/terminalChecks';
 
+/* Опоздания: пояснение, ступень и оценка месяца по фактам */
+export * from './lateness/description';
+export * from './lateness/evaluate';
+
 /* Типы */
 export * from './types/orderItemAccessory';
 export * from './types/orderItemMaterial';
-export * from './types/latenessBeforeApproval';
 
 /* Утилиты */
 export * from './utils/dates';

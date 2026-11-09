@@ -174,7 +174,7 @@ export const shiftsRouter = router({
 
         // Замок на опоздания сотрудника — до вставки смены: решение по его
         // запросу на опоздание за сегодня и эта отметка идут по очереди, и
-        // пересчёт опоздания не увидит смену без записи о ней (или наоборот).
+        // сверка месяца не увидит смену без факта о ней (или наоборот).
         // Почему и в каком порядке — `lockLatenessOf`.
         await lockLatenessOf(tx, ctx.user.id);
 
@@ -197,8 +197,8 @@ export const shiftsRouter = router({
           });
         }
 
-        // Смена по графику назначена — опоздание записывается само.
-        await recordLatenessIfAny(tx, ctx.user.id, created.startedAt, ctx.ipAddress);
+        // Смена по графику назначена — факт опоздания и запись о нём появляются сами.
+        await recordLatenessIfAny(tx, ctx.user.id, created, ctx.ipAddress);
 
         return { ...created, branchName: matched.branchName };
       }),

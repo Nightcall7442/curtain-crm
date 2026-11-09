@@ -240,6 +240,7 @@ const DAY_KEYS = new Set(['startDate', 'endDate', 'date', 'occurredOn', 'reviewe
 const REASON_CODE_LABELS_RU: Readonly<Record<DisciplineAuditReason, string>> = {
   late_request_review: 'пересмотр запроса на опоздание',
   manual_discipline_change: 'ручная правка дисциплины',
+  check_in_recount: 'пересчёт месяца при отметке прихода',
 };
 
 /**

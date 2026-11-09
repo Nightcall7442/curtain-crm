@@ -1,35 +1,9 @@
-import type { LatenessBeforeApproval } from '@curtain-crm/shared';
 import { sql } from 'drizzle-orm';
-import {
-  check,
-  customType,
-  date,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  serial,
-  text,
-  timestamp,
-  uniqueIndex,
-} from 'drizzle-orm/pg-core';
+import { check, date, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
+import { clockTime } from './clockTime';
 import { dayOffStatusEnum } from './enums';
 import { users } from './users.schema';
-
-/**
- * Время дня `ЧЧ:ММ` поверх колонки `time`.
- *
- * Postgres отдаёт `time` с секундами («10:30:00»), а клиенты и график смены
- * (`payroll_schemes.shift_start`) знают время как «10:30». Обрезка здесь, в
- * типе колонки, — чтобы «10:30» приходило одинаково из `returning()`, из
- * `db.query` и из обычного `select`, а не в одном месте из трёх.
- * Тип `time`, а не строка: «25:99» база не примет сама.
- */
-const clockTime = customType<{ data: string; driverData: string }>({
-  dataType: () => 'time',
-  fromDriver: (value) => value.slice(0, 5),
-});
 
 /**
  * Запросы на опоздание: «12.11 приду к 10:30».
@@ -37,8 +11,8 @@ const clockTime = customType<{ data: string; driverData: string }>({
  * Отдельно от выходных (`day_off_requests`) намеренно: выходные читают
  * табель, зарплата, рейтинг и табло, и опоздание, положенное туда,
  * посчиталось бы днём отсутствия. Здесь же человек работает — просто
- * начинает позже, и одобренный запрос сдвигает только порог опоздания
- * (`lateness.service`).
+ * начинает позже, и одобренный запрос сдвигает только порог опоздания —
+ * при оценке месяца по фактам отметки (`late_check_ins`, `lateness.service`).
  *
  * Статусы и инварианты — как у выходных: решённый руководством запрос
  * имеет рецензента и дату решения, отклонённый — причину. Записи не
@@ -69,22 +43,6 @@ export const lateRequests = pgTable(
     /** Причина отказа. Связку «отклонён ⇒ причина» держит БД. */
     rejectionReason: text('rejection_reason'),
 
-    /*
-      Запись опоздания за этот день — какой она была до одобрения, если
-      одобрение её поправило или сняло (`latenessBeforeApprovalSchema`).
-      Снятие согласования возвращает её отсюда как есть, без пересчёта по
-      графику, и гасит снимок вместе с одобрением; повтор и балл в снимке,
-      пока одобрение в силе, пересчитывает месяц (`lateness.service`).
-      Колонка в запросе, а не запись в журнале: это состояние одного
-      одобрения, а не история, — читается по ключу вместе со строкой
-      запроса, а не поиском по `jsonb` растущего журнала, и с другим
-      одобрением того же дня его не спутать.
-      `null` — одобрения нет или оно запись не поправило и не сняло; два
-      исключения (лишние записи того же дня, одобрения до миграции 0076) —
-      у `applyWithdrawal` в `lateness.service`.
-    */
-    latenessBeforeApproval: jsonb('lateness_before_approval').$type<LatenessBeforeApproval>(),
-
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -114,11 +72,6 @@ export const lateRequests = pgTable(
     check(
       'late_requests_rejection_reason_matches_status',
       sql`(${table.status} = 'rejected') = (${table.rejectionReason} is not null)`,
-    ),
-    // Снимок живёт, пока одобрение в силе: снятое согласование его не оставляет.
-    check(
-      'late_requests_snapshot_only_when_approved',
-      sql`${table.latenessBeforeApproval} is null or ${table.status} = 'approved'`,
     ),
   ],
 );
