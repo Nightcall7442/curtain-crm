@@ -1,13 +1,14 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ORDER_STATUS_LABELS } from '@curtain-crm/shared';
+import { DISCIPLINE_KIND_LABELS, formatDisciplinePoints, ORDER_STATUS_LABELS } from '@curtain-crm/shared';
 import { describe, expect, it } from 'vitest';
 
 import { KNOWN_ERROR_MESSAGES, translateErrorMessage } from './errorTranslations';
 import {
   KNOWN_NOTIFICATION_TEXTS,
   modernizeStoredNotification,
+  SYSTEM_AUTHOR_RU,
   translateNotificationText,
 } from './notificationTranslations';
 
@@ -287,6 +288,23 @@ describe('notificationTranslations', () => {
     ).toBe(
       '09.11 kuni soat 10:00 gacha kechikish tasdiqlandi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik qayta hisoblandi: 25 daqiqa kechikish.',
     );
+  });
+
+  /*
+    Опоздание при отметке система подписывает «— Система». Имя человека в
+    уведомлении не переводится, а это слово не имя: в узбекском уведомлении
+    и в его копии в Telegram оно оставалось по-русски.
+  */
+  it('запись дисциплины от системы — с узбекской подписью «Tizim», имя руководителя — как есть', () => {
+    const body = (by: string): string =>
+      `${DISCIPLINE_KIND_LABELS.ru.late_over_30} (${formatDisciplinePoints(-2)}) за 08.11 — ${by}`;
+    expect(translateNotificationText(body(SYSTEM_AUTHOR_RU), 'uz')).toBe(
+      `${DISCIPLINE_KIND_LABELS.uz.late_over_30} (−2) 08.11 uchun — Tizim`,
+    );
+    expect(translateNotificationText(body('Мирзаев Дилшод'), 'uz')).toBe(
+      `${DISCIPLINE_KIND_LABELS.uz.late_over_30} (−2) 08.11 uchun — Мирзаев Дилшод`,
+    );
+    expect(translateNotificationText(body(SYSTEM_AUTHOR_RU), 'ru')).toBe(body(SYSTEM_AUTHOR_RU));
   });
 
   it('снятие согласования с пересчётом — переводится как снятие, а не как одобрение', () => {

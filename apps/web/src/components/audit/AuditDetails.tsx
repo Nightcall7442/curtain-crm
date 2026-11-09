@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import {
+  DISCIPLINE_AUDIT_REASONS,
   DISCIPLINE_KIND_LABELS_RU,
   disciplineKindSchema,
   materialKindLabel,
@@ -8,6 +9,7 @@ import {
   ROLE_LABELS_RU,
   weekdayName,
   type CatalogKind,
+  type DisciplineAuditReason,
   type OrderStatus,
   type PaymentMethod,
   type Role,
@@ -30,10 +32,16 @@ import { formatDate, formatDateTime } from '@/lib/utils';
  * хватает, чтобы вместо кода показать слово. Незнакомое имя выводится как
  * есть: журнал обязан показывать то, что в нём записано, а не молчать
  * о полях, про которые этот экран ещё не знает.
+ *
+ * Код действия (`action`) нужен ради немногих полей, у которых смысл зависит
+ * от действия: `auto` в удалении записи дисциплины значит «удалённая запись
+ * была записью системы», а не «удалила система» — удалять мог руководитель.
  */
 export function AuditDetails({
+  action,
   details,
 }: {
+  readonly action: string;
   readonly details: unknown;
 }): ReactElement {
   const entries = [...flatten(details)].sort((a, b) => rank(a.path) - rank(b.path));
@@ -46,7 +54,7 @@ export function AuditDetails({
     <dl className="flex flex-wrap gap-x-3 gap-y-1 text-footnote">
       {entries.map((entry) => (
         <div key={entry.path} className="flex items-baseline gap-1">
-          <dt className="text-muted">{labelFor(entry.path)}</dt>
+          <dt className="text-muted">{labelFor(entry.path, action)}</dt>
           <dd className="text-secondary">{entry.value}</dd>
         </div>
       ))}
@@ -124,7 +132,7 @@ function formatValue(key: string, raw: unknown): string {
     return weekdayName(Number.parseInt(text, 10)) || text;
   }
   if (key === 'reason') {
-    return REASON_CODE_LABELS_RU[text] ?? text;
+    return isDisciplineAuditReason(text) ? REASON_CODE_LABELS_RU[text] : text;
   }
   if (key === 'method') {
     return PAYMENT_METHOD_LABELS_RU[text as PaymentMethod] ?? text;
@@ -197,8 +205,8 @@ const ROLE_KEYS = new Set(['role', 'roles']);
 const DATE_KEYS = new Set(['startedAt', 'endedAt', 'periodStart', 'periodEnd']);
 /**
  * Календарные даты без времени: заявки на выходные, день запроса на
- * опоздание (`date`), день записи дисциплины (`occurredOn`) и день, решение
- * по которому пересчитало повтор в другой записи (`reviewedDay`): без
+ * опоздание (`date`), день записи дисциплины (`occurredOn`) и день, запись
+ * за который пересчитала повтор в другой записи (`reviewedDay`): без
  * форматирования он читался бы кодом `2026-11-05` рядом с датами словами.
  */
 const DAY_KEYS = new Set(['startDate', 'endDate', 'date', 'occurredOn', 'reviewedDay']);
@@ -211,11 +219,23 @@ const DAY_KEYS = new Set(['startDate', 'endDate', 'date', 'occurredOn', 'reviewe
  * числом и день пересчитан), причина — код: без перевода директор увидел
  * бы в журнале `late_request_review`. Правку руками сервер тоже отмечает
  * кодом — чтобы в журнале её можно было отличить от пересчёта системой.
+ *
+ * Ключи — общий список `DISCIPLINE_AUDIT_REASONS`, а не произвольные строки:
+ * код, добавленный на сервере, не соберётся здесь, пока ему не дадут подпись,
+ * и не всплывёт в журнале директора английским словом.
  */
-const REASON_CODE_LABELS_RU: Readonly<Record<string, string>> = {
+const REASON_CODE_LABELS_RU: Readonly<Record<DisciplineAuditReason, string>> = {
   late_request_review: 'пересмотр запроса на опоздание',
   manual_discipline_change: 'ручная правка дисциплины',
 };
+
+/**
+ * Код ли это причины из общего списка. Сравнение, а не приведение типа:
+ * в `reason` чаще лежат слова человека, и их нужно вывести как есть.
+ */
+function isDisciplineAuditReason(text: string): text is DisciplineAuditReason {
+  return DISCIPLINE_AUDIT_REASONS.some((code) => code === text);
+}
 
 /** Еженедельный выходной пишется номером дня недели. */
 const WEEKDAY_KEYS = new Set(['weekday', 'weeklyDayOff']);
@@ -229,14 +249,35 @@ const NUMERIC_TEXT = /^-?\d+\.\d+$/;
  *
  * Путь `from.price` подписывается как «было · цена»: приставка и само поле
  * переводятся по отдельности, поэтому словарь не приходится дублировать
- * для каждой пары «было/стало».
+ * для каждой пары «было/стало». Подпись под конкретное действие
+ * (`ACTION_FIELD_LABELS_RU`) важнее общей.
  */
-function labelFor(path: string): string {
+function labelFor(path: string, action: string): string {
+  const overrides = ACTION_FIELD_LABELS_RU[action];
   return path
     .split('.')
-    .map((part) => FIELD_LABELS_RU[part] ?? part)
+    .map((part) => overrides?.[part] ?? FIELD_LABELS_RU[part] ?? part)
     .join(' · ');
 }
+
+/**
+ * Поля, чей смысл зависит от действия.
+ *
+ * `auto: true` пишут и автозакрытие смены, и автозапись опоздания — там это
+ * «сделала система», и общая подпись «автоматически» верна. В правке и
+ * удалении записи дисциплины то же поле значит другое: «запись была
+ * записью системы» (`recorded_by` — сам сотрудник). Удалить такую запись
+ * может и руководитель руками, и подпись «автоматически» выдавала бы его
+ * решение за действие системы.
+ */
+const SYSTEM_RECORD_LABELS_RU: Readonly<Record<string, string>> = {
+  auto: 'запись системы',
+};
+
+const ACTION_FIELD_LABELS_RU: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  'discipline.removed': SYSTEM_RECORD_LABELS_RU,
+  'discipline.adjusted': SYSTEM_RECORD_LABELS_RU,
+};
 
 /**
  * Имена полей, которые встречаются в `details`.
@@ -293,6 +334,7 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   date: 'дата',
   arriveBy: 'приду к',
   occurredOn: 'день',
+  // У правки и удаления записи дисциплины своя подпись — `ACTION_FIELD_LABELS_RU`.
   auto: 'автоматически',
   points: 'баллы',
   isRepeat: 'повторно',
@@ -303,8 +345,17 @@ const FIELD_LABELS_RU: Readonly<Record<string, string>> = {
   label: 'подпись',
   // Запись снята системой — объяснение сотрудника остаётся только здесь.
   employeeComment: 'объяснение сотрудника',
-  // Повтор этой записи пересчитан из-за решения по другому дню.
-  reviewedDay: 'из-за решения за день',
+  /*
+    Повтор этой записи пересчитан из-за записи за другой день. Без слова
+    «решение»: так бывает и после решения по запросу на опоздание, и после
+    того, как руководитель руками добавил или убрал опоздание
+    (`manual_discipline_change`) — там никакого решения по дню нет.
+  */
+  reviewedDay: 'пересчитано из-за записи за',
+  /*
+    Номер сотрудника, как и `userId` выше: журнал отдаёт только имя автора
+    действия (`actorName`), справочника имён у экрана нет.
+  */
   recordedBy: 'кем записано',
 
   // справочники и закупки

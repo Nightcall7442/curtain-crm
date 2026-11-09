@@ -22,8 +22,11 @@ import {
   type DisciplineKind as DisciplineKindName,
   type Locale,
 } from '@curtain-crm/shared';
+import { TRPCError } from '@trpc/server';
 import { and, asc, desc, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { z } from 'zod';
 
+import { SYSTEM_AUTHOR_RU } from '../lib/notificationTranslations';
 import { recordAudit } from './audit.service';
 import { notifyDisciplineRecorded, type DisciplineRecordedNotice } from './notifications.service';
 import { workshopDayBounds } from './periods';
@@ -115,6 +118,23 @@ export function storedLateMinutes(description: string | null): number | null {
   if (description === null) return null;
   const minutes = STORED_LATENESS.exec(description)?.[3];
   return minutes === undefined ? null : Number.parseInt(minutes, 10);
+}
+
+/**
+ * Время отметки из пояснения, записанного системой («отметка в 09:05»); чужой текст — `null`.
+ *
+ * Пересчёт после решения по запросу оценивает именно его, а не начало
+ * смены в базе: смену после отметки мог передвинуть руководитель
+ * (`shifts.adjustManually`), а ручная правка смены опоздание не питает. Без
+ * этого снятие согласования считало опоздание от перенесённого начала —
+ * отметка в 09:05, смена перенесена на 10:30, и штраф вырастал до «90 мин»,
+ * которых отметка никогда не показывала. Пересчёт переписывает пояснение,
+ * но время отметки в нём сохраняет, так что оно переживает любое число
+ * одобрений и снятий.
+ */
+export function storedCheckInTime(description: string | null): string | null {
+  if (description === null) return null;
+  return STORED_LATENESS.exec(description)?.[2] ?? null;
 }
 
 /** Виды опоздания — из них система пишет запись сама; остальное в дисциплине — руками руководства. */
@@ -294,13 +314,33 @@ export interface RepeatChange {
  */
 export type RepeatRecountPolicy = 'any' | 'lower_only';
 
+/** Место записи в порядке месяца — день, затем id; тот же порядок, что у повтора. */
+export interface RepeatPosition {
+  readonly occurredOn: string;
+  readonly id: number;
+}
+
+/** Запись стоит в месяце строго после `position`. */
+function isAfter(row: RepeatPosition, position: RepeatPosition): boolean {
+  return row.occurredOn === position.occurredOn ? row.id > position.id : row.occurredOn > position.occurredOn;
+}
+
 /**
- * Повторы одного вида за месяц — заново, по порядку (день, id).
+ * Повторы одного вида за месяц — заново, по порядку (день, id), но только
+ * ПОСЛЕ места правки.
  *
  * Простили опоздание 05.11 — опоздание 09.11 того же вида больше не
  * повтор, и его балл должен стать обычным; сняли согласование — снова
  * повтор. Признак и балл хранятся в записи, поэтому без пересчёта 09.11 так
  * и висело бы строже, чем положено, и тянуло уровень и рейтинг.
+ *
+ * `after` — место записи, которую добавили, убрали или поправили. Повтор
+ * зависит только от того, что было РАНЬШЕ, поэтому правка в этом месте
+ * может сдвинуть лишь записи после него; записи до него остаются как есть
+ * и только считаются «бывшими раньше». Раньше обход переписывал весь месяц:
+ * одобрение увело 03-е ступенью ниже и бережно оставило 06-е не повтором
+ * (`lower_only`), а следующая ручная запись за 08-е строгим обходом делала
+ * 06-е повтором — да ещё от имени и с причиной чужой правки.
  *
  * Меняются только записи системы (`recorded_by` — сам сотрудник): ручная
  * запись — решение руководителя, её балл он поставил сам. Но как более
@@ -312,14 +352,18 @@ export type RepeatRecountPolicy = 'any' | 'lower_only';
  * раньше, а не от их признаков, так что пропуск одной правки остальные не
  * сдвигает.
  */
-export function recountRepeats(rows: readonly RepeatRow[], policy: RepeatRecountPolicy = 'any'): RepeatChange[] {
+export function recountRepeats(
+  rows: readonly RepeatRow[],
+  how: { readonly after: RepeatPosition; readonly policy: RepeatRecountPolicy },
+): RepeatChange[] {
   const ordered = [...rows].sort((a, b) =>
     a.occurredOn === b.occurredOn ? a.id - b.id : a.occurredOn < b.occurredOn ? -1 : 1,
   );
+  const { after, policy } = how;
   const changes: RepeatChange[] = [];
   let seenEarlier = false;
   for (const row of ordered) {
-    if (row.recordedBy === row.userId) {
+    if (row.recordedBy === row.userId && isAfter(row, after)) {
       const isRepeat = isDisciplineViolation(row.kind) && seenEarlier;
       const points = disciplinePoints(row.kind, isRepeat);
       const stricter = points < row.points;
@@ -344,12 +388,14 @@ export interface ReviewActor {
 }
 
 /**
- * Повторы затронутых видов за месяц дня — в базе, каждая правка в журнал.
+ * Повторы затронутых видов после места правки — в базе, каждая правка в журнал.
  *
  * Зовут двое: пересчёт после решения по запросу и ручная правка дисциплины
- * (`discipline.record` / `discipline.remove` опоздания). `reason` — код
- * причины в журнале (`DisciplineAuditReason`), `reviewedDay` — день, из-за
- * которого пересчитан месяц. Меняются только записи системы.
+ * (`discipline.record` / `discipline.remove` опоздания). `after` — место
+ * записи, которую добавили, убрали или поправили (см. `recountRepeats`):
+ * меняются только записи месяца после него. `reason` — код причины в
+ * журнале (`DisciplineAuditReason`), `reviewedDay` — день этой записи, из-за
+ * которой пересчитаны повторы. Меняются только записи системы.
  *
  * Вызывающий держит `lockLatenessOf` с самого начала своей транзакции:
  * здесь записи месяца берутся FOR UPDATE, и два пересчёта одного месяца без
@@ -357,11 +403,12 @@ export interface ReviewActor {
  */
 export async function recountMonthRepeats(
   executor: DbExecutor,
-  scope: { readonly userId: number; readonly day: string; readonly kinds: ReadonlySet<DisciplineKindName> },
+  scope: { readonly userId: number; readonly after: RepeatPosition; readonly kinds: ReadonlySet<DisciplineKindName> },
   actor: ReviewActor,
   how: { readonly reason: DisciplineAuditReasonCode; readonly policy: RepeatRecountPolicy },
 ): Promise<void> {
-  const { from, to } = monthOf(scope.day);
+  const reviewedDay = scope.after.occurredOn;
+  const { from, to } = monthOf(reviewedDay);
   for (const kind of scope.kinds) {
     const rows = await executor
       .select({
@@ -387,7 +434,7 @@ export async function recountMonthRepeats(
 
     const changes = recountRepeats(
       rows.map((row) => ({ ...row, points: Number.parseFloat(row.points) })),
-      how.policy,
+      { after: scope.after, policy: how.policy },
     );
     for (const change of changes) {
       await executor
@@ -405,8 +452,8 @@ export async function recountMonthRepeats(
           occurredOn: change.occurredOn,
           auto: true,
           reason: how.reason,
-          // Повтор пересчитан из-за решения по другому дню — этого.
-          reviewedDay: scope.day,
+          // Повтор пересчитан из-за правки записи раньше в месяце — за этот день.
+          reviewedDay,
           from: change.from,
           to: change.to,
         },
@@ -447,7 +494,7 @@ async function insertAutomaticLateness(
   executor: DbExecutor,
   facts: LatenessFacts,
   options: { readonly recomputed: boolean; readonly notify: boolean; readonly ipAddress: string | null },
-): Promise<{ readonly kind: DisciplineKindName; readonly notice: DisciplineRecordedNotice }> {
+): Promise<{ readonly id: number; readonly kind: DisciplineKindName; readonly notice: DisciplineRecordedNotice }> {
   const kind = latenessKind(facts.lateBy);
   const isRepeat =
     isDisciplineViolation(kind) && (await hasEarlierSameKind(executor, { userId: facts.userId, kind, day: facts.day }));
@@ -465,12 +512,16 @@ async function insertAutomaticLateness(
       recordedBy: facts.userId,
     })
     .returning({ id: disciplineEvents.id });
+  // Место новой записи нужно пересчёту повторов после неё (`recountMonthRepeats`).
+  if (created === undefined) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Не удалось сохранить запись' });
+  }
 
   await recordAudit(executor, {
     actorId: facts.userId,
     action: 'discipline.recorded',
     entityType: 'discipline_event',
-    entityId: created?.id ?? null,
+    entityId: created.id,
     details: {
       auto: true,
       kind,
@@ -484,10 +535,11 @@ async function insertAutomaticLateness(
     },
     ipAddress: options.ipAddress,
   });
-  const notice: DisciplineRecordedNotice = { kind, points, occurredOn: facts.day, recordedByName: 'Система' };
+  // Автор — общей константой: по ней перевод узнаёт подпись системы (`notificationTranslations`).
+  const notice: DisciplineRecordedNotice = { kind, points, occurredOn: facts.day, recordedByName: SYSTEM_AUTHOR_RU };
   if (options.notify) await notifyDisciplineRecorded(executor, facts.userId, notice);
 
-  return { kind, notice };
+  return { id: created.id, kind, notice };
 }
 
 /**
@@ -627,6 +679,75 @@ async function removeAutomaticLateness(
   });
 }
 
+/**
+ * Смена до первой ручной правки — так её пишет в журнал `shifts.adjustManually`.
+ *
+ * `before` — смена до правки, записанная в той же транзакции, что и сама
+ * правка. Остальное в записи пересчёту не нужно, и неизвестный формат не
+ * должен ронять решение по запросу: не разобралось — значит, время отметки
+ * не восстановить.
+ */
+const shiftEditBeforeSchema = z.object({
+  before: z.object({ startedAt: z.string().datetime(), userId: z.number().int() }),
+});
+
+/**
+ * Время отметки по первой ручной правке смены: `before` в её журнале; иначе `null`.
+ *
+ * До первой правки начало смены — то, что записала отметка; значит,
+ * `before.startedAt` первой правки и есть время отметки, сколько бы раз
+ * смену ни двигали потом. Смена, которую правка передала от другого
+ * сотрудника, — не его отметка: `null`.
+ */
+export function checkInStartFromFirstEdit(details: unknown, userId: number): Date | null {
+  const parsed = shiftEditBeforeSchema.safeParse(details);
+  if (!parsed.success || parsed.data.before.userId !== userId) return null;
+  return new Date(parsed.data.before.startedAt);
+}
+
+/** Смена дня для пересчёта опоздания: с чего она началась и как. */
+interface DayShift {
+  readonly id: number;
+  readonly userId: number;
+  readonly startedAt: Date;
+  readonly startLatitude: number | null;
+}
+
+/**
+ * Когда сотрудник отметился, открывая смену, — `null`, если смена не с отметки.
+ *
+ * Опоздание оценивается только по отметке: ручная правка смены его не
+ * питает — ни при отметке, ни в `adjustManually`, ни при пересчёте. Раньше
+ * «настоящую отметку» узнавали по `is_manually_adjusted`, но его ставит и
+ * правка одного только конца смены: отметка в 09:40 (−2), руководитель
+ * поправил уход, одобрение «приду к 09:45» сняло запись — и снятие
+ * согласования её уже не возвращало. Поэтому судим по началу:
+ *  - координат начала нет — смену завёл руководитель, отметки не было;
+ *  - ручных правок с `before` нет (автозакрытие пишет `shift.adjusted` без
+ *    него — оно трогает только конец) — начало смены и есть отметка;
+ *  - правки были — время отметки берём из `before` первой из них
+ *    (`checkInStartFromFirstEdit`): правка конца его не меняет, перенос
+ *    начала — тоже не теряет.
+ */
+async function checkInStartOf(executor: DbExecutor, shift: DayShift): Promise<Date | null> {
+  if (shift.startLatitude === null) return null;
+  const [firstEdit] = await executor
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.action, 'shift.adjusted'),
+        eq(auditLog.entityType, 'shift'),
+        eq(auditLog.entityId, shift.id),
+        sql`jsonb_typeof(${auditLog.details} -> 'before') = 'object'`,
+      ),
+    )
+    .orderBy(asc(auditLog.id))
+    .limit(1);
+  if (firstEdit === undefined) return shift.startedAt;
+  return checkInStartFromFirstEdit(firstEdit.details, shift.userId);
+}
+
 /** Решение по запросу, после которого пересчитывается опоздание. */
 export type LateReviewMode = 'approved' | 'withdrawn';
 
@@ -710,12 +831,19 @@ async function latenessTarget(
  *  - одобрение только сдвигает порог позже и штраф НЕ создаёт никогда:
  *    смену мог завести руководитель (отметки не было, опоздание не
  *    оценивалось), или он уже простил опоздание (`discipline.remove`);
+ *  - оценивается время ОТМЕТКИ, а не начало смены в базе: смену после
+ *    отметки мог передвинуть руководитель (`shifts.adjustManually`), а
+ *    ручная правка смены опоздание не питает. Есть запись системы — время
+ *    берётся из её пояснения («отметка в 09:05», `storedCheckInTime`); нет
+ *    записи — из отметки смены (`checkInStartOf`). Иначе снятие
+ *    согласования после переноса смены с 09:05 на 10:30 писало «опоздание
+ *    90 мин», которых отметка никогда не показывала;
  *  - одобрение только смягчает и уже записанное: вышло бы больше минут или
  *    балл строже — запись остаётся как была, без журнала и без
- *    «пересчитано» в уведомлении. Так бывает, когда смену после отметки
- *    передвинул руководитель (`shifts.adjustManually`): отметка в 09:05
- *    (−0,5), смена перенесена на 10:30, одобрение «приду к 09:30» — и от
- *    10:30 выходило «опоздание 60 мин», −2;
+ *    «пересчитано» в уведомлении. Так бывает, когда график сдвинули после
+ *    отметки: отметка в 09:10 при смене с 09:00 (10 мин, −0,5), смену
+ *    переназначили с 08:00, одобрение «приду к 08:30» — от него выходит
+ *    40 мин, −2; или когда запись ушла бы в ступень, где она — повтор;
  *  - снятие согласования создаёт запись заново, только если её не простили
  *    руками и смена — настоящая отметка, а не заведённая руководством;
  *  - запись правится на месте, а не удаляется и создаётся снова: иначе
@@ -730,7 +858,8 @@ async function latenessTarget(
  * ступени стало бы повтором — строже из-за одобрения совсем другого дня
  * (−0,5 → −1,5, больше, чем сэкономило само одобрение). Такую правку после
  * одобрения не делаем; снятие согласования и ручная правка пересчитывают
- * месяц строго.
+ * строго. Любой пересчёт повторов трогает только записи ПОСЛЕ записи этого
+ * дня (`recountRepeats`): более ранние от неё не зависят.
  *
  * Снятие и правка записи — в журнал от имени решившего (`discipline.removed`
  * / `discipline.adjusted`), в группу они не идут.
@@ -761,7 +890,7 @@ export async function recomputeLatenessForDay(
 
   const { start, end } = workshopDayBounds(input.day);
   const [firstShift] = await executor
-    .select({ startedAt: shifts.startedAt, isManuallyAdjusted: shifts.isManuallyAdjusted })
+    .select({ id: shifts.id, userId: shifts.userId, startedAt: shifts.startedAt, startLatitude: shifts.startLatitude })
     .from(shifts)
     .where(and(eq(shifts.userId, input.userId), gte(shifts.startedAt, start), lt(shifts.startedAt, end)))
     .orderBy(asc(shifts.startedAt))
@@ -785,14 +914,19 @@ export async function recomputeLatenessForDay(
 
   const arriveBy = await approvedArriveBy(executor, input.userId, input.day);
   const shiftStart = effectiveShiftStart(scheduledStart, arriveBy);
-  const actual = workshopClockTime(firstShift.startedAt);
-  const lateBy = clockMinutes(actual) - clockMinutes(shiftStart);
+  const minutesLate = (actual: string): number => clockMinutes(actual) - clockMinutes(shiftStart);
 
   const [kept, ...duplicates] = existing;
 
   if (kept === undefined) {
-    if (input.mode === 'approved' || lateBy <= 0) return NONE;
-    if (firstShift.isManuallyAdjusted) return NONE;
+    // Одобрение штраф не создаёт никогда (см. выше).
+    if (input.mode === 'approved') return NONE;
+    // Смена не с отметки или отметка была в другой день (смену перенесли руками) — оценивать нечего.
+    const checkIn = await checkInStartOf(executor, firstShift);
+    if (checkIn === null || workshopDayIso(checkIn) !== input.day) return NONE;
+    const actual = workshopClockTime(checkIn);
+    const lateBy = minutesLate(actual);
+    if (lateBy <= 0) return NONE;
     if (await forgivenByHand(executor, input.userId, input.day)) return NONE;
     if (await hasLatenessOnDay(executor, input.userId, input.day)) return NONE;
 
@@ -804,13 +938,27 @@ export async function recomputeLatenessForDay(
     );
     await recountMonthRepeats(
       executor,
-      { userId: input.userId, day: input.day, kinds: new Set([created.kind]) },
+      {
+        userId: input.userId,
+        after: { occurredOn: input.day, id: created.id },
+        kinds: new Set([created.kind]),
+      },
       actor,
       review,
     );
     return { kind: 'created', minutes: lateBy, notice: created.notice };
   }
 
+  /*
+    Время отметки — из пояснения записи: его записала сама отметка, и
+    пересчёты его сохраняют. Начало смены в базе мог передвинуть
+    руководитель. Пояснение не системное (старая запись) — тогда из отметки
+    смены, а не восстановить её — из начала смены как есть.
+  */
+  const actual =
+    storedCheckInTime(kept.description) ??
+    workshopClockTime((await checkInStartOf(executor, firstShift)) ?? firstShift.startedAt);
+  const lateBy = minutesLate(actual);
   const fromMinutes = storedLateMinutes(kept.description);
   const keptPoints = Number.parseFloat(kept.points);
   // Какой запись должна стать; `null` — снять: по новому порогу пришёл вовремя.
@@ -884,7 +1032,13 @@ export async function recomputeLatenessForDay(
   }
 
   if (outcome.kind !== 'unchanged' || duplicates.length > 0) {
-    await recountMonthRepeats(executor, { userId: input.userId, day: input.day, kinds: touched }, actor, review);
+    // Место правки — запись дня (снятые дубли того же дня стоят после неё): раньше неё ничего не сдвигается.
+    await recountMonthRepeats(
+      executor,
+      { userId: input.userId, after: { occurredOn: input.day, id: kept.id }, kinds: touched },
+      actor,
+      review,
+    );
   }
   return outcome;
 }

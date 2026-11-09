@@ -23,6 +23,18 @@ import { compileTranslator, type TranslationTable } from './sourceTranslation';
  * таблице не нужны — им перевод не требуется.
  */
 
+/**
+ * Подпись записи, которую сделала сама система: «… за 08.11 — Система».
+ *
+ * Имя человека в уведомлении не переводится, а это слово — не имя, и в
+ * узбекском тексте оно стояло по-русски. Одна константа на запись и
+ * перевод: опоздание подписывает ею `insertAutomaticLateness`, а шаблон
+ * ниже узнаёт её в конце тела — разойдись они, перевод молча перестал бы
+ * срабатывать.
+ */
+export const SYSTEM_AUTHOR_RU = 'Система';
+const SYSTEM_AUTHOR_UZ = 'Tizim';
+
 const EXACT: Readonly<Record<string, string>> = {
   'Вам выдана новая роль': 'Sizga yangi rol berildi',
   'Роль отозвана': 'Rol olib tashlandi',
@@ -123,6 +135,8 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ],
   ['{by}: выходные теперь только по запросу', "{by}: dam olish kunlari endi faqat so'rov bo'yicha"],
   ['{by}: каждую неделю — {weekday}', '{by}: har hafta — {weekday}'],
+  // Запись системы — раньше общего шаблона: иначе подпись «Система» ушла бы как имя, без перевода.
+  [`{kind} ({points}) за {date} — ${SYSTEM_AUTHOR_RU}`, `{kind} ({points}) {date} uchun — ${SYSTEM_AUTHOR_UZ}`],
   ['{kind} ({points}) за {date} — {by}', '{kind} ({points}) {date} uchun — {by}'],
   ['{by}: сегодня {n} из {target} — цель выполнена', '{by}: bugun {target} dan {n} — maqsad bajarildi'],
   ['{by}: сегодня {n} из {target}, осталось {left}', '{by}: bugun {target} dan {n}, {left} ta qoldi'],
