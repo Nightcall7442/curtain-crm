@@ -48,7 +48,9 @@ import { scheduledShiftStartOn } from './shiftSchedule';
  * месяца под замком сотрудника.
  *
  * Гарантии (тесты — в `@curtain-crm/shared` и здесь, сценарии — в смоуке):
- *  - записи месяца — функция состояния: порядок решений не важен;
+ *  - записи системы за месяц — функция состояния: порядок решений не
+ *    важен (ручная запись руководителя получает повтор и балл один раз, при
+ *    записи, по тем же «более ранним событиям», и потом не пересчитывается);
  *  - снятие согласования возвращает ровно то, что было бы без одобрения;
  *  - одобрение не делает строже ни один день и не создаёт записей;
  *  - ручные записи руководителя не трогаются; ручная правка и удаление
@@ -197,15 +199,30 @@ export async function forgiveLatenessOn(
  *
  * Ручная запись получает повтор и балл один раз, при записи, и потом не
  * пересчитывается — это решение руководителя. Раньше неё — прошлые дни и
- * все уже лежащие записи того же дня (она получит самый большой id).
+ * все уже лежащие ручные записи того же дня (она получит самый большой id).
+ *
+ * Для опозданий «раньше» — те же события, что у оценки месяца
+ * (`evaluateMonthLateness`), иначе ручная запись спорила бы с системной:
+ *  - запись системы ЗА ТОТ ЖЕ ДЕНЬ не в счёт: ручная запись руководителя
+ *    этот день заменяет, проекция системную снимает, и повтор «по
+ *    снятой» стоил бы первому опозданию месяца ставку повтора;
+ *  - запись системы за день с действующим одобрением не в счёт:
+ *    согласованное опоздание не делает следующие повторными.
+ * Прочие нарушения — по-прежнему любое такое же событие по этот день.
  */
 export async function hasEarlierSameKind(
   executor: DbExecutor,
   event: { readonly userId: number; readonly kind: DisciplineKind; readonly day: string },
 ): Promise<boolean> {
   const { from } = monthOf(event.day);
-  const [prior] = await executor
-    .select({ id: disciplineEvents.id })
+  const rows = await executor
+    .select({
+      userId: disciplineEvents.userId,
+      recordedBy: disciplineEvents.recordedBy,
+      kind: disciplineEvents.kind,
+      description: disciplineEvents.description,
+      occurredOn: disciplineEvents.occurredOn,
+    })
     .from(disciplineEvents)
     .where(
       and(
@@ -214,9 +231,25 @@ export async function hasEarlierSameKind(
         gte(disciplineEvents.occurredOn, from),
         lte(disciplineEvents.occurredOn, event.day),
       ),
-    )
-    .limit(1);
-  return prior !== undefined;
+    );
+  if (rows.length === 0) return false;
+  if (!isLateDisciplineKind(event.kind)) return true;
+
+  const approved = await executor
+    .select({ date: lateRequests.date })
+    .from(lateRequests)
+    .where(
+      and(
+        eq(lateRequests.userId, event.userId),
+        eq(lateRequests.status, DayOffStatus.APPROVED),
+        gte(lateRequests.date, from),
+        lt(lateRequests.date, event.day),
+      ),
+    );
+  const approvedDays = new Set(approved.map((request) => request.date));
+  return rows.some((row) =>
+    isAutomaticLateness(row) ? row.occurredOn < event.day && !approvedDays.has(row.occurredOn) : true,
+  );
 }
 
 /* -------------------------------------------------------------------------- */

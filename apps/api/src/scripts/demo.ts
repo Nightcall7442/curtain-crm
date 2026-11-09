@@ -25,6 +25,7 @@ import {
   disciplineEvents,
   hashPassword,
   installationTrips,
+  lateCheckIns,
   lateRequests,
   notifications,
   orderComments,
@@ -255,8 +256,12 @@ async function cleanup(db: Database): Promise<void> {
   await db.delete(workPlans);
 
   if (userIds.length > 0) {
-    // Выходные, опоздания по согласованию и дисциплина держат людей (restrict):
-    // без них удаление сотрудников ниже падало, стоило кому-то попросить отгул.
+    // Выходные, опоздания по согласованию, факты опозданий и дисциплина держат
+    // людей (restrict): без них удаление сотрудников ниже падало, стоило
+    // кому-то попросить отгул или опоздать на отметке.
+    await db
+      .delete(lateCheckIns)
+      .where(or(inArray(lateCheckIns.userId, userIds), inArray(lateCheckIns.forgivenBy, userIds)));
     await db
       .delete(lateRequests)
       .where(or(inArray(lateRequests.userId, userIds), inArray(lateRequests.reviewedBy, userIds)));

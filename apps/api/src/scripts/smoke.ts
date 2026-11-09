@@ -4341,6 +4341,70 @@ async function run(db: Database): Promise<void> {
   );
 
   /*
+    Ручная запись за день, где уже есть запись системы того же вида: запись
+    руководителя заменяет системную (проекция её снимает), значит повтором
+    ручную делать по ней нельзя — иначе одно опоздание дня стоит по ставке
+    повтора, хотя оно первое в месяце (проверка 09.11: −2,0 вместо −1,0).
+  */
+  const sameDaySewer = await makeUser('Ручная запись поверх системной', Role.SEWER, '+998900000201');
+  const excusedEarlierSewer = await makeUser('Ручная запись после согласованного', Role.SEWER, '+998900000202');
+  await db.insert(payrollSchemes).values(
+    [sameDaySewer, excusedEarlierSewer].map((person) => ({
+      userId: person.id,
+      role: Role.SEWER,
+      type: PayrollSchemeType.HOURLY,
+      rate: '10000.00',
+      shiftStart: '09:00',
+      shiftEnd: '18:00',
+      effectiveFrom: '2020-01-01',
+      createdBy: admin.id,
+    })),
+  );
+  const sameDay = `${prevMonth}-02`;
+  await checkInOn(sameDaySewer, sameDay, '09:20');
+  const sameDayManual = await ceoCaller.discipline.record({
+    userId: sameDaySewer.id,
+    kind: 'late_15_30',
+    occurredOn: sameDay,
+    description: `${PREFIX} руководитель уточнил`,
+  });
+  const sameDayRows = await lateRows(sameDaySewer.id, sameDay);
+  check(
+    'дисциплина: ручная запись поверх системной того же дня — не повтор (−1,0), системная снята',
+    !sameDayManual.isRepeat &&
+      sameDayManual.points === -1 &&
+      sameDayRows.length === 1 &&
+      sameDayRows[0]?.id === sameDayManual.id,
+    JSON.stringify({ manual: { isRepeat: sameDayManual.isRepeat, points: sameDayManual.points }, sameDayRows }),
+  );
+
+  /*
+    Согласованное опоздание не делает следующие повторными — и для ручной
+    записи тоже: 03-го пришла в 09:40, одобрено «до 09:30» (осталось до 15
+    мин, −0,5); ручная запись того же вида за 05-е — первая, −0,5, а не −1,5.
+  */
+  const excusedDay = `${prevMonth}-03`;
+  await checkInOn(excusedEarlierSewer, excusedDay, '09:40');
+  const [excusedRequest] = await db
+    .insert(lateRequests)
+    .values({ userId: excusedEarlierSewer.id, date: excusedDay, arriveBy: '09:30' })
+    .returning();
+  if (excusedRequest === undefined) throw new Error('запрос на опоздание не создан');
+  await ceoCaller.lateRequests.approve({ id: excusedRequest.id });
+  const [excusedRow] = await lateRows(excusedEarlierSewer.id, excusedDay);
+  const afterExcusedManual = await ceoCaller.discipline.record({
+    userId: excusedEarlierSewer.id,
+    kind: 'late_under_15',
+    occurredOn: `${prevMonth}-05`,
+    description: `${PREFIX} со слов бригадира`,
+  });
+  check(
+    'дисциплина: ручная запись после согласованного опоздания того же вида — не повтор, −0,5',
+    excusedRow?.kind === 'late_under_15' && !afterExcusedManual.isRepeat && afterExcusedManual.points === -0.5,
+    JSON.stringify({ excusedRow, manual: { isRepeat: afterExcusedManual.isRepeat, points: afterExcusedManual.points } }),
+  );
+
+  /*
     Гонка из проверки: отметка записала опоздание от графика и ещё не
     зафиксирована, а руководитель тем временем одобряет запрос на этот день.
     Без общего замка одобрение не видело незафиксированную смену, пересчитывать

@@ -28,8 +28,16 @@ export function latenessDescription(
     : `Смена с ${shiftStart}, отметка в ${actual} — опоздание ${minutes} мин`;
 }
 
-/** Сохранённое русское пояснение — ровно та строка, что собирает `latenessDescription`. */
-const STORED_LATENESS = /^Смена с (\d{1,2}:\d{2}), отметка в (\d{1,2}:\d{2}) — опоздание (\d+) мин$/;
+/**
+ * Сохранённое русское пояснение — ровно та строка, что собирает `latenessDescription`.
+ *
+ * Время — только настоящее (00:00–23:59), тем же шаблоном, что и перенос
+ * фактов в миграции 0077: запись, которую миграция не перенесла, не должна
+ * считаться записью системы — иначе первая сверка месяца стёрла бы её как
+ * запись без факта.
+ */
+const CLOCK = '((?:[01]?\\d|2[0-3]):[0-5]\\d)';
+const STORED_LATENESS = new RegExp(`^Смена с ${CLOCK}, отметка в ${CLOCK} — опоздание (\\d+) мин$`);
 
 /** Что записала система в пояснении: от какого начала считали, когда отметился и сколько минут. */
 export interface StoredLateness {
@@ -50,11 +58,6 @@ export function parseStoredLateness(description: string | null): StoredLateness 
   if (match === null) return null;
   const [, shiftStart = '', checkIn = '', minutes = '0'] = match;
   return { shiftStart, checkIn, minutes: Number.parseInt(minutes, 10) };
-}
-
-/** Минуты опоздания из пояснения системы; чужой текст — `null`. */
-export function storedLateMinutes(description: string | null): number | null {
-  return parseStoredLateness(description)?.minutes ?? null;
 }
 
 /**

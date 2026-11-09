@@ -6,7 +6,6 @@ import {
   latenessKind,
   localizeLatenessDescription,
   parseStoredLateness,
-  storedLateMinutes,
 } from './description';
 
 describe('latenessKind', () => {
@@ -25,13 +24,23 @@ describe('пояснение системы', () => {
   it('собирается и разбирается одним шаблоном', () => {
     expect(stored).toBe('Смена с 09:00, отметка в 11:52 — опоздание 172 мин');
     expect(parseStoredLateness(stored)).toEqual({ shiftStart: '09:00', checkIn: '11:52', minutes: 172 });
-    expect(storedLateMinutes(stored)).toBe(172);
   });
 
   it('текст руководителя и пустое пояснение — не пояснение системы', () => {
     expect(parseStoredLateness('Опоздал, со слов бригадира')).toBeNull();
     expect(parseStoredLateness(null)).toBeNull();
-    expect(storedLateMinutes(null)).toBeNull();
+  });
+
+  it('невозможное время — не пояснение системы, как и в переносе фактов (0077)', () => {
+    // Иначе запись считалась бы записью системы без факта, и первая же
+    // сверка месяца её стёрла бы; миграция такое время не переносит.
+    expect(parseStoredLateness('Смена с 24:00, отметка в 24:10 — опоздание 10 мин')).toBeNull();
+    expect(parseStoredLateness('Смена с 09:00, отметка в 09:75 — опоздание 75 мин')).toBeNull();
+    expect(parseStoredLateness('Смена с 9:00, отметка в 9:22 — опоздание 22 мин')).toEqual({
+      shiftStart: '9:00',
+      checkIn: '9:22',
+      minutes: 22,
+    });
   });
 
   it('на узбекском — переводится только пояснение системы', () => {
