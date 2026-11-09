@@ -49,6 +49,26 @@ export const DisciplineKind = {
 
 export const disciplineKindSchema = z.enum(DISCIPLINE_KINDS);
 
+/**
+ * Виды опоздания: такую запись система пишет сама при отметке и пересчитывает
+ * после решения по запросу на опоздание; остальное в дисциплине — руками
+ * руководства.
+ *
+ * Здесь, а не в сервере: тот же список проверяет снимок записи до одобрения
+ * (`latenessBeforeApprovalSchema`), и две копии разошлись бы при первом же
+ * новом пороге. Ссылки на `DisciplineKind`, а не новые строки, — опечатка не
+ * пройдёт мимо компилятора.
+ */
+export const LATE_DISCIPLINE_KINDS = [
+  DisciplineKind.LATE_UNDER_15,
+  DisciplineKind.LATE_15_30,
+  DisciplineKind.LATE_OVER_30,
+] as const;
+
+export type LateDisciplineKind = (typeof LATE_DISCIPLINE_KINDS)[number];
+
+export const lateDisciplineKindSchema = z.enum(LATE_DISCIPLINE_KINDS);
+
 export const DISCIPLINE_KIND_LABELS: Translated<DisciplineKind> = {
   ru: {
     late_under_15: 'Опоздание до 15 мин',

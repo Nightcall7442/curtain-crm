@@ -20,7 +20,7 @@ import {
   lockLatenessOf,
   recomputeLatenessForDay,
   type LatenessRecomputeOutcome,
-  type LateReviewMode,
+  type LateReview,
 } from '../services/lateness.service';
 import {
   notifyDisciplineRecorded,
@@ -48,7 +48,8 @@ import { managementUserIds } from './dayOff.router';
  * Одобренный запрос сдвигает порог опоздания на «приду к» в этот день
  * (`lateness.service`), и больше ни на что не влияет: табель, зарплата и
  * табло считают человека работающим, как и есть. Если отметка в этот день
- * уже была, одобрение и снятие пересчитывают записанное опоздание.
+ * уже была, одобрение смягчает записанное опоздание, а снятие возвращает
+ * его к тому, каким оно было до одобрения.
  */
 
 /** «10:30» — так же, как время смены в условиях оплаты. */
@@ -119,22 +120,33 @@ async function activeRequestConflict(
 }
 
 /**
+ * Наступил ли уже день запроса — сегодня или прошлое, по Ташкенту.
+ *
+ * Считается один раз на решение: от него зависят и пересчёт, и слова
+ * уведомления, и разойтись они не должны даже в полночь.
+ */
+function dayHasStarted(date: string): boolean {
+  return date <= workshopDayIso(new Date());
+}
+
+/**
  * Пересчитать опоздание за день запроса — если этот день уже наступил.
  *
  * Будущий день пересчитывать незачем: отметки ещё нет, и порог возьмётся
- * из запроса в момент отметки. Сегодня и прошлое — по Ташкенту.
+ * из запроса в момент отметки.
  */
 async function recomputeIfDayStarted(
   executor: DbExecutor,
   request: { readonly userId: number; readonly date: string },
-  mode: LateReviewMode,
+  dayStarted: boolean,
+  review: LateReview,
   actor: { readonly actorId: number; readonly ipAddress: string | null },
 ): Promise<LatenessRecomputeOutcome> {
-  if (request.date > workshopDayIso(new Date())) return { kind: 'none' };
+  if (!dayStarted) return { kind: 'none' };
   return recomputeLatenessForDay(executor, {
     userId: request.userId,
     day: request.date,
-    mode,
+    review,
     actorId: actor.actorId,
     ipAddress: actor.ipAddress,
   });
@@ -145,14 +157,16 @@ async function recomputeIfDayStarted(
  *
  * Снятую или пересчитанную запись называем в уведомлении о решении — иначе
  * в ленте остаются два штрафа подряд. Заново созданная запись приходит
- * своим уведомлением о дисциплине, «без изменений» — не новость.
+ * своим уведомлением о дисциплине, «без изменений» — не новость. Сколько
+ * минут теперь, не разобрать из пояснения (его писала не система) — не
+ * называем ничего, чем называть неверное число.
  */
 function penaltyChange(outcome: LatenessRecomputeOutcome): LatePenaltyChange | null {
   switch (outcome.kind) {
     case 'removed':
       return { kind: 'removed' };
     case 'adjusted':
-      return { kind: 'recounted', minutes: outcome.toMinutes };
+      return outcome.toMinutes === null ? null : { kind: 'recounted', minutes: outcome.toMinutes };
     case 'none':
     case 'unchanged':
     case 'created':
@@ -298,6 +312,8 @@ export const lateRequestsRouter = router({
       const [rows, [totalRow]] = await Promise.all([
         ctx.db.query.lateRequests.findMany({
           where,
+          // Снимок записи до одобрения — внутреннее состояние пересчёта, экрану он ни к чему.
+          columns: { latenessBeforeApproval: false },
           with: {
             requester: { columns: { id: true, fullName: true } },
             reviewer: { columns: { id: true, fullName: true } },
@@ -338,16 +354,22 @@ export const lateRequestsRouter = router({
           Согласовать можно и задним числом — так руководитель прощает уже
           случившееся опоздание. Отметка в этот день могла быть раньше
           решения, и записанное при ней опоздание считалось от графика.
+          Поправленную или снятую запись пересчёт запоминает в этом же
+          запросе — снятие согласования вернёт её отсюда.
 
           Пересчёт — ДО журнала и уведомления: журнал пишет в группу, а
           уведомление — в личку, и оба уходят сразу, не дожидаясь коммита.
           Упади пересчёт после них, транзакция откатилась бы, а группа и
           сотрудник уже прочли бы об одобрении, которого нет.
         */
-        const lateness = await recomputeIfDayStarted(tx, request, 'approved', {
-          actorId: ctx.user.id,
-          ipAddress: ctx.ipAddress,
-        });
+        const dayStarted = dayHasStarted(request.date);
+        const lateness = await recomputeIfDayStarted(
+          tx,
+          request,
+          dayStarted,
+          { mode: 'approved', lateRequestId: request.id },
+          { actorId: ctx.user.id, ipAddress: ctx.ipAddress },
+        );
 
         await recordAudit(tx, {
           actorId: ctx.user.id,
@@ -364,6 +386,7 @@ export const lateRequestsRouter = router({
             date: request.date,
             arriveBy: request.arriveBy,
             reviewerName: ctx.user.fullName,
+            dayStarted,
             penalty: penaltyChange(lateness),
           });
         }
@@ -428,8 +451,8 @@ export const lateRequestsRouter = router({
    * решения стираются — так требует инвариант БД «решён руководством ⇒ есть
    * рецензент». Кто и когда снял, остаётся в журнале (`late.withdrawn`); в
    * группу снятие не пишется — как и снятие выходного. Сотрудник узнаёт
-   * сразу: он рассчитывал на «приду к». Если день уже наступил и отметка
-   * была, опоздание пересчитывается от графика.
+   * сразу: он рассчитывал на «приду к». Если день уже наступил, опоздание
+   * за него возвращается к тому, каким было до одобрения (`lateness.service`).
    */
   withdraw: managementProcedure
     .input(z.object({ id: idSchema }))
@@ -441,19 +464,35 @@ export const lateRequestsRouter = router({
         // Замок сотрудника — до UPDATE запроса, как у одобрения.
         await lockLatenessOf(tx, request.userId);
 
-        // Статус — в самом UPDATE: двое руководителей не снимут одно согласование дважды.
+        /*
+          Статус — в самом UPDATE: двое руководителей не снимут одно
+          согласование дважды. Вместе с одобрением гаснут время решения и
+          снимок записи до одобрения — их пересчёт берёт из `request`,
+          прочитанного выше. Это то же одобрение: снимок и время решения
+          пишутся только при одобрении ждущего запроса, а снятый запрос
+          одобрить снова нельзя, так что, пока статус «одобрен» (его и
+          проверяет UPDATE), прочитанное не устарело.
+        */
         const [updated] = await tx
           .update(lateRequests)
-          .set({ status: DayOffStatus.CANCELLED, reviewedBy: null, reviewedAt: null })
+          .set({ status: DayOffStatus.CANCELLED, reviewedBy: null, reviewedAt: null, latenessBeforeApproval: null })
           .where(and(eq(lateRequests.id, input.id), eq(lateRequests.status, DayOffStatus.APPROVED)))
           .returning();
         if (updated === undefined) throw notApproved();
 
         // Пересчёт — до журнала и уведомления, как у одобрения.
-        const lateness = await recomputeIfDayStarted(tx, request, 'withdrawn', {
-          actorId: ctx.user.id,
-          ipAddress: ctx.ipAddress,
-        });
+        const lateness = await recomputeIfDayStarted(
+          tx,
+          request,
+          dayHasStarted(request.date),
+          {
+            mode: 'withdrawn',
+            lateRequestId: request.id,
+            approvedAt: request.reviewedAt,
+            beforeApproval: request.latenessBeforeApproval,
+          },
+          { actorId: ctx.user.id, ipAddress: ctx.ipAddress },
+        );
 
         await recordAudit(tx, {
           actorId: ctx.user.id,

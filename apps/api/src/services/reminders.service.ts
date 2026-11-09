@@ -19,6 +19,7 @@ import { sellerUserIds, terminalChecksToday } from '../routers/terminalChecks.ro
 import { recordAudit } from './audit.service';
 import { notifyShiftAdjusted, notifyTerminalCheckDue } from './notifications.service';
 import { workshopPeriodStarts } from './periods';
+import { scheduledShiftEndOn } from './shiftSchedule';
 import { isTelegramGroupEnabled, sendTelegramGroupMessage } from './telegram.service';
 
 /** Время по Ташкенту, в которое продавцам напоминают о терминальных чеках. */
@@ -315,17 +316,7 @@ async function remindAboutShift(executor: DbExecutor, kind: ShiftReminderKind, n
 async function closeForgottenShifts(executor: DbExecutor): Promise<void> {
   const threshold = new Date(Date.now() - SHIFT_FORGOTTEN_AFTER_HOURS * 60 * 60 * 1000);
   const forgotten = await executor
-    .select({
-      id: shifts.id,
-      userId: shifts.userId,
-      startedAt: shifts.startedAt,
-      // Конец смены по графику из условий оплаты — если он назначен.
-      shiftEnd: sql<string | null>`(
-        select s.shift_end from payroll_schemes s
-        where s.user_id = ${shifts.userId} and s.is_active = true and s.shift_end is not null
-        order by s.effective_from desc limit 1
-      )`,
-    })
+    .select({ id: shifts.id, userId: shifts.userId, startedAt: shifts.startedAt })
     .from(shifts)
     .where(and(isNull(shifts.endedAt), lt(shifts.startedAt, threshold)));
 
@@ -334,8 +325,17 @@ async function closeForgottenShifts(executor: DbExecutor): Promise<void> {
       Конец — по графику, если он есть и позже начала: смена «с 09:00 до
       18:00», забытая в 09:10, закрывается в 18:00, а не в 21:10. Графика
       нет — двенадцать часов от начала.
+
+      График — тот, что действовал в день смены (`scheduledShiftEndOn`), по
+      тому же правилу, по которому этот день считает опоздание. Раньше брался
+      конец действующей схемы с самой поздней датой начала: смена, забытая
+      до смены графика, закрывалась по новому графику, а схема, назначенная
+      с будущей даты, закрывала сегодняшнюю смену по графику, который ещё не
+      начал действовать. Запрос на каждую смену — не беда: забытых смен за
+      тик единицы, и закрытая из выборки уходит.
     */
-    const endedAt = plannedEnd(shift.startedAt, shift.shiftEnd) ?? new Date(shift.startedAt.getTime() + SHIFT_AUTO_CLOSE_AFTER_HOURS * 60 * 60 * 1000);
+    const shiftEnd = await scheduledShiftEndOn(executor, shift.userId, workshopDayIso(shift.startedAt));
+    const endedAt = plannedEnd(shift.startedAt, shiftEnd) ?? new Date(shift.startedAt.getTime() + SHIFT_AUTO_CLOSE_AFTER_HOURS * 60 * 60 * 1000);
     await executor
       .update(shifts)
       .set({ endedAt, adjustedAt: new Date(), adjustmentReason: SHIFT_AUTO_CLOSE_REASON })

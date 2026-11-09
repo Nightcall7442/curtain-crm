@@ -15,15 +15,18 @@ import {
   DayOffStatus,
   effectiveShiftStart,
   isDisciplineViolation,
+  LATE_DISCIPLINE_KINDS,
+  latenessBeforeApprovalSchema,
   workshopClockTime,
   workshopDayIso,
   type DisciplineAuditReason as DisciplineAuditReasonCode,
   type DisciplineKind as DisciplineKindName,
+  type LatenessApprovalChange,
+  type LatenessBeforeApproval,
   type Locale,
 } from '@curtain-crm/shared';
 import { TRPCError } from '@trpc/server';
-import { and, asc, desc, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { and, asc, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
 
 import { SYSTEM_AUTHOR_RU } from '../lib/notificationTranslations';
 import { recordAudit } from './audit.service';
@@ -124,26 +127,20 @@ export function storedLateMinutes(description: string | null): number | null {
 /**
  * Время отметки из пояснения, записанного системой («отметка в 09:05»); чужой текст — `null`.
  *
- * Пересчёт после решения по запросу оценивает именно его, а не начало
- * смены в базе: смену после отметки мог передвинуть руководитель
- * (`shifts.adjustManually`), а ручная правка смены опоздание не питает. Без
- * этого снятие согласования считало опоздание от перенесённого начала —
- * отметка в 09:05, смена перенесена на 10:30, и штраф вырастал до «90 мин»,
- * которых отметка никогда не показывала. Пересчёт переписывает пояснение,
- * но время отметки в нём сохраняет, так что оно переживает любое число
- * одобрений и снятий.
+ * Пересчёт после одобрения оценивает именно его, а не начало смены в базе:
+ * смену после отметки мог передвинуть руководитель (`shifts.adjustManually`),
+ * а ручная правка смены опоздание не питает. Без этого отметка в 09:05 при
+ * смене, перенесённой на 10:30, и «приду к 09:30» оставляли бы штраф, хотя
+ * человек пришёл вовремя. Пересчёт переписывает пояснение, но время отметки
+ * в нём сохраняет, так что оно переживает любое число одобрений.
  */
 export function storedCheckInTime(description: string | null): string | null {
   if (description === null) return null;
   return STORED_LATENESS.exec(description)?.[2] ?? null;
 }
 
-/** Виды опоздания — из них система пишет запись сама; остальное в дисциплине — руками руководства. */
-const LATE_KINDS: readonly DisciplineKindName[] = [
-  DisciplineKind.LATE_UNDER_15,
-  DisciplineKind.LATE_15_30,
-  DisciplineKind.LATE_OVER_30,
-];
+/** Виды опоздания — из них система пишет запись сама (общий список, `LATE_DISCIPLINE_KINDS`). */
+const LATE_KINDS: readonly DisciplineKindName[] = LATE_DISCIPLINE_KINDS;
 
 /** Вид — опоздание: такую запись система ведёт сама, и её правка руками пересчитывает повторы месяца. */
 export function isLateKind(kind: DisciplineKindName): boolean {
@@ -537,40 +534,35 @@ interface LatenessFacts {
   readonly approvedArriveBy: string | null;
 }
 
-/** Объяснение сотрудника к опозданию — с моментом, когда он его дал. */
-interface Explanation {
-  readonly comment: string;
-  readonly at: Date | null;
+/** Новая запись системы: её место (id, вид) нужно пересчёту повторов, уведомление — роутеру. */
+interface CreatedLateness {
+  readonly id: number;
+  readonly kind: DisciplineKindName;
+  readonly notice: DisciplineRecordedNotice;
 }
 
 /**
- * Записать опоздание от имени системы — один путь для отметки и пересчёта.
+ * Оценить и записать опоздание от имени системы — при отметке и при снятии согласования.
  *
  * Вид, повтор, балл и пояснение считаются одинаково, где бы опоздание ни
- * появилось. `recomputed` — запись сделана при пересмотре запроса, а не
- * при отметке: в группу её второй раз не пишем (см. `groupFeed.service`).
- * `explanation` — объяснение сотрудника, которое вернулось вместе с
- * записью при снятии согласования (см. `explanationRemovedByReview`).
+ * появилось. `lateRequestId` — запись сделана при снятии согласования этого
+ * запроса, а не при отметке: в группу её второй раз не пишем (`recomputed`,
+ * см. `groupFeed.service`), а в журнале видно, по какому запросу.
  *
  * Сотрудник узнаёт о записи в любом случае, но не всегда отсюда.
  * Уведомление сразу уходит и в Telegram, не дожидаясь коммита. При отметке
- * запись — последний шаг, и `notify` сообщает сразу. При пересчёте после
- * снятия согласования за ней ещё пересчёт повторов, журнал и уведомление
- * о снятии; упади что-то из них (хоть взаимная блокировка), транзакция
- * откатится, а сотрудник уже прочтёт в Telegram о штрафе, которого нет.
- * Тогда `notify: false`, и текст возвращается вызывающему — отправить
- * последним шагом.
+ * запись — последний шаг, и `notify` сообщает сразу. При снятии
+ * согласования за ней ещё пересчёт повторов, журнал и уведомление о снятии;
+ * упади что-то из них (хоть взаимная блокировка), транзакция откатится, а
+ * сотрудник уже прочтёт в Telegram о штрафе, которого нет. Тогда
+ * `notify: false`, и текст возвращается вызывающему — отправить последним
+ * шагом.
  */
 async function insertAutomaticLateness(
   executor: DbExecutor,
   facts: LatenessFacts,
-  options: {
-    readonly recomputed: boolean;
-    readonly notify: boolean;
-    readonly ipAddress: string | null;
-    readonly explanation: Explanation | null;
-  },
-): Promise<{ readonly id: number; readonly kind: DisciplineKindName; readonly notice: DisciplineRecordedNotice }> {
+  options: { readonly lateRequestId: number | null; readonly notify: boolean; readonly ipAddress: string | null },
+): Promise<CreatedLateness> {
   const { kind, isRepeat, points } = await gradeLateness(executor, facts);
 
   const [created] = await executor
@@ -582,8 +574,6 @@ async function insertAutomaticLateness(
       isRepeat,
       occurredOn: facts.day,
       description: latenessDescription(facts.shiftStart, facts.actual, facts.lateBy),
-      employeeComment: options.explanation?.comment ?? null,
-      employeeCommentAt: options.explanation?.at ?? null,
       recordedBy: facts.userId,
     })
     .returning({ id: disciplineEvents.id });
@@ -604,7 +594,7 @@ async function insertAutomaticLateness(
       lateBy: facts.lateBy,
       shiftStart: facts.shiftStart,
       ...(facts.approvedArriveBy === null ? {} : { approvedArriveBy: facts.approvedArriveBy }),
-      ...(options.recomputed ? { recomputed: true } : {}),
+      ...(options.lateRequestId === null ? {} : { recomputed: true, lateRequestId: options.lateRequestId }),
       label: DISCIPLINE_KIND_LABELS_RU[kind],
     },
     ipAddress: options.ipAddress,
@@ -613,7 +603,6 @@ async function insertAutomaticLateness(
   const notice: DisciplineRecordedNotice = { kind, points, occurredOn: facts.day, recordedByName: SYSTEM_AUTHOR_RU };
   if (options.notify) await notifyDisciplineRecorded(executor, facts.userId, notice);
 
-  // Место новой записи (день, id) нужно пересчёту повторов после неё (`recountMonthRepeats`).
   return { id: created.id, kind, notice };
 }
 
@@ -626,8 +615,7 @@ async function insertAutomaticLateness(
  * (до 15 мин, 15–30, больше 30) и с тем же правилом повтора. Одно на день
  * и только по первой отметке: вторая смена после отлучки опозданием не
  * считается, даже если первая была вовремя. График — тот, что действует в
- * день отметки (`scheduledShiftStartOn`), — тот же, по которому день потом
- * пересчитывается.
+ * день отметки (`scheduledShiftStartOn`).
  *
  * Отметился раньше или вовремя — ничего не пишем: «пришёл вовремя» и есть
  * норма, а не заслуга.
@@ -684,7 +672,7 @@ export async function recordLatenessIfAny(
   await insertAutomaticLateness(
     executor,
     { userId, day, shiftStart, actual, lateBy, approvedArriveBy: arriveBy },
-    { recomputed: false, notify: true, ipAddress, explanation: null },
+    { lateRequestId: null, notify: true, ipAddress },
   );
 }
 
@@ -693,19 +681,17 @@ export async function recordLatenessIfAny(
  *
  * Прощение — это когда руководитель убрал запись, которую сделала система
  * при отметке. Если он стёр свою же ошибочную ручную запись, он ничего не
- * прощал: при снятии согласования опоздание по отметке должно вернуться.
- * Поэтому `discipline.remove` пишет в журнал, чья была запись (`recordedBy`;
- * `auto` — запись системы, `recordedBy` = сам сотрудник), и здесь
- * считается только удаление записи системы.
+ * прощал. Поэтому `discipline.remove` пишет в журнал, чья была запись
+ * (`recordedBy`; `auto` — запись системы, `recordedBy` = сам сотрудник), и
+ * здесь считается только удаление записи системы.
  *
  * Удаление, которое сделал сам пересчёт, отмечено кодом причины
  * `late_request_review`: его делает правило, а не человек. Отличаем по
- * коду, а не по `auto` — у ручного удаления записи системы `auto` теперь
- * тоже `true`.
+ * коду, а не по `auto` — у ручного удаления записи системы `auto` тоже
+ * `true`.
  *
- * Старые ручные удаления (до этого изменения) `recordedBy` не несут, и
- * чья была запись, уже не узнать. Их по-прежнему считаем прощением —
- * осторожно: лучше не вернуть штраф, чем вернуть прощённый.
+ * Ручные удаления без `recordedBy` (так их писали раньше) считаем
+ * прощением — осторожно: лучше не вернуть штраф, чем вернуть прощённый.
  */
 async function forgivenByHand(executor: DbExecutor, userId: number, day: string): Promise<boolean> {
   const [removal] = await executor
@@ -730,99 +716,36 @@ async function forgivenByHand(executor: DbExecutor, userId: number, day: string)
 }
 
 /**
- * Объяснение сотрудника в журнале снятия — так его пишет `removeAutomaticLateness`.
+ * Решение по запросу — с тем, что пересчёту дня нужно о самом запросе.
  *
- * Момента объяснения в снятиях до этого изменения нет — тогда объяснение
- * возвращается без него. Чужой формат пересчёт не роняет: объяснения
- * просто нет.
+ * У снятия согласования — то, каким было одобрение, ДО того как его сняли
+ * (роутер читает строку запроса до UPDATE, который это стирает):
+ *  - `approvedAt` — когда запрос одобрили (`reviewed_at`); `null` быть не
+ *    должно — одобренный запрос без него не даст сохранить сама база;
+ *  - `beforeApproval` — снимок записи дня до одобрения
+ *    (`late_requests.lateness_before_approval`) как он лежит в `jsonb`, ещё
+ *    не разобранный: разбирает его схема здесь (`parseBeforeApproval`).
  */
-const removedExplanationSchema = z.object({
-  employeeComment: z.string().min(1),
-  employeeCommentAt: z.string().datetime().nullish(),
-});
-
-/**
- * Объяснение, снятое вместе с записью дня при пересмотре запроса; нет — `null`.
- *
- * Одобрение сняло запись — вместе с ней ушло и объяснение сотрудника
- * (`discipline.explain`). Снятие согласования создаёт запись заново, и без
- * этого она приходила пустой: человек объяснил опоздание, а после
- * одобрения и снятия руководитель видел штраф без объяснения. Берётся
- * последнее снятие записи за этот день, сделанное пересмотром (код
- * `late_request_review`): за день у системы одна запись, и это снятие —
- * того самого опоздания, которое сейчас возвращается.
- */
-async function explanationRemovedByReview(
-  executor: DbExecutor,
-  userId: number,
-  day: string,
-): Promise<Explanation | null> {
-  const [removal] = await executor
-    .select({ details: auditLog.details })
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.action, 'discipline.removed'),
-        eq(auditLog.entityType, 'discipline_event'),
-        sql`${auditLog.details}->>'userId' = ${userId.toString()}`,
-        sql`${auditLog.details}->>'occurredOn' = ${day}`,
-        inArray(sql`${auditLog.details}->>'kind'`, [...LATE_KINDS]),
-        sql`${auditLog.details}->>'reason' = ${DisciplineAuditReason.LATE_REQUEST_REVIEW}`,
-      ),
-    )
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  const parsed = removedExplanationSchema.safeParse(removal?.details);
-  if (!parsed.success) return null;
-  const at = parsed.data.employeeCommentAt;
-  return { comment: parsed.data.employeeComment, at: at === null || at === undefined ? null : new Date(at) };
-}
-
-/** Убрать запись системы при пересмотре — с журналом; в группу удаление не идёт. */
-async function removeAutomaticLateness(
-  executor: DbExecutor,
-  event: DisciplineEvent,
-  actor: ReviewActor,
-): Promise<void> {
-  await executor.delete(disciplineEvents).where(eq(disciplineEvents.id, event.id));
-  await recordAudit(executor, {
-    actorId: actor.actorId,
-    action: 'discipline.removed',
-    entityType: 'discipline_event',
-    entityId: event.id,
-    details: {
-      userId: event.userId,
-      kind: event.kind,
-      points: event.points,
-      occurredOn: event.occurredOn,
-      // Объяснение сотрудника уходит вместе с записью; снятие согласования
-      // вернёт его отсюда вместе с записью (`explanationRemovedByReview`).
-      employeeComment: event.employeeComment,
-      employeeCommentAt: event.employeeCommentAt,
-      recordedBy: event.recordedBy,
-      auto: true,
-      // По этому коду `forgivenByHand` отличает снятие правилом от прощения руками.
-      reason: DisciplineAuditReason.LATE_REQUEST_REVIEW,
-    },
-    ipAddress: actor.ipAddress,
-  });
-}
-
-/** Решение по запросу, после которого пересчитывается опоздание. */
-export type LateReviewMode = 'approved' | 'withdrawn';
+export type LateReview =
+  | { readonly mode: 'approved'; readonly lateRequestId: number }
+  | {
+      readonly mode: 'withdrawn';
+      readonly lateRequestId: number;
+      readonly approvedAt: Date | null;
+      readonly beforeApproval: unknown;
+    };
 
 /**
  * Чем кончился пересчёт — роутеру, чтобы сказать сотруднику:
  *  - `none` — пересчитывать нечего (нет графика на этот день, нет записи и
  *    создавать её не положено или не из чего);
  *  - `unchanged` — запись осталась как была, `minutes` — сколько в ней
- *    записано (`null`, если пояснение не разобрать). Так же — когда
- *    одобрение сделало бы запись строже и когда время отметки не
- *    восстановить: тогда её не трогаем;
- *  - `removed` — запись снята, `minutes` — сколько было (`null`, если
- *    пояснение не разобрать);
- *  - `adjusted` — запись поправлена на месте: другое число минут, вид, балл;
- *  - `created` — запись появилась заново (только при снятии согласования).
+ *    записано (`null`, если пояснение не разобрать);
+ *  - `removed` — запись снята, `minutes` — сколько было;
+ *  - `adjusted` — запись поправлена на месте: при одобрении — пересчитана
+ *    мягче, при снятии — возвращена к тому, какой была до одобрения;
+ *    `toMinutes` — сколько в ней теперь (`null`, если пояснение не разобрать);
+ *  - `created` — запись появилась (только при снятии согласования).
  *    `notice` — уведомление о ней: его отправляет роутер последним шагом
  *    решения, после журнала и уведомления о снятии (см.
  *    `insertAutomaticLateness`).
@@ -831,23 +754,45 @@ export type LatenessRecomputeOutcome =
   | { readonly kind: 'none' }
   | { readonly kind: 'unchanged'; readonly minutes: number | null }
   | { readonly kind: 'removed'; readonly minutes: number | null }
-  | { readonly kind: 'adjusted'; readonly fromMinutes: number | null; readonly toMinutes: number }
-  | { readonly kind: 'created'; readonly minutes: number; readonly notice: DisciplineRecordedNotice };
+  | { readonly kind: 'adjusted'; readonly fromMinutes: number | null; readonly toMinutes: number | null }
+  | { readonly kind: 'created'; readonly minutes: number | null; readonly notice: DisciplineRecordedNotice };
 
 const NONE: LatenessRecomputeOutcome = { kind: 'none' };
+
+/** Запись осталась как была — или её нет вовсе. */
+function keptAsIs(kept: DisciplineEvent | undefined): LatenessRecomputeOutcome {
+  return kept === undefined ? NONE : { kind: 'unchanged', minutes: storedLateMinutes(kept.description) };
+}
 
 /**
  * Сделало бы одобрение запись строже: минут больше, чем в ней записано, или балл строже.
  *
  * Минут из пояснения может не быть (текст не разобрать) — тогда судим
  * только по баллу. Одобрение — уступка сотруднику; если оно выходит хуже
- * записанного, пересчёт оставляет запись как есть (см. `recomputeLatenessForDay`).
+ * записанного, пересчёт оставляет запись как есть (см. `applyApproval`).
  */
 export function approvalWorsens(
   kept: { readonly minutes: number | null; readonly points: number },
   next: { readonly minutes: number; readonly points: number },
 ): boolean {
   return (kept.minutes !== null && next.minutes > kept.minutes) || next.points < kept.points;
+}
+
+/**
+ * Тяжелее ли опоздание от графика записанного от «приду к»: балл не мягче, а минут больше или балл строже.
+ *
+ * Для снятия согласования, когда отметку оценивали уже от одобренного
+ * «приду к» (`undoApprovalAtCheckIn`): снятие убирает уступку, и запись
+ * может только потяжелеть. Вышло бы мягче хоть в чём-то — скажем, больше
+ * минут, но балл мягче, потому что запись в прежней ступени была повтором,
+ * — запись остаётся: снятие согласования штраф не снижает.
+ */
+export function withdrawalRaises(
+  kept: { readonly minutes: number | null; readonly points: number },
+  next: { readonly minutes: number; readonly points: number },
+): boolean {
+  if (next.points > kept.points) return false;
+  return next.points < kept.points || (kept.minutes !== null && next.minutes > kept.minutes);
 }
 
 /** Какой должна стать запись системы за день: ступень и пояснение. */
@@ -870,184 +815,189 @@ async function latenessTarget(
   return { ...grade, description: latenessDescription(facts.shiftStart, facts.actual, facts.lateBy) };
 }
 
-/** Порог дня для пересмотра: начало с учётом одобренного «приду к» и само «приду к». */
-interface DayThreshold {
-  readonly shiftStart: string;
-  readonly approvedArriveBy: string | null;
-}
-
-/** Пересмотр одного дня: чей, кто решил и по каким правилам пересчитывать повторы. */
+/** Пересмотр одного дня: чей, по какому запросу и кто решил. */
 interface DayReview {
   readonly userId: number;
   readonly day: string;
+  readonly lateRequestId: number;
   readonly actor: ReviewActor;
-  readonly repeats: { readonly reason: DisciplineAuditReasonCode; readonly policy: RepeatRecountPolicy };
 }
 
-/**
- * Снятие согласования, а записи за день нет: вернуть опоздание по первой отметке дня.
- *
- * Только если оно было: первая отметка дня — самая ранняя по времени
- * отметки и без более ранней смены в её момент, как её оценивала сама
- * отметка (`firstCheckInOnDay`, а не первая смена по нынешнему началу), —
- * опоздала по порогу дня, руководитель опоздание не простил руками, и
- * опоздания, записанного им самим, за день нет. Объяснение сотрудника,
- * снятое вместе с записью при одобрении, возвращается с ней.
- */
-async function recreateLateness(
+/** Повторы месяца после правки записи дня — с кодом причины пересмотра запроса. */
+async function recountAfterReview(
   executor: DbExecutor,
   review: DayReview,
-  threshold: DayThreshold,
-): Promise<LatenessRecomputeOutcome> {
-  const checkIn = await firstCheckInOnDay(executor, review.userId, review.day);
-  if (checkIn === null) return NONE;
-  const actual = workshopClockTime(checkIn);
-  const lateBy = clockMinutes(actual) - clockMinutes(threshold.shiftStart);
-  if (lateBy <= 0) return NONE;
-  if (await forgivenByHand(executor, review.userId, review.day)) return NONE;
-  if (await hasLatenessOnDay(executor, review.userId, review.day)) return NONE;
-
-  // Уведомление — не отсюда: роутер отправит его последним шагом (см. `insertAutomaticLateness`).
-  const created = await insertAutomaticLateness(
-    executor,
-    {
-      userId: review.userId,
-      day: review.day,
-      shiftStart: threshold.shiftStart,
-      actual,
-      lateBy,
-      approvedArriveBy: threshold.approvedArriveBy,
-    },
-    {
-      recomputed: true,
-      notify: false,
-      ipAddress: review.actor.ipAddress,
-      explanation: await explanationRemovedByReview(executor, review.userId, review.day),
-    },
-  );
+  edits: readonly RepeatEdit[],
+  policy: RepeatRecountPolicy,
+): Promise<void> {
   await recountMonthRepeats(
     executor,
-    { userId: review.userId, edits: [{ occurredOn: review.day, id: created.id, from: null, to: created.kind }] },
+    { userId: review.userId, edits },
     review.actor,
-    review.repeats,
+    { reason: DisciplineAuditReason.LATE_REQUEST_REVIEW, policy },
   );
-  return { kind: 'created', minutes: lateBy, notice: created.notice };
 }
 
-/**
- * Пересчитать опоздание за день после решения по запросу на опоздание.
- *
- * Опоздание пишется при отметке, а руководитель нередко согласует «приду к
- * 10:30» уже после неё — в том числе задним числом, чтобы простить
- * опоздание. Без пересчёта одобрение ничего бы не меняло. То же при снятии
- * согласования — опоздание снова считается от графика.
- *
- * Главное правило: одобрение может только смягчить или снять штраф, а
- * снятие согласования возвращает день к тому, каким он был бы без
- * одобрения, — по отметке и графику этого дня. Если сам график этого дня
- * поменяли задним числом (схемой с той же или более ранней датой начала),
- * снятие считает уже по нему: другого графика на этот день у системы нет.
- * Отсюда:
- *  - график — тот, что действовал в этот день (`scheduledShiftStartOn`), а
- *    не нынешний: смена графика после отметки прошлый день не переписывает.
- *    Графика на этот день нет — ничего не трогаем: запись, сделанная
- *    раньше, остаётся (стереть штраф молча нельзя);
- *  - трогаем только записи системы (`recorded_by` — сам сотрудник);
- *    опоздание, записанное руководителем руками, — его решение;
- *  - одобрение только сдвигает порог позже и штраф НЕ создаёт никогда:
- *    смену мог завести руководитель (отметки не было, опоздание не
- *    оценивалось), или он уже простил опоздание (`discipline.remove`);
- *  - оценивается время ОТМЕТКИ, а не начало смены в базе: смену после
- *    отметки мог передвинуть руководитель (`shifts.adjustManually`), а
- *    ручная правка смены опоздание не питает. Есть запись системы — время
- *    берётся из её пояснения («отметка в 09:05», `storedCheckInTime`); нет
- *    записи — первая отметка дня (`firstCheckInOnDay`). Не восстановить
- *    время отметки — запись остаётся как есть;
- *  - одобрение только смягчает и уже записанное: вышло бы больше минут или
- *    балл строже — запись остаётся как была, без журнала и без
- *    «пересчитано» в уведомлении. Так бывает, когда график ЭТОГО дня
- *    поменяли после отметки (схема с этой же или более ранней датой
- *    начала): отметка в 09:10 при смене с 09:00 (10 мин, −0,5), график дня
- *    переназначили на 08:00, «приду к 08:30» дало бы 40 мин, −2; или когда
- *    запись ушла бы в ступень, где она — повтор;
- *  - снятие согласования создаёт запись заново, только если её не простили
- *    руками и первая отметка дня по своему времени опоздала — та, что
- *    оценивалась при отметке (см. `recreateLateness`); объяснение
- *    сотрудника, снятое вместе с записью при одобрении, возвращается с ней
- *    (из журнала снятия);
- *  - запись правится на месте, а не удаляется и создаётся снова: так
- *    объяснение сотрудника (`discipline.explain`) остаётся при ней;
- *  - повторы того же вида в месяце пересчитываются: простили первое
- *    опоздание — второе уже не повтор. Но только там, где правка этого дня
- *    меняет, было ли раньше такое же (`recountRepeats`).
- *
- * Повторы после одобрения — тоже только мягче (`lower_only`). Снятая запись
- * или та же ступень с меньшими минутами более поздние дни только смягчают.
- * Но запись, ушедшая ступенью ниже (25 мин → 10 мин), в новой ступени
- * становится более ранним событием, и более позднее опоздание той же
- * ступени стало бы повтором — строже из-за одобрения совсем другого дня
- * (−0,5 → −1,5, больше, чем сэкономило само одобрение). Такую правку после
- * одобрения не делаем; снятие согласования и ручная правка пересчитывают
- * строго.
- *
- * Снятие и правка записи — в журнал от имени решившего (`discipline.removed`
- * / `discipline.adjusted`), в группу они не идут.
- */
-export async function recomputeLatenessForDay(
-  executor: DbExecutor,
-  input: {
-    readonly userId: number;
-    readonly day: string;
-    readonly mode: LateReviewMode;
-    /** Кто решил запрос: правки записи в журнале — на нём. */
-    readonly actorId: number;
-    readonly ipAddress: string | null;
-  },
-): Promise<LatenessRecomputeOutcome> {
-  // Замок — до первого чтения (см. `lockLatenessOf`). Роутер берёт его ещё
-  // до UPDATE запроса; здесь — на случай другого вызывающего.
-  await lockLatenessOf(executor, input.userId);
-
-  const review: DayReview = {
-    userId: input.userId,
-    day: input.day,
-    actor: { actorId: input.actorId, ipAddress: input.ipAddress },
-    repeats: {
-      reason: DisciplineAuditReason.LATE_REQUEST_REVIEW,
-      policy: input.mode === 'approved' ? 'lower_only' : 'any',
-    },
-  };
-
-  const scheduledStart = await scheduledShiftStartOn(executor, input.userId, input.day);
-  if (scheduledStart === null) return NONE;
-
-  // Под блокировкой: объяснение сотрудника или ручное удаление посреди пересчёта не потеряются.
-  const existing = await executor
+/** Записи системы об опоздании за день — под блокировкой: объяснение или ручное удаление посреди пересчёта не потеряются. */
+async function automaticLatenessOn(executor: DbExecutor, userId: number, day: string): Promise<DisciplineEvent[]> {
+  return executor
     .select()
     .from(disciplineEvents)
     .where(
       and(
-        eq(disciplineEvents.userId, input.userId),
-        eq(disciplineEvents.occurredOn, input.day),
+        eq(disciplineEvents.userId, userId),
+        eq(disciplineEvents.occurredOn, day),
         inArray(disciplineEvents.kind, [...LATE_KINDS]),
-        eq(disciplineEvents.recordedBy, input.userId),
+        eq(disciplineEvents.recordedBy, userId),
       ),
     )
     .orderBy(asc(disciplineEvents.id))
     .for('update');
+}
 
-  const arriveBy = await approvedArriveBy(executor, input.userId, input.day);
-  const threshold: DayThreshold = {
-    shiftStart: effectiveShiftStart(scheduledStart, arriveBy),
-    approvedArriveBy: arriveBy,
-  };
+/** Убрать запись системы при одобрении — с журналом; в группу удаление не идёт. */
+async function removeAutomaticLateness(executor: DbExecutor, event: DisciplineEvent, review: DayReview): Promise<void> {
+  await executor.delete(disciplineEvents).where(eq(disciplineEvents.id, event.id));
+  await recordAudit(executor, {
+    actorId: review.actor.actorId,
+    action: 'discipline.removed',
+    entityType: 'discipline_event',
+    entityId: event.id,
+    details: {
+      userId: event.userId,
+      kind: event.kind,
+      points: event.points,
+      occurredOn: event.occurredOn,
+      // Объяснение — для истории: вернёт его снятие согласования из снимка в запросе, а не отсюда.
+      employeeComment: event.employeeComment,
+      employeeCommentAt: event.employeeCommentAt,
+      recordedBy: event.recordedBy,
+      auto: true,
+      // По этому коду `forgivenByHand` отличает снятие правилом от прощения руками.
+      reason: DisciplineAuditReason.LATE_REQUEST_REVIEW,
+      lateRequestId: review.lateRequestId,
+    },
+    ipAddress: review.actor.ipAddress,
+  });
+}
 
-  const [kept, ...duplicates] = existing;
+/**
+ * Поправить запись системы на месте — с журналом от имени решившего; в группу правка не идёт.
+ *
+ * Объяснение сотрудника (`employee_comment`) не трогаем: оно о том же опоздании.
+ */
+async function adjustAutomaticLateness(
+  executor: DbExecutor,
+  review: DayReview,
+  kept: DisciplineEvent,
+  next: LatenessTarget & { readonly shiftStart: string; readonly approvedArriveBy: string | null; readonly lateBy: number },
+): Promise<void> {
+  await executor
+    .update(disciplineEvents)
+    .set({ kind: next.kind, isRepeat: next.isRepeat, points: next.points.toFixed(1), description: next.description })
+    .where(eq(disciplineEvents.id, kept.id));
+  await recordAudit(executor, {
+    actorId: review.actor.actorId,
+    action: 'discipline.adjusted',
+    entityType: 'discipline_event',
+    entityId: kept.id,
+    details: {
+      userId: review.userId,
+      occurredOn: review.day,
+      auto: true,
+      reason: DisciplineAuditReason.LATE_REQUEST_REVIEW,
+      lateRequestId: review.lateRequestId,
+      shiftStart: next.shiftStart,
+      ...(next.approvedArriveBy === null ? {} : { approvedArriveBy: next.approvedArriveBy }),
+      from: {
+        kind: kept.kind,
+        points: Number.parseFloat(kept.points),
+        isRepeat: kept.isRepeat,
+        lateBy: storedLateMinutes(kept.description),
+      },
+      to: { kind: next.kind, points: next.points, isRepeat: next.isRepeat, lateBy: next.lateBy },
+    },
+    ipAddress: review.actor.ipAddress,
+  });
+}
 
-  if (kept === undefined) {
-    // Одобрение штраф не создаёт никогда (см. выше).
-    return input.mode === 'approved' ? NONE : recreateLateness(executor, review, threshold);
-  }
+/* -------------------------------------------------------------------------- */
+/*  Одобрение: только мягче, и запомнить, какой запись была                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Запись дня целиком — какой она была до одобрения.
+ *
+ * Проверяется схемой и при записи, а не только при чтении: снимок, который
+ * потом не разобрать, сорвал бы снятие согласования; пусть лучше сразу не
+ * пройдёт одобрение.
+ */
+function snapshotOf(row: DisciplineEvent, change: LatenessApprovalChange): LatenessBeforeApproval {
+  return latenessBeforeApprovalSchema.parse({
+    change,
+    row: {
+      id: row.id,
+      kind: row.kind,
+      isRepeat: row.isRepeat,
+      points: row.points,
+      description: row.description,
+      employeeComment: row.employeeComment,
+      employeeCommentAt: row.employeeCommentAt?.toISOString() ?? null,
+      occurredOn: row.occurredOn,
+    },
+  });
+}
+
+/** Запомнить в запросе, какой была запись дня до его одобрения (см. `latenessBeforeApprovalSchema`). */
+async function rememberBeforeApproval(
+  executor: DbExecutor,
+  lateRequestId: number,
+  snapshot: LatenessBeforeApproval,
+): Promise<void> {
+  await executor
+    .update(lateRequests)
+    .set({ latenessBeforeApproval: snapshot })
+    .where(eq(lateRequests.id, lateRequestId));
+}
+
+/**
+ * Одобрение: смягчить или снять запись системы за день — и запомнить, какой она была.
+ *
+ *  - график — тот, что действовал в этот день (`scheduledShiftStartOn`);
+ *    графика нет — ничего не трогаем: стереть штраф молча нельзя;
+ *  - трогаем только записи системы (`recorded_by` — сам сотрудник);
+ *    опоздание, записанное руководителем руками, — его решение;
+ *  - штраф одобрение НЕ создаёт никогда: смену мог завести руководитель
+ *    (отметки не было), или он уже простил опоздание (`discipline.remove`);
+ *  - оценивается время ОТМЕТКИ, а не начало смены в базе: оно в пояснении
+ *    записи («отметка в 09:05», `storedCheckInTime`), запасной путь — первая
+ *    отметка дня (`firstCheckInOnDay`); не восстановить — запись остаётся;
+ *  - вышло бы больше минут или балл строже (`approvalWorsens`) — запись
+ *    остаётся как была, без журнала и без «пересчитано» в уведомлении. Так
+ *    бывает, когда график этого дня поменяли после отметки (схема с этой же
+ *    или более ранней датой начала), или запись ушла бы в ступень, где она —
+ *    повтор;
+ *  - запись правится на месте, а не удаляется и создаётся снова: так
+ *    объяснение сотрудника (`discipline.explain`) остаётся при ней;
+ *  - поправленная или снятая запись запоминается целиком в запросе
+ *    (`rememberBeforeApproval`) — по этому снимку снятие согласования вернёт
+ *    её ровно такой;
+ *  - повторы месяца — только мягче (`lower_only`) и только там, где правка
+ *    этого дня меняет, было ли раньше такое же (`recountRepeats`). Запись,
+ *    ушедшая ступенью ниже (25 мин → 10 мин), в новой ступени становится
+ *    более ранним событием, и более позднее опоздание той же ступени стало
+ *    бы повтором — строже из-за одобрения совсем другого дня. Такую правку
+ *    после одобрения не делаем.
+ */
+async function applyApproval(executor: DbExecutor, review: DayReview): Promise<LatenessRecomputeOutcome> {
+  const scheduledStart = await scheduledShiftStartOn(executor, review.userId, review.day);
+  if (scheduledStart === null) return NONE;
+
+  const [kept, ...duplicates] = await automaticLatenessOn(executor, review.userId, review.day);
+  if (kept === undefined) return NONE;
+
+  const arriveBy = await approvedArriveBy(executor, review.userId, review.day);
+  const shiftStart = effectiveShiftStart(scheduledStart, arriveBy);
 
   /*
     Время отметки — из пояснения записи: его записала сама отметка, и
@@ -1060,42 +1010,34 @@ export async function recomputeLatenessForDay(
   const fromMinutes = storedLateMinutes(kept.description);
   let actual = storedCheckInTime(kept.description);
   if (actual === null) {
-    const checkIn = await firstCheckInOnDay(executor, input.userId, input.day);
+    const checkIn = await firstCheckInOnDay(executor, review.userId, review.day);
     if (checkIn === null) return { kind: 'unchanged', minutes: fromMinutes };
     actual = workshopClockTime(checkIn);
   }
-  const lateBy = clockMinutes(actual) - clockMinutes(threshold.shiftStart);
+  const lateBy = clockMinutes(actual) - clockMinutes(shiftStart);
   const keptPoints = Number.parseFloat(kept.points);
   // Какой запись должна стать; `null` — снять: по новому порогу пришёл вовремя.
   const target =
     lateBy > 0
-      ? await latenessTarget(
-          executor,
-          { userId: input.userId, day: input.day, keptId: kept.id },
-          { shiftStart: threshold.shiftStart, actual, lateBy },
-        )
+      ? await latenessTarget(executor, { userId: review.userId, day: review.day, keptId: kept.id }, { shiftStart, actual, lateBy })
       : null;
 
-  // Одобрение хуже не делает (см. выше) — и тогда не пишем ничего: ни правки, ни журнала.
-  if (
-    input.mode === 'approved' &&
-    target !== null &&
-    approvalWorsens({ minutes: fromMinutes, points: keptPoints }, { minutes: lateBy, points: target.points })
-  ) {
+  // Одобрение хуже не делает — и тогда не пишем ничего: ни правки, ни журнала, ни снимка.
+  if (target !== null && approvalWorsens({ minutes: fromMinutes, points: keptPoints }, { minutes: lateBy, points: target.points })) {
     return { kind: 'unchanged', minutes: fromMinutes };
   }
 
   // Системное опоздание за день одно; лишние — след старой ошибки, оставляем самое раннее.
   const edits: RepeatEdit[] = [];
   for (const duplicate of duplicates) {
-    await removeAutomaticLateness(executor, duplicate, review.actor);
+    await removeAutomaticLateness(executor, duplicate, review);
     edits.push({ occurredOn: duplicate.occurredOn, id: duplicate.id, from: duplicate.kind, to: null });
   }
 
   let outcome: LatenessRecomputeOutcome;
-
   if (target === null) {
-    await removeAutomaticLateness(executor, kept, review.actor);
+    await rememberBeforeApproval(executor, review.lateRequestId, snapshotOf(kept, 'removed'));
+    await removeAutomaticLateness(executor, kept, review);
     edits.push({ occurredOn: kept.occurredOn, id: kept.id, from: kept.kind, to: null });
     outcome = { kind: 'removed', minutes: fromMinutes };
   } else if (
@@ -1106,37 +1048,369 @@ export async function recomputeLatenessForDay(
   ) {
     outcome = { kind: 'unchanged', minutes: fromMinutes };
   } else {
-    // Объяснение сотрудника (`employee_comment`) не трогаем: оно о том же опоздании.
-    await executor
-      .update(disciplineEvents)
-      .set({
-        kind: target.kind,
-        isRepeat: target.isRepeat,
-        points: target.points.toFixed(1),
-        description: target.description,
-      })
-      .where(eq(disciplineEvents.id, kept.id));
-    await recordAudit(executor, {
-      actorId: review.actor.actorId,
-      action: 'discipline.adjusted',
-      entityType: 'discipline_event',
-      entityId: kept.id,
-      details: {
-        userId: input.userId,
-        occurredOn: input.day,
-        auto: true,
-        reason: review.repeats.reason,
-        shiftStart: threshold.shiftStart,
-        ...(arriveBy === null ? {} : { approvedArriveBy: arriveBy }),
-        from: { kind: kept.kind, points: keptPoints, isRepeat: kept.isRepeat, lateBy: fromMinutes },
-        to: { kind: target.kind, points: target.points, isRepeat: target.isRepeat, lateBy },
-      },
-      ipAddress: review.actor.ipAddress,
-    });
+    await rememberBeforeApproval(executor, review.lateRequestId, snapshotOf(kept, 'adjusted'));
+    await adjustAutomaticLateness(executor, review, kept, { ...target, shiftStart, approvedArriveBy: arriveBy, lateBy });
     edits.push({ occurredOn: kept.occurredOn, id: kept.id, from: kept.kind, to: target.kind });
     outcome = { kind: 'adjusted', fromMinutes, toMinutes: lateBy };
   }
 
-  await recountMonthRepeats(executor, { userId: input.userId, edits }, review.actor, review.repeats);
+  await recountAfterReview(executor, review, edits, 'lower_only');
   return outcome;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Снятие согласования: вернуть день ровно к тому, каким он был до одобрения  */
+/* -------------------------------------------------------------------------- */
+
+/** Запись дня из снимка до одобрения. */
+type RowBeforeApproval = LatenessBeforeApproval['row'];
+
+/**
+ * Снимок до одобрения из запроса; одобрение запись не трогало — `null`.
+ *
+ * Снимок пишет только одобрение и только проверенным схемой
+ * (`snapshotOf`). Не разобрался или он о другом дне — значит, `jsonb`
+ * правили руками, и вернуть день «ровно как было» не из чего. Тогда снятие
+ * согласования не проходит вовсе: молча вывести запись заново по графику —
+ * ровно то, от чего снимок и спасает.
+ */
+function parseBeforeApproval(raw: unknown, day: string): LatenessBeforeApproval | null {
+  if (raw === null || raw === undefined) return null;
+  const parsed = latenessBeforeApprovalSchema.safeParse(raw);
+  if (!parsed.success || parsed.data.row.occurredOn !== day) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Не удалось прочитать, каким было опоздание до одобрения, — согласование не снято',
+    });
+  }
+  return parsed.data;
+}
+
+/** Момент объяснения из снимка: ISO-строка → `Date`. */
+function explainedAt(row: RowBeforeApproval): Date | null {
+  return row.employeeCommentAt === null ? null : new Date(row.employeeCommentAt);
+}
+
+/**
+ * Одобрение поправило запись — вернуть ту же строку к снимку.
+ *
+ * Без графика, без смен и без пересчёта ступени и повтора: вид, повтор,
+ * балл и пояснение — ровно из снимка. Объяснение сотрудника одобрение не
+ * трогает, а пишет его только сам сотрудник (`discipline.explain`), так что
+ * нынешнее — либо то же, что в снимке, либо новее: сотрудник объяснил
+ * опоздание уже после одобрения. Тогда остаётся нынешнее — оно о том же
+ * опоздании и свежее; нет его — из снимка.
+ *
+ * Строки уже нет — после одобрения руководитель убрал её руками, то есть
+ * простил опоздание; снятие согласования прощение не отменяет.
+ */
+async function restoreAdjusted(
+  executor: DbExecutor,
+  review: DayReview,
+  row: RowBeforeApproval,
+): Promise<LatenessRecomputeOutcome> {
+  const [current] = await executor
+    .select()
+    .from(disciplineEvents)
+    .where(and(eq(disciplineEvents.id, row.id), eq(disciplineEvents.userId, review.userId)))
+    .for('update');
+  if (current === undefined) return NONE;
+
+  const fromMinutes = storedLateMinutes(current.description);
+  if (
+    current.kind === row.kind &&
+    current.isRepeat === row.isRepeat &&
+    current.points === row.points &&
+    current.description === row.description
+  ) {
+    return { kind: 'unchanged', minutes: fromMinutes };
+  }
+
+  const explanation =
+    current.employeeComment === null
+      ? { comment: row.employeeComment, at: explainedAt(row) }
+      : { comment: current.employeeComment, at: current.employeeCommentAt };
+  await executor
+    .update(disciplineEvents)
+    .set({
+      kind: row.kind,
+      isRepeat: row.isRepeat,
+      points: row.points,
+      description: row.description,
+      occurredOn: row.occurredOn,
+      employeeComment: explanation.comment,
+      employeeCommentAt: explanation.at,
+    })
+    .where(eq(disciplineEvents.id, current.id));
+
+  const toMinutes = storedLateMinutes(row.description);
+  await recordAudit(executor, {
+    actorId: review.actor.actorId,
+    action: 'discipline.adjusted',
+    entityType: 'discipline_event',
+    entityId: current.id,
+    details: {
+      userId: review.userId,
+      occurredOn: review.day,
+      auto: true,
+      reason: DisciplineAuditReason.LATE_REQUEST_REVIEW,
+      lateRequestId: review.lateRequestId,
+      // Не пересчёт, а возврат к записи, какой она была до одобрения.
+      restored: true,
+      from: {
+        kind: current.kind,
+        points: Number.parseFloat(current.points),
+        isRepeat: current.isRepeat,
+        lateBy: fromMinutes,
+      },
+      to: { kind: row.kind, points: Number.parseFloat(row.points), isRepeat: row.isRepeat, lateBy: toMinutes },
+    },
+    ipAddress: review.actor.ipAddress,
+  });
+
+  // Повторы позже в месяце — только там, где вид этой записи меняет, было ли раньше такое же.
+  await recountAfterReview(
+    executor,
+    review,
+    [{ occurredOn: current.occurredOn, id: current.id, from: current.kind, to: row.kind }],
+    'any',
+  );
+  return { kind: 'adjusted', fromMinutes, toMinutes };
+}
+
+/**
+ * Одобрение сняло запись — вставить её заново ровно со значениями снимка.
+ *
+ * Вид, повтор, балл, пояснение, объяснение сотрудника и его момент, день —
+ * из снимка; автор — сам сотрудник, как у любой записи системы. Без
+ * графика, без смен: удалённая после одобрения смена с отметкой штраф уже не
+ * теряет. Строка новая (id больше прежнего): в порядке месяца это меняет
+ * что-то только против записей того же дня, а других опозданий за день
+ * здесь нет — см. ниже.
+ *
+ * Пока одобрение было в силе, руководитель мог записать опоздание за этот
+ * день руками — тогда второе было бы двойным штрафом, и снятие ничего не
+ * вставляет.
+ */
+async function restoreRemoved(
+  executor: DbExecutor,
+  review: DayReview,
+  row: RowBeforeApproval,
+): Promise<LatenessRecomputeOutcome> {
+  if (await hasLatenessOnDay(executor, review.userId, review.day)) return NONE;
+
+  const [created] = await executor
+    .insert(disciplineEvents)
+    .values({
+      userId: review.userId,
+      kind: row.kind,
+      points: row.points,
+      isRepeat: row.isRepeat,
+      occurredOn: row.occurredOn,
+      description: row.description,
+      employeeComment: row.employeeComment,
+      employeeCommentAt: explainedAt(row),
+      recordedBy: review.userId,
+    })
+    .returning({ id: disciplineEvents.id });
+  if (created === undefined) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Не удалось сохранить запись' });
+  }
+
+  const points = Number.parseFloat(row.points);
+  const minutes = storedLateMinutes(row.description);
+  await recordAudit(executor, {
+    actorId: review.userId,
+    action: 'discipline.recorded',
+    entityType: 'discipline_event',
+    entityId: created.id,
+    details: {
+      auto: true,
+      kind: row.kind,
+      points,
+      isRepeat: row.isRepeat,
+      lateBy: minutes,
+      // В группу второй раз не пишем (`groupFeed.service`): опоздание она уже видела.
+      recomputed: true,
+      lateRequestId: review.lateRequestId,
+      // Какую запись вернули: её сняло одобрение этого запроса.
+      restoredFrom: row.id,
+      label: DISCIPLINE_KIND_LABELS_RU[row.kind],
+    },
+    ipAddress: review.actor.ipAddress,
+  });
+
+  await recountAfterReview(
+    executor,
+    review,
+    [{ occurredOn: row.occurredOn, id: created.id, from: null, to: row.kind }],
+    'any',
+  );
+  // Уведомление — не отсюда: роутер отправит его последним шагом (см. `insertAutomaticLateness`).
+  const notice: DisciplineRecordedNotice = { kind: row.kind, points, occurredOn: row.occurredOn, recordedByName: SYSTEM_AUTHOR_RU };
+  return { kind: 'created', minutes, notice };
+}
+
+/**
+ * Снимка нет: одобрение запись дня не трогало — повлиять оно могло только на саму отметку.
+ *
+ * Отметку, сделанную ПОСЛЕ одобрения, оценивали уже от «приду к»: пришла в
+ * 09:50 при «приду к 10:00» — записи нет; в 10:20 — 20 мин вместо 80 от
+ * графика. Снятие согласования убирает эту уступку: та же отметка
+ * оценивается от графика, действовавшего в тот день (`scheduledShiftStartOn`),
+ * с прежними охранами — настоящая отметка и без более ранней смены
+ * (`firstCheckInOnDay`), не прощено руками (`forgivenByHand`), нет
+ * опоздания, записанного руководителем. Записи нет и опоздала — запись
+ * появляется; запись отметки есть — она только тяжелеет
+ * (`withdrawalRaises`): снятие штраф не снижает. Не поднимай снятие уже
+ * лежащую запись, выходил бы абсурд: пришедшая в 10:20 после снятия
+ * согласования отделывалась бы −1, а пришедшая в 09:50 получала бы −2.
+ *
+ * «После одобрения» — по моменту самой отметки (`started_at` с отметки,
+ * восстановленный `firstCheckInOnDay`), а не по `created_at` смены:
+ * `created_at` — время начала транзакции отметки, взятое ещё до замка
+ * опоздания, и отметка, дождавшаяся замка за одобрением, получила бы его
+ * раньше `reviewed_at`, хотя оценивалась уже от «приду к». Время отметки
+ * берётся после замка — оно позже одобрения всегда, когда отметка видела
+ * одобрение, и раньше — когда не видела.
+ *
+ * Отметка была до одобрения — одобрение её не касалось: запись (если есть)
+ * остаётся как есть, создавать нечего.
+ */
+async function undoApprovalAtCheckIn(
+  executor: DbExecutor,
+  review: DayReview,
+  approvedAt: Date | null,
+  kept: DisciplineEvent | undefined,
+): Promise<LatenessRecomputeOutcome> {
+  const checkIn = await firstCheckInOnDay(executor, review.userId, review.day);
+  if (checkIn === null || approvedAt === null || checkIn < approvedAt) return keptAsIs(kept);
+
+  const scheduledStart = await scheduledShiftStartOn(executor, review.userId, review.day);
+  if (scheduledStart === null) return keptAsIs(kept);
+  const actual = workshopClockTime(checkIn);
+  const lateBy = clockMinutes(actual) - clockMinutes(scheduledStart);
+  if (lateBy <= 0) return keptAsIs(kept);
+
+  if (kept === undefined) {
+    if (await forgivenByHand(executor, review.userId, review.day)) return NONE;
+    if (await hasLatenessOnDay(executor, review.userId, review.day)) return NONE;
+    // Уведомление — не отсюда: роутер отправит его последним шагом (см. `insertAutomaticLateness`).
+    const created = await insertAutomaticLateness(
+      executor,
+      { userId: review.userId, day: review.day, shiftStart: scheduledStart, actual, lateBy, approvedArriveBy: null },
+      { lateRequestId: review.lateRequestId, notify: false, ipAddress: review.actor.ipAddress },
+    );
+    await recountAfterReview(
+      executor,
+      review,
+      [{ occurredOn: review.day, id: created.id, from: null, to: created.kind }],
+      'any',
+    );
+    return { kind: 'created', minutes: lateBy, notice: created.notice };
+  }
+
+  const fromMinutes = storedLateMinutes(kept.description);
+  const target = await latenessTarget(
+    executor,
+    { userId: review.userId, day: review.day, keptId: kept.id },
+    { shiftStart: scheduledStart, actual, lateBy },
+  );
+  if (!withdrawalRaises({ minutes: fromMinutes, points: Number.parseFloat(kept.points) }, { minutes: lateBy, points: target.points })) {
+    return { kind: 'unchanged', minutes: fromMinutes };
+  }
+  await adjustAutomaticLateness(executor, review, kept, { ...target, shiftStart: scheduledStart, approvedArriveBy: null, lateBy });
+  await recountAfterReview(
+    executor,
+    review,
+    [{ occurredOn: kept.occurredOn, id: kept.id, from: kept.kind, to: target.kind }],
+    'any',
+  );
+  return { kind: 'adjusted', fromMinutes, toMinutes: lateBy };
+}
+
+/**
+ * Снятие согласования: вернуть день к тому, каким он был до одобрения.
+ *
+ *  - одобрение запись поправило или сняло — в запросе лежит её снимок
+ *    (`latenessBeforeApproval`), и запись возвращается ровно к нему: та же
+ *    строка (`restoreAdjusted`) или новая с теми же значениями
+ *    (`restoreRemoved`). Ни графика, ни смен, ни пересчёта ступени и повтора
+ *    — ничего, что могло измениться после одобрения;
+ *  - снимка нет — одобрение запись не трогало, и она остаётся как есть.
+ *    Кроме одного: отметку, сделанную уже после одобрения, оценивали от
+ *    «приду к», и эта уступка снимается (`undoApprovalAtCheckIn`).
+ */
+async function applyWithdrawal(
+  executor: DbExecutor,
+  review: DayReview,
+  withdrawal: { readonly approvedAt: Date | null; readonly beforeApproval: unknown },
+): Promise<LatenessRecomputeOutcome> {
+  const snapshot = parseBeforeApproval(withdrawal.beforeApproval, review.day);
+  if (snapshot !== null) {
+    return snapshot.change === 'adjusted'
+      ? restoreAdjusted(executor, review, snapshot.row)
+      : restoreRemoved(executor, review, snapshot.row);
+  }
+  const [kept] = await automaticLatenessOn(executor, review.userId, review.day);
+  return undoApprovalAtCheckIn(executor, review, withdrawal.approvedAt, kept);
+}
+
+/**
+ * Пересчитать опоздание за день после решения по запросу на опоздание.
+ *
+ * Опоздание пишется при отметке, а руководитель нередко согласует «приду к
+ * 10:30» уже после неё — в том числе задним числом, чтобы простить
+ * опоздание. Без пересчёта одобрение ничего бы не меняло.
+ *
+ * Правило владельца: одобрение может только смягчить или снять штраф, а
+ * снятие согласования возвращает день ровно к тому, каким он был до
+ * одобрения, — не больше и не меньше. Как это держится:
+ *  - одобрение пересчитывает запись системы от «приду к» и только смягчает
+ *    или снимает её: штраф не создаёт и ничего не утяжеляет, в том числе
+ *    повторы других дней (`applyApproval`). Поправленную или снятую запись
+ *    оно запоминает в запросе целиком;
+ *  - снятие согласования ничего не выводит заново, а возвращает запомненное
+ *    как есть — вид, повтор, балл, пояснение, объяснение; поправленную — в
+ *    ту же строку (`applyWithdrawal`). Повторы более поздних дней меняются
+ *    только там, где возврат вида этой записи меняет, было ли раньше
+ *    такое же;
+ *  - одобрение запись не трогало — снятие её тоже не трогает. Заново
+ *    оценивается одно: отметка, сделанная уже после одобрения. Дня «до
+ *    одобрения» у неё не было, и она считается так, как посчитала бы
+ *    отметка без «приду к» (`undoApprovalAtCheckIn`);
+ *  - решения руководителя, принятые после одобрения, сильнее снятия:
+ *    прощённая руками запись не воскресает, а при опоздании, которое он сам
+ *    записал за этот день, снятая запись не возвращается — двойного штрафа
+ *    нет.
+ *
+ * Снятие и правка записи — в журнал от имени решившего (`discipline.removed`
+ * / `discipline.adjusted`, с `lateRequestId`), в группу они не идут; запись,
+ * появившаяся при снятии, — `discipline.recorded` с `recomputed`, в группу
+ * тоже не идёт.
+ */
+export async function recomputeLatenessForDay(
+  executor: DbExecutor,
+  input: {
+    readonly userId: number;
+    readonly day: string;
+    readonly review: LateReview;
+    /** Кто решил запрос: правки записи в журнале — на нём. */
+    readonly actorId: number;
+    readonly ipAddress: string | null;
+  },
+): Promise<LatenessRecomputeOutcome> {
+  // Замок — до первого чтения (см. `lockLatenessOf`). Роутер берёт его ещё
+  // до UPDATE запроса; здесь — на случай другого вызывающего.
+  await lockLatenessOf(executor, input.userId);
+
+  const review: DayReview = {
+    userId: input.userId,
+    day: input.day,
+    lateRequestId: input.review.lateRequestId,
+    actor: { actorId: input.actorId, ipAddress: input.ipAddress },
+  };
+  return input.review.mode === 'approved'
+    ? applyApproval(executor, review)
+    : applyWithdrawal(executor, review, input.review);
 }

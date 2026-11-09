@@ -87,6 +87,7 @@ import {
 import { assignExecutor, changeOrderStatus } from '../services/orderWorkflow.service';
 import { loadPackList } from '../services/packList.service';
 import { lockLatenessOf, recordLatenessIfAny } from '../services/lateness.service';
+import { scheduledShiftStartOn } from '../services/shiftSchedule';
 import { employeesMissingShift, employeesWithOpenShift } from '../services/reminders.service';
 import { balance, dayReport, onHands, orderPaid, post } from '../services/ledger.service';
 import { employeeRating } from '../services/rating.service';
@@ -3301,8 +3302,10 @@ async function run(db: Database): Promise<void> {
     .where(and(eq(notifications.userId, lateSewer.id), eq(notifications.type, NotificationType.LATE_APPROVED)))
     .limit(1);
   check(
-    'опоздание: сотрудник узнаёт об одобрении — день и время',
-    lateApprovedNote !== undefined && lateApprovedNote.body.includes('10:30'),
+    'опоздание: сотрудник узнаёт об одобрении — день и время; день впереди — «Можно прийти …»',
+    lateApprovedNote !== undefined &&
+      lateApprovedNote.body.startsWith('Можно прийти ') &&
+      lateApprovedNote.body.includes('10:30'),
     lateApprovedNote?.body ?? 'уведомления нет',
   );
   const [lateApprovedAudit] = await db
@@ -3874,7 +3877,8 @@ async function run(db: Database): Promise<void> {
   /*
     Замечание проверки (пятый круг): одобрение сняло запись вместе с
     объяснением сотрудника, а снятие согласования создавало её заново
-    пустой. Объяснение и его время возвращаются из журнала снятия.
+    пустой. Объяснение и его время возвращаются вместе со всей записью — из
+    снимка до одобрения, который одобрение сохранило в запросе.
   */
   await ceoCaller.lateRequests.withdraw({ id: explainedSecond.id });
   const [explainedRecreated, ...explainedExtra] = await lateRows(explainedSewer.id, pastDay);
@@ -4086,8 +4090,9 @@ async function run(db: Database): Promise<void> {
   );
   const worsenNote = await latestNote(worsenSewer.id, NotificationType.LATE_APPROVED);
   check(
-    'опоздание: одобрение без пересчёта — в уведомлении простое «Можно прийти …», без «пересчитано»',
-    worsenNote === `Можно прийти ${pastDayShort} к 08:30 (${ceo.fullName})`,
+    // «Можно прийти» — только про день впереди; про вчерашний день оно читалось бы странно, даже без пересчёта.
+    'опоздание: одобрение за прошедший день без пересчёта — «Опоздание … согласовано», без «Можно прийти» и без «пересчитано»',
+    worsenNote === `Опоздание ${pastDayShort} до 08:30 согласовано (${ceo.fullName})`,
     worsenNote ?? 'уведомления нет',
   );
 
@@ -4662,7 +4667,8 @@ async function run(db: Database): Promise<void> {
   await ceoCaller.lateRequests.withdraw({ id: movedFirstRequest.id });
   const afterMovedFirstWithdraw = await lateRows(movedFirstSewer.id, pastDay);
   check(
-    'опоздание: первую смену перенесли на 18:10 — снятие согласования находит отметку 09:05: 5 мин, −0,5, а не 240 мин от смены с 13:00',
+    // Снятие теперь возвращает снятую запись из снимка, а не ищет отметку заново, — но итог тот же: ровно то, что было.
+    'опоздание: первую смену перенесли на 18:10 — снятие согласования возвращает запись по отметке 09:05: 5 мин, −0,5, а не 240 мин от смены с 13:00',
     afterMovedFirstApprove.length === 0 &&
       afterMovedFirstWithdraw.length === 1 &&
       afterMovedFirstWithdraw[0]?.kind === 'late_under_15' &&
@@ -4697,9 +4703,9 @@ async function run(db: Database): Promise<void> {
 
   /*
     Отметка 09:40 (−2), смену руководитель унёс на позавчера: нынешнее начало
-    уже не в этом дне, отметка — по журналу правки. Одобрение судит по
-    пояснению записи и снимает её; снятие согласования находит отметку по
-    началу до правки и возвращает штраф.
+    уже не в этом дне. Одобрение судит по пояснению записи и снимает её;
+    снятие согласования возвращает её из снимка до одобрения — смена ему
+    больше не нужна.
   */
   await checkInAt(otherDaySewer, '09:40', '18:00');
   const [otherDayShift] = await db.select({ id: shifts.id }).from(shifts).where(eq(shifts.userId, otherDaySewer.id));
@@ -4718,7 +4724,7 @@ async function run(db: Database): Promise<void> {
   await ceoCaller.lateRequests.withdraw({ id: otherDayRequest.id });
   const afterOtherDayWithdraw = await lateRows(otherDaySewer.id, pastDay);
   check(
-    'опоздание: смену унесли в другой день — одобрение снимает запись по её пояснению, снятие находит отметку 09:40 по журналу и возвращает 40 мин, −2',
+    'опоздание: смену унесли в другой день — одобрение снимает запись по её пояснению, снятие возвращает те же 40 мин, −2',
     afterOtherDayApprove.length === 0 &&
       afterOtherDayWithdraw.length === 1 &&
       afterOtherDayWithdraw[0]?.kind === 'late_over_30' &&
@@ -4751,6 +4757,377 @@ async function run(db: Database): Promise<void> {
     afterMorningEntered.length === 0 && morningEnteredNotes.length === 0,
     JSON.stringify({ afterMorningEntered, morningEnteredNotes }),
   );
+
+  /* ------ 19. Снятие согласования — ровно к тому, каким день был до одобрения ------ */
+
+  /*
+    Замечания проверки (шестой круг): снятие выводило запись заново и
+    выходило не тем, что было до одобрения: (а) повтор самой записи
+    пересчитывался строже; (б) схема, сохранённая позже, но с датой начала
+    не позже дня, давала 70 мин вместо 10; (в) удалённая смена с отметкой не
+    давала вернуть снятый штраф; (г) удалённая или переданная утренняя смена
+    давала «опоздание 300 мин», которого не было. Теперь одобрение запоминает
+    в запросе запись до себя, а снятие возвращает запомненное. Заново
+    оценивается только отметка, сделанная уже после одобрения.
+  */
+  const snapRepeatSewer = await makeUser('Снимок: повтор', Role.SEWER, '+998900000182');
+  const snapSchemeSewer = await makeUser('Снимок: схема задним числом', Role.SEWER, '+998900000183');
+  const snapDeletedSewer = await makeUser('Снимок: смену удалили', Role.SEWER, '+998900000184');
+  const snapMorningSewer = await makeUser('Снимок: утро удалили', Role.SEWER, '+998900000185');
+  const snapTransferSewer = await makeUser('Снимок: утро передали', Role.SEWER, '+998900000186');
+  const snapExplainSewer = await makeUser('Снимок: объяснила после одобрения', Role.SEWER, '+998900000187');
+  const snapForgivenSewer = await makeUser('Снимок: простили после одобрения', Role.SEWER, '+998900000188');
+  const beforeCheckInSewer = await makeUser('Одобрили до отметки', Role.SEWER, '+998900000189');
+  const beforeLateSewer = await makeUser('Одобрили до отметки, опоздала и от него', Role.SEWER, '+998900000190');
+  const beforeGoneSewer = await makeUser('Одобрили до отметки, утро удалили', Role.SEWER, '+998900000191');
+  const onTimeSewer = await makeUser('Вовремя до одобрения', Role.SEWER, '+998900000192');
+  await db.insert(payrollSchemes).values(
+    [
+      snapRepeatSewer,
+      snapSchemeSewer,
+      snapDeletedSewer,
+      snapMorningSewer,
+      snapTransferSewer,
+      snapExplainSewer,
+      snapForgivenSewer,
+      beforeCheckInSewer,
+      beforeLateSewer,
+      beforeGoneSewer,
+      onTimeSewer,
+    ].map((person) => ({
+      userId: person.id,
+      role: Role.SEWER,
+      type: PayrollSchemeType.HOURLY,
+      rate: '10000.00',
+      // У «вовремя до одобрения» смена с 09:30 — потом её задним числом передвинут на 09:00.
+      shiftStart: person.id === onTimeSewer.id ? '09:30' : '09:00',
+      shiftEnd: '18:00',
+      effectiveFrom: '2020-01-01',
+      createdBy: admin.id,
+    })),
+  );
+  /** Ждущий запрос на любой прошедший день — прямо в базе, как `pendingLateOn`. */
+  const pendingLateOnDay = async (person: { readonly id: number }, date: string, arriveBy: string) => {
+    const [row] = await db.insert(lateRequests).values({ userId: person.id, date, arriveBy }).returning();
+    if (row === undefined) throw new Error('запрос на опоздание не создан');
+    return row;
+  };
+  /** Запрос, одобренный вчера в 07:00 — ДО отметки; задним числом через процедуру так не одобрить. */
+  const approvedBeforeCheckIn = async (person: { readonly id: number }, arriveBy: string) => {
+    const [row] = await db
+      .insert(lateRequests)
+      .values({
+        userId: person.id,
+        date: pastDay,
+        arriveBy,
+        status: DayOffStatus.APPROVED,
+        reviewedBy: ceo.id,
+        reviewedAt: atTashkent(pastDay, '07:00'),
+      })
+      .returning();
+    if (row === undefined) throw new Error('запрос на опоздание не создан');
+    return row;
+  };
+  /** Снимок записи до одобрения, который лежит в запросе. */
+  const beforeApprovalOf = async (requestId: number) => {
+    const [row] = await db
+      .select({ snapshot: lateRequests.latenessBeforeApproval })
+      .from(lateRequests)
+      .where(eq(lateRequests.id, requestId));
+    return row?.snapshot ?? null;
+  };
+  /** Единственная смена сотрудника, начатая в это время вчера. */
+  const shiftAt = async (person: { readonly id: number }, time: string) => {
+    const [shift] = await db
+      .select({ id: shifts.id })
+      .from(shifts)
+      .where(and(eq(shifts.userId, person.id), eq(shifts.startedAt, atTashkent(pastDay, time))));
+    if (shift === undefined) throw new Error('смена не найдена');
+    return shift.id;
+  };
+
+  // (а) 02-го 09:40 (−2), 06-го 09:10 (−0,5); одобрение 02-го «до 09:35» увело его в «до 15 мин», 06-е бережно не повтор.
+  const snapDay2 = `${prevMonth}-02`;
+  const snapDay6 = `${prevMonth}-06`;
+  await checkInOn(snapRepeatSewer, snapDay2, '09:40');
+  await checkInOn(snapRepeatSewer, snapDay6, '09:10');
+  await ceoCaller.lateRequests.approve({ id: (await pendingLateOnDay(snapRepeatSewer, snapDay2, '09:35')).id });
+  const [day6Protected] = await lateRows(snapRepeatSewer.id, snapDay6);
+  // «Приду к 08:30» раньше графика порог не сдвигает: одобрение запись 06-го не тронуло.
+  const day6Untouched = await pendingLateOnDay(snapRepeatSewer, snapDay6, '08:30');
+  await ceoCaller.lateRequests.approve({ id: day6Untouched.id });
+  const day6UntouchedSnapshot = await beforeApprovalOf(day6Untouched.id);
+  await ceoCaller.lateRequests.withdraw({ id: day6Untouched.id });
+  const [day6AfterUntouched] = await lateRows(snapRepeatSewer.id, snapDay6);
+  check(
+    'опоздание (а): одобрение 06-го «до 08:30» запись не тронуло — снимка нет, и снятие не поднимает 06-е до повтора −1,5: та же запись, −0,5',
+    day6Protected?.points === '-0.5' &&
+      !day6Protected.isRepeat &&
+      day6UntouchedSnapshot === null &&
+      day6AfterUntouched?.id === day6Protected.id &&
+      day6AfterUntouched.points === '-0.5' &&
+      !day6AfterUntouched.isRepeat &&
+      day6AfterUntouched.description === day6Protected.description,
+    JSON.stringify({ day6Protected, day6UntouchedSnapshot, day6AfterUntouched }),
+  );
+  // То же 06-е, но «до 09:15» запись снимает; снятие возвращает ровно её, а не новую −1,5 с повтором.
+  const day6Removed = await pendingLateOnDay(snapRepeatSewer, snapDay6, '09:15');
+  await ceoCaller.lateRequests.approve({ id: day6Removed.id });
+  const afterDay6Removal = await lateRows(snapRepeatSewer.id, snapDay6);
+  await ceoCaller.lateRequests.withdraw({ id: day6Removed.id });
+  const [day6Restored, ...day6Extra] = await lateRows(snapRepeatSewer.id, snapDay6);
+  check(
+    'опоздание (а): одобрение 06-го «до 09:15» сняло запись — снятие возвращает ровно её: «до 15 мин», −0,5, не повтор, то же пояснение',
+    afterDay6Removal.length === 0 &&
+      day6Restored?.kind === 'late_under_15' &&
+      day6Restored.points === '-0.5' &&
+      !day6Restored.isRepeat &&
+      day6Restored.description === day6Protected?.description &&
+      day6Extra.length === 0,
+    JSON.stringify({ afterDay6Removal, day6Restored, day6Extra }),
+  );
+
+  // (б) Отметка 09:10 (10 мин, −0,5); одобрение «до 09:30» сняло; схему 08:00 сохранили позже, но с датой начала — вчера.
+  await checkInAt(snapSchemeSewer, '09:10', '18:00');
+  const [schemeLate] = await lateRows(snapSchemeSewer.id, pastDay);
+  if (schemeLate === undefined) throw new Error('опоздание при отметке не записано');
+  const schemeRemoval = await pendingLateOn(snapSchemeSewer, '09:30');
+  await ceoCaller.lateRequests.approve({ id: schemeRemoval.id });
+  await rescheduleOf(snapSchemeSewer, '08:00', pastDay);
+  const backdatedStart = await scheduledShiftStartOn(db, snapSchemeSewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: schemeRemoval.id });
+  const [schemeRestored, ...schemeExtra] = await lateRows(snapSchemeSewer.id, pastDay);
+  check(
+    'опоздание (б): график дня задним числом стал 08:00 — снятие возвращает снятую запись как была: 10 мин, −0,5, а не 70 мин, −2',
+    backdatedStart === '08:00' &&
+      schemeRestored?.kind === 'late_under_15' &&
+      schemeRestored.points === '-0.5' &&
+      !schemeRestored.isRepeat &&
+      schemeRestored.description === schemeLate.description &&
+      schemeExtra.length === 0,
+    JSON.stringify({ backdatedStart, schemeRestored, schemeExtra }),
+  );
+  // Тот же день: «до 09:05» запись смягчает на месте (5 мин); снятие возвращает ту же строку к 10 мин, хотя график уже 08:00.
+  const schemeAdjust = await pendingLateOn(snapSchemeSewer, '09:05');
+  await ceoCaller.lateRequests.approve({ id: schemeAdjust.id });
+  const [schemeAdjusted] = await lateRows(snapSchemeSewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: schemeAdjust.id });
+  const [schemeBack] = await lateRows(snapSchemeSewer.id, pastDay);
+  const schemeBackNote = await latestNote(snapSchemeSewer.id, NotificationType.LATE_WITHDRAWN);
+  check(
+    'опоздание (б): поправленная одобрением запись возвращается в той же строке к 10 мин, −0,5 — не к 70 мин от графика задним числом',
+    schemeAdjusted?.id === schemeRestored?.id &&
+      schemeAdjusted?.description === 'Смена с 09:05, отметка в 09:10 — опоздание 5 мин' &&
+      schemeBack !== undefined &&
+      schemeBack.id === schemeRestored?.id &&
+      schemeBack.kind === 'late_under_15' &&
+      schemeBack.points === '-0.5' &&
+      schemeBack.description === schemeLate.description &&
+      schemeBackNote?.endsWith('пересчитано: опоздание 10 мин.') === true,
+    JSON.stringify({ schemeAdjusted, schemeBack, schemeBackNote }),
+  );
+
+  // (в) Отметка 09:40 (−2), смену с отметкой удалили, одобрение «до 09:45» сняло запись; снятие — без смены.
+  await checkInAt(snapDeletedSewer, '09:40', '18:00');
+  const [deletedLate] = await lateRows(snapDeletedSewer.id, pastDay);
+  if (deletedLate === undefined) throw new Error('опоздание при отметке не записано');
+  await ceoCaller.shifts.remove({ id: await shiftAt(snapDeletedSewer, '09:40'), reason: `${PREFIX} дубль смены` });
+  const deletedRequest = await pendingLateOn(snapDeletedSewer, '09:45');
+  await ceoCaller.lateRequests.approve({ id: deletedRequest.id });
+  const deletedSnapshot = await beforeApprovalOf(deletedRequest.id);
+  await ceoCaller.lateRequests.withdraw({ id: deletedRequest.id });
+  const [deletedRestored, ...deletedExtra] = await lateRows(snapDeletedSewer.id, pastDay);
+  const deletedSnapshotAfter = await beforeApprovalOf(deletedRequest.id);
+  check(
+    'опоздание (в): смену с отметкой удалили — одобрение запомнило запись в запросе, снятие вернуло её (40 мин, −2) и погасило снимок',
+    deletedSnapshot?.change === 'removed' &&
+      deletedSnapshot.row.id === deletedLate.id &&
+      deletedSnapshot.row.points === '-2.0' &&
+      deletedRestored?.kind === 'late_over_30' &&
+      deletedRestored.points === '-2.0' &&
+      deletedRestored.description === 'Смена с 09:00, отметка в 09:40 — опоздание 40 мин' &&
+      deletedExtra.length === 0 &&
+      deletedSnapshotAfter === null,
+    JSON.stringify({ deletedSnapshot, deletedRestored, deletedExtra, deletedSnapshotAfter }),
+  );
+
+  // (г) Отметки в 09:00 (вовремя) и 14:00; одобрение после них; утреннюю смену удалили или передали другому сотруднику.
+  for (const [person, gone] of [
+    [snapMorningSewer, 'удалили'],
+    [snapTransferSewer, 'передали другому сотруднику'],
+  ] as const) {
+    await checkInAt(person, '09:00', '12:00');
+    await checkInAt(person, '14:00', '18:00');
+    const request = await pendingLateOn(person, '10:00');
+    await ceoCaller.lateRequests.approve({ id: request.id });
+    const morning = await shiftAt(person, '09:00');
+    if (person === snapMorningSewer) {
+      await ceoCaller.shifts.remove({ id: morning, reason: `${PREFIX} утро по ошибке` });
+    } else {
+      await ceoCaller.shifts.adjustManually({
+        shiftId: morning,
+        userId: otherSewer.id,
+        branchId: branch.id,
+        startedAt: atTashkent(pastDay, '09:00'),
+        endedAt: atTashkent(pastDay, '12:00'),
+        reason: `${PREFIX} отметилась не за себя`,
+      });
+    }
+    await ceoCaller.lateRequests.withdraw({ id: request.id });
+    const after = await lateRows(person.id, pastDay);
+    const notes = await disciplineNotes(person.id);
+    check(
+      `опоздание (г): утреннюю смену ${gone} — снятие согласования не создаёт «опоздание 300 мин» от отметки в 14:00`,
+      after.length === 0 && notes.length === 0,
+      JSON.stringify({ after, notes }),
+    );
+  }
+
+  // Одобрили вчера в 07:00 «приду к 10:00», отметки в 09:05 и 14:00, утреннюю удалили: в 14:00 она была, и отметка опоздание не оценивала.
+  const goneRequest = await approvedBeforeCheckIn(beforeGoneSewer, '10:00');
+  await checkInAt(beforeGoneSewer, '09:05', '12:00');
+  await checkInAt(beforeGoneSewer, '14:00', '18:00');
+  await ceoCaller.shifts.remove({ id: await shiftAt(beforeGoneSewer, '09:05'), reason: `${PREFIX} утро по ошибке` });
+  await ceoCaller.lateRequests.withdraw({ id: goneRequest.id });
+  const afterGone = await lateRows(beforeGoneSewer.id, pastDay);
+  check(
+    'опоздание: одобрили до отметки, утреннюю смену потом удалили — снятие не берёт отметку в 14:00 за первую и 300 мин не пишет',
+    afterGone.length === 0 && (await disciplineNotes(beforeGoneSewer.id)).length === 0,
+    JSON.stringify(afterGone),
+  );
+
+  // Одобрили вчера в 07:00 «приду к 10:00»; отметка в 09:50 — от «приду к» вовремя, записи нет. Снятие оценивает её от графика.
+  const beforeRequest = await approvedBeforeCheckIn(beforeCheckInSewer, '10:00');
+  await checkInAt(beforeCheckInSewer, '09:50', '18:00');
+  const beforeAtCheckIn = await lateRows(beforeCheckInSewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: beforeRequest.id });
+  const [beforeCreated, ...beforeExtra] = await lateRows(beforeCheckInSewer.id, pastDay);
+  const [beforeCreatedAudit] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, 'discipline.recorded'), eq(auditLog.entityId, beforeCreated?.id ?? 0)));
+  const beforeNotes = await db
+    .select({ type: notifications.type })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, beforeCheckInSewer.id),
+        inArray(notifications.type, [NotificationType.LATE_WITHDRAWN, NotificationType.DISCIPLINE_RECORDED]),
+      ),
+    )
+    .orderBy(asc(notifications.id));
+  check(
+    'опоздание: одобрили до отметки — снятие оценивает отметку 09:50 от графика: 50 мин, −2, в группу не идёт, о записи — последним уведомлением',
+    beforeAtCheckIn.length === 0 &&
+      beforeCreated?.kind === 'late_over_30' &&
+      beforeCreated.points === '-2.0' &&
+      beforeCreated.description === 'Смена с 09:00, отметка в 09:50 — опоздание 50 мин' &&
+      beforeExtra.length === 0 &&
+      beforeCreatedAudit?.details?.['recomputed'] === true &&
+      beforeCreatedAudit.details['lateRequestId'] === beforeRequest.id &&
+      JSON.stringify(beforeNotes.map((note) => note.type)) ===
+        JSON.stringify([NotificationType.LATE_WITHDRAWN, NotificationType.DISCIPLINE_RECORDED]),
+    JSON.stringify({ beforeAtCheckIn, beforeCreated, details: beforeCreatedAudit?.details, beforeNotes }),
+  );
+
+  // Одобрили до отметки «приду к 10:00»; отметка в 10:20 — 20 мин от «приду к». Снятие: та же запись тяжелеет до 80 мин от графика.
+  const beforeLateRequest = await approvedBeforeCheckIn(beforeLateSewer, '10:00');
+  await checkInAt(beforeLateSewer, '10:20', '18:00');
+  const [beforeLateRow] = await lateRows(beforeLateSewer.id, pastDay);
+  await ceoCaller.lateRequests.withdraw({ id: beforeLateRequest.id });
+  const [beforeLateRaised, ...beforeLateExtra] = await lateRows(beforeLateSewer.id, pastDay);
+  const beforeLateNote = await latestNote(beforeLateSewer.id, NotificationType.LATE_WITHDRAWN);
+  check(
+    'опоздание: одобрили до отметки, пришла и позже «приду к» — снятие поднимает ту же запись до 80 мин от графика, а не оставляет 20',
+    beforeLateRow?.description === 'Смена с 10:00, отметка в 10:20 — опоздание 20 мин' &&
+      beforeLateRaised?.id === beforeLateRow.id &&
+      beforeLateRaised.kind === 'late_over_30' &&
+      beforeLateRaised.points === '-2.0' &&
+      beforeLateRaised.description === 'Смена с 09:00, отметка в 10:20 — опоздание 80 мин' &&
+      beforeLateExtra.length === 0 &&
+      beforeLateNote?.endsWith('пересчитано: опоздание 80 мин.') === true,
+    JSON.stringify({ beforeLateRow, beforeLateRaised, beforeLateNote }),
+  );
+
+  // Отметка в 09:10 при смене с 09:30 — вовремя; потом график дня задним числом стал 09:00; одобрение и снятие.
+  await checkInAt(onTimeSewer, '09:10', '18:00');
+  await rescheduleOf(onTimeSewer, '09:00', pastDay);
+  const onTimeRequest = await pendingLateOn(onTimeSewer, '10:00');
+  await ceoCaller.lateRequests.approve({ id: onTimeRequest.id });
+  await ceoCaller.lateRequests.withdraw({ id: onTimeRequest.id });
+  const afterOnTime = await lateRows(onTimeSewer.id, pastDay);
+  check(
+    'опоздание: отметка до одобрения была вовремя — снятие согласования ничего не создаёт, даже когда график дня задним числом стал раньше',
+    afterOnTime.length === 0 && (await disciplineNotes(onTimeSewer.id)).length === 0,
+    JSON.stringify(afterOnTime),
+  );
+
+  // Одобрение смягчило 40 мин до 10; сотрудник объяснил опоздание уже после одобрения; снятие.
+  await checkInAt(snapExplainSewer, '09:40', '18:00');
+  const [explainLate] = await lateRows(snapExplainSewer.id, pastDay);
+  if (explainLate === undefined) throw new Error('опоздание при отметке не записано');
+  const explainRequest = await pendingLateOn(snapExplainSewer, '09:30');
+  await ceoCaller.lateRequests.approve({ id: explainRequest.id });
+  const lateExplanation = 'Пробка на Беруни, предупреждала бригадира';
+  await db.insert(shifts).values({ userId: snapExplainSewer.id, branchId: branch.id, startedAt: new Date(), ...point });
+  await (await callerFor(snapExplainSewer)).discipline.explain({ id: explainLate.id, comment: lateExplanation });
+  await db
+    .update(shifts)
+    .set({ endedAt: new Date(Date.now() + 1000) })
+    .where(and(eq(shifts.userId, snapExplainSewer.id), isNull(shifts.endedAt)));
+  await ceoCaller.lateRequests.withdraw({ id: explainRequest.id });
+  const [explainBack] = await lateRows(snapExplainSewer.id, pastDay);
+  check(
+    'опоздание: объяснение, данное уже после одобрения, снятие не стирает — запись вернулась к 40 мин, −2 с ним',
+    explainBack?.id === explainLate.id &&
+      explainBack.kind === 'late_over_30' &&
+      explainBack.points === '-2.0' &&
+      explainBack.description === explainLate.description &&
+      explainBack.employeeComment === lateExplanation,
+    JSON.stringify(explainBack),
+  );
+
+  // Одобрение смягчило запись, а руководитель потом убрал её руками — простил; снятие прощение не отменяет.
+  await checkInAt(snapForgivenSewer, '09:40', '18:00');
+  const [forgivenLater] = await lateRows(snapForgivenSewer.id, pastDay);
+  if (forgivenLater === undefined) throw new Error('опоздание при отметке не записано');
+  const forgivenLaterRequest = await pendingLateOn(snapForgivenSewer, '09:30');
+  await ceoCaller.lateRequests.approve({ id: forgivenLaterRequest.id });
+  await ceoCaller.discipline.remove({ id: forgivenLater.id });
+  await ceoCaller.lateRequests.withdraw({ id: forgivenLaterRequest.id });
+  const afterForgivenLater = await lateRows(snapForgivenSewer.id, pastDay);
+  check(
+    'опоздание: запись, смягчённую одобрением, руководитель потом простил руками — снятие согласования её не воскрешает',
+    afterForgivenLater.length === 0,
+    JSON.stringify(afterForgivenLater),
+  );
+
+  // Снимок в запросе испортили руками: вернуть «как было» не из чего — снятие не проходит и ничего не меняет.
+  const [corruptRequest] = await db
+    .insert(lateRequests)
+    .values({
+      userId: onTimeSewer.id,
+      date: lateDay(-2),
+      arriveBy: '10:00',
+      status: DayOffStatus.APPROVED,
+      reviewedBy: ceo.id,
+      reviewedAt: new Date(),
+    })
+    .returning();
+  if (corruptRequest === undefined) throw new Error('запрос на опоздание не создан');
+  await db.execute(
+    sql`update late_requests set lateness_before_approval = '{"change":"removed","row":{"id":"много"}}'::jsonb where id = ${corruptRequest.id}`,
+  );
+  await expectRejectedWith(
+    'опоздание: испорченный снимок до одобрения — снятие согласования отбито, а не выведено заново по графику',
+    () => ceoCaller.lateRequests.withdraw({ id: corruptRequest.id }),
+    (message) => message.includes('каким было опоздание до одобрения'),
+  );
+  const [corruptAfter] = await db
+    .select({ status: lateRequests.status })
+    .from(lateRequests)
+    .where(eq(lateRequests.id, corruptRequest.id));
+  check('опоздание: после отбитого снятия запрос по-прежнему одобрен', corruptAfter?.status === DayOffStatus.APPROVED);
 
   /* Выходные: условие на статус — в самом UPDATE; второе решение не проходит и не попадает в журнал. */
   const decisionAudit = (id: number) =>

@@ -1,0 +1,2 @@
+ALTER TABLE "late_requests" ADD COLUMN "lateness_before_approval" jsonb;--> statement-breakpoint
+ALTER TABLE "late_requests" ADD CONSTRAINT "late_requests_snapshot_only_when_approved" CHECK ("late_requests"."lateness_before_approval" is null or "late_requests"."status" = 'approved');

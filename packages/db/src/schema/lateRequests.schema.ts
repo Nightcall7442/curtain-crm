@@ -1,3 +1,4 @@
+import type { LatenessBeforeApproval } from '@curtain-crm/shared';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -5,6 +6,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -67,6 +69,18 @@ export const lateRequests = pgTable(
     /** Причина отказа. Связку «отклонён ⇒ причина» держит БД. */
     rejectionReason: text('rejection_reason'),
 
+    /*
+      Запись опоздания за этот день — какой она была до одобрения, если
+      одобрение её поправило или сняло (`latenessBeforeApprovalSchema`).
+      Снятие согласования возвращает её отсюда как есть, без пересчёта, и
+      гасит снимок вместе с одобрением. Колонка в запросе, а не запись в
+      журнале: это состояние одного одобрения, а не история, — читается по
+      ключу вместе со строкой запроса, а не поиском по `jsonb` растущего
+      журнала, и с другим одобрением того же дня его не спутать.
+      `null` — одобрение запись не трогало (или его нет).
+    */
+    latenessBeforeApproval: jsonb('lateness_before_approval').$type<LatenessBeforeApproval>(),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -96,6 +110,11 @@ export const lateRequests = pgTable(
     check(
       'late_requests_rejection_reason_matches_status',
       sql`(${table.status} = 'rejected') = (${table.rejectionReason} is not null)`,
+    ),
+    // Снимок живёт, пока одобрение в силе: снятое согласование его не оставляет.
+    check(
+      'late_requests_snapshot_only_when_approved',
+      sql`${table.latenessBeforeApproval} is null or ${table.status} = 'approved'`,
     ),
   ],
 );

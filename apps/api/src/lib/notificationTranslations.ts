@@ -133,6 +133,11 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
     'Опоздание {date} до {time} больше не согласовано ({reviewer})',
     '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer})',
   ],
+  // Одобрение за уже наступивший день без перемен в записи — после «больше не согласовано» (см. выше).
+  [
+    'Опоздание {date} до {time} согласовано ({reviewer})',
+    '{date} kuni soat {time} gacha kechikish tasdiqlandi ({reviewer})',
+  ],
   ['{by}: выходные теперь только по запросу', "{by}: dam olish kunlari endi faqat so'rov bo'yicha"],
   ['{by}: каждую неделю — {weekday}', '{by}: har hafta — {weekday}'],
   // Запись системы — раньше общего шаблона: иначе подпись «Система» ушла бы как имя, без перевода.

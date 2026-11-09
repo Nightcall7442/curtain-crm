@@ -789,9 +789,11 @@ function latePenaltyNote(day: string, change: LatePenaltyChange): string {
 /**
  * Опоздание согласовано — узнаёт сотрудник.
  *
- * Согласовали задним числом, и записанное при отметке опоздание снято или
- * пересчитано — тело говорит и об этом. «Можно прийти» про прошедшую
- * отметку звучало бы странно, поэтому тогда — «Опоздание … согласовано».
+ * «Можно прийти 12.11 к 10:30» — только о дне, который ещё впереди. День
+ * уже наступил (`dayStarted`: сегодня или задним числом) — «Опоздание 08.11
+ * до 10:30 согласовано»: «можно прийти» про прошедшую дату читалось бы
+ * странно, даже если записанное опоздание не изменилось. Снято оно или
+ * пересчитано — тело говорит и об этом.
  */
 export async function notifyLateApproved(
   executor: DbExecutor,
@@ -800,20 +802,23 @@ export async function notifyLateApproved(
     readonly date: string;
     readonly arriveBy: string;
     readonly reviewerName: string;
+    readonly dayStarted: boolean;
     readonly penalty: LatePenaltyChange | null;
   },
 ): Promise<void> {
   const day = formatIsoDateShort(params.date);
+  // Автор в скобках — как у выходных: «согласовал» не подходит руководителю-женщине.
+  const approved = `Опоздание ${day} до ${params.arriveBy} согласовано (${params.reviewerName})`;
   const penalty = params.penalty;
+  let body: string;
+  if (penalty !== null) body = `${approved}. ${latePenaltyNote(day, penalty)}`;
+  else if (params.dayStarted) body = approved;
+  else body = `Можно прийти ${day} к ${params.arriveBy} (${params.reviewerName})`;
   await createNotification(executor, {
     userId,
     type: NotificationType.LATE_APPROVED,
     title: 'Опоздание согласовано',
-    // Автор в скобках — как у выходных: «согласовал» не подходит руководителю-женщине.
-    body:
-      penalty === null
-        ? `Можно прийти ${day} к ${params.arriveBy} (${params.reviewerName})`
-        : `Опоздание ${day} до ${params.arriveBy} согласовано (${params.reviewerName}). ${latePenaltyNote(day, penalty)}`,
+    body,
   });
 }
 

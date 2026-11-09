@@ -66,6 +66,7 @@ export * from './payments/terminalChecks';
 /* Типы */
 export * from './types/orderItemAccessory';
 export * from './types/orderItemMaterial';
+export * from './types/latenessBeforeApproval';
 
 /* Утилиты */
 export * from './utils/dates';

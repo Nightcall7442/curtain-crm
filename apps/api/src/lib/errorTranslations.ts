@@ -135,6 +135,8 @@ const EXACT: Readonly<Record<string, string>> = {
   'На этот день уже есть запрос на опоздание — отзовите его или дождитесь решения':
     "Bu kunga kechikish so'rovi allaqachon bor — uni qaytarib oling yoki qarorni kuting",
   'Снять можно только одобренное опоздание': 'Faqat tasdiqlangan kechikishni bekor qilish mumkin',
+  'Не удалось прочитать, каким было опоздание до одобрения, — согласование не снято':
+    "Tasdiqlashdan oldin kechikish qanday bo'lganini o'qib bo'lmadi — ruxsat bekor qilinmadi",
 
   // notifications
   'Уведомление не найдено': 'Bildirishnoma topilmadi',

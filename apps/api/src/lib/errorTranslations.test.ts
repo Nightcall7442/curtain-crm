@@ -258,6 +258,10 @@ describe('notificationTranslations', () => {
     expect(translateNotificationText('Можно прийти 12.11 к 10:30 (Мирзаев Дилшод)', 'uz')).toBe(
       '12.11 kuni soat 10:30 gacha kelishingiz mumkin (Мирзаев Дилшод)',
     );
+    // День уже наступил, запись не менялась: не «можно прийти» про прошедшую дату.
+    expect(translateNotificationText('Опоздание 08.11 до 10:30 согласовано (Мирзаев Дилшод)', 'uz')).toBe(
+      '08.11 kuni soat 10:30 gacha kechikish tasdiqlandi (Мирзаев Дилшод)',
+    );
     expect(
       translateNotificationText('Опоздание 12.11 до 10:30 не согласовано. Причина: много заказов', 'uz'),
     ).toBe('12.11 kuni soat 10:30 gacha kechikish rad etildi. Sabab: много заказов');
@@ -269,6 +273,10 @@ describe('notificationTranslations', () => {
     expect(
       translateNotificationText('Опоздание 12.11 до 10:30 больше не согласовано (Мирзаев Дилшод)', 'uz'),
     ).toBe('12.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод)');
+    // Шаблон одобрения без хвоста стоит позже: его ленивое `{time}` не проглатывает «10:30 больше не».
+    expect(
+      translateNotificationText('Опоздание 12.11 до 10:30 больше не согласовано (Мирзаев Дилшод)', 'uz'),
+    ).not.toContain('tasdiqlandi');
   });
 
   /*

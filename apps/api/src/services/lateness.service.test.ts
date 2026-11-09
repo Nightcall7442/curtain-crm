@@ -8,6 +8,7 @@ import {
   recountRepeats,
   storedCheckInTime,
   storedLateMinutes,
+  withdrawalRaises,
   type RepeatEdit,
   type RepeatRow,
 } from './lateness.service';
@@ -76,6 +77,36 @@ describe('approvalWorsens', () => {
   it('минут в пояснении нет — судим только по баллу', () => {
     expect(approvalWorsens({ minutes: null, points: -1 }, { minutes: 90, points: -1 })).toBe(false);
     expect(approvalWorsens({ minutes: null, points: -1 }, { minutes: 90, points: -2 })).toBe(true);
+  });
+});
+
+/**
+ * Снятие согласования, когда отметку оценивали уже от «приду к»: запись
+ * может только потяжелеть — снятие убирает уступку, а не снижает штраф.
+ */
+describe('withdrawalRaises', () => {
+  it('от графика больше минут и балл строже — тяжелее, поднимаем', () => {
+    // «Приду к 10:00», отметка 10:20 (20 мин, −1); от графика 09:00 — 80 мин, −2.
+    expect(withdrawalRaises({ minutes: 20, points: -1 }, { minutes: 80, points: -2 })).toBe(true);
+  });
+
+  it('та же ступень и балл, но минут больше — тяжелее: пояснение должно назвать настоящие минуты', () => {
+    expect(withdrawalRaises({ minutes: 35, points: -2 }, { minutes: 95, points: -2 })).toBe(true);
+  });
+
+  it('больше минут, но балл мягче (запись была повтором в прежней ступени) — не поднимаем', () => {
+    expect(withdrawalRaises({ minutes: 10, points: -1.5 }, { minutes: 20, points: -1 })).toBe(false);
+  });
+
+  it('столько же или меньше минут при том же балле — не трогаем', () => {
+    expect(withdrawalRaises({ minutes: 20, points: -1 }, { minutes: 20, points: -1 })).toBe(false);
+    // График дня задним числом сдвинули позже — от него выходит меньше: снятие штраф не снижает.
+    expect(withdrawalRaises({ minutes: 20, points: -1 }, { minutes: 5, points: -0.5 })).toBe(false);
+  });
+
+  it('минут в пояснении нет — судим только по баллу', () => {
+    expect(withdrawalRaises({ minutes: null, points: -1 }, { minutes: 90, points: -1 })).toBe(false);
+    expect(withdrawalRaises({ minutes: null, points: -1 }, { minutes: 90, points: -2 })).toBe(true);
   });
 });
 

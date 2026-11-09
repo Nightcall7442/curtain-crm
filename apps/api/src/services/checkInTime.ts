@@ -1,6 +1,6 @@
 import { auditLog, shifts, type DbExecutor } from '@curtain-crm/db';
 import { workshopDayIso } from '@curtain-crm/shared';
-import { and, asc, eq, exists, gte, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, gt, gte, inArray, isNotNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { workshopDayBounds } from './periods';
@@ -41,6 +41,23 @@ export function checkInStartFromFirstEdit(details: unknown, userId: number): Dat
   const parsed = shiftEditBeforeSchema.safeParse(details);
   if (!parsed.success || parsed.data.before.userId !== userId) return null;
   return new Date(parsed.data.before.startedAt);
+}
+
+/**
+ * Сколько дней назад от дня отметки может лежать нынешнее начало перенесённой смены.
+ *
+ * Руководитель переносит смену, чтобы поправить время, а не на месяц назад;
+ * дальше этого отметку не ищем, чтобы не перебирать журнал каждой смены
+ * сотрудника за всё время.
+ */
+const MOVED_SHIFT_LOOKBACK_DAYS = 31;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Отметка прихода: когда, в какой смене и когда эта смена появилась в базе. */
+interface CheckIn {
+  readonly at: Date;
+  readonly shiftId: number;
+  readonly createdAt: Date;
 }
 
 /** Смена сотрудника — то, по чему восстанавливается отметка. */
@@ -99,6 +116,12 @@ async function checkInStartOf(executor: DbExecutor, shift: CheckInShift): Promis
  * Поэтому кандидаты — смены сотрудника с координатами начала (смены без
  * них завёл руководитель — отметки не было, их просто пропускаем), у
  * которых в этот день либо нынешнее начало, либо начало до первой правки.
+ * Начало до правки ищется только у правленых руками смен
+ * (`is_manually_adjusted`: журнал с `before` пишет только
+ * `shifts.adjustManually`, и он же ставит признак) с нынешним началом не
+ * раньше чем за `MOVED_SHIFT_LOOKBACK_DAYS` до дня — иначе подзапрос по
+ * журналу перебирал бы каждую смену сотрудника за всё время. Будущим числом
+ * смену не завести, так что сверху начало ограничено и без условия.
  * Для каждой восстанавливается время отметки (`checkInStartOf`), остаются
  * отметки этого дня, из них берётся самая ранняя.
  *
@@ -106,9 +129,11 @@ async function checkInStartOf(executor: DbExecutor, shift: CheckInShift): Promis
  * опоздание оценивается, только если в момент отметки у сотрудника не было
  * смены, начатой в этот день раньше. Руководитель завёл утреннюю смену,
  * которую человек забыл открыть, а тот отметился после обеда — отметка
- * опоздания не писала, и снятие согласования не должно его создавать.
- * Смена, заведённая ПОСЛЕ отметки (позже по `created_at`), для отметки не
- * существовала и её не отменяет: ручная правка опоздание не питает.
+ * опоздания не писала, и пересчёт не должен его создавать. Смена,
+ * заведённая ПОСЛЕ отметки (позже по `created_at`), для отметки не
+ * существовала и её не отменяет: ручная правка опоздание не питает. А смена,
+ * которая в момент отметки была, но потом её удалили или передали другому
+ * сотруднику, отметку по-прежнему отменяет (`goneEarlierShift`).
  *
  * Начало до правки в журнале — строка ISO (`Date` в jsonb так и
  * сериализуется), поэтому отбор в SQL — сравнением строк в порядке "C":
@@ -120,6 +145,7 @@ async function checkInStartOf(executor: DbExecutor, shift: CheckInShift): Promis
 export async function firstCheckInOnDay(executor: DbExecutor, userId: number, day: string): Promise<Date | null> {
   const { start, end } = workshopDayBounds(day);
   const startedBeforeEdit = sql`(${auditLog.details} -> 'before' ->> 'startedAt') collate "C"`;
+  const movedFrom = new Date(start.getTime() - MOVED_SHIFT_LOOKBACK_DAYS * DAY_MS);
   const candidates = await executor
     .select({
       id: shifts.id,
@@ -135,29 +161,33 @@ export async function firstCheckInOnDay(executor: DbExecutor, userId: number, da
         isNotNull(shifts.startLatitude),
         or(
           and(gte(shifts.startedAt, start), lt(shifts.startedAt, end)),
-          exists(
-            executor
-              .select({ id: auditLog.id })
-              .from(auditLog)
-              .where(
-                and(
-                  eq(auditLog.action, 'shift.adjusted'),
-                  eq(auditLog.entityType, 'shift'),
-                  eq(auditLog.entityId, shifts.id),
-                  sql`${startedBeforeEdit} >= ${start.toISOString()}`,
-                  sql`${startedBeforeEdit} < ${end.toISOString()}`,
+          and(
+            eq(shifts.isManuallyAdjusted, true),
+            gte(shifts.startedAt, movedFrom),
+            exists(
+              executor
+                .select({ id: auditLog.id })
+                .from(auditLog)
+                .where(
+                  and(
+                    eq(auditLog.action, 'shift.adjusted'),
+                    eq(auditLog.entityType, 'shift'),
+                    eq(auditLog.entityId, shifts.id),
+                    sql`${startedBeforeEdit} >= ${start.toISOString()}`,
+                    sql`${startedBeforeEdit} < ${end.toISOString()}`,
+                  ),
                 ),
-              ),
+            ),
           ),
         ),
       ),
     );
 
-  let first: { readonly at: Date; readonly createdAt: Date } | null = null;
+  let first: CheckIn | null = null;
   for (const shift of candidates) {
     const checkIn = await checkInStartOf(executor, shift);
     if (checkIn === null || workshopDayIso(checkIn) !== day) continue;
-    if (first === null || checkIn < first.at) first = { at: checkIn, createdAt: shift.createdAt };
+    if (first === null || checkIn < first.at) first = { at: checkIn, shiftId: shift.id, createdAt: shift.createdAt };
   }
   if (first === null) return null;
 
@@ -174,5 +204,58 @@ export async function firstCheckInOnDay(executor: DbExecutor, userId: number, da
       ),
     )
     .limit(1);
-  return earlierAtCheckIn === undefined ? first.at : null;
+  if (earlierAtCheckIn !== undefined) return null;
+  return (await goneEarlierShift(executor, userId, start, first)) ? null : first.at;
+}
+
+/**
+ * Была ли в момент отметки более ранняя смена дня, которой у сотрудника больше нет.
+ *
+ * Проверка (четвёртый случай): отметки в 09:00 и 14:00, утреннюю смену
+ * потом удалили (`shifts.remove`) или передали другому сотруднику
+ * (`shifts.adjustManually` с другим `userId`). По живым сменам первой
+ * становилась отметка в 14:00, и пересчёт писал «опоздание 300 мин», хотя
+ * в 14:00 утренняя смена была и отметка опоздания не оценивала. Такие
+ * смены видны только в журнале: удаление пишет снимок смены
+ * (`shift.deleted`), передача — `before` и `after` с разными сотрудниками.
+ *
+ * «Была в момент отметки» — заведена раньше (id меньше: последовательность
+ * раздаёт номера по порядку вставки) и ушла от сотрудника позже отметки
+ * (запись журнала позже `created_at` смены с отметкой). Начало — каким оно
+ * было, когда смену удалили или передали; формат строк ISO один, поэтому
+ * сравнение строк в порядке "C" (см. `firstCheckInOnDay`).
+ */
+async function goneEarlierShift(executor: DbExecutor, userId: number, dayStart: Date, checkIn: CheckIn): Promise<boolean> {
+  const user = userId.toString();
+  const startedWithin = (startedAt: SQL): SQL | undefined =>
+    and(
+      sql`(${startedAt}) collate "C" >= ${dayStart.toISOString()}`,
+      sql`(${startedAt}) collate "C" < ${checkIn.at.toISOString()}`,
+    );
+  const [gone] = await executor
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(
+      and(
+        inArray(auditLog.action, ['shift.deleted', 'shift.adjusted']),
+        gt(auditLog.createdAt, checkIn.createdAt),
+        eq(auditLog.entityType, 'shift'),
+        lt(auditLog.entityId, checkIn.shiftId),
+        or(
+          and(
+            eq(auditLog.action, 'shift.deleted'),
+            sql`${auditLog.details} ->> 'userId' = ${user}`,
+            startedWithin(sql`${auditLog.details} ->> 'startedAt'`),
+          ),
+          and(
+            eq(auditLog.action, 'shift.adjusted'),
+            sql`${auditLog.details} -> 'before' ->> 'userId' = ${user}`,
+            sql`${auditLog.details} -> 'after' ->> 'userId' <> ${user}`,
+            startedWithin(sql`${auditLog.details} -> 'before' ->> 'startedAt'`),
+          ),
+        ),
+      ),
+    )
+    .limit(1);
+  return gone !== undefined;
 }
