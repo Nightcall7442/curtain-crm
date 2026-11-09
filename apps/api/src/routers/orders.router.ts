@@ -606,16 +606,31 @@ export const ordersRouter = router({
             ]),
       );
 
+      /* Архив (только выполненные и отменённые) — по дате закрытия, свежие
+         сверху: там ищут «что закрыли на днях», а заказ, заведённый месяц
+         назад и закрытый сегодня, при сортировке по созданию тонул внизу.
+         Приоритет в архиве ничего не значит — работа уже сделана. */
+      const archiveOnly =
+        input.status !== undefined &&
+        input.status.length > 0 &&
+        input.status.every((status) => ARCHIVED_ORDER_STATUSES.includes(status));
+      const listOrder = archiveOnly
+        ? [
+            sql`(case ${orders.status} when 'completed' then ${orders.completedAt} when 'cancelled' then ${orders.cancelledAt} end) desc nulls last`,
+            desc(orders.createdAt),
+          ]
+        : [
+            // Срочные заказы сверху, затем свежие: приоритет для того и заводится.
+            sql`case ${orders.priority} when 'critical' then 2 when 'urgent' then 1 else 0 end desc`,
+            desc(orders.createdAt),
+          ];
+
       const [rows, [totalRow]] = await Promise.all([
         ctx.db
           .select()
           .from(orders)
           .where(where)
-          // Срочные заказы сверху, затем свежие: приоритет для того и заводится.
-          .orderBy(
-            sql`case ${orders.priority} when 'critical' then 2 when 'urgent' then 1 else 0 end desc`,
-            desc(orders.createdAt),
-          )
+          .orderBy(...listOrder)
           .limit(paging.pageSize)
           .offset(toOffset(paging)),
         ctx.db.select({ value: count() }).from(orders).where(where),

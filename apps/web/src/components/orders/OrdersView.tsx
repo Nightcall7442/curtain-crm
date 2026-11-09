@@ -622,6 +622,10 @@ export function OrdersView({
               />
               <PersonFilter
                 label="Исполнитель"
+                // Сервер ищет человека на любом этапе, а колонка рядом
+                // показывает только текущий — без подсказки строка с другим
+                // именем в колонке выглядела бы ошибкой фильтра.
+                hint="Заказы, где человек работал на любом этапе: мастер, швея, ОТК, установка, карнизы. В колонке «Исполнитель» — только текущий этап."
                 value={assigneeId}
                 groups={executorGroups}
                 onChange={(next) => {
@@ -707,7 +711,10 @@ export function OrdersView({
         rowKey={(row) => row.id}
         // Десять колонок на ноутбуке 1280 px помещаются только с узкими полями.
         dense
-        emptyMessage={preset?.emptyMessage ?? emptyMessage}
+        // Фильтры по людям не сбрасываются при смене вкладки: без своей
+        // подписи пустая вкладка говорила «Долгов по заказам нет», хотя
+        // долги есть — их скрыл фильтр.
+        emptyMessage={hasFilters ? 'По выбранным фильтрам заказов нет' : (preset?.emptyMessage ?? emptyMessage)}
         /*
           Кнопка появляется, только когда список пуст ЦЕЛИКОМ, а не когда
           ничего не нашлось по фильтру: предлагать «завести заказ» в ответ на
@@ -718,7 +725,9 @@ export function OrdersView({
           всегда пустой: кнопка появлялась и при выбранном статусе.
         */
         emptyAction={
-          canCreate && !hasFilters ? (
+          // Вкладка — тоже фильтр: пустой «С долгом» или «Архив» не повод
+          // заводить заказ. Кнопка — только на первой вкладке («Все»).
+          canCreate && !hasFilters && (preset === undefined || presetKey === allowedPresets?.[0]?.key) ? (
             <Button
               size="sm"
               onClick={() => {
@@ -792,7 +801,7 @@ export function OrdersView({
               // Длинное имя обрезается (иначе таблица не влезает в 1280 px),
               // поэтому в подсказке оно стоит целиком, перед телефоном.
               <span
-                className="block max-w-[10rem] truncate text-primary"
+                className="block max-w-[8rem] truncate text-primary 2xl:max-w-[10rem]"
                 title={`${row.clientName} · ${row.clientPhone}`}
               >
                 {row.clientName}
@@ -844,7 +853,7 @@ export function OrdersView({
                 <span className="text-muted">—</span>
               ) : (
                 <span
-                  className="block max-w-[9rem] truncate text-caption text-primary"
+                  className="block max-w-[7.5rem] truncate text-caption text-primary 2xl:max-w-[9rem]"
                   title={row.creator.fullName}
                 >
                   {row.creator.fullName}
@@ -946,7 +955,7 @@ export function OrdersView({
               const role = t(ROLE_LABELS, executor.role);
               return (
                 // Длинное имя обрезается — целиком оно в подсказке.
-                <span className="block max-w-[9rem]" title={`${executor.fullName} — ${role}`}>
+                <span className="block max-w-[7.5rem] 2xl:max-w-[9rem]" title={`${executor.fullName} — ${role}`}>
                   <span className="block truncate text-caption text-primary">{executor.fullName}</span>
                   <span className="block truncate text-footnote text-muted">{role}</span>
                 </span>
@@ -1086,11 +1095,14 @@ function BulkBar({
  */
 function PersonFilter({
   label,
+  hint,
   value,
   groups,
   onChange,
 }: {
   readonly label: string;
+  /** Подсказка по наведению — что именно ищет фильтр. */
+  readonly hint?: string;
   readonly value: number | null;
   readonly groups: readonly PersonGroup[];
   readonly onChange: (next: number | null) => void;
@@ -1103,7 +1115,7 @@ function PersonFilter({
     ));
 
   return (
-    <label className="flex items-center gap-1.5 text-footnote text-muted">
+    <label className="flex items-center gap-1.5 text-footnote text-muted" title={hint}>
       {label}
       <select
         value={value === null ? '' : value.toString()}
