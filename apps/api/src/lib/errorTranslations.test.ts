@@ -269,6 +269,39 @@ describe('notificationTranslations', () => {
       translateNotificationText('Опоздание 12.11 до 10:30 больше не согласовано (Мирзаев Дилшод)', 'uz'),
     ).toBe('12.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод)');
   });
+
+  /*
+    Решение после отметки: записанное опоздание снято или пересчитано, и это
+    сказано в том же уведомлении. Хвост собирается отдельной функцией, и
+    проверка покрытия выше видит только начало тела — поэтому здесь целиком.
+  */
+  it('одобрение после отметки — с тем, что стало с записанным нарушением', () => {
+    expect(
+      translateNotificationText('Опоздание 09.11 до 10:30 согласовано (Мирзаев Дилшод). Нарушение за 09.11 снято.', 'uz'),
+    ).toBe('09.11 kuni soat 10:30 gacha kechikish tasdiqlandi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik bekor qilindi.');
+    expect(
+      translateNotificationText(
+        'Опоздание 09.11 до 10:00 согласовано (Мирзаев Дилшод). Нарушение за 09.11 пересчитано: опоздание 25 мин.',
+        'uz',
+      ),
+    ).toBe(
+      '09.11 kuni soat 10:00 gacha kechikish tasdiqlandi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik qayta hisoblandi: 25 daqiqa kechikish.',
+    );
+  });
+
+  it('снятие согласования с пересчётом — переводится как снятие, а не как одобрение', () => {
+    expect(
+      translateNotificationText(
+        'Опоздание 09.11 до 10:30 больше не согласовано (Мирзаев Дилшод). Нарушение за 09.11 пересчитано: опоздание 100 мин.',
+        'uz',
+      ),
+    ).toBe(
+      '09.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik qayta hisoblandi: 100 daqiqa kechikish.',
+    );
+    expect(
+      translateNotificationText('Опоздание 09.11 до 10:30 больше не согласовано (Мирзаев Дилшод). Нарушение за 09.11 снято.', 'uz'),
+    ).toBe('09.11 kuni soat 10:30 gacha kechikishga ruxsat bekor qilindi (Мирзаев Дилшод). 09.11 dagi qoidabuzarlik bekor qilindi.');
+  });
 });
 
 describe('modernizeStoredNotification', () => {

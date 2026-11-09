@@ -12,6 +12,7 @@ import { Check } from 'lucide-react';
 import { useState, type ReactElement } from 'react';
 
 import { RejectRequestDialog } from '@/components/employees/RejectRequestDialog';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/components/providers/ToastProvider';
 import { DayOffStatusBadge } from '@/components/ui/Badge';
 import { Card, CardHeader, ErrorState } from '@/components/ui/Card';
@@ -39,6 +40,18 @@ import { formatDate, formatDateTime } from '@/lib/utils';
  */
 export function LateRequestsPanel(): ReactElement {
   const toast = useToast();
+  const { user } = useAuth();
+
+  /*
+    Пояснение к тосту — по тому, кого решение касается. Сервер не шлёт
+    уведомление, когда руководитель решает собственный запрос: себе про
+    своё же решение сообщать незачем. Обещать «сотрудник получит» в этом
+    случае — неправда, поэтому фраза пропадает. Чей запрос, берём из
+    ответа мутации (сервер возвращает строку целиком), а не из таблицы:
+    к ответу строка могла уже перечитаться.
+  */
+  const noticeFor = (requesterId: number): string | undefined =>
+    user !== null && requesterId === user.id ? undefined : 'Сотрудник получит уведомление';
 
   const [status, setStatus] = useState<DayOffStatusName | ''>(DayOffStatus.PENDING);
   /** Запрос, ожидающий причину отказа. `null` — окно закрыто. */
@@ -66,8 +79,8 @@ export function LateRequestsPanel(): ReactElement {
   };
 
   const approve = trpc.lateRequests.approve.useMutation({
-    onSuccess() {
-      toast.success('Опоздание одобрено', 'Сотрудник получит уведомление');
+    onSuccess(updated) {
+      toast.success('Опоздание одобрено', noticeFor(updated.userId));
       refresh();
       refreshDiscipline();
     },
@@ -77,9 +90,9 @@ export function LateRequestsPanel(): ReactElement {
   });
 
   const reject = trpc.lateRequests.reject.useMutation({
-    onSuccess() {
+    onSuccess(updated) {
       setRejecting(null);
-      toast.success('Запрос отклонён', 'Сотрудник получит уведомление');
+      toast.success('Запрос отклонён', noticeFor(updated.userId));
       refresh();
     },
     onError(error) {
@@ -88,8 +101,8 @@ export function LateRequestsPanel(): ReactElement {
   });
 
   const withdraw = trpc.lateRequests.withdraw.useMutation({
-    onSuccess() {
-      toast.success('Согласование снято', 'Сотрудник получит уведомление');
+    onSuccess(updated) {
+      toast.success('Согласование снято', noticeFor(updated.userId));
       refresh();
       refreshDiscipline();
     },

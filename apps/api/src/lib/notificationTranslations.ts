@@ -90,6 +90,29 @@ const PATTERNS: readonly (readonly [ru: string, uz: string])[] = [
   ['Запрос на {period} одобрен ({reviewer})', "{period} uchun so'rovingiz tasdiqlandi ({reviewer})"],
   ['{requester} просит опоздать {date} — придёт к {time}', "{requester} {date} kuni kechikishni so'ramoqda — soat {time} gacha keladi"],
   ['Можно прийти {date} к {time} ({reviewer})', '{date} kuni soat {time} gacha kelishingiz mumkin ({reviewer})'],
+  /*
+    Решение по запросу после отметки: записанное опоздание снято или
+    пересчитано, и сотрудник видит это в том же уведомлении (`latePenaltyNote`).
+    «Больше не согласовано» — раньше «согласовано»: иначе ленивое `{time}`
+    в шаблоне одобрения проглотило бы «10:30 больше не», и снятие
+    перевелось бы как одобрение.
+  */
+  [
+    'Опоздание {date} до {time} больше не согласовано ({reviewer}). Нарушение за {day} снято.',
+    '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer}). {day} dagi qoidabuzarlik bekor qilindi.',
+  ],
+  [
+    'Опоздание {date} до {time} больше не согласовано ({reviewer}). Нарушение за {day} пересчитано: опоздание {minutes} мин.',
+    '{date} kuni soat {time} gacha kechikishga ruxsat bekor qilindi ({reviewer}). {day} dagi qoidabuzarlik qayta hisoblandi: {minutes} daqiqa kechikish.',
+  ],
+  [
+    'Опоздание {date} до {time} согласовано ({reviewer}). Нарушение за {day} снято.',
+    '{date} kuni soat {time} gacha kechikish tasdiqlandi ({reviewer}). {day} dagi qoidabuzarlik bekor qilindi.',
+  ],
+  [
+    'Опоздание {date} до {time} согласовано ({reviewer}). Нарушение за {day} пересчитано: опоздание {minutes} мин.',
+    '{date} kuni soat {time} gacha kechikish tasdiqlandi ({reviewer}). {day} dagi qoidabuzarlik qayta hisoblandi: {minutes} daqiqa kechikish.',
+  ],
   [
     'Опоздание {date} до {time} не согласовано. Причина: {reason}',
     '{date} kuni soat {time} gacha kechikish rad etildi. Sabab: {reason}',

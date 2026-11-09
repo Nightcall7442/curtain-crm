@@ -180,6 +180,17 @@ async function main(): Promise<void> {
 }
 
 /**
+ * Убирает триггер, которым смоук срывает пересчёт опоздания.
+ *
+ * Триггер срабатывает только на записи одного смоук-сотрудника, но и он не
+ * должен пережить запуск: удалить дисциплину этого сотрудника он не даст.
+ */
+async function dropRecountTrap(db: Database): Promise<void> {
+  await db.execute(sql`drop trigger if exists smoke_fail_recount on discipline_events`);
+  await db.execute(sql`drop function if exists smoke_fail_recount()`);
+}
+
+/**
  * Удаляет данные предыдущего запуска.
  *
  * Порядок обязателен и сам по себе показателен: `audit_log`, `order_photos`,
@@ -189,6 +200,9 @@ async function main(): Promise<void> {
  * деактивируют, а не удаляют.
  */
 async function cleanup(db: Database): Promise<void> {
+  // Ловушка проверки «пересчёт упал»: если прошлый запуск оборвался, она мешала бы удалить дисциплину.
+  await dropRecountTrap(db);
+
   const smokeOrders = await db
     .select({ id: orders.id })
     .from(orders)
@@ -3556,11 +3570,11 @@ async function run(db: Database): Promise<void> {
   await ceoCaller.lateRequests.approve({ id: recountRequest.id });
   const afterApprove = await latenessOn(recountSewer.id);
   check(
-    'опоздание: одобрение после отметки пересчитывает запись — от «приду к», а не от графика',
+    'опоздание: одобрение после отметки пересчитывает запись на месте — от «приду к», а не от графика',
     afterApprove.length === 1 &&
       afterApprove[0]?.kind === 'late_under_15' &&
       afterApprove[0].description === 'Смена с 10:30, отметка в 10:40 — опоздание 10 мин' &&
-      afterApprove[0].id !== lateFromSchedule?.id,
+      afterApprove[0].id === lateFromSchedule?.id,
     JSON.stringify(afterApprove),
   );
   const recountAudit = await db
@@ -3573,17 +3587,26 @@ async function run(db: Database): Promise<void> {
       ),
     );
   check(
-    'опоздание: удаление старой записи — в журнале от имени решившего; новая помечена пересчётом и в группу не идёт',
+    'опоздание: правка записи — в журнале от имени решившего (discipline.adjusted), без удаления и новой записи',
     recountAudit.some(
-      (row) => row.action === 'discipline.removed' && row.entityId === lateFromSchedule?.id && row.actorId === ceo.id,
-    ) &&
-      recountAudit.some(
-        (row) =>
-          row.action === 'discipline.recorded' &&
-          row.entityId === afterApprove[0]?.id &&
-          row.details?.['recomputed'] === true,
-      ),
+      (row) =>
+        row.action === 'discipline.adjusted' &&
+        row.entityId === lateFromSchedule?.id &&
+        row.actorId === ceo.id &&
+        row.details?.['auto'] === true,
+    ) && !recountAudit.some((row) => row.action === 'discipline.removed'),
     JSON.stringify(recountAudit),
+  );
+  const [recountApprovedNote] = await db
+    .select({ body: notifications.body })
+    .from(notifications)
+    .where(and(eq(notifications.userId, recountSewer.id), eq(notifications.type, NotificationType.LATE_APPROVED)))
+    .orderBy(desc(notifications.id))
+    .limit(1);
+  check(
+    'опоздание: в уведомлении об одобрении — что записанное нарушение пересчитано',
+    recountApprovedNote?.body.endsWith('пересчитано: опоздание 10 мин.') === true,
+    recountApprovedNote?.body ?? 'уведомления нет',
   );
 
   await expectRejectedWith(
@@ -3607,10 +3630,11 @@ async function run(db: Database): Promise<void> {
   );
   const afterWithdraw = await latenessOn(recountSewer.id);
   check(
-    'опоздание: после снятия согласования опоздание снова считается от графика',
+    'опоздание: после снятия согласования опоздание снова считается от графика — в той же записи',
     afterWithdraw.length === 1 &&
       afterWithdraw[0]?.kind === 'late_over_30' &&
-      afterWithdraw[0].description === 'Смена с 09:00, отметка в 10:40 — опоздание 100 мин',
+      afterWithdraw[0].description === 'Смена с 09:00, отметка в 10:40 — опоздание 100 мин' &&
+      afterWithdraw[0].id === lateFromSchedule?.id,
     JSON.stringify(afterWithdraw),
   );
   const [withdrawnNote] = await db
@@ -3619,8 +3643,11 @@ async function run(db: Database): Promise<void> {
     .where(and(eq(notifications.userId, recountSewer.id), eq(notifications.type, NotificationType.LATE_WITHDRAWN)))
     .limit(1);
   check(
-    'опоздание: сотрудник узнаёт о снятии — день, время и кто снял',
-    withdrawnNote !== undefined && withdrawnNote.body.includes('10:30') && withdrawnNote.body.includes(admin.fullName),
+    'опоздание: сотрудник узнаёт о снятии — день, время, кто снял и что нарушение пересчитано',
+    withdrawnNote !== undefined &&
+      withdrawnNote.body.includes('10:30') &&
+      withdrawnNote.body.includes(admin.fullName) &&
+      withdrawnNote.body.endsWith('пересчитано: опоздание 100 мин.'),
     withdrawnNote?.body ?? 'уведомления нет',
   );
   const [withdrawnAudit] = await db
@@ -3656,6 +3683,301 @@ async function run(db: Database): Promise<void> {
     'опоздание: пересчёт убирает только запись системы, ручная запись руководителя остаётся',
     afterManual.length === 1 && afterManual[0]?.recordedBy === ceo.id,
     JSON.stringify(afterManual),
+  );
+
+  /* -- 15. Пересчёт не создаёт штраф, хранит объяснение, пересчитывает повторы -- */
+
+  /*
+    Замечания проверки (09.11, второй круг): одобрение СОЗДАВАЛО штраф,
+    которого не было (смену завёл руководитель; опоздание он уже простил);
+    удаление и новая запись теряли объяснение сотрудника; без графика запись
+    стиралась молча; повторы следующих дней месяца не пересчитывались.
+  */
+  const enteredSewer = await makeUser('Смену завёл руководитель', Role.SEWER, '+998900000160');
+  const forgivenSewer = await makeUser('Простили руками', Role.SEWER, '+998900000161');
+  const explainedSewer = await makeUser('Объяснила опоздание', Role.SEWER, '+998900000162');
+  const unscheduledSewer = await makeUser('График сняли', Role.SEWER, '+998900000163');
+  const repeatSewer = await makeUser('Повтор в месяце', Role.SEWER, '+998900000164');
+  const failedSewer = await makeUser('Пересчёт сорван', Role.SEWER, '+998900000165');
+  await db.insert(payrollSchemes).values(
+    [enteredSewer, forgivenSewer, explainedSewer, unscheduledSewer, repeatSewer, failedSewer].map((person) => ({
+      userId: person.id,
+      role: Role.SEWER,
+      type: PayrollSchemeType.HOURLY,
+      rate: '10000.00',
+      shiftStart: '09:00',
+      shiftEnd: '18:00',
+      effectiveFrom: '2020-01-01',
+      createdBy: admin.id,
+    })),
+  );
+  // Дата в тексте уведомлений — «08.11», без года.
+  const pastDayShort = `${pastDay.slice(8, 10)}.${pastDay.slice(5, 7)}`;
+  const lateRows = (userId: number, day: string) =>
+    db
+      .select({
+        id: disciplineEvents.id,
+        kind: disciplineEvents.kind,
+        points: disciplineEvents.points,
+        isRepeat: disciplineEvents.isRepeat,
+        description: disciplineEvents.description,
+        employeeComment: disciplineEvents.employeeComment,
+      })
+      .from(disciplineEvents)
+      .where(and(eq(disciplineEvents.userId, userId), eq(disciplineEvents.occurredOn, day)))
+      .orderBy(asc(disciplineEvents.id));
+  const disciplineNotes = (userId: number) =>
+    db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.type, NotificationType.DISCIPLINE_RECORDED)));
+  const latestNote = async (userId: number, type: NotificationType): Promise<string | null> => {
+    const [note] = await db
+      .select({ body: notifications.body })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.type, type)))
+      .orderBy(desc(notifications.id))
+      .limit(1);
+    return note?.body ?? null;
+  };
+
+  // Смену завёл руководитель: отметки не было, и опоздание при ней не оценивалось.
+  await ceoCaller.shifts.adjustManually({
+    userId: enteredSewer.id,
+    branchId: branch.id,
+    startedAt: atTashkent(pastDay, '09:20'),
+    endedAt: atTashkent(pastDay, '18:00'),
+    reason: `${PREFIX} забыла отметиться`,
+  });
+  const enteredRequest = await pendingLateOn(enteredSewer, '09:10');
+  await ceoCaller.lateRequests.approve({ id: enteredRequest.id });
+  const afterEnteredApprove = await lateRows(enteredSewer.id, pastDay);
+  const enteredNotes = await disciplineNotes(enteredSewer.id);
+  check(
+    'опоздание: смену завёл руководитель — одобрение «приду к 09:10» штраф не создаёт и о нарушении не пишет',
+    afterEnteredApprove.length === 0 && enteredNotes.length === 0,
+    JSON.stringify({ afterEnteredApprove, enteredNotes }),
+  );
+  await ceoCaller.lateRequests.withdraw({ id: enteredRequest.id });
+  const afterEnteredWithdraw = await lateRows(enteredSewer.id, pastDay);
+  check(
+    'опоздание: смену завёл руководитель — и снятие согласования штраф не создаёт',
+    afterEnteredWithdraw.length === 0 && (await disciplineNotes(enteredSewer.id)).length === 0,
+    JSON.stringify(afterEnteredWithdraw),
+  );
+
+  // Руководитель простил опоздание руками — одобрение и снятие его не возвращают.
+  await checkInAt(forgivenSewer, '09:40', '18:00');
+  const [forgivenLate] = await lateRows(forgivenSewer.id, pastDay);
+  if (forgivenLate === undefined) throw new Error('опоздание при отметке не записано');
+  await ceoCaller.discipline.remove({ id: forgivenLate.id });
+  const forgivenRequest = await pendingLateOn(forgivenSewer, '09:30');
+  await ceoCaller.lateRequests.approve({ id: forgivenRequest.id });
+  const afterForgivenApprove = await lateRows(forgivenSewer.id, pastDay);
+  check(
+    'опоздание: руководитель уже простил опоздание — одобрение его не возвращает',
+    afterForgivenApprove.length === 0,
+    JSON.stringify(afterForgivenApprove),
+  );
+  await ceoCaller.lateRequests.withdraw({ id: forgivenRequest.id });
+  const afterForgivenWithdraw = await lateRows(forgivenSewer.id, pastDay);
+  const forgivenNotes = await disciplineNotes(forgivenSewer.id);
+  check(
+    'опоздание: прощение руками сильнее снятия согласования — записи нет, нового уведомления о нарушении нет',
+    afterForgivenWithdraw.length === 0 && forgivenNotes.length === 1,
+    JSON.stringify({ afterForgivenWithdraw, forgivenNotes }),
+  );
+
+  // Отметка в 10:25, пока запрос ждёт решения; сотрудник объяснил опоздание.
+  const explainedRequest = await pendingLateOn(explainedSewer, '10:00');
+  await checkInAt(explainedSewer, '10:25', '18:00');
+  const [explainedLate] = await lateRows(explainedSewer.id, pastDay);
+  if (explainedLate === undefined) throw new Error('опоздание при отметке не записано');
+  const explanation = 'Автобус сломался на Чиланзаре';
+  // Объяснение — мутация, а мутации сотрудника — только на открытой смене (сегодняшней).
+  await db.insert(shifts).values({ userId: explainedSewer.id, branchId: branch.id, startedAt: new Date(), ...point });
+  await (await callerFor(explainedSewer)).discipline.explain({ id: explainedLate.id, comment: explanation });
+  await db
+    .update(shifts)
+    .set({ endedAt: new Date(Date.now() + 1000) })
+    .where(and(eq(shifts.userId, explainedSewer.id), isNull(shifts.endedAt)));
+  await ceoCaller.lateRequests.approve({ id: explainedRequest.id });
+  const afterExplainedApprove = await lateRows(explainedSewer.id, pastDay);
+  check(
+    'опоздание: одобрение до 10:00 — та же запись пересчитана до 25 мин, объяснение сотрудника на месте',
+    explainedLate.kind === 'late_over_30' &&
+      afterExplainedApprove.length === 1 &&
+      afterExplainedApprove[0]?.id === explainedLate.id &&
+      afterExplainedApprove[0].kind === 'late_15_30' &&
+      afterExplainedApprove[0].points === '-1.0' &&
+      afterExplainedApprove[0].description === 'Смена с 10:00, отметка в 10:25 — опоздание 25 мин' &&
+      afterExplainedApprove[0].employeeComment === explanation,
+    JSON.stringify(afterExplainedApprove),
+  );
+  const recountedNote = await latestNote(explainedSewer.id, NotificationType.LATE_APPROVED);
+  check(
+    'опоздание: в одобрении сказано, что нарушение пересчитано',
+    recountedNote ===
+      `Опоздание ${pastDayShort} до 10:00 согласовано (${ceo.fullName}). Нарушение за ${pastDayShort} пересчитано: опоздание 25 мин.`,
+    recountedNote ?? 'уведомления нет',
+  );
+  await ceoCaller.lateRequests.withdraw({ id: explainedRequest.id });
+  const afterExplainedWithdraw = await lateRows(explainedSewer.id, pastDay);
+  check(
+    'опоздание: снятие согласования возвращает 85 мин в той же записи, объяснение не теряется',
+    afterExplainedWithdraw.length === 1 &&
+      afterExplainedWithdraw[0]?.id === explainedLate.id &&
+      afterExplainedWithdraw[0].kind === 'late_over_30' &&
+      afterExplainedWithdraw[0].description === 'Смена с 09:00, отметка в 10:25 — опоздание 85 мин' &&
+      afterExplainedWithdraw[0].employeeComment === explanation,
+    JSON.stringify(afterExplainedWithdraw),
+  );
+  const explainedSecond = await pendingLateOn(explainedSewer, '10:30');
+  await ceoCaller.lateRequests.approve({ id: explainedSecond.id });
+  const afterExplainedRemoval = await lateRows(explainedSewer.id, pastDay);
+  const [explainedRemovalAudit] = await db
+    .select({ actorId: auditLog.actorId, details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, 'discipline.removed'), eq(auditLog.entityId, explainedLate.id)))
+    .limit(1);
+  check(
+    'опоздание: отметка до «приду к 10:30» — запись снята, в журнале от решившего и с объяснением сотрудника',
+    afterExplainedRemoval.length === 0 &&
+      explainedRemovalAudit?.actorId === ceo.id &&
+      explainedRemovalAudit.details?.['auto'] === true &&
+      explainedRemovalAudit.details['employeeComment'] === explanation,
+    JSON.stringify({ afterExplainedRemoval, details: explainedRemovalAudit?.details }),
+  );
+  const removedNote = await latestNote(explainedSewer.id, NotificationType.LATE_APPROVED);
+  check(
+    'опоздание: в одобрении сказано, что нарушение снято',
+    removedNote === `Опоздание ${pastDayShort} до 10:30 согласовано (${ceo.fullName}). Нарушение за ${pastDayShort} снято.`,
+    removedNote ?? 'уведомления нет',
+  );
+
+  // График сняли после отметки: пересчитать не от чего — запись остаётся, а не стирается молча.
+  await checkInAt(unscheduledSewer, '09:50', '18:00');
+  const [unscheduledLate] = await lateRows(unscheduledSewer.id, pastDay);
+  await db
+    .update(payrollSchemes)
+    .set({ shiftStart: null, shiftEnd: null })
+    .where(eq(payrollSchemes.userId, unscheduledSewer.id));
+  const unscheduledRequest = await pendingLateOn(unscheduledSewer, '10:00');
+  await ceoCaller.lateRequests.approve({ id: unscheduledRequest.id });
+  const afterUnscheduled = await lateRows(unscheduledSewer.id, pastDay);
+  check(
+    'опоздание: графика больше нет — одобрение запись не стирает',
+    unscheduledLate !== undefined &&
+      afterUnscheduled.length === 1 &&
+      afterUnscheduled[0]?.id === unscheduledLate.id &&
+      afterUnscheduled[0].description === unscheduledLate.description,
+    JSON.stringify(afterUnscheduled),
+  );
+
+  /* Повтор в месяце: прошлый месяц — оба дня точно уже прошли и лежат в одном месяце. */
+  const { year: todayYear, month: todayMonth } = workshopToday();
+  const prevMonth = new Date(Date.UTC(todayYear, todayMonth - 2, 1)).toISOString().slice(0, 7);
+  const repeatFirst = `${prevMonth}-05`;
+  const repeatSecond = `${prevMonth}-09`;
+  const checkInOn = async (person: { readonly id: number }, day: string, time: string) => {
+    const startedAt = atTashkent(day, time);
+    await db
+      .insert(shifts)
+      .values({ userId: person.id, branchId: branch.id, startedAt, endedAt: atTashkent(day, '18:00'), ...point });
+    await recordLatenessIfAny(db, person.id, startedAt, null);
+  };
+  const repeatState = async () => {
+    const [first] = await lateRows(repeatSewer.id, repeatFirst);
+    const [second] = await lateRows(repeatSewer.id, repeatSecond);
+    return { first, second };
+  };
+  await checkInOn(repeatSewer, repeatFirst, '10:40');
+  await checkInOn(repeatSewer, repeatSecond, '10:40');
+  const beforeExcuse = await repeatState();
+  check(
+    'опоздание: два опоздания больше 30 мин в месяце — второе повтор, −3',
+    beforeExcuse.first?.points === '-2.0' &&
+      !beforeExcuse.first.isRepeat &&
+      beforeExcuse.second?.isRepeat === true &&
+      beforeExcuse.second.points === '-3.0',
+    JSON.stringify(beforeExcuse),
+  );
+  const [repeatRequest] = await db
+    .insert(lateRequests)
+    .values({ userId: repeatSewer.id, date: repeatFirst, arriveBy: '11:00' })
+    .returning();
+  if (repeatRequest === undefined) throw new Error('запрос на опоздание не создан');
+  await ceoCaller.lateRequests.approve({ id: repeatRequest.id });
+  const afterExcuse = await repeatState();
+  check(
+    'опоздание: первое простили согласованием — второе уже не повтор, балл −2',
+    afterExcuse.first === undefined &&
+      afterExcuse.second?.id === beforeExcuse.second?.id &&
+      afterExcuse.second?.isRepeat === false &&
+      afterExcuse.second.points === '-2.0',
+    JSON.stringify(afterExcuse),
+  );
+  await ceoCaller.lateRequests.withdraw({ id: repeatRequest.id });
+  const afterRepeatWithdraw = await repeatState();
+  const [recreatedAudit] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, 'discipline.recorded'), eq(auditLog.entityId, afterRepeatWithdraw.first?.id ?? 0)))
+    .limit(1);
+  const repeatNotes = await disciplineNotes(repeatSewer.id);
+  check(
+    'опоздание: согласование сняли — первое вернулось (пересчётом, с уведомлением), второе снова повтор −3',
+    afterRepeatWithdraw.first?.kind === 'late_over_30' &&
+      !afterRepeatWithdraw.first.isRepeat &&
+      afterRepeatWithdraw.first.points === '-2.0' &&
+      afterRepeatWithdraw.second?.isRepeat === true &&
+      afterRepeatWithdraw.second.points === '-3.0' &&
+      recreatedAudit?.details?.['recomputed'] === true &&
+      repeatNotes.length === 3,
+    JSON.stringify({ ...afterRepeatWithdraw, recreated: recreatedAudit?.details, notes: repeatNotes.length }),
+  );
+
+  /*
+    Пересчёт упал — решение откатывается целиком: запрос ждёт решения, журнала
+    и уведомления нет. Сорвать пересчёт без крючков в коде продукта — триггером
+    только на запись этого сотрудника; убирается сразу и ещё раз в `cleanup`.
+  */
+  await checkInAt(failedSewer, '10:40', '18:00');
+  const failedRequest = await pendingLateOn(failedSewer, '10:30');
+  const [failedLate] = await lateRows(failedSewer.id, pastDay);
+  await db.execute(
+    sql`create or replace function smoke_fail_recount() returns trigger language plpgsql as $$ begin raise exception 'smoke: пересчёт сорван'; end $$`,
+  );
+  await db.execute(
+    sql`create trigger smoke_fail_recount before update or delete on discipline_events for each row when (old.user_id = ${sql.raw(failedSewer.id.toString())}) execute function smoke_fail_recount()`,
+  );
+  try {
+    await expectRejectedWith(
+      'опоздание: пересчёт упал — одобрение не проходит',
+      () => ceoCaller.lateRequests.approve({ id: failedRequest.id }),
+      (message) => message.includes('пересчёт сорван'),
+    );
+  } finally {
+    await dropRecountTrap(db);
+  }
+  const [failedState] = await db
+    .select({ status: lateRequests.status })
+    .from(lateRequests)
+    .where(eq(lateRequests.id, failedRequest.id));
+  const failedAudit = await db
+    .select({ action: auditLog.action })
+    .from(auditLog)
+    .where(and(eq(auditLog.entityType, 'late_request'), eq(auditLog.entityId, failedRequest.id)));
+  const failedNote = await latestNote(failedSewer.id, NotificationType.LATE_APPROVED);
+  const failedAfter = await lateRows(failedSewer.id, pastDay);
+  check(
+    'опоздание: после сорванного пересчёта запрос ждёт решения, журнала и уведомления нет, запись прежняя',
+    failedState?.status === DayOffStatus.PENDING &&
+      failedAudit.length === 0 &&
+      failedNote === null &&
+      failedAfter.length === 1 &&
+      failedAfter[0]?.description === failedLate?.description,
+    JSON.stringify({ failedState, failedAudit, failedNote, failedAfter }),
   );
 
   /* Выходные: условие на статус — в самом UPDATE; второе решение не проходит и не попадает в журнал. */

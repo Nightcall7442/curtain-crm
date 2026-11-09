@@ -16,12 +16,17 @@ import { idSchema, optionalText, reasonSchema } from '../lib/schemas';
 import { protectedProcedure } from '../middleware/auth.middleware';
 import { managementProcedure } from '../middleware/roleGuard.middleware';
 import { recordAudit } from '../services/audit.service';
-import { recomputeLatenessForDay } from '../services/lateness.service';
+import {
+  recomputeLatenessForDay,
+  type LatenessRecomputeOutcome,
+  type LateReviewMode,
+} from '../services/lateness.service';
 import {
   notifyLateApproved,
   notifyLateRejected,
   notifyLateRequested,
   notifyLateWithdrawn,
+  type LatePenaltyChange,
 } from '../services/notifications.service';
 import { router } from '../trpc';
 
@@ -120,15 +125,37 @@ async function activeRequestConflict(
 async function recomputeIfDayStarted(
   executor: DbExecutor,
   request: { readonly userId: number; readonly date: string },
+  mode: LateReviewMode,
   actor: { readonly actorId: number; readonly ipAddress: string | null },
-): Promise<void> {
-  if (request.date > workshopDayIso(new Date())) return;
-  await recomputeLatenessForDay(executor, {
+): Promise<LatenessRecomputeOutcome> {
+  if (request.date > workshopDayIso(new Date())) return { kind: 'none' };
+  return recomputeLatenessForDay(executor, {
     userId: request.userId,
     day: request.date,
+    mode,
     actorId: actor.actorId,
     ipAddress: actor.ipAddress,
   });
+}
+
+/**
+ * Что сказать сотруднику о записанном опоздании после решения.
+ *
+ * Снятую или пересчитанную запись называем в уведомлении о решении — иначе
+ * в ленте остаются два штрафа подряд. Заново созданная запись приходит
+ * своим уведомлением о дисциплине, «без изменений» — не новость.
+ */
+function penaltyChange(outcome: LatenessRecomputeOutcome): LatePenaltyChange | null {
+  switch (outcome.kind) {
+    case 'removed':
+      return { kind: 'removed' };
+    case 'adjusted':
+      return { kind: 'recounted', minutes: outcome.toMinutes };
+    case 'none':
+    case 'unchanged':
+    case 'created':
+      return null;
+  }
 }
 
 export const lateRequestsRouter = router({
@@ -280,6 +307,21 @@ export const lateRequestsRouter = router({
           .returning();
         if (updated === undefined) throw alreadyReviewed();
 
+        /*
+          Согласовать можно и задним числом — так руководитель прощает уже
+          случившееся опоздание. Отметка в этот день могла быть раньше
+          решения, и записанное при ней опоздание считалось от графика.
+
+          Пересчёт — ДО журнала и уведомления: журнал пишет в группу, а
+          уведомление — в личку, и оба уходят сразу, не дожидаясь коммита.
+          Упади пересчёт после них, транзакция откатилась бы, а группа и
+          сотрудник уже прочли бы об одобрении, которого нет.
+        */
+        const lateness = await recomputeIfDayStarted(tx, request, 'approved', {
+          actorId: ctx.user.id,
+          ipAddress: ctx.ipAddress,
+        });
+
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'late.approved',
@@ -295,15 +337,9 @@ export const lateRequestsRouter = router({
             date: request.date,
             arriveBy: request.arriveBy,
             reviewerName: ctx.user.fullName,
+            penalty: penaltyChange(lateness),
           });
         }
-
-        /*
-          Согласовать можно и задним числом — так руководитель прощает уже
-          случившееся опоздание. Отметка в этот день могла быть раньше
-          решения, и записанное при ней опоздание считалось от графика.
-        */
-        await recomputeIfDayStarted(tx, request, { actorId: ctx.user.id, ipAddress: ctx.ipAddress });
 
         return updated;
       }),
@@ -382,6 +418,12 @@ export const lateRequestsRouter = router({
           .returning();
         if (updated === undefined) throw notApproved();
 
+        // Пересчёт — до журнала и уведомления, как у одобрения.
+        const lateness = await recomputeIfDayStarted(tx, request, 'withdrawn', {
+          actorId: ctx.user.id,
+          ipAddress: ctx.ipAddress,
+        });
+
         await recordAudit(tx, {
           actorId: ctx.user.id,
           action: 'late.withdrawn',
@@ -396,10 +438,9 @@ export const lateRequestsRouter = router({
             date: request.date,
             arriveBy: request.arriveBy,
             reviewerName: ctx.user.fullName,
+            penalty: penaltyChange(lateness),
           });
         }
-
-        await recomputeIfDayStarted(tx, request, { actorId: ctx.user.id, ipAddress: ctx.ipAddress });
 
         return updated;
       }),

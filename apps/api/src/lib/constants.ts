@@ -230,6 +230,12 @@ export const AUDIT_ACTIONS = [
   'discipline.recorded',
   'discipline.explained',
   'discipline.removed',
+  /*
+    Запись системы поправлена на месте при пересмотре запроса на опоздание:
+    другие минуты, вид или повтор. В ленту группы не идёт — опоздание она уже
+    видела, а балл в группе не называется вовсе.
+  */
+  'discipline.adjusted',
   'event.created',
   'event.removed',
 

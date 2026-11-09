@@ -762,18 +762,58 @@ export async function notifyLateRequested(
   );
 }
 
-/** Опоздание согласовано — узнаёт сотрудник. */
+/**
+ * Что решение по запросу сделало с уже записанным опозданием за этот день.
+ *
+ * `removed` — запись снята, `recounted` — пересчитана на месте, `minutes` —
+ * сколько опоздания теперь. Не изменилось ничего — `null`: тогда и
+ * говорить об опоздании незачем.
+ */
+export type LatePenaltyChange =
+  | { readonly kind: 'removed' }
+  | { readonly kind: 'recounted'; readonly minutes: number };
+
+/**
+ * Хвост уведомления о решении: «Нарушение за 09.11 снято.»
+ *
+ * Без него лента читалась как два штрафа: утром «Зафиксировано нарушение»,
+ * днём «Опоздание согласовано» — и ни слова о том, что утреннее больше не
+ * в силе. Перевод — целым телом, шаблоном в `notificationTranslations.ts`.
+ */
+function latePenaltyNote(day: string, change: LatePenaltyChange): string {
+  return change.kind === 'removed'
+    ? `Нарушение за ${day} снято.`
+    : `Нарушение за ${day} пересчитано: опоздание ${change.minutes.toString()} мин.`;
+}
+
+/**
+ * Опоздание согласовано — узнаёт сотрудник.
+ *
+ * Согласовали задним числом, и записанное при отметке опоздание снято или
+ * пересчитано — тело говорит и об этом. «Можно прийти» про прошедшую
+ * отметку звучало бы странно, поэтому тогда — «Опоздание … согласовано».
+ */
 export async function notifyLateApproved(
   executor: DbExecutor,
   userId: number,
-  params: { readonly date: string; readonly arriveBy: string; readonly reviewerName: string },
+  params: {
+    readonly date: string;
+    readonly arriveBy: string;
+    readonly reviewerName: string;
+    readonly penalty: LatePenaltyChange | null;
+  },
 ): Promise<void> {
+  const day = formatIsoDateShort(params.date);
+  const penalty = params.penalty;
   await createNotification(executor, {
     userId,
     type: NotificationType.LATE_APPROVED,
     title: 'Опоздание согласовано',
     // Автор в скобках — как у выходных: «согласовал» не подходит руководителю-женщине.
-    body: `Можно прийти ${formatIsoDateShort(params.date)} к ${params.arriveBy} (${params.reviewerName})`,
+    body:
+      penalty === null
+        ? `Можно прийти ${day} к ${params.arriveBy} (${params.reviewerName})`
+        : `Опоздание ${day} до ${params.arriveBy} согласовано (${params.reviewerName}). ${latePenaltyNote(day, penalty)}`,
   });
 }
 
@@ -796,18 +836,30 @@ export async function notifyLateRejected(
  *
  * Сотрудник мог рассчитывать на «приду к 10:30», и узнать о снятии он
  * должен сразу, а не утром в 09:20 по записи об опоздании. Автор в скобках
- * — как у одобрения.
+ * — как у одобрения. Если опоздание за этот день уже было записано и
+ * теперь пересчитано от графика, тело говорит и об этом; заново
+ * появившаяся запись приходит своим уведомлением о дисциплине.
  */
 export async function notifyLateWithdrawn(
   executor: DbExecutor,
   userId: number,
-  params: { readonly date: string; readonly arriveBy: string; readonly reviewerName: string },
+  params: {
+    readonly date: string;
+    readonly arriveBy: string;
+    readonly reviewerName: string;
+    readonly penalty: LatePenaltyChange | null;
+  },
 ): Promise<void> {
+  const day = formatIsoDateShort(params.date);
+  const penalty = params.penalty;
   await createNotification(executor, {
     userId,
     type: NotificationType.LATE_WITHDRAWN,
     title: 'Согласование опоздания снято',
-    body: `Опоздание ${formatIsoDateShort(params.date)} до ${params.arriveBy} больше не согласовано (${params.reviewerName})`,
+    body:
+      penalty === null
+        ? `Опоздание ${day} до ${params.arriveBy} больше не согласовано (${params.reviewerName})`
+        : `Опоздание ${day} до ${params.arriveBy} больше не согласовано (${params.reviewerName}). ${latePenaltyNote(day, penalty)}`,
   });
 }
 
