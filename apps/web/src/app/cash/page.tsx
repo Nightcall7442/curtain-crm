@@ -7,6 +7,7 @@ import {
   parseMoney,
   PAYMENT_KIND_LABELS_RU,
   PAYMENT_METHOD_LABELS_RU,
+  CASHLESS_METHODS,
   PAYMENT_METHODS,
   PaymentKind,
   type PaymentKind as PaymentKindName,
@@ -116,10 +117,12 @@ export default function CashPage(): ReactElement {
 
       {/*
         Накопленные остатки — отдельной полосой: касса и счёт живут дольше
-        одного дня. Зарплата стоит рядом и из кассы не вычитается — владелец
-        попросил вести выплаты отдельно от кассы.
+        одного дня. Карта, QR и Click — каждый своей плиткой, а не одной
+        суммой «на счёте»: владелец сверяет их с разными выписками. Зарплата
+        стоит рядом и из кассы не вычитается — владелец попросил вести
+        выплаты отдельно от кассы.
       */}
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           label="В кассе"
           value={formatMoney(data?.balance.cash.total ?? 0)}
@@ -131,15 +134,14 @@ export default function CashPage(): ReactElement {
                 : `с ${formatIsoDateShort(data.balance.since)}: сдано ${formatMoney(data.balance.cash.collected)} + руководство ${formatMoney(data.balance.cash.byManagement)} − закупки ${formatMoney(data.balance.cash.purchases)} − возвраты ${formatMoney(data.balance.cash.refunds)}`
           }
         />
-        <StatCard
-          label="На счёте"
-          value={formatMoney(data?.balance.cashless.total ?? 0)}
-          caption={
-            data === undefined
-              ? 'Карта, QR, Click — минус безналичные возвраты'
-              : `карта ${formatMoney(data.balance.cashless.card)} · QR ${formatMoney(data.balance.cashless.qr)} · Click ${formatMoney(data.balance.cashless.click)}`
-          }
-        />
+        {CASHLESS_METHODS.map((method) => (
+          <StatCard
+            key={method}
+            label={PAYMENT_METHOD_LABELS_RU[method]}
+            value={formatMoney(data?.balance.cashless[method] ?? 0)}
+            caption="На счёте, минус возвраты этим способом"
+          />
+        ))}
         <StatCard
           label="Выплачено зарплаты"
           value={formatMoney(data?.balance.cash.payroll ?? 0)}

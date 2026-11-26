@@ -2,6 +2,7 @@ import {
   formatIsoDateShort,
   formatTime,
   parseMoney,
+  CASHLESS_METHODS,
   PAYMENT_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
@@ -131,19 +132,15 @@ export function CashDayReport(): ReactElement {
               value={money(data?.balance.cash.total ?? 0)}
               hint={data === undefined ? undefined : kassaParts(data.balance, m, money)}
             />
-            <Stat
-              label={m('cashDay.onAccount')}
-              value={money(data?.balance.cashless.total ?? 0)}
-              hint={
-                data === undefined
-                  ? undefined
-                  : m('cashDay.onAccountParts', {
-                      card: money(data.balance.cashless.card),
-                      qr: money(data.balance.cashless.qr),
-                      click: money(data.balance.cashless.click),
-                    })
-              }
-            />
+            {/* Карта, QR и Click — каждый своей строкой, не одной суммой «на счёте». */}
+            {CASHLESS_METHODS.map((method) => (
+              <Stat
+                key={method}
+                label={t(PAYMENT_METHOD_LABELS, method)}
+                value={money(data?.balance.cashless[method] ?? 0)}
+                hint={m('cashDay.onAccountMethod')}
+              />
+            ))}
             {data !== undefined && data.balance.cash.payroll > 0 && (
               <Stat
                 label={m('cashDay.payrollPaid')}
