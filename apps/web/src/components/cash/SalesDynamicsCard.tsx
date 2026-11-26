@@ -1,6 +1,11 @@
 'use client';
 
-import { formatMoney, PAYMENT_METHOD_LABELS_RU, PAYMENT_METHODS } from '@curtain-crm/shared';
+import {
+  CASHLESS_METHODS,
+  formatMoney,
+  PAYMENT_METHOD_LABELS_RU,
+  PAYMENT_METHODS,
+} from '@curtain-crm/shared';
 import type { ReactElement } from 'react';
 
 import { LineSeries } from '@/components/charts/LineSeries';
@@ -58,10 +63,6 @@ export function SalesDynamicsCard({ day }: { readonly day: string }): ReactEleme
     (top, row) => (top === null || row.total > top.total ? { day: row.day, total: row.total } : top),
     null,
   );
-  const cashless = PAYMENT_METHODS.filter((method) => method !== 'cash').reduce(
-    (sum, method) => sum + (now.data?.totals.byMethod[method] ?? 0),
-    0,
-  );
   const growth = previousTotal === 0 ? null : Math.round(((total - previousTotal) / previousTotal) * 1000) / 10;
 
   return (
@@ -75,7 +76,7 @@ export function SalesDynamicsCard({ day }: { readonly day: string }): ReactEleme
         }
       />
       <CardBody>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="За месяц"
             value={formatMoney(total)}
@@ -97,11 +98,25 @@ export function SalesDynamicsCard({ day }: { readonly day: string }): ReactEleme
             value={best === null ? '—' : formatMoney(best.total)}
             caption={best === null ? 'Продаж пока нет' : best.day.split('-').reverse().join('.')}
           />
-          <StatCard
-            label="Безнал"
-            value={total === 0 ? '—' : formatPercent((cashless / total) * 100)}
-            caption={`${formatMoney(cashless)} картой, QR и Click`}
-          />
+        </div>
+
+        {/*
+          Безнал — по способам, а не одной долей: владелец сверяет карту,
+          QR и Click с разными выписками. Отдельной полосой, чтобы три
+          плитки стояли рядом и не переносились по одной.
+        */}
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {CASHLESS_METHODS.map((method) => {
+            const amount = now.data?.totals.byMethod[method] ?? 0;
+            return (
+              <StatCard
+                key={method}
+                label={PAYMENT_METHOD_LABELS_RU[method]}
+                value={total === 0 ? '—' : formatPercent((amount / total) * 100)}
+                caption={`${formatMoney(amount)} за месяц`}
+              />
+            );
+          })}
         </div>
 
         <div className="mt-4">
