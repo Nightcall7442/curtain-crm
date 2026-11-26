@@ -118,7 +118,9 @@ export default function CashPage(): ReactElement {
       {/*
         Накопленные остатки — отдельной полосой: касса и счёт живут дольше
         одного дня. Карта, QR и Click — каждый своей плиткой, а не одной
-        суммой «на счёте»: владелец сверяет их с разными выписками. Зарплата
+        суммой «на счёте»: владелец сверяет их с разными выписками. Крупно
+        у них выручка выбранного дня — её владелец сверяет каждый вечер, —
+        а накопленный остаток на счёте ушёл в подпись. Зарплата
         стоит рядом и из кассы не вычитается — владелец попросил вести
         выплаты отдельно от кассы.
       */}
@@ -138,8 +140,12 @@ export default function CashPage(): ReactElement {
           <StatCard
             key={method}
             label={PAYMENT_METHOD_LABELS_RU[method]}
-            value={formatMoney(data?.balance.cashless[method] ?? 0)}
-            caption="На счёте, минус возвраты этим способом"
+            value={formatMoney(data?.byMethod[method] ?? 0)}
+            caption={
+              data === undefined
+                ? 'Выручка за день'
+                : `Выручка за день · на счёте всего ${formatMoney(data.balance.cashless[method])}`
+            }
           />
         ))}
         <StatCard

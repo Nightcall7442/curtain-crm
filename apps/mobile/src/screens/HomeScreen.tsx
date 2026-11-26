@@ -790,11 +790,12 @@ function CashTodayCard(): ReactElement {
         }
       />
       <Row label={m('cashDay.inKassa')} value={money(today.data.balance.cash.total)} />
+      {/* Безнал — выручка сегодняшнего дня по способам, не накопленный остаток. */}
       {CASHLESS_METHODS.map((method) => (
         <Row
           key={method}
           label={t(PAYMENT_METHOD_LABELS, method)}
-          value={money(today.data.balance.cashless[method])}
+          value={money(today.data.byMethod[method])}
         />
       ))}
       <Row
