@@ -1,9 +1,11 @@
 import {
+  CASHLESS_METHODS,
   formatIsoDateShort,
   formatTime,
   isActiveStatus,
   isOverdueDate,
   ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
   parseMoney,
   plural,
   PLURAL_EMPLOYEES_GENITIVE,
@@ -750,7 +752,7 @@ function RevenueCard(): ReactElement {
  * дня.
  */
 function CashTodayCard(): ReactElement {
-  const { m, money } = useLocale();
+  const { t, m, money } = useLocale();
   const navigation = useNavigation();
   const day = useToday();
   const today = trpc.payments.summary.useQuery({ day });
@@ -788,7 +790,14 @@ function CashTodayCard(): ReactElement {
         }
       />
       <Row label={m('cashDay.inKassa')} value={money(today.data.balance.cash.total)} />
-      <Row label={m('cashDay.onAccount')} value={money(today.data.balance.cashless.total)} />
+      {/* Безнал — выручка сегодняшнего дня по способам, не накопленный остаток. */}
+      {CASHLESS_METHODS.map((method) => (
+        <Row
+          key={method}
+          label={t(PAYMENT_METHOD_LABELS, method)}
+          value={money(today.data.byMethod[method])}
+        />
+      ))}
       <Row
         label={
           byUser.length === 0
